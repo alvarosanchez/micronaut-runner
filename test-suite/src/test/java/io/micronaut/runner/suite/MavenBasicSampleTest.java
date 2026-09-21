@@ -105,6 +105,8 @@ class MavenBasicSampleTest {
     @Test
     void packagesTheSampleAndRunsTheRunnerJar() throws Exception {
         Samples.assumeTheNetworkIsAvailable();
+        Samples.requirePublishedArtifact("io/micronaut/runner/micronaut-runner-maven-plugin/"
+                + Samples.VERSION + "/micronaut-runner-maven-plugin-" + Samples.VERSION + ".jar");
         assumeMavenCanLoadThePlugin();
         Path sample = Samples.sample("maven-basic");
         Path target = sample.resolve("target");

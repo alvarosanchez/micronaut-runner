@@ -399,6 +399,7 @@ public final class Extract {
             manifest.write(out);
             out.closeEntry();
             // Central directory order, which is the order the packager planned and therefore stable.
+            Set<String> directories = new HashSet<>();
             Enumeration<JarEntry> entries = outer.entries();
             while (entries.hasMoreElements()) {
                 JarEntry source = entries.nextElement();
@@ -412,6 +413,7 @@ public final class Extract {
                     continue;
                 }
                 requireSafeName(logical);
+                writeDirectoriesOf(out, logical, directories);
                 out.putNextEntry(entry(logical));
                 try (InputStream in = outer.getInputStream(source)) {
                     in.transferTo(out);
@@ -421,6 +423,40 @@ public final class Extract {
             }
         }
         return written;
+    }
+
+    /**
+     * Writes a directory entry for every directory that contains {@code logical} and has not been written
+     * yet, outermost first.
+     *
+     * <p>The application layer of a runner jar stores no directory entries: the index synthesises them, so
+     * the archive does not have to carry them. A real jar does, and one consumer in particular depends on
+     * it. Micronaut discovers beans by calling {@code getResources("META-INF/micronaut/")} and listing the
+     * directory that comes back, and {@link java.util.zip.ZipFile#getEntry} only answers a name ending in
+     * {@code '/'} when such an entry exists. Without this, an extracted application starts, because its
+     * dependencies are byte copies of ordinary jars and still carry theirs, and then serves nothing,
+     * because none of its own beans are found.</p>
+     *
+     * @param out         the jar being written
+     * @param logical     the entry name whose parents are needed
+     * @param directories the directories already written, added to as a side effect
+     * @throws IOException if a directory entry cannot be written
+     */
+    private static void writeDirectoriesOf(JarOutputStream out, String logical, Set<String> directories)
+            throws IOException {
+        int from = 0;
+        while (true) {
+            int slash = logical.indexOf('/', from);
+            if (slash < 0) {
+                return;
+            }
+            String directory = logical.substring(0, slash + 1);
+            if (directories.add(directory)) {
+                out.putNextEntry(entry(directory));
+                out.closeEntry();
+            }
+            from = slash + 1;
+        }
     }
 
     /**

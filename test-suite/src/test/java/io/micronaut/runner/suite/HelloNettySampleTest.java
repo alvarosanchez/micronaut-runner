@@ -67,6 +67,8 @@ class HelloNettySampleTest {
     static void assumeTheSuiteCanRun() {
         Samples.assumeTheBuildProvidedItsProperties();
         Samples.assumeTheNetworkIsAvailable();
+        Samples.requirePublishedArtifact("io/micronaut/runner/io.micronaut.runner.gradle.plugin/"
+                + Samples.VERSION + "/io.micronaut.runner.gradle.plugin-" + Samples.VERSION + ".pom");
     }
 
     @Test

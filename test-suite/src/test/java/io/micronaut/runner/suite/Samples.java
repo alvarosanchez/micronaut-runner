@@ -20,12 +20,14 @@ import org.junit.jupiter.api.Assumptions;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * What every sample build in this suite needs: where the samples are, which repository and version the
@@ -87,6 +89,51 @@ final class Samples {
                 "runner.test.samplesDir is not set; run this suite through Gradle (:test-suite:test)");
         Assumptions.assumeTrue(javaExecutable() != null,
                 "no JDK to start the packaged applications with; set runner.test.javaHome");
+    }
+
+    /**
+     * Fails, with the repository's actual contents, when the aggregated local repository does not hold the
+     * plugin the samples are about to ask for.
+     *
+     * <p>Without this the sample build fails several layers down, inside a nested Gradle or Maven
+     * invocation, with "plugin was not found in any of the following sources" and a list of repositories
+     * that looks entirely correct. That message says nothing about what the repository actually contained,
+     * which is the only thing worth knowing.</p>
+     *
+     * @param artifact the artifact path that must be present, relative to the repository root
+     */
+    static void requirePublishedArtifact(String artifact) {
+        Path repository;
+        try {
+            repository = Path.of(URI.create(REPO));
+        } catch (RuntimeException e) {
+            throw new AssertionError("runner.test.repo is not a usable file URI: " + REPO, e);
+        }
+        Path expected = repository.resolve(artifact);
+        if (Files.isRegularFile(expected)) {
+            return;
+        }
+        StringBuilder message = new StringBuilder(512);
+        message.append(expected).append(" is missing, so no sample can resolve the plugin.\n")
+                .append("The aggregated repository is ").append(repository).append(" and it holds:\n");
+        if (!Files.isDirectory(repository)) {
+            message.append("  (the directory does not exist)");
+        } else {
+            try (Stream<Path> tree = Files.walk(repository)) {
+                List<String> found = tree.filter(Files::isRegularFile)
+                        .map(file -> repository.relativize(file).toString())
+                        .sorted()
+                        .toList();
+                if (found.isEmpty()) {
+                    message.append("  (nothing at all)");
+                } else {
+                    found.forEach(name -> message.append("  ").append(name).append('\n'));
+                }
+            } catch (IOException e) {
+                message.append("  (could not be listed: ").append(e).append(')');
+            }
+        }
+        throw new AssertionError(message.toString());
     }
 
     /**

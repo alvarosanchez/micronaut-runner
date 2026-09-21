@@ -392,6 +392,32 @@ class ToolsTest {
     }
 
     @Test
+    void extractWritesTheDirectoryEntriesMicronautScansFor() throws Throwable {
+        // The application layer of a runner jar stores no directory entries, because the index
+        // synthesises them. A real jar has to carry them: Micronaut discovers beans by listing the
+        // directory META-INF/micronaut/, and ZipFile.getEntry only answers a name ending in '/' when such
+        // an entry exists. Without them an extracted application starts and then serves nothing, because
+        // its dependencies still carry theirs and only its own beans go missing.
+        Path destination = workspace.resolve("extract/directories");
+
+        Extract.run(new String[] {Extract.OPTION_DESTINATION, destination.toString()}, archive, index,
+                source);
+
+        try (JarFile jar = new JarFile(destination.resolve("app.jar").toFile())) {
+            int slash = APPLICATION_SERVICE.lastIndexOf('/');
+            String serviceDirectory = APPLICATION_SERVICE.substring(0, slash + 1);
+            assertNotNull(jar.getEntry(serviceDirectory),
+                    "no directory entry for " + serviceDirectory + ", so Micronaut would find no beans");
+            assertTrue(jar.getEntry(serviceDirectory).isDirectory(), serviceDirectory);
+            assertNotNull(jar.getEntry("META-INF/micronaut/"), "no directory entry for META-INF/micronaut/");
+            assertNotNull(jar.getEntry("META-INF/"), "no directory entry for META-INF/");
+            assertNotNull(jar.getEntry("com/example/"), "no directory entry for com/example/");
+            // Every directory is written once, outermost first, so the jar stays readable.
+            assertNotNull(jar.getEntry("com/"));
+        }
+    }
+
+    @Test
     void extractDefaultsToADirectoryNamedAfterTheArchiveBesideIt() throws Throwable {
         Path copy = workspace.resolve("default/service-1.0-all.jar");
         Files.createDirectories(copy.getParent());
