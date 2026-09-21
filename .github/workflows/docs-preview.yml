@@ -1,0 +1,47 @@
+# Publishes the guide to GitHub Pages while this repository lives outside micronaut-projects.
+# Not synced from micronaut-project-template.
+#
+# The synced Java CI workflow already publishes documentation, but it needs the organisation's GH_TOKEN
+# and is guarded on the owner, so under a personal fork nothing would be published and the guide could not
+# be read. This workflow does the same job with the token GitHub hands every run, and is guarded the other
+# way, so exactly one of the two is ever active. Delete this file on transfer.
+name: Docs preview
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+jobs:
+  publish:
+    if: github.repository_owner != 'micronaut-projects'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: "🔧 Setup JDK 25"
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: "🔧 Setup Gradle"
+        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+
+      - name: "📖 Build the guide"
+        run: ./gradlew docs --no-daemon
+
+      # With no VERSION the action publishes into snapshot/, which is where the README points.
+      - name: "📑 Publish to GitHub Pages"
+        uses: micronaut-projects/github-pages-deploy-action@76d63aafbab7108d74e83be4e5b3b0501382e829 # master
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: gh-pages
+          FOLDER: build/docs
