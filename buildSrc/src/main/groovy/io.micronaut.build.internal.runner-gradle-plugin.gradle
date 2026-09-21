@@ -1,22 +1,40 @@
 /*
  * A published Gradle plugin module.
+ *
+ * This deliberately does NOT apply io.micronaut.build.internal.base-module, and composes the pieces of
+ * it that apply to a Gradle plugin instead. base-module registers micronaut-build's "checkPom" task,
+ * which resolves "generatePomFileForMavenPublication" eagerly; with java-gradle-plugin applied,
+ * MicronautPublishingPlugin deliberately skips creating that "maven" publication (java-gradle-plugin
+ * contributes "pluginMaven" plus the plugin marker publications instead), so checkPom fails to be
+ * created and takes ":check" down with it.
+ *
+ * MicronautPublishingPlugin still configures the POM metadata, the Build repository and signing for
+ * every MavenPublication, so the published plugin POMs remain release-ready. Binary compatibility and
+ * the Micronaut module descriptor do not apply to a Gradle plugin.
  */
 plugins {
-    // MUST be applied before base-module: MicronautPublishingPlugin checks hasPlugin("java-gradle-plugin")
-    // at apply time to skip creating its own 'maven' publication (java-gradle-plugin already provides the
-    // pluginMaven publication plus the plugin marker publications).
+    // MUST be applied before the publishing plugin: MicronautPublishingPlugin checks
+    // hasPlugin("java-gradle-plugin") at apply time.
     id 'java-gradle-plugin'
     id 'com.gradle.plugin-publish'
-    id 'io.micronaut.build.internal.runner-module'
+    id 'io.micronaut.build.internal.runner-base'
+    id 'io.micronaut.build.internal.publishing'
+    id 'io.micronaut.build.internal.dependency-updates'
+    id 'io.micronaut.build.internal.nullaway'
+    id 'io.micronaut.build.internal.runner-test-repo'
     id 'io.micronaut.build.internal.runner-testing'
 }
+
+// base-module would also contribute the OSS Index vulnerability scan. It is skipped here: the class has
+// no plugin id and is not on the buildSrc compile classpath, and this module's only dependency is our own
+// dependency-free packaging library, so there is nothing for it to audit.
 
 gradlePlugin {
     website = 'https://github.com/micronaut-projects/micronaut-runner'
     vcsUrl = 'https://github.com/micronaut-projects/micronaut-runner.git'
 }
 
-// Gradle TestKit tests live in their own source set, run against the published -DUMMY plugin
+// Gradle TestKit tests live in their own source set and run against the published -DUMMY plugin.
 def functionalTest = sourceSets.create('functionalTest')
 configurations.named('functionalTestImplementation') { extendsFrom(configurations.testImplementation) }
 configurations.named('functionalTestRuntimeOnly') { extendsFrom(configurations.testRuntimeOnly) }

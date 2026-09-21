@@ -28,3 +28,9 @@ publishing {
         }
     }
 }
+
+// The Maven plugin descriptor generator emits a HelpMojo into a generated source directory that is part
+// of the main source set. It is machine-generated, so it is exempt from the code style rules.
+tasks.named('checkstyleMain', Checkstyle) {
+    exclude '**/maven/help/**'
+}

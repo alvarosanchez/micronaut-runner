@@ -8,3 +8,10 @@ micronautBom {
     // packaging library only. test-suite and benchmarks are skipped automatically.
     extraExcludedProjects.addAll('micronaut-runner-gradle-plugin', 'micronaut-runner-maven-plugin')
 }
+
+micronautBuild {
+    binaryCompatibility {
+        // FindBaselineTask fails while nothing is published on Maven Central; japicmp kicks in after 1.0.0.
+        enabledAfter '1.0.0'
+    }
+}

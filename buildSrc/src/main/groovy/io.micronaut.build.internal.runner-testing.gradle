@@ -54,7 +54,7 @@ tasks.withType(Test).configureEach {
     repoProvider.version.set(providers.gradleProperty('projectVersion'))
     jvmArgumentProviders.add(repoProvider)
     systemProperty 'runner.test.gradleVersions', providers.gradleProperty('runner.testkit.gradleVersions').getOrElse('')
-    systemProperty 'runner.test.micronautVersion', libs.versions.micronaut.get()
+    systemProperty 'runner.test.micronautVersion', libs.versions.micronaut.asProvider().get()
     systemProperty 'runner.test.micronautPlatformVersion', libs.versions.micronaut.platform.get()
     // Sample builds and `java -jar` servers: keep them sequential
     maxParallelForks = 1
