@@ -1,0 +1,42 @@
+plugins {
+    id 'io.micronaut.build.internal.runner-module'
+}
+
+description = 'Shared packaging logic used by the Micronaut Runner Gradle and Maven plugins'
+
+// The launcher is bundled as a resource, not as a classpath dependency of user builds. A resolvable
+// configuration selecting the JAR variant carries the task dependency on :micronaut-runner-launcher:jar
+// without reaching into another project's task container.
+configurations {
+    launcher {
+        canBeResolved = false
+        canBeConsumed = false
+    }
+    launcherJar {
+        canBeResolved = true
+        canBeConsumed = false
+        extendsFrom launcher
+        attributes {
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+        }
+    }
+}
+
+dependencies {
+    // Shares the index reader and ZIP primitives with the launcher (which has no dependencies of its own).
+    api projects.micronautRunnerLauncher
+    launcher projects.micronautRunnerLauncher
+
+    // micronaut-core is only needed by the service-discovery tests, never at packaging runtime.
+    testImplementation platform(libs.micronaut.core)
+    testImplementation 'io.micronaut:micronaut-inject'
+}
+
+tasks.named('processResources', ProcessResources) {
+    from(configurations.launcherJar) {
+        into 'META-INF/micronaut-runner'
+        rename { 'launcher.jar' }
+    }
+}

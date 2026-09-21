@@ -1,0 +1,30 @@
+/*
+ * A published Maven plugin module, built by Gradle.
+ */
+plugins {
+    id 'io.micronaut.build.internal.runner-module'
+    // org.gradlex.maven-plugin-development generates META-INF/maven/plugin.xml from the @Mojo annotations
+    // (task generateMavenPluginDescriptor, wired into the jar) and an optional HelpMojo.
+    id 'org.gradlex.maven-plugin-development'
+}
+
+dependencies {
+    // Provided by the Maven runtime: compileOnly keeps them out of the published POM.
+    compileOnly libs.maven.plugin.api
+    compileOnly libs.maven.core
+    compileOnly libs.maven.plugin.annotations
+}
+
+mavenPlugin {
+    // groupId/artifactId/version/name/description default to the project's
+    goalPrefix = 'mn-runner'
+    helpMojoPackage = 'io.micronaut.runner.maven.help'
+}
+
+publishing {
+    publications.configureEach {
+        if (it instanceof MavenPublication && !it.name.startsWith('local')) {
+            it.pom.packaging = 'maven-plugin'
+        }
+    }
+}

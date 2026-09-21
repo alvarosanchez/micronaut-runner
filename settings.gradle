@@ -1,0 +1,32 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+plugins {
+    id 'io.micronaut.build.shared.settings' version '8.1.2'
+}
+
+rootProject.name = 'runner-parent'
+
+// Published modules. useStandardizedProjectNames renames them to :micronaut-runner-<dir>
+include 'runner-launcher'
+include 'runner-build'
+include 'runner-gradle-plugin'
+include 'runner-maven-plugin'
+include 'runner-bom'
+
+// Not published; names kept as-is (see nonStandardProjectNamePrefixes below)
+include 'test-suite'
+include 'benchmarks'
+
+enableFeaturePreview 'TYPESAFE_PROJECT_ACCESSORS'
+
+micronautBuild {
+    useStandardizedProjectNames = true
+    // "test-suite" is already a default non-standard prefix; "benchmarks" mirrors micronaut-core
+    nonStandardProjectNamePrefixes.add('benchmarks')
+    importMicronautCatalog()
+}

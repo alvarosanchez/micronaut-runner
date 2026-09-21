@@ -1,0 +1,118 @@
+/*
+ * Publishes every Maven publication of this project a second time, with version "<v>-DUMMY" instead of
+ * "-SNAPSHOT", into <project>/build/test-repo, and exposes that directory through the consumable
+ * configuration "repository". test-suite, benchmarks and the plugin functional tests aggregate those
+ * directories into a single local Maven repository, so they consume exactly what users would consume
+ * (real POMs, plugin markers, plugin.xml) instead of a composite-build substitution.
+ *
+ * -DUMMY (rather than -SNAPSHOT) keeps Gradle's and Maven's changing-module caching out of the picture.
+ *
+ * Adapted from micronaut-gradle-plugin's io.micronaut.internal.build.gradle-plugin convention plugin.
+ */
+plugins {
+    id 'maven-publish'
+}
+
+def testRepoPath = layout.buildDirectory.dir('test-repo')
+def localPublicationTasks = []
+
+configurations {
+    repository {
+        canBeConsumed = true
+        canBeResolved = false
+    }
+}
+
+publishing {
+    repositories {
+        maven {
+            // Not "Build": MicronautPublishingPlugin already registers a repository with that name.
+            name = 'testRepo'
+            url = testRepoPath.get().asFile.toURI()
+        }
+    }
+    publications.all { pub ->
+        if (!pub.name.startsWith('local')) {
+            String pubName = "local${pub.name.capitalize()}"
+            localPublicationTasks << "publish${pubName.capitalize()}PublicationToTestRepoRepository".toString()
+            publications.register(pubName, MavenPublication) {
+                project.afterEvaluate {
+                    // Gradle 8.3+ exposes the component as a Provider
+                    def component = pub.component
+                    if (component != null && component.respondsTo('isPresent')) {
+                        component = component.isPresent() ? component.get() : null
+                    }
+                    alias = true
+                    groupId = pub.groupId
+                    artifactId = pub.artifactId
+                    version = project.version.toString().replace('-SNAPSHOT', '-DUMMY')
+                    if (component == null) {
+                        // A java-gradle-plugin marker publication: a POM whose only dependency is the plugin jar
+                        String pName = project.name
+                        String pGroup = project.group.toString()
+                        String pVersion = project.version.toString().replace('-SNAPSHOT', '-DUMMY')
+                        pom.withXml {
+                            def dep = asNode().appendNode('dependencies').appendNode('dependency')
+                            dep.appendNode('groupId', pGroup)
+                            dep.appendNode('artifactId', pName)
+                            dep.appendNode('version', pVersion)
+                        }
+                    } else {
+                        from(component)
+                        String pGroup = project.group.toString()
+                        pom.withXml {
+                            // project(...) dependencies are rendered with -SNAPSHOT; point them at the DUMMY twins
+                            asNode().dependencies.dependency.each { n ->
+                                if (n.groupId[0].text() == pGroup && n.version[0].text().endsWith('-SNAPSHOT')) {
+                                    n.version[0].value = n.version[0].text().replace('-SNAPSHOT', '-DUMMY')
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Gradle Module Metadata for the alias publications would reference the -SNAPSHOT variants
+tasks.withType(GenerateModuleMetadata).configureEach {
+    if (name.contains('ForLocal')) {
+        enabled = false
+    }
+}
+
+def cleanTestRepo = tasks.register('cleanTestRepo', Delete) {
+    delete testRepoPath
+}
+
+def publishToTestRepo = tasks.register('publishToTestRepo') {
+    description = 'Publishes the -DUMMY twin publications into build/test-repo'
+    dependsOn cleanTestRepo
+    dependsOn localPublicationTasks
+}
+
+localPublicationTasks.each { taskName ->
+    tasks.named(taskName) {
+        mustRunAfter cleanTestRepo
+    }
+}
+
+configurations.repository.outgoing {
+    artifact(testRepoPath) {
+        builtBy(publishToTestRepo)
+    }
+}
+
+// The DUMMY twins must never reach the real 'Build' repo (bundled for Maven Central), Sonatype or mavenLocal
+tasks.withType(PublishToMavenRepository).configureEach {
+    def isLocal = provider { publication.name.startsWith('local') }
+    def isTestRepo = provider { repository.name == 'testRepo' }
+    onlyIf('local publications only go to testRepo, real publications never do') {
+        isLocal.get() == isTestRepo.get()
+    }
+}
+tasks.withType(PublishToMavenLocal).configureEach {
+    def isLocal = provider { publication.name.startsWith('local') }
+    onlyIf('local publications are never installed') { !isLocal.get() }
+}

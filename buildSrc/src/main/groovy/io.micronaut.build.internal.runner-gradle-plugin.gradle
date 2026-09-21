@@ -1,0 +1,45 @@
+/*
+ * A published Gradle plugin module.
+ */
+plugins {
+    // MUST be applied before base-module: MicronautPublishingPlugin checks hasPlugin("java-gradle-plugin")
+    // at apply time to skip creating its own 'maven' publication (java-gradle-plugin already provides the
+    // pluginMaven publication plus the plugin marker publications).
+    id 'java-gradle-plugin'
+    id 'com.gradle.plugin-publish'
+    id 'io.micronaut.build.internal.runner-module'
+    id 'io.micronaut.build.internal.runner-testing'
+}
+
+gradlePlugin {
+    website = 'https://github.com/micronaut-projects/micronaut-runner'
+    vcsUrl = 'https://github.com/micronaut-projects/micronaut-runner.git'
+}
+
+// Gradle TestKit tests live in their own source set, run against the published -DUMMY plugin
+def functionalTest = sourceSets.create('functionalTest')
+configurations.named('functionalTestImplementation') { extendsFrom(configurations.testImplementation) }
+configurations.named('functionalTestRuntimeOnly') { extendsFrom(configurations.testRuntimeOnly) }
+gradlePlugin.testSourceSets(functionalTest)
+
+dependencies {
+    functionalTestImplementation gradleTestKit()
+    functionalTestImplementation platform(libs.junit.bom)
+    functionalTestImplementation libs.junit.jupiter
+    functionalTestRuntimeOnly libs.junit.platform.launcher
+}
+
+def functionalTestTask = tasks.register('functionalTest', Test) {
+    description = 'Runs Gradle TestKit tests against the -DUMMY published plugin'
+    group = 'verification'
+    testClassesDirs = functionalTest.output.classesDirs
+    classpath = functionalTest.runtimeClasspath
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.named('check') { dependsOn functionalTestTask }
+
+tasks.named('validatePlugins') {
+    enableStricterValidation = true
+    failOnWarning = true
+}

@@ -1,0 +1,23 @@
+plugins {
+    id 'io.micronaut.build.internal.runner-testing'
+}
+
+description = 'End-to-end tests: builds the sample applications under samples/ with the -DUMMY plugins and runs them with java -jar'
+
+dependencies {
+    pluginsUnderTest project(path: ':micronaut-runner-launcher', configuration: 'repository')
+    pluginsUnderTest project(path: ':micronaut-runner-build', configuration: 'repository')
+    pluginsUnderTest project(path: ':micronaut-runner-gradle-plugin', configuration: 'repository')
+    pluginsUnderTest project(path: ':micronaut-runner-maven-plugin', configuration: 'repository')
+
+    testImplementation gradleTestKit()
+    testImplementation libs.maven.invoker
+}
+
+tasks.named('test', Test) {
+    // Sample sources are inputs; their build outputs are not.
+    inputs.files(fileTree('samples') { exclude '**/build/**', '**/.gradle/**', '**/target/**' })
+          .withPathSensitivity(PathSensitivity.RELATIVE)
+          .withPropertyName('samples')
+    systemProperty 'runner.test.samplesDir', layout.projectDirectory.dir('samples').asFile.absolutePath
+}

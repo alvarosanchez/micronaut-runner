@@ -1,0 +1,24 @@
+/*
+ * A published library module.
+ */
+plugins {
+    id 'io.micronaut.build.internal.runner-base'
+    // base-module = common + dependency-updates + publishing + binary-compat + sonatype scan +
+    // module-info + nullaway. NOT 'io.micronaut.build.internal.module': MicronautModulePlugin adds
+    // micronaut-inject-java/micronaut-inject unconditionally, which build tooling must not depend on.
+    id 'io.micronaut.build.internal.base-module'
+    id 'io.micronaut.build.internal.runner-test-repo'
+}
+
+micronautBuild {
+    descriptor {
+        // MicronautModuleInfoPlugin is enabled for Micronaut 5+ catalogs. It would add a version-less
+        // compileOnly io.micronaut:micronaut-module-info (unresolvable with enableBom=false) and expects a
+        // "<root>-core" project. Irrelevant for build tooling.
+        enabled = false
+    }
+    binaryCompatibility {
+        // FindBaselineTask fails while nothing is published on Maven Central; japicmp kicks in after 1.0.0.
+        enabledAfter '1.0.0'
+    }
+}

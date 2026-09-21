@@ -1,0 +1,50 @@
+plugins {
+    id 'io.micronaut.build.internal.runner-testing'
+    id 'me.champeau.jmh'
+}
+
+description = 'JMH micro-benchmarks for the launcher class loader and the end-to-end startup benchmark harness'
+
+dependencies {
+    jmh libs.jmh.core
+    jmhAnnotationProcessor libs.jmh.generator.annprocess
+    jmh projects.micronautRunnerLauncher
+    jmh projects.micronautRunnerBuild
+
+    implementation projects.micronautRunnerLauncher
+    implementation projects.micronautRunnerBuild
+
+    pluginsUnderTest project(path: ':micronaut-runner-launcher', configuration: 'repository')
+    pluginsUnderTest project(path: ':micronaut-runner-build', configuration: 'repository')
+    pluginsUnderTest project(path: ':micronaut-runner-gradle-plugin', configuration: 'repository')
+}
+
+jmh {
+    // ./gradlew :benchmarks:jmh -Pjmh.includes=ClassLoaderBenchmark ; everything when unset
+    includes = providers.gradleProperty('jmh.includes').map { [it] }.getOrElse([])
+    resultFormat = 'JSON'
+    resultsFile = layout.buildDirectory.file('reports/jmh/results.json')
+    duplicateClassesStrategy = DuplicatesStrategy.WARN
+}
+
+def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
+    group = 'benchmark'
+    description = 'Runs the end-to-end startup benchmark harness against the sample application'
+    dependsOn tasks.named('prepareRepository')
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.micronaut.runner.benchmarks.StartupBenchmark'
+    def outDir = layout.buildDirectory.dir('reports/startup')
+    outputs.dir(outDir)
+    argumentProviders.add({ ->
+        ['--sample', layout.projectDirectory.dir('../test-suite/samples/hello-netty').asFile.absolutePath,
+         '--repo', layout.buildDirectory.dir('aggregated-repo').get().asFile.toURI().toASCIIString(),
+         '--version', providers.gradleProperty('projectVersion').get().replace('-SNAPSHOT', '-DUMMY'),
+         '--iterations', providers.gradleProperty('benchmarks.iterations').getOrElse('10'),
+         '--out', outDir.get().asFile.absolutePath]
+    } as CommandLineArgumentProvider)
+}
+
+// Same exclusions as micronaut-core/benchmarks
+['spotlessJavaCheck', 'checkstyleMain', 'checkstyleJmh'].each { name ->
+    tasks.matching { it.name == name }.configureEach { enabled = false }
+}

@@ -1,0 +1,61 @@
+/*
+ * Consumes the "repository" configurations of the modules under test, aggregates them into one local
+ * Maven repository and hands it to Test tasks as -Drunner.test.repo / -Drunner.test.version.
+ *
+ * Adapted from micronaut-gradle-plugin's io.micronaut.internal.build.functional-testing convention plugin.
+ */
+plugins {
+    id 'io.micronaut.build.internal.runner-base'
+}
+
+configurations {
+    pluginsUnderTest {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+}
+
+def prepareRepository = tasks.register('prepareRepository', Sync) {
+    description = 'Aggregates the -DUMMY test repositories of all modules under test'
+    from configurations.pluginsUnderTest
+    into layout.buildDirectory.dir('aggregated-repo')
+}
+
+abstract class RepositoryProvider implements CommandLineArgumentProvider {
+    @Internal
+    abstract ConfigurableFileCollection getRepositoryDir()
+
+    /** The jar contents are an input of the test task, so tests re-run when a module changes. */
+    @Classpath
+    FileTree getClasspath() {
+        repositoryDir.asFileTree.matching { include('**/*.jar') }
+    }
+
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    FileTree getPoms() {
+        repositoryDir.asFileTree.matching { include('**/*.pom') }
+    }
+
+    @Input
+    abstract Property<String> getVersion()
+
+    @Override
+    Iterable<String> asArguments() {
+        String patched = version.get().replace('-SNAPSHOT', '-DUMMY')
+        ["-Drunner.test.repo=${repositoryDir.singleFile.toURI().toASCIIString()}".toString(),
+         "-Drunner.test.version=${patched}".toString()]
+    }
+}
+
+tasks.withType(Test).configureEach {
+    def repoProvider = objects.newInstance(RepositoryProvider)
+    repoProvider.repositoryDir.from(prepareRepository)
+    repoProvider.version.set(providers.gradleProperty('projectVersion'))
+    jvmArgumentProviders.add(repoProvider)
+    systemProperty 'runner.test.gradleVersions', providers.gradleProperty('runner.testkit.gradleVersions').getOrElse('')
+    systemProperty 'runner.test.micronautVersion', libs.versions.micronaut.get()
+    systemProperty 'runner.test.micronautPlatformVersion', libs.versions.micronaut.platform.get()
+    // Sample builds and `java -jar` servers: keep them sequential
+    maxParallelForks = 1
+}

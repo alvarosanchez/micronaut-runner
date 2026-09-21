@@ -1,0 +1,9 @@
+plugins {
+    id 'io.micronaut.build.internal.runner-maven-plugin'
+}
+
+description = 'Maven plugin that packages Micronaut applications as fast-starting single executable jars'
+
+dependencies {
+    implementation projects.micronautRunnerBuild
+}

@@ -1,0 +1,10 @@
+plugins {
+    // java-platform + version catalog publication. No runner-base here: it applies the Java plugin.
+    id 'io.micronaut.build.internal.bom'
+}
+
+micronautBom {
+    // Build-tool plugins are not library dependencies; the BOM manages the launcher and the shared
+    // packaging library only. test-suite and benchmarks are skipped automatically.
+    extraExcludedProjects.addAll('micronaut-runner-gradle-plugin', 'micronaut-runner-maven-plugin')
+}

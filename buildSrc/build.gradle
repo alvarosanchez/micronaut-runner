@@ -1,0 +1,17 @@
+plugins {
+    id 'groovy-gradle-plugin'
+}
+
+repositories {
+    gradlePluginPortal()
+    mavenCentral()
+}
+
+dependencies {
+    // The io.micronaut.build.internal.* plugins are put on this classpath by
+    // io.micronaut.build.shared.settings (same as micronaut-cache/buildSrc), which also generates
+    // buildSrc/gradle.properties with the micronaut-build-version. Only third-party plugins are declared here.
+    implementation libs.plugin.gradle.publish
+    implementation libs.plugin.maven.plugin.development
+    implementation libs.plugin.jmh
+}

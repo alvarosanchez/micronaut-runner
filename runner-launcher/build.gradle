@@ -1,0 +1,24 @@
+plugins {
+    id 'io.micronaut.build.internal.runner-module'
+}
+
+description = 'Zero-dependency launcher embedded into runner jars: Main-Class, indexed nested-jar class loader and jar: URL handler'
+
+tasks.named('compileJava', JavaCompile) {
+    // --release pins the API surface as well as the bytecode level.
+    options.release = 25
+    // No invokedynamic string concatenation on the startup path (javac hidden option).
+    options.compilerArgs.addAll(['-XDstringConcat=inline'])
+}
+
+// Guard rail: the launcher is copied verbatim into user applications, so it must stay dependency-free.
+def checkLauncherHasNoDependencies = tasks.register('checkLauncherHasNoDependencies') {
+    def deps = configurations.runtimeClasspath.allDependencies.collect { "${it.group}:${it.name}".toString() }
+    inputs.property('deps', deps)
+    doLast {
+        if (!deps.isEmpty()) {
+            throw new GradleException("micronaut-runner-launcher must not declare dependencies, found: ${deps}")
+        }
+    }
+}
+tasks.named('check') { dependsOn checkLauncherHasNoDependencies }

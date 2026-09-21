@@ -1,0 +1,39 @@
+/*
+ * Conventions shared by every Java project in this build (published or not).
+ */
+plugins {
+    // java-library + groovy, checkstyle (config/checkstyle), spotless license headers, test-logger,
+    // jar manifest (Automatic-Module-Name), quality checks.
+    id 'io.micronaut.build.internal.common'
+}
+
+micronautBuild {
+    // Build tooling: no Micronaut annotation processing, no core BOM on the classpaths, so the published
+    // POMs stay Micronaut-free. NOTE: these two do NOT remove micronaut-inject from
+    // 'io.micronaut.build.internal.module' - that is why runner-module applies 'base-module' instead.
+    enableProcessing = false
+    enableBom = false
+    // micronaut-build 8 already defaults to 25; stated explicitly because the runner jar format and the
+    // launcher target this baseline.
+    javaVersion = 25
+}
+
+dependencies {
+    // MicronautBuildCommonPlugin adds a version-less 'org.junit.platform:junit-platform-launcher' to
+    // testRuntimeOnly; with enableBom=false nothing manages that version, hence the JUnit BOM here.
+    testImplementation platform(libs.junit.bom)
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly libs.junit.platform.launcher
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    // Lets tests spawn `java -jar` with the exact JDK running the build (the CI matrix JDK).
+    systemProperty 'runner.test.javaHome', providers.systemProperty('java.home').get()
+}
+
+tasks.withType(Jar).configureEach {
+    // Reproducible archives: the launcher jar is embedded verbatim into user artifacts.
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}

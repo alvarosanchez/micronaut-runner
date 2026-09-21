@@ -1,0 +1,26 @@
+plugins {
+    id 'io.micronaut.build.internal.runner-gradle-plugin'
+}
+
+description = 'Gradle plugin that packages Micronaut applications as fast-starting single executable jars'
+
+gradlePlugin {
+    plugins {
+        runner {
+            id = 'io.micronaut.runner'
+            implementationClass = 'io.micronaut.runner.gradle.MicronautRunnerPlugin'
+            displayName = 'Micronaut Runner Plugin'
+            description = 'Packages Micronaut applications as fast-starting single executable jars'
+            tags.set(['micronaut', 'packaging', 'executable-jar'])
+        }
+    }
+}
+
+dependencies {
+    implementation projects.micronautRunnerBuild
+
+    // Everything the plugin's POM transitively needs must be in the aggregated test repository
+    pluginsUnderTest project(path: ':micronaut-runner-launcher', configuration: 'repository')
+    pluginsUnderTest project(path: ':micronaut-runner-build', configuration: 'repository')
+    pluginsUnderTest project(path: path, configuration: 'repository')
+}
