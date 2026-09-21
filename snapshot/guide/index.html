@@ -1003,6 +1003,79 @@ That trade is why <code>PRESERVE</code> exists, and why the cold-page-cache case
 this much larger can lose on a cold start what it gains on a warm one.</p>
 </div>
 <div class="sect2">
+<h3 id="_class_loading_in_isolation">Class loading in isolation</h3>
+<div class="paragraph">
+<p>The JMH benchmarks measure the mechanism rather than the application. Over a synthetic classpath of 30
+jars and 3,600 classes, loading 200 classes through a freshly created loader, including opening the
+archive:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 55%;">
+<col style="width: 45%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Loader</th>
+<th class="tableblock halign-left valign-top">Time for 200 classes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>RunnerClassLoader</code>, dependencies stored</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.4 ms</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>RunnerClassLoader</code>, dependencies left compressed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2.1 ms</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>URLClassLoader</code> over the same jars</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">9.2 ms</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>Storing dependencies uncompressed is worth about 35% of the class-loading time, which is what pays for
+the larger archive. Defining a class from a memory-mapped buffer rather than a byte array is worth about
+2%: on JDK 26 the virtual machine copies a direct buffer for a non-builtin loader anyway, so what is saved
+is the application-side array and the copy into it, not the copy itself.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_archive_size">Archive size</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 55%;">
+<col style="width: 45%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Packaging</th>
+<th class="tableblock halign-left valign-top">Size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR, dependencies stored</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">31.4 MB</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR, dependencies preserved</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">14.1 MB</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shaded JAR</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">12.8 MB</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><code>PRESERVE</code> copies each dependency byte for byte, so the archive is close to the shaded one and class
+loading pays for decompression. It is the right choice when artifact size matters more than start time.</p>
+</div>
+</div>
+<div class="sect2">
 <h3 id="_two_clocks_not_one">Two clocks, not one</h3>
 <div class="paragraph">
 <p>The harness reports readiness and the framework&#8217;s startup line as separate columns, and they are far
