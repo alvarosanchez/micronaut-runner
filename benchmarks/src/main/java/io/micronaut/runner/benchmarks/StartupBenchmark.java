@@ -179,10 +179,13 @@ public final class StartupBenchmark {
                 try {
                     StartupSample sample = harness.run(variant, iteration, warmup);
                     samples.get(slot).add(sample);
-                    log.printf(Locale.ROOT, "[startup-benchmark] %s %-18s %8.1f ms (framework %s)%n",
+                    log.printf(Locale.ROOT,
+                            "[startup-benchmark] %s %-18s ready %7.1f ms | log line %7.1f ms |"
+                                    + " framework says %s%n",
                             warmup ? "warmup " : "measure", variant.name(), sample.readinessMillis(),
+                            sample.logLineMillis(),
                             sample.frameworkMillis() < 0
-                                    ? "not reported"
+                                    ? "nothing"
                                     : String.format(Locale.ROOT, "%.0f ms", sample.frameworkMillis()));
                 } catch (IOException e) {
                     String reason = oneLine(e.getMessage());
@@ -200,6 +203,10 @@ public final class StartupBenchmark {
                     .filter(sample -> !sample.warmup())
                     .mapToDouble(StartupSample::readinessMillis)
                     .toArray();
+            double[] logLine = variantSamples.stream()
+                    .filter(sample -> !sample.warmup() && sample.logLineMillis() >= 0)
+                    .mapToDouble(StartupSample::logLineMillis)
+                    .toArray();
             double[] framework = variantSamples.stream()
                     .filter(sample -> !sample.warmup() && sample.frameworkMillis() >= 0)
                     .mapToDouble(StartupSample::frameworkMillis)
@@ -207,6 +214,7 @@ public final class StartupBenchmark {
             results.add(new VariantResult(variant, SampleBuild.sizeOf(variant.artifact()),
                     List.copyOf(variantSamples),
                     Statistics.of(readiness, options.seed()),
+                    Statistics.of(logLine, options.seed()),
                     Statistics.of(framework, options.seed()),
                     List.copyOf(failures.get(i))));
         }

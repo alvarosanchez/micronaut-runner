@@ -450,10 +450,18 @@ class HandlerTest {
         return builder.build();
     }
 
+    /**
+     * The expected {@code file:} URL of the archive, taken from the JDK rather than rebuilt here.
+     *
+     * <p>This used to concatenate "file:" with the path, which silently encoded the same mistake the
+     * production code made on Windows, where a path starts with a drive letter rather than a separator:
+     * both produced the opaque {@code file:C:/dir/app.jar}, so the assertions agreed with each other and
+     * with nothing else. {@link File#toURI()} is an independent oracle.</p>
+     *
+     * @return the archive URL
+     */
     private String fileUrl() {
-        StringBuilder url = new StringBuilder("file:");
-        url.append(archive.getPath().replace('\\', '/'));
-        return url.toString();
+        return archive.toURI().toString();
     }
 
     private List<String> entryNames(URL url) throws IOException {

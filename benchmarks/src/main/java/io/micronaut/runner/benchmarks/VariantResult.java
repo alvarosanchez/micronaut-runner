@@ -25,6 +25,7 @@ import java.util.List;
  * @param sizeBytes   the size of its artifact, or {@code -1} when there is none
  * @param samples     every run, warm-up runs included and flagged as such
  * @param readiness   the summary of the measured readiness times, or {@code null} when there are none
+ * @param logLine     the summary of spawn-to-startup-line times, or {@code null}
  * @param framework   the summary of the framework's own reported startup times, or {@code null}
  * @param failures    runs that never answered, with the reason, in the order they happened
  */
@@ -32,6 +33,7 @@ record VariantResult(Variant variant,
                      long sizeBytes,
                      List<StartupSample> samples,
                      Statistics readiness,
+                     Statistics logLine,
                      Statistics framework,
                      List<String> failures) {
 }

@@ -39,21 +39,32 @@ import java.util.regex.Pattern;
  * <h2>The rules this class exists to enforce</h2>
  * <ul>
  *   <li><strong>One clock.</strong> {@link System#nanoTime()} is read immediately before
- *       {@link ProcessBuilder#start()} and again the instant the first HTTP 200 comes back. Nothing in
- *       between is measured by anything else, and no clock inside the application is trusted to agree.</li>
- *   <li><strong>Readiness is a response, not a log line.</strong> The application printing "Startup
- *       completed" means the framework thinks it has finished; a 200 on the wire means a client can
- *       actually be served. The log line <em>is</em> recorded, as
- *       {@link StartupSample#frameworkMillis()}, because the gap between the two is interesting - but it
- *       never stands in for the measurement.</li>
+ *       {@link ProcessBuilder#start()} and every other instant in the sample is read from the same clock
+ *       in the same process. Nothing inside the application is trusted to agree about when anything
+ *       happened.</li>
+ *   <li><strong>Readiness is a response, not a log line.</strong> The headline metric is the first HTTP
+ *       200. A log line saying the framework has started means the framework thinks it has started; a 200
+ *       on the wire means a client can be served.</li>
  *   <li><strong>No {@code -Xlog} on a timing run.</strong> Unified logging costs milliseconds and it costs
- *       them unevenly across formats, which is precisely the size of the effect being measured.
- *       {@link #diagnose} exists for class-load counting and its results are labelled as diagnostics.</li>
- *   <li><strong>A free port per run, never a fixed one.</strong> A hard-coded port collides with whatever
- *       else is on the machine and turns one unlucky run into a failed benchmark.</li>
+ *       them unevenly across formats, which is the size of the effect being measured. {@link #diagnose}
+ *       exists for class-load counting and everything it produces is labelled a diagnostic.</li>
+ *   <li><strong>A free port per run, never a fixed one.</strong></li>
  *   <li><strong>The process is destroyed in a {@code finally} block,</strong> whether the run succeeded,
  *       timed out or threw. A leaked JVM holding a port would poison every run after it.</li>
  * </ul>
+ *
+ * <h2>Three numbers, not one</h2>
+ * <p>Each run records three things, and the difference between them is worth as much as any of them:</p>
+ * <ol>
+ *   <li>{@link StartupSample#readinessMillis()} - spawn to the first HTTP 200. The headline.</li>
+ *   <li>{@link StartupSample#logLineMillis()} - spawn to the moment this process <em>observed</em> the
+ *       framework's "Startup completed" line on the child's output. Same clock, still external, and
+ *       directly comparable with a measurement someone made by watching the console. It lands earlier than
+ *       readiness because serving the very first request on a cold JVM is itself expensive.</li>
+ *   <li>{@link StartupSample#frameworkMillis()} - the number the framework printed in that line. It is the
+ *       application's own opinion, it starts counting well after the JVM did, and it is recorded so it can
+ *       be compared - never so it can be substituted for either of the above.</li>
+ * </ol>
  */
 final class StartupHarness implements AutoCloseable {
 
@@ -63,8 +74,8 @@ final class StartupHarness implements AutoCloseable {
     /** How long a single poll may take before it counts as "not yet". */
     private static final Duration POLL_TIMEOUT = Duration.ofSeconds(2);
 
-    /** How long to keep reading the process output for the framework's own startup line after readiness. */
-    private static final Duration FRAMEWORK_LINE_GRACE = Duration.ofSeconds(2);
+    /** How long to keep waiting for the framework's own startup line after readiness. */
+    private static final Duration LOG_LINE_GRACE = Duration.ofSeconds(2);
 
     /** How long a destroyed process is given to die before it is killed. */
     private static final Duration SHUTDOWN_GRACE = Duration.ofSeconds(10);
@@ -73,14 +84,14 @@ final class StartupHarness implements AutoCloseable {
      * How long an application that <em>is</em> answering, but with the wrong status, is given before the
      * run is failed.
      *
-     * <p>Without this the run would sit out the whole start-up timeout, and the report would say "did not
-     * answer within two minutes", which reads like a slow start. An application that returns 404 on the
-     * readiness path has finished starting and is broken - typically its beans were not discovered, which
-     * is a fault of the packaging and exactly the sort of thing this harness should catch loudly.</p>
+     * <p>Without this the run sits out the whole start-up timeout and the report says "did not answer
+     * within two minutes", which reads like a slow start. An application returning 404 on the readiness
+     * path has finished starting and is broken - typically its beans were not discovered, which is a fault
+     * of the packaging and exactly what this harness should catch loudly.</p>
      */
     private static final Duration SERVING_GRACE = Duration.ofSeconds(5);
 
-    /** Micronaut's own startup line, recorded as a separate metric. */
+    /** Micronaut's own startup line. */
     private static final Pattern STARTUP_LINE = Pattern.compile("Startup completed in (\\d+)ms");
 
     private final HttpClient client;
@@ -164,13 +175,14 @@ final class StartupHarness implements AutoCloseable {
         URI readiness = URI.create("http://127.0.0.1:" + port + readinessPath);
         HttpRequest request = HttpRequest.newBuilder(readiness).timeout(POLL_TIMEOUT).GET().build();
 
-        StringBuilder output = new StringBuilder();
         Process process = null;
         Thread drain = null;
+        Capture capture = null;
         try {
             long start = System.nanoTime();
             process = builder.start();
-            drain = drain(process, output);
+            capture = new Capture(start);
+            drain = drain(process, capture);
 
             long deadline = start + startupTimeout.toNanos();
             long lastFailureEnd = start;
@@ -181,7 +193,7 @@ final class StartupHarness implements AutoCloseable {
             while (System.nanoTime() < deadline) {
                 if (!process.isAlive()) {
                     throw new IOException(variant.name() + " exited with status " + process.exitValue()
-                            + " before answering " + readiness + tail(output));
+                            + " before answering " + readiness + tail(capture));
                 }
                 try {
                     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -204,21 +216,23 @@ final class StartupHarness implements AutoCloseable {
                             + lastStatus + " and has been for " + SERVING_GRACE.toSeconds() + "s."
                             + " The application started; it is not serving the readiness endpoint, which"
                             + " points at the packaging rather than at a slow start. Response body: "
-                            + snippet(lastBody) + tail(output));
+                            + snippet(lastBody) + tail(capture));
                 }
                 lastFailureEnd = System.nanoTime();
                 Thread.sleep(POLL_INTERVAL.toMillis());
             }
             if (ready < 0) {
                 throw new IOException(variant.name() + " did not answer " + readiness + " within "
-                        + startupTimeout + tail(output));
+                        + startupTimeout + tail(capture));
             }
 
-            double readinessMillis = (ready - start) / 1_000_000.0;
-            double pollGapMillis = (ready - lastFailureEnd) / 1_000_000.0;
-            double frameworkMillis = awaitFrameworkLine(output);
-            return new StartupSample(iteration, warmup, port, readinessMillis, frameworkMillis,
-                    pollGapMillis, destroy(process, drain));
+            awaitStartupLine(capture);
+            return new StartupSample(iteration, warmup, port,
+                    (ready - start) / 1_000_000.0,
+                    capture.logLineMillis(),
+                    capture.reportedMillis(),
+                    (ready - lastFailureEnd) / 1_000_000.0,
+                    destroy(process, drain));
         } finally {
             if (process != null && process.isAlive()) {
                 destroy(process, drain);
@@ -227,31 +241,20 @@ final class StartupHarness implements AutoCloseable {
     }
 
     /**
-     * Reads the framework's own startup line out of the captured output, if it turns up.
+     * Gives the framework's own startup line a moment to arrive after readiness.
      *
-     * <p>It is looked for <em>after</em> readiness, with a short grace period, because the HTTP endpoint
-     * can start answering a moment before the line reaches the console appender. Not finding it is not an
-     * error: it is recorded as {@code -1} and the report shows the metric as missing rather than guessing.
+     * <p>The HTTP endpoint can start answering just before the line reaches the console appender, so
+     * without this the line would occasionally be recorded as missing on a perfectly good run. Not finding
+     * it at all is not an error: both of its metrics stay at {@code -1} and the report says so rather than
+     * guessing.</p>
      *
-     * @param output the captured output so far
-     * @return the milliseconds the framework reported, or {@code -1}
+     * @param capture the output capture, which timestamps the line as it arrives
      * @throws InterruptedException if the wait is interrupted
      */
-    private static double awaitFrameworkLine(StringBuilder output) throws InterruptedException {
-        long deadline = System.nanoTime() + FRAMEWORK_LINE_GRACE.toNanos();
-        while (true) {
-            String text;
-            synchronized (output) {
-                text = output.toString();
-            }
-            Matcher matcher = STARTUP_LINE.matcher(text);
-            if (matcher.find()) {
-                return Double.parseDouble(matcher.group(1));
-            }
-            if (System.nanoTime() >= deadline) {
-                return -1;
-            }
-            Thread.sleep(10);
+    private static void awaitStartupLine(Capture capture) throws InterruptedException {
+        long deadline = System.nanoTime() + LOG_LINE_GRACE.toNanos();
+        while (capture.logLineMillis() < 0 && System.nanoTime() < deadline) {
+            Thread.sleep(5);
         }
     }
 
@@ -282,20 +285,16 @@ final class StartupHarness implements AutoCloseable {
         return process.isAlive() ? -1 : process.exitValue();
     }
 
-    private static Thread drain(Process process, StringBuilder into) {
+    private static Thread drain(Process process, Capture capture) {
         Thread thread = new Thread(() -> {
             byte[] buffer = new byte[8192];
             try (InputStream in = process.getInputStream()) {
                 int read;
                 while ((read = in.read(buffer)) != -1) {
-                    synchronized (into) {
-                        into.append(new String(buffer, 0, read, StandardCharsets.UTF_8));
-                    }
+                    capture.append(new String(buffer, 0, read, StandardCharsets.UTF_8));
                 }
             } catch (IOException e) {
-                synchronized (into) {
-                    into.append("\n[output capture stopped: ").append(e).append(']');
-                }
+                capture.append("\n[output capture stopped: " + e + "]");
             }
         }, "startup-benchmark-output");
         thread.setDaemon(true);
@@ -311,12 +310,8 @@ final class StartupHarness implements AutoCloseable {
         return single.length() > 200 ? single.substring(0, 200) + " …" : single;
     }
 
-    private static String tail(StringBuilder output) {
-        String text;
-        synchronized (output) {
-            text = output.toString();
-        }
-        String[] lines = text.split("\n");
+    private static String tail(Capture capture) {
+        String[] lines = capture.text().split("\n");
         int from = Math.max(0, lines.length - 30);
         StringBuilder result = new StringBuilder("\n--- last ").append(lines.length - from)
                 .append(" lines of the application's output ---\n");
@@ -332,13 +327,61 @@ final class StartupHarness implements AutoCloseable {
     }
 
     /**
+     * The child's output, timestamped as it arrives.
+     *
+     * <p>The drain thread does the matching rather than a scan after the fact, because the interesting
+     * quantity is <em>when</em> the line appeared, not merely that it did. The remaining skew - the time
+     * between the child writing into the pipe and this process reading it out - is a pipe read, well under
+     * a millisecond, and it is the same skew for every variant.</p>
+     */
+    private static final class Capture {
+
+        private final StringBuilder text = new StringBuilder(4096);
+        private final long startNanos;
+        private volatile long startupLineNanos = -1;
+        private volatile double reportedMillis = -1;
+
+        Capture(long startNanos) {
+            this.startNanos = startNanos;
+        }
+
+        void append(String chunk) {
+            synchronized (text) {
+                text.append(chunk);
+                if (startupLineNanos < 0) {
+                    Matcher matcher = STARTUP_LINE.matcher(text);
+                    if (matcher.find()) {
+                        startupLineNanos = System.nanoTime();
+                        reportedMillis = Double.parseDouble(matcher.group(1));
+                    }
+                }
+            }
+        }
+
+        String text() {
+            synchronized (text) {
+                return text.toString();
+            }
+        }
+
+        double logLineMillis() {
+            long at = startupLineNanos;
+            return at < 0 ? -1 : (at - startNanos) / 1_000_000.0;
+        }
+
+        double reportedMillis() {
+            return reportedMillis;
+        }
+    }
+
+    /**
      * The result of a diagnostic run. Never mixed into the timing statistics.
      *
-     * @param variant          the variant that was run
-     * @param classesLoaded    how many classes the JVM loaded
+     * @param variant           the variant that was run
+     * @param classesLoaded     how many classes the JVM loaded
      * @param fromSharedArchive how many of those came from a CDS or AOT archive
-     * @param readinessMillis  the readiness time of this run, which is slower than a timing run because of
-     *                         the logging and is reported only so the slowdown is visible
+     * @param readinessMillis   the readiness time of this run, which is slower than a timing run because
+     *                          of the logging and is reported only so the slowdown is visible
      */
     record ClassLoadCount(String variant, int classesLoaded, int fromSharedArchive, double readinessMillis) {
     }

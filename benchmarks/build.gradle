@@ -35,6 +35,11 @@ def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
     mainClass = 'io.micronaut.runner.benchmarks.StartupBenchmark'
     def outDir = layout.buildDirectory.dir('reports/startup')
     outputs.dir(outDir)
+    // A measurement is never up to date. The arguments below are supplied by a CommandLineArgumentProvider
+    // that declares no inputs, so without this Gradle would consider a second run with a different
+    // -Pbenchmarks.iterations to be the same work and skip it, silently leaving yesterday's summary.md in
+    // place for CI to publish.
+    outputs.upToDateWhen { false }
     argumentProviders.add({ ->
         ['--sample', layout.projectDirectory.dir('../test-suite/samples/hello-netty').asFile.absolutePath,
          '--repo', layout.buildDirectory.dir('aggregated-repo').get().asFile.toURI().toASCIIString(),

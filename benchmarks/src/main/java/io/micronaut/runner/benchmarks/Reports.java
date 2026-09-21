@@ -126,6 +126,7 @@ final class Reports {
         }
         out.append("],\n");
         out.append("      \"readiness\": ").append(statistics(result.readiness())).append(",\n");
+        out.append("      \"logLine\": ").append(statistics(result.logLine())).append(",\n");
         out.append("      \"framework\": ").append(statistics(result.framework())).append(",\n");
         out.append("      \"failures\": [");
         for (int i = 0; i < result.failures().size(); i++) {
@@ -139,6 +140,8 @@ final class Reports {
                     .append(", \"warmup\": ").append(sample.warmup())
                     .append(", \"port\": ").append(sample.port())
                     .append(", \"readinessMillis\": ").append(number(sample.readinessMillis()))
+                    .append(", \"logLineMillis\": ")
+                    .append(sample.logLineMillis() < 0 ? "null" : number(sample.logLineMillis()))
                     .append(", \"frameworkMillis\": ")
                     .append(sample.frameworkMillis() < 0 ? "null" : number(sample.frameworkMillis()))
                     .append(", \"pollGapMillis\": ").append(number(sample.pollGapMillis()))
@@ -190,14 +193,14 @@ final class Reports {
                 .append(" separate runs and are labelled as such below\n");
         out.append("- **Generated**: ").append(context.generatedAt()).append("\n\n");
 
-        out.append("| Variant | Runs | Median | p90 | 95% CI of median | Min | Max |")
-                .append(" Framework line (median) | Artifact |\n");
-        out.append("|---|---:|---:|---:|---|---:|---:|---:|---:|\n");
+        out.append("| Variant | Runs | Readiness, median | p90 | 95% CI of median | Min | Max |")
+                .append(" To startup line, median | Framework's own figure | Artifact |\n");
+        out.append("|---|---:|---:|---:|---|---:|---:|---:|---:|---:|\n");
         for (VariantResult result : results) {
             Variant variant = result.variant();
             if (!variant.available() || result.readiness() == null) {
-                out.append("| `").append(variant.name()).append("` | **unavailable** | — | — | — | — | — |")
-                        .append(" — | — |\n");
+                out.append("| `").append(variant.name())
+                        .append("` | **not measured** | — | — | — | — | — | — | — | — |\n");
                 continue;
             }
             Statistics readiness = result.readiness();
@@ -208,13 +211,14 @@ final class Reports {
                     .append(" | ").append(millis(readiness.min()))
                     .append(" | ").append(millis(readiness.max()))
                     .append(" | ")
-                    .append(result.framework() == null ? "not reported" : millis(result.framework().median()))
+                    .append(result.logLine() == null ? "not seen" : millis(result.logLine().median()))
+                    .append(" | ")
+                    .append(result.framework() == null ? "not seen" : millis(result.framework().median()))
                     .append(" | ").append(size(result.sizeBytes())).append(" |\n");
         }
         out.append('\n');
 
-        appendUnavailable(out, results);
-        appendFailures(out, results);
+        appendNotMeasured(out, results);
 
         out.append("## What each variant is\n\n");
         out.append("| Variant | Packaging |\n|---|---|\n");
@@ -248,48 +252,78 @@ final class Reports {
                 .append(Statistics.RESAMPLES)
                 .append(" resamples). With few iterations it comes out wide, which is the honest answer:")
                 .append(" two overlapping intervals are not a result.\n");
-        out.append("- The **framework line** column is what the application itself printed")
-                .append(" (\"Startup completed in Nms\"). It measures less than the readiness column does —")
-                .append(" it excludes JVM creation and everything before `main` — and it is recorded")
-                .append(" separately, never as a substitute.\n");
+        out.append("- **Readiness**, **to startup line** and **the framework's own figure** are three")
+                .append(" different quantities and the gaps between them are informative. Readiness")
+                .append(" includes serving the first request, which on a cold JVM is not free. The startup")
+                .append(" line is this process observing the child's console on the same clock, which is")
+                .append(" what a careful measurement by hand produces. The framework's figure is the")
+                .append(" application counting itself, starting well after the JVM did: the smallest of the")
+                .append(" three and the only one that is not an external observation.\n");
+        out.append("- A variant marked **not measured** either could not be built or never answered. Look")
+                .append(" at the sections above before reading the remaining rows as a complete")
+                .append(" comparison.\n");
         out.append("- Every raw sample, warm-up runs included, is in `").append(RESULTS_FILE).append("`.\n");
         return out.toString();
     }
 
-    private static void appendUnavailable(StringBuilder out, List<VariantResult> results) {
-        List<VariantResult> unavailable = results.stream()
-                .filter(result -> !result.variant().available())
+    /**
+     * Names every variant the table above has no number for, whether it could not be built or was built
+     * and never answered.
+     *
+     * <p>Both cases matter and they are different. A benchmark that quietly leaves a variant out reads as
+     * though it measured everything it listed, so this section exists to make the hole impossible to
+     * miss - and to say which kind of hole it is, because "the Shadow plugin produced no jar" and "the
+     * application came up and returned 404" lead to completely different investigations.</p>
+     *
+     * @param out     the report being built
+     * @param results every variant's result
+     */
+    private static void appendNotMeasured(StringBuilder out, List<VariantResult> results) {
+        List<VariantResult> missing = results.stream()
+                .filter(result -> result.readiness() == null)
                 .toList();
-        if (unavailable.isEmpty()) {
-            out.append("All variants were built and measured.\n\n");
+        if (missing.isEmpty()) {
+            out.append("All ").append(results.size()).append(" variants were built and measured.\n\n");
             return;
         }
-        out.append("## Unavailable variants\n\n");
-        out.append("These were **not measured**. The rows above are therefore not a complete comparison.\n\n");
-        out.append("| Variant | Why it could not be built |\n|---|---|\n");
-        for (VariantResult result : unavailable) {
-            out.append("| `").append(result.variant().name()).append("` | ")
-                    .append(escapeCell(result.variant().unavailableReason())).append(" |\n");
+        out.append("## Variants that were NOT measured\n\n");
+        out.append("**").append(missing.size()).append(" of ").append(results.size())
+                .append(" variants produced no measurement**, so the table above is not a complete")
+                .append(" comparison.\n\n");
+        out.append("| Variant | What happened | Detail |\n|---|---|---|\n");
+        for (VariantResult result : missing) {
+            String what;
+            String detail;
+            if (!result.variant().available()) {
+                what = "could not be built";
+                detail = result.variant().unavailableReason();
+            } else if (!result.failures().isEmpty()) {
+                what = "built, but " + result.failures().size()
+                        + (result.failures().size() == 1 ? " run never answered" : " runs never answered");
+                detail = result.failures().get(0);
+            } else {
+                what = "built, but never started";
+                detail = null;
+            }
+            out.append("| `").append(result.variant().name()).append("` | ").append(what).append(" | ")
+                    .append(escapeCell(reason(detail))).append(" |\n");
         }
         out.append('\n');
     }
 
-    private static void appendFailures(StringBuilder out, List<VariantResult> results) {
-        boolean any = results.stream().anyMatch(result -> !result.failures().isEmpty());
-        if (!any) {
-            return;
+    /**
+     * Trims the captured process output off the end of a failure message. The full text, tail included,
+     * is in {@code results.json}; a table cell wants the sentence that names the cause.
+     *
+     * @param message the failure message
+     * @return the message without the appended output tail
+     */
+    private static String reason(String message) {
+        if (message == null) {
+            return null;
         }
-        out.append("## Runs that did not answer\n\n");
-        out.append("| Variant | Failed runs | First failure |\n|---|---:|---|\n");
-        for (VariantResult result : results) {
-            if (result.failures().isEmpty()) {
-                continue;
-            }
-            out.append("| `").append(result.variant().name()).append("` | ")
-                    .append(result.failures().size()).append(" | ")
-                    .append(escapeCell(result.failures().get(0))).append(" |\n");
-        }
-        out.append('\n');
+        int tail = message.indexOf("--- last ");
+        return tail < 0 ? message : message.substring(0, tail).trim();
     }
 
     private static String millis(double value) {

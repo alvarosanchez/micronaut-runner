@@ -23,8 +23,12 @@ package io.micronaut.runner.benchmarks;
  * @param warmup           whether it was a warm-up run, which the statistics ignore
  * @param port             the port this run was given
  * @param readinessMillis  spawn to first HTTP 200, on one monotonic clock: the headline metric
- * @param frameworkMillis  what Micronaut's own "Startup completed in Nms" line claimed, or {@code -1} when
- *                         the line was not seen. Reported beside the readiness time, never instead of it
+ * @param logLineMillis    spawn to the moment this process saw the framework's "Startup completed" line,
+ *                         on the same clock, or {@code -1} when the line never appeared. It is earlier
+ *                         than readiness, because serving the first request on a cold JVM costs real time
+ * @param frameworkMillis  what that line itself claimed, or {@code -1} when it was not seen. This is the
+ *                         application's own count, started long after the JVM was; it is reported beside
+ *                         the two external measurements and never instead of them
  * @param pollGapMillis    the interval between the last failed poll and the successful one, which bounds
  *                         how much of {@code readinessMillis} is polling latency rather than startup
  * @param exitCode         the exit status after the process was destroyed, or {@code -1} if it was killed
@@ -33,6 +37,7 @@ record StartupSample(int iteration,
                      boolean warmup,
                      int port,
                      double readinessMillis,
+                     double logLineMillis,
                      double frameworkMillis,
                      double pollGapMillis,
                      int exitCode) {
