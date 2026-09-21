@@ -1,1 +1,53 @@
-TODO
+A Micronaut application is usually shipped as a single executable JAR, and until now that has meant a
+_shaded_ JAR: Gradle Shadow or Maven Shade copy the contents of every dependency into one archive and
+flatten them into a single namespace.
+
+Flattening is lossy. Two dependencies that both ship `META-INF/services/java.sql.Driver` collide, so the
+build needs a transformer to merge them. Micronaut 4 and later publish their bean metadata as a directory
+tree under `META-INF/micronaut/`, which collides the same way. Signature files have to be stripped or the
+result fails verification. `module-info.class` files collide. `META-INF/versions/` trees from several
+multi-release JARs are merged into one that belongs to no particular library. Each dependency's own
+manifest, and with it `Implementation-Version` and package sealing, is discarded. Every one of these is a
+silent failure mode: the build succeeds and the application misbehaves at run time.
+
+Micronaut Runner takes a different approach. The archive it produces is still a single file you run with
+`java -jar`, but every dependency inside it remains an intact JAR:
+
+.The shape of a runner JAR
+[source]
+----
+app.jar
+├── META-INF/MANIFEST.MF          <1>
+├── MICRONAUT-INF/index.bin       <2>
+├── io/micronaut/runner/*.class   <3>
+├── META-INF/micronaut/**         <4>
+├── MICRONAUT-INF/classes/**      <5>
+└── MICRONAUT-INF/lib/*.jar       <6>
+----
+<1> `Main-Class` points at the launcher
+<2> the index: every entry of every nested JAR, with its byte offset in this file
+<3> the launcher and its class loader, a handful of classes with no dependencies
+<4> the merged Micronaut bean metadata, so the framework finds it in one pass
+<5> the application's own classes and resources
+<6> the dependencies, each one a complete, untouched JAR
+
+Because the boundaries survive, so do the semantics. Duplicate resources stay distinct and are returned in
+classpath order, each JAR keeps its own manifest and package metadata, sealed packages are still enforced,
+and multi-release JARs still resolve per JAR against the running JDK.
+
+== Why it is fast
+
+Reading nested JARs is normally *slower* than an ordinary classpath, which is why the usual advice for
+this style of archive is to unpack it before running in production. Micronaut Runner avoids that cost by
+moving all of the work to build time.
+
+When the archive is packaged, every entry of every nested JAR is recorded in `MICRONAUT-INF/index.bin`
+together with its absolute byte offset in the outer file. At startup the launcher memory-maps the archive
+once and reads that index directly out of the mapping. Looking up a class is a single hash probe followed
+by a byte comparison; no central directory is parsed, no nested archive is opened, nothing is extracted to
+disk, and no temporary files are written. Dependencies are stored uncompressed by default, so a class is
+defined straight from the mapped bytes with no intermediate array and no decompression.
+
+The launcher itself is written to keep off the JVM's slow paths: no lambdas, no string concatenation
+through `invokedynamic`, no reflection on the entry path, and no `java.util.logging`. It is a handful of
+classes, and it hands control to your `main` method through an interface call.

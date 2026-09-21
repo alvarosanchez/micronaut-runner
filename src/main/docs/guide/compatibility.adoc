@@ -1,0 +1,48 @@
+The goal is that an application behaves identically whether it runs from a runner JAR or from an ordinary
+classpath. The class loader is tested differentially against `java.net.URLClassLoader` over the same set of
+JARs, comparing resource resolution, resource ordering, class bytes, package attributes and code sources.
+
+== What behaves exactly as on a classpath
+
+* `getResource` returns the first match in classpath order; `getResources` returns one URL per contributing
+JAR, in classpath order, with the first element equal to what `getResource` returned.
+* Duplicate resources in different dependencies stay distinct.
+* Multi-release JARs resolve per JAR against the running JDK's feature version, honouring
+`jdk.util.jar.enableMultiRelease` and `jdk.util.jar.version`. Paths under `META-INF/` are never versioned.
+* Each dependency keeps its own manifest, so `Package.getImplementationVersion()` and the other
+specification and implementation attributes are correct per package, including per-package `Name:`
+sections that override the main attributes.
+* Sealed packages are enforced: loading a class into an already sealed package from a different JAR, or
+sealing a package that is already open, raises `SecurityException`.
+* Every class has a `ProtectionDomain` whose `CodeSource` location identifies the JAR it came from.
+* Resources resolve through ordinary `jar:file:` URLs, so `URL.openStream()`, `URLConnection` metadata and
+`JarURLConnection.getJarFile()` all work, which is what libraries that scan the classpath rely on.
+
+== Known limitations
+
+Nested `JarFile` reporting:: `JarFile.isMultiRelease()` and `JarFile.getVersion()` are `final` in the JDK
+and report the archive passed to the constructor, which is the outer one. A `JarFile` obtained for a
+nested dependency therefore reports the outer archive's state from those two methods. Entry _lookup_ still
+applies the nested JAR's own multi-release policy, so resolution is correct; only these two reporting
+methods cannot be corrected.
+
+The system class loader:: Only the thread context class loader is the runner class loader.
+`ClassLoader.getSystemClassLoader()` still sees the real `java.class.path`, which contains only the runner
+JAR itself. Code that resolves classes through the system class loader, or that parses `java.class.path`
+to discover the application's dependencies, will not find them. Micronaut resolves its application class
+loader from the thread context class loader, so the framework is unaffected.
+
+Signatures are not verified:: Re-packing removes signature files, and nothing is verified at run time.
+Sign the outer archive if you need a signature. Code that depends on `CodeSource.getCodeSigners()` being
+populated, such as a JCE provider requiring a signed JAR, is not supported.
+
+The Java Platform Module System:: Everything runs in the unnamed module of the runner class loader. A
+dependency's `module-info.class` is carried but is inert, and modules added with `--module-path` are not
+visible to the application.
+
+Dependency `Class-Path` manifest attributes:: Ignored, with a warning at packaging time. They point at
+sibling files that do not exist inside an archive. They become active again after `extract`.
+
+Native libraries:: Libraries that ship native code, such as Netty's transports, unpack it to a temporary
+directory themselves, exactly as they do from any JAR. Micronaut Runner does not extract anything, but it does
+not prevent a library from doing so.

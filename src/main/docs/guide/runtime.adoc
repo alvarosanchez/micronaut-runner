@@ -1,0 +1,71 @@
+A runner JAR is an ordinary executable JAR. Everything below is optional tuning and diagnostics.
+
+[source,bash]
+----
+java -jar build/libs/my-app-0.1-all.jar
+----
+
+Arguments after the JAR are passed to your application untouched, and an exception thrown by your
+application propagates exactly as it would from an ordinary main class: the JVM prints the stack trace and
+exits with status 1. The launcher never wraps it.
+
+== System properties
+
+[cols="30,15,55"]
+|===
+|Property |Default |Effect
+
+|`micronaut.runner.mode`
+|`run`
+|`run` starts the application. `inspect` prints the index header and jar table, `list` prints the entries,
+and `extract` writes an exploded copy. The non-`run` modes consume the remaining command line arguments.
+
+|`micronaut.runner.timing`
+|`false`
+|Prints the time reached by each startup phase to standard error: archive opened, index read, class loader
+ready, application entered. Use it to separate launcher cost from framework cost.
+
+|`micronaut.runner.mmap`
+|`true`
+|Set to `false` to read the archive with positional file reads instead of a memory mapping. Slower, and
+only needed on a platform or file system where mapping is unavailable or undesirable.
+
+|`micronaut.runner.verify`
+|`false`
+|Set to `true` to verify every entry's CRC-32 as it is read. Useful when you suspect a corrupted archive.
+
+|`micronaut.runner.parent`
+|`platform`
+|The parent of the application class loader. `platform` isolates the application from anything on the real
+`java.class.path`. `system` is an escape hatch for an agent or tool that must share types with the
+application.
+|===
+
+== Exit codes
+
+[cols="10,90"]
+|===
+|Code |Meaning
+
+|`0` |Normal termination.
+|`1` |The application threw. The JVM's default handler printed it.
+|`2` |The launcher could not start: the archive could not be located, it was modified after packaging, or
+its format version is not supported.
+|===
+
+== Running from an exploded layout
+
+`extract` writes the archive out as a directory: the dependencies as real JAR files under `lib/`, and the
+application classes in a JAR whose manifest names your main class and lists those dependencies in its
+`Class-Path`.
+
+[source,bash]
+----
+java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination ./app
+java -jar ./app/my-app.jar
+----
+
+The extracted form runs entirely on the JDK's own application class loader, with no custom class loader
+anywhere. That matters for the JDK's ahead-of-time cache: as described in <<cdsAndAot>>, classes loaded by
+a user-defined class loader cannot be AOT-linked, so an application that will be started thousands of
+times in the same container image may be better served by extracting once at image build time.

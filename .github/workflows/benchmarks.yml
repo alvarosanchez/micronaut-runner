@@ -1,0 +1,60 @@
+# Startup and class-loading benchmarks. Not synced from micronaut-project-template.
+#
+# Benchmarks are deliberately NOT part of the pull request gate: the numbers are too noisy on shared
+# runners to fail a build on, and a full run is expensive. They run on demand, weekly, and on pull
+# requests that opt in with the "relates-to: benchmarks" label.
+name: Benchmarks
+on:
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: 'Measured iterations per packaging variant'
+        required: false
+        default: '20'
+  schedule:
+    - cron: '0 4 * * 1'
+  pull_request:
+    branches:
+      - master
+      - '[0-9]+.[0-9]+.x'
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  benchmark:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'relates-to: benchmarks')
+    runs-on: ubuntu-latest
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: "🔧 Setup JDK 25"
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: "🔧 Setup Gradle"
+        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+
+      - name: "📈 Run benchmarks"
+        run: ./gradlew :benchmarks:jmh :benchmarks:startupBenchmark -Pbenchmarks.iterations=${{ github.event.inputs.iterations || '20' }} --no-daemon
+
+      - name: "📝 Summarise"
+        if: always()
+        run: |
+          if [ -f benchmarks/build/reports/startup/summary.md ]; then
+            cat benchmarks/build/reports/startup/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No startup benchmark summary was produced.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: "📜 Upload results"
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: benchmark-results
+          path: benchmarks/build/reports/**
+          retention-days: 30

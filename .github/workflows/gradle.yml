@@ -92,8 +92,10 @@ jobs:
           name: binary-compatibility-reports
           path: "**/build/reports/binary-compatibility-*.html"
 
+      # TEMPORARY (revert when this repository is transferred to micronaut-projects): the publishing
+      # steps below need organisation secrets, so they are skipped under any other owner.
       - name: "📦 Publish to Sonatype Snapshots"
-        if: success() && github.event_name == 'push' && matrix.java == '25'
+        if: success() && github.event_name == 'push' && matrix.java == '25' && github.repository_owner == 'micronaut-projects'
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
@@ -108,7 +110,7 @@ jobs:
           if_false: ${{ github.repository }}
 
       - name: "📑 Publish to Github Pages"
-        if: success() && github.event_name == 'push' && matrix.java == '25'
+        if: success() && github.event_name == 'push' && matrix.java == '25' && github.repository_owner == 'micronaut-projects'
         uses: micronaut-projects/github-pages-deploy-action@76d63aafbab7108d74e83be4e5b3b0501382e829 # master
         env:
           TARGET_REPOSITORY: ${{ steps.docs_target.outputs.value }}

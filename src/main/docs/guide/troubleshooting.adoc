@@ -1,0 +1,58 @@
+== "runner jar was modified after packaging"
+
+The index records the archive's length and the position of every nested JAR. One of those checks failed,
+which means the file changed after it was built: something appended to it, re-zipped it, or signed it in
+place. Rebuild the archive. If you need a signature, sign the finished archive with a tool that does not
+rewrite existing entries, or use the extracted layout.
+
+== A resource is not found, or the wrong one is found
+
+Resources resolve in classpath order: the application first, then dependencies in resolution order. Check
+what the archive actually contains:
+
+[source,bash]
+----
+java -Dmicronaut.runner.mode=list -jar my-app-0.1-all.jar META-INF/services
+----
+
+If a library finds nothing at all, check whether it discovers resources through
+`ClassLoader.getSystemClassLoader()` or by parsing `java.class.path` rather than through the thread
+context class loader. Neither sees the application's dependencies; see the compatibility chapter.
+
+== No beans are found, or the application context is empty
+
+Micronaut discovers beans by listing `META-INF/micronaut/`. Confirm the merged directory is present and
+populated:
+
+[source,bash]
+----
+java -Dmicronaut.runner.mode=list -jar my-app-0.1-all.jar META-INF/micronaut
+----
+
+If it is empty, the dependencies were not processed by annotation processing at build time, which is a
+build configuration problem rather than a packaging one.
+
+== Startup is slower than expected
+
+Separate the launcher from the framework before tuning anything:
+
+[source,bash]
+----
+java -Dmicronaut.runner.timing=true -jar my-app-0.1-all.jar
+----
+
+That prints when the archive was opened, when the index was read, when the class loader was ready and when
+your application was entered. If the time is spent after "application entered", it is the framework or the
+application, not the packaging.
+
+== A library fails with an unexpected URL
+
+Resources are exposed through ordinary `jar:file:` URLs. A resource inside a dependency uses the nested
+form `jar:file:/path/app.jar!/MICRONAUT-INF/lib/dep.jar!/name`. Libraries that split such a URL at the
+first `!/` rather than the last may misread it. Report it: in most cases it can be handled on our side.
+
+== An exception mentions `SecurityException: sealing violation`
+
+A dependency declares a sealed package and another JAR contributes a class to the same package. That is a
+genuine conflict which a shaded JAR would have hidden. Resolve the duplicate dependency, or relocate one
+of them.

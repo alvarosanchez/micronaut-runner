@@ -1,0 +1,36 @@
+Performance claims about startup are easy to make and easy to get wrong, so the numbers for Micronaut
+Runner are produced by a harness in the repository rather than quoted from memory.
+
+== What is measured
+
+Micro-benchmarks:: JMH benchmarks over the class loader's hot path: index lookup hit and miss, class
+loading against `URLClassLoader` on the same set of JARs, and defining a class from a mapped buffer versus
+a byte array. These isolate the mechanism.
+
+Startup:: The whole process, from spawn to readiness, for the same application packaged several ways: an
+exploded classpath, a thin JAR with a `Class-Path` manifest, a shaded JAR, a runner JAR with dependencies
+stored and preserved, and the extracted layout, each also with a CDS archive and with a JDK 25 AOT cache.
+
+Readiness is measured externally, as the time from process spawn to the first successful HTTP response,
+because that is what a user waits for and it captures class loading that happens on the first request.
+The framework's own "startup completed" line is recorded separately, as a second metric rather than as a
+substitute.
+
+== Methodology
+
+The harness interleaves the variants in random order rather than running each in a block, discards warm-up
+runs, keeps every raw sample, and reports the median, the 90th percentile and a confidence interval. Timing
+runs carry no diagnostic flags: `-Xlog` changes what is being measured, so class-load counts and cache-hit
+counts are collected in separate runs. Both a warm and a cold page cache are measured, because storing
+dependencies uncompressed trades archive size against I/O.
+
+Run it locally with:
+
+[source,bash]
+----
+./gradlew :benchmarks:jmh
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
+----
+
+Reports are written to `benchmarks/build/reports/`. In CI the benchmarks run weekly and on demand rather
+than on every pull request, because shared runners are too noisy to gate a build on.

@@ -1,0 +1,65 @@
+Modern JVMs can cache the work of loading and linking classes between runs. Understanding how that
+interacts with a runner JAR matters if startup time is your reason for being here.
+
+== The constraint
+
+https://openjdk.org/jeps/483[JEP 483], which introduced the AOT cache in JDK 24, is explicit:
+
+[quote]
+____
+Only classes loaded from the class path, the module path, and the JDK itself, by the JDK's built-in class
+loaders, can be cached.
+____
+
+A runner JAR loads application classes through its own class loader, so those classes cannot be
+*AOT-linked*. This is not specific to Micronaut Runner: it applies to every executable-JAR format that
+keeps its dependencies nested, and it is why Quarkus added a separate packaging mode whose class loading
+is delegated entirely to the JDK.
+
+What still applies is the older Class Data Sharing machinery. HotSpot archives classes defined by a
+user-defined class loader as _unregistered_ classes, and when such a loader later defines a class whose
+name, class file size and CRC-32 match an archived one, the pre-parsed and pre-verified copy is used
+instead of parsing the bytes again. So an archive is still worth creating; it simply does not carry the
+full benefit that AOT linking gives an ordinary classpath.
+
+== Two options
+
+*Keep the single JAR.* Create a CDS archive in the usual way. The same command must be used for the
+training run and for production:
+
+[source,bash]
+----
+java -XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=app.jsa -jar my-app-0.1-all.jar
+----
+
+`-XX:+AutoCreateSharedArchive` requires `-XX:SharedArchiveFile`; it creates the archive when it is missing
+or stale and reuses it otherwise.
+
+*Extract once, then get everything.* If the image is built once and started many times, extract at image
+build time and run from the exploded layout, which uses no custom class loader at all and is therefore
+fully AOT-linkable:
+
+[source,bash]
+----
+java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination ./app
+java -XX:AOTCacheOutput=app.aot -jar ./app/my-app.jar     # training run
+java -XX:AOTCache=app.aot -jar ./app/my-app.jar           # production
+----
+
+HotSpot reads the `Class-Path` manifest attribute of the extracted application JAR and records every JAR
+it names, validating each by file size and modification time, so the whole dependency set is covered.
+
+== Verifying that it worked
+
+Do not assume an archive is being used. Check that your own classes are coming from it:
+
+[source,bash]
+----
+java -XX:AOTCache=app.aot -Xlog:class+load -jar ./app/my-app.jar | grep 'shared objects file' | grep com.example
+----
+
+`-Xlog:class+path=info` reports how the recorded class path was validated, which is the first thing to look
+at when a cache is silently ignored.
+
+NOTE: Measure before committing to either option. The cost and benefit depend on the size of the
+application and on how often the process starts, and the numbers move between JDK releases.

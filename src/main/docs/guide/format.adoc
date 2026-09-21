@@ -1,0 +1,98 @@
+This chapter documents the archive layout. You do not need any of it to use Micronaut Runner; it is here so
+the format can be inspected, reimplemented and reasoned about.
+
+== Outer archive
+
+Every entry of the outer archive is `STORED`, that is, uncompressed. That is what allows a nested JAR's
+bytes to be read in place at a known offset.
+
+[cols="35,65"]
+|===
+|Entry |Purpose
+
+|`META-INF/MANIFEST.MF`
+|Written first. `Main-Class` is `io.micronaut.runner.Launcher`. `Micronaut-Runner-Format` carries the
+format version, `Micronaut-Runner-Start-Class` the application main class, for information only.
+
+|`MICRONAUT-INF/index.bin`
+|Written second, so the launcher finds it after reading only a couple of central directory records.
+
+|`io/micronaut/runner/**.class`
+|The launcher. Only class files are copied from the launcher library; its manifest and Maven metadata are
+not.
+
+|`META-INF/micronaut/**`
+|The Micronaut bean metadata of the application and of every dependency, merged and de-duplicated, with
+explicit directory entries. See <<serviceDiscovery>>.
+
+|`MICRONAUT-INF/classes/**`
+|The application's own classes and resources, stored exploded. This is "jar 0"; an entry's _logical name_
+is its path with this prefix removed.
+
+|`MICRONAUT-INF/lib/<name>.jar`
+|The dependencies, in classpath order, each a complete JAR.
+|===
+
+By default each dependency is re-packed so that its own entries are `STORED` too, which removes
+decompression from class loading at the cost of a larger archive. Re-packing also drops signature files
+(`META-INF/*.SF`, `*.DSA`, `*.RSA`, `*.EC`, `META-INF/SIG-*`) and `META-INF/INDEX.LIST`. Manifests are
+never rewritten, so package metadata and sealing survive intact. The `PRESERVE` option copies each
+dependency byte for byte instead.
+
+== The index
+
+`MICRONAUT-INF/index.bin` is a little-endian binary structure designed to be used directly from the memory
+mapping, with bounds checks but no parsing into objects. It consists of a fixed 128-byte header followed
+by five sections: a jar table, a package table, an entry table, a hash table and a string table. The exact
+byte layout is defined, as compile-time constants with documentation, in `IndexFormat` in the
+`micronaut-runner-launcher` artifact, which is the authoritative description.
+
+The parts worth understanding:
+
+Entry records:: One per entry, per jar, carrying the entry's absolute offset in the outer file, its sizes,
+CRC-32, compression method and MS-DOS timestamp. Records for one jar are contiguous, with the physical
+entries first in their original central directory order, so `JarFile.entries()` can report them faithfully.
+
+Hash table:: Maps a logical name to the first record with that name, using open addressing and linear
+probing. The maximum probe length actually needed is recorded at build time and validated when the index
+is opened, so a lookup has a hard bound.
+
+Same-name chains:: Entries that share a logical name are linked in classpath order, so `getResource`
+returns the first and `getResources` walks the chain, emitting one URL per contributing JAR.
+
+Multi-release aliases:: For a JAR declaring `Multi-Release: true`, each `META-INF/versions/N/<path>` entry
+is indexed a second time under `<path>`, marked with its version. Aliases precede the base entry in
+descending version order, so resolution takes the first record the running JDK accepts. Paths that
+themselves start with `META-INF/` are never aliased, matching the JDK's own rule.
+
+Package table:: The per-package `Name:` sections of each dependency's manifest, which override the
+manifest's main attributes attribute by attribute when a package is defined.
+
+=== Detecting a stale archive
+
+The index stores the outer file's length, and every jar record stores the offset of the local file header
+that introduces it. Both are checked, the second lazily per JAR, and a mismatch fails with a message
+telling you to rebuild. This detects an archive that was appended to, truncated or re-zipped after
+packaging, which would otherwise mean reading from wrong offsets. It is a staleness check, not an
+integrity check: it is not designed to detect deliberate tampering, and a modification that preserves the
+length and the header positions passes it. Full CRC verification on every read is available with
+`-Dmicronaut.runner.verify=true`.
+
+[[serviceDiscovery]]
+== Micronaut service discovery
+
+Micronaut locates beans by calling `getResources("META-INF/micronaut/")` and then _listing the directory_
+that each returned URL denotes. Listing a directory is not something a URL can do generically, so the
+framework opens the archive behind the URL. For a JAR nested inside another JAR it has to mount a ZIP file
+system over a ZIP file system, and the JDK implements that by reading the whole inner archive into memory.
+Doing this once per dependency would dominate startup.
+
+Micronaut Runner avoids it by merging that metadata at build time. Every
+`META-INF/micronaut/<service>/<name>` entry from the application and from every dependency is written,
+de-duplicated and in classpath order, into `META-INF/micronaut/` at the *root* of the outer archive, with
+real directory entries. The class loader resolves any name under that prefix against the merged copy
+alone, so `getResources("META-INF/micronaut/")` returns exactly one URL and Micronaut lists it in a single
+pass over an archive the JVM already has open.
+
+Classic `META-INF/services/` files are left exactly where they are, one per dependency: they are read as
+files through their URL, which works per JAR without any special handling.

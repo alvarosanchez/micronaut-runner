@@ -1,0 +1,86 @@
+# This workflow is specific to micronaut-runner and is NOT synced from micronaut-project-template.
+# The synced "Java CI" workflow builds on a single JDK; this one covers the JDK and OS matrix that a
+# packaging format and a class loader need, and reports the results per JDK.
+name: Runner CI
+on:
+  push:
+    branches:
+      - master
+      - '[0-9]+.[0-9]+.x'
+  pull_request:
+    branches:
+      - master
+      - '[0-9]+.[0-9]+.x'
+permissions:
+  contents: read
+  checks: write
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  jdk-matrix:
+    name: "Linux JDK ${{ matrix.java }}"
+    runs-on: ubuntu-latest
+    # JDK 26 is early access: it must inform us without failing the build.
+    continue-on-error: ${{ matrix.java == '26-ea' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['25', '26-ea']
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: "🔧 Setup JDK ${{ matrix.java }}"
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      - name: "🔧 Setup Gradle"
+        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+
+      - name: "🛠 Build and test"
+        run: ./gradlew check --continue --no-daemon
+
+      - name: "📊 Publish Test Report"
+        if: always()
+        uses: mikepenz/action-junit-report@bccf2e31636835cf0874589931c4116687171386 # v6
+        with:
+          check_name: Runner CI / Test Report (${{ matrix.java }})
+          report_paths: '**/build/test-results/**/TEST-*.xml'
+          check_retries: 'true'
+
+  windows:
+    name: "Windows JDK 25"
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: "🔧 Setup JDK 25"
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: "🔧 Setup Gradle"
+        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+
+      # Path separators, drive letters, UNC paths and file locking on memory-mapped archives all behave
+      # differently here, which is exactly what the launcher and the packager touch.
+      - name: "🛠 Test the launcher, the packager and the end-to-end suite"
+        run: ./gradlew :micronaut-runner-launcher:test :micronaut-runner-build:test :test-suite:test --no-daemon
+
+      - name: "📊 Publish Test Report"
+        if: always()
+        uses: mikepenz/action-junit-report@bccf2e31636835cf0874589931c4116687171386 # v6
+        with:
+          check_name: Runner CI / Test Report (Windows)
+          report_paths: '**/build/test-results/**/TEST-*.xml'
+          check_retries: 'true'

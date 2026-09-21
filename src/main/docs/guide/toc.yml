@@ -1,7 +1,18 @@
 introduction:
   title: Introduction
-releaseHistory: Release History
 quickStart:
   title: Quick Start
+format:
+  title: The Runner JAR Format
+runtime:
+  title: Running a Runner JAR
+compatibility:
+  title: Compatibility and Limitations
+cdsAndAot:
+  title: Class Data Sharing and the AOT Cache
+benchmarks:
+  title: Benchmarks
+troubleshooting:
+  title: Troubleshooting
 repository: Repository
-
+releaseHistory: Release History
