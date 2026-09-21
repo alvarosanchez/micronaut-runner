@@ -1,1 +1,92 @@
-TODO
+== Gradle
+
+Apply the plugin alongside the Micronaut application plugin:
+
+[source,groovy]
+----
+plugins {
+    id 'io.micronaut.application' version '5.0.2'
+    id 'io.micronaut.runner' version '{version}'
+}
+----
+
+That is the whole configuration. The plugin adds a `micronautRunnerJar` task, wires it into `assemble`,
+and takes your main class from the `application` block and your dependencies from the runtime classpath,
+in resolution order.
+
+[source,bash]
+----
+./gradlew micronautRunnerJar
+java -jar build/libs/my-app-0.1-all.jar
+----
+
+The archive is named with the `all` classifier, the same name the Shadow plugin uses, so existing
+Dockerfiles and CI scripts that reference `build/libs/*-all.jar` keep working.
+
+WARNING: Do not apply the Shadow plugin and configure it to write the same file. The two produce different
+archives under one name. The plugin fails the build if it detects that.
+
+=== Configuration
+
+Every setting is a property of the task:
+
+[source,groovy]
+----
+micronautRunnerJar {
+    // Defaults to application.mainClass
+    mainClass = 'com.example.Application'
+
+    // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
+    // PRESERVE copies each dependency byte for byte, producing a smaller archive that loads more slowly.
+    compression = 'STORED'
+
+    // Written into the manifest, so users need not pass the matching command line flags.
+    addOpens.add('java.base/java.lang')
+    addExports.add('java.base/sun.nio.ch=ALL-UNNAMED')
+    enableNativeAccess = true
+
+    manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
+}
+----
+
+== Maven
+
+Add the plugin to your build. Bind it to `package`, so it runs after the JAR is built:
+
+[source,xml]
+----
+<plugin>
+    <groupId>io.micronaut.runner</groupId>
+    <artifactId>micronaut-runner-maven-plugin</artifactId>
+    <version>{version}</version>
+    <executions>
+        <execution>
+            <goals>
+                <goal>package</goal>
+            </goals>
+        </execution>
+    </executions>
+</plugin>
+----
+
+[source,bash]
+----
+mvn package
+java -jar target/my-app-0.1.jar
+----
+
+By default the runner JAR replaces the project's main artifact, exactly as the Shade plugin does, and the
+JAR produced by `maven-jar-plugin` is kept alongside it as `original-my-app-0.1.jar`. Set a `classifier` to
+attach it as an additional artifact instead and leave the main one untouched.
+
+The main class is taken from the `exec.mainClass` property, which the Micronaut parent POM already sets.
+
+== What to check first
+
+[source,bash]
+----
+java -Dmicronaut.runner.mode=inspect -jar my-app-0.1-all.jar
+----
+
+prints the format version, the number of dependencies and entries, and the application main class, which
+confirms the archive is what you expect before you deploy it.

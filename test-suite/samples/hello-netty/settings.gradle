@@ -1,0 +1,29 @@
+/*
+ * A standalone build. It is not part of the micronaut-runner build: the end-to-end tests and the
+ * benchmark harness drive it with Gradle TestKit, passing runner.repo and runner.version so it resolves
+ * the plugin from the aggregated local repository of -DUMMY publications.
+ */
+pluginManagement {
+    repositories {
+        maven { url = uri(providers.gradleProperty('runner.repo').get()) }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+    plugins {
+        id 'io.micronaut.runner' version providers.gradleProperty('runner.version').get()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        maven { url = uri(providers.gradleProperty('runner.repo').get()) }
+        mavenCentral()
+    }
+    versionCatalogs {
+        libs {
+            from(files('../../../gradle/libs.versions.toml'))
+        }
+    }
+}
+
+rootProject.name = 'hello-netty'
