@@ -14,7 +14,6 @@ plugins {
 }
 
 def testRepoPath = layout.buildDirectory.dir('test-repo')
-def localPublicationTasks = []
 
 configurations {
     repository {
@@ -34,7 +33,6 @@ publishing {
     publications.all { pub ->
         if (!pub.name.startsWith('local')) {
             String pubName = "local${pub.name.capitalize()}"
-            localPublicationTasks << "publish${pubName.capitalize()}PublicationToTestRepoRepository".toString()
             publications.register(pubName, MavenPublication) {
                 project.afterEvaluate {
                     // Gradle 8.3+ exposes the component as a Provider
@@ -86,16 +84,23 @@ def cleanTestRepo = tasks.register('cleanTestRepo', Delete) {
     delete testRepoPath
 }
 
+// A live collection, deliberately, rather than the list of names collected while the publications were
+// being registered. java-gradle-plugin contributes its publications from afterEvaluate, so that list is
+// still growing after this task is configured: whether the plugin's own artifacts were published at all
+// then depended on when the task happened to be realised, which differs with the set of tasks requested.
+// It cost a CI run on which the Gradle plugin was silently absent from the repository the samples resolve.
+def publishTwinsToTestRepo = tasks.withType(PublishToMavenRepository).matching { task ->
+    task.name.startsWith('publishLocal') && task.name.endsWith('PublicationToTestRepoRepository')
+}
+
+publishTwinsToTestRepo.configureEach {
+    mustRunAfter cleanTestRepo
+}
+
 def publishToTestRepo = tasks.register('publishToTestRepo') {
     description = 'Publishes the -DUMMY twin publications into build/test-repo'
     dependsOn cleanTestRepo
-    dependsOn localPublicationTasks
-}
-
-localPublicationTasks.each { taskName ->
-    tasks.named(taskName) {
-        mustRunAfter cleanTestRepo
-    }
+    dependsOn publishTwinsToTestRepo
 }
 
 /**
