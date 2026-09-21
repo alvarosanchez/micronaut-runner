@@ -98,9 +98,20 @@ localPublicationTasks.each { taskName ->
     }
 }
 
+/**
+ * The point at which the test repository is complete. A project that has to post-process what it
+ * published - the Maven plugin rewrites the version inside its own descriptor - makes its task a
+ * dependency of this one. finalizedBy would not do: a finalizer is ordered against the task it finalises,
+ * not against the tasks that consume that task's output, so a consumer can read the repository first.
+ */
+def finalizeTestRepo = tasks.register('finalizeTestRepo') {
+    description = 'Marks the -DUMMY test repository as complete, after any post-processing'
+    dependsOn publishToTestRepo
+}
+
 configurations.repository.outgoing {
     artifact(testRepoPath) {
-        builtBy(publishToTestRepo)
+        builtBy(finalizeTestRepo)
     }
 }
 

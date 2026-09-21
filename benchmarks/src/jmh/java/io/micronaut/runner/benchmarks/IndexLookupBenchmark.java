@@ -38,20 +38,45 @@ import java.util.concurrent.TimeUnit;
  * What a lookup in {@code MICRONAUT-INF/index.bin} costs.
  *
  * <p>This is the single hottest thing the launcher does: every class the application loads and every
- * resource it reads resolves through one of these two methods. The index promises O(1) with no allocation
- * on any path, so the numbers to watch are the absolute nanoseconds and, just as much, the distance
- * between the hit and the miss - a miss that costs much more than a hit means the probe is walking.</p>
+ * resource it reads resolves through one of these methods. The index promises O(1) with no allocation on
+ * any path, so what the numbers should show is a hit dominated by one comparison of the stored UTF-8 name
+ * and a miss that is cheaper still, because a mismatched hash rejects a candidate before its bytes are
+ * ever touched.</p>
  *
- * <h2>What the four methods separate</h2>
+ * <h2>What the methods separate</h2>
  * <ul>
- *   <li>{@link #findClassHit()} / {@link #findClassMiss()} - {@link Index#findClass(String)}, which takes
- *       a binary name and never builds the {@code a/b/C.class} resource name at all.</li>
- *   <li>{@link #findHit()} / {@link #findMiss()} - {@link Index#find(String)} over the same entries by
- *       their resource names, which is the path every {@code getResource} call takes.</li>
+ *   <li>{@link #findClassHit()} / {@link #findClassMiss()} - {@link Index#findClass(String)}, which starts
+ *       from a binary name, folds the {@code .class} suffix into the hash arithmetically and compares
+ *       against the stored bytes while mapping dots to slashes, so it never builds the resource name.</li>
+ *   <li>{@link #findHit()} / {@link #findMiss()} - {@link Index#find(String)} called with a name the
+ *       caller already has, which is what a {@code getResource("META-INF/…")} with a literal argument
+ *       looks like.</li>
+ *   <li>{@link #findFromBinaryNameHit()} - the same lookup starting from a binary name, building the
+ *       resource name first. This is the honest comparison against {@link #findClassHit()}: same input,
+ *       same answer, and it is the work {@code findClass} exists to avoid.</li>
  * </ul>
  *
- * <p>The misses use names shaped exactly like the hits with a suffix appended, so they hash into the same
- * region of the table and are not trivially rejected by a length comparison.</p>
+ * <h2>One artifact to know about before reading the numbers</h2>
+ * <p>{@code Index.find} hashes with {@link String#hashCode()}, and {@code String} caches that value in the
+ * instance. The name arrays here are built once in {@code @Setup}, so from the second invocation onwards
+ * {@link #findHit()} and {@link #findMiss()} get their hash for free - which is why the miss comes out at
+ * a couple of nanoseconds. That is a real case (a literal, or a name looked up repeatedly) but it is not
+ * every case, and it is <em>not</em> what {@code findClass} does: {@code findClass} recomputes its hash
+ * character by character on every single call, because the string it would need to cache a hash for is
+ * the one it refuses to allocate. Compare {@link #findClassHit()} against
+ * {@link #findFromBinaryNameHit()}, never against {@link #findHit()}.</p>
+ *
+ * <p>The misses use names shaped exactly like the hits with a suffix appended, so they are the same length
+ * and the same shape and are not rejected by some shortcut a shorter name would have taken.</p>
+ *
+ * <h2>These numbers are memory latency, not arithmetic</h2>
+ * <p>Every method here rotates over {@value #NAMES} names, which is far more string data than fits in L1,
+ * and then compares against a memory-mapped index. A lookup is therefore two or three cache misses and
+ * almost no computation, and differences of a few tens of nanoseconds between the methods are differences
+ * in how many cold lines each one touches rather than differences in algorithm. It also means the absolute
+ * numbers are the right order of magnitude for a real startup, where each class name is looked up once
+ * from cold memory, and would be far smaller - and far less useful - if the benchmark looked one name up a
+ * million times.</p>
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
@@ -148,6 +173,19 @@ public class IndexLookupBenchmark {
     @Benchmark
     public int findMiss() {
         return index.find(absentResources[next()]);
+    }
+
+    /**
+     * The same hit as {@link #findHit()}, but starting from the binary name the class loader is actually
+     * handed: the resource name is built inside the measurement, which allocates a string and leaves it
+     * with no cached hash code. Subtract {@link #findClassHit()} from this and what is left is what the
+     * index's class-name path buys.
+     *
+     * @return the record index
+     */
+    @Benchmark
+    public int findFromBinaryNameHit() {
+        return index.find(presentClasses[next()].replace('.', '/') + ".class");
     }
 
     private int next() {

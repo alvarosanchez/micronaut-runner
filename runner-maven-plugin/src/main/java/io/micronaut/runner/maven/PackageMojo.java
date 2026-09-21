@@ -37,7 +37,6 @@ import org.apache.maven.project.MavenProjectHelper;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -280,12 +279,4 @@ public class PackageMojo extends AbstractMojo {
         }
     }
 
-    /**
-     * Reads a path relative to the output directory, used by the tests to assert where the archive lands.
-     *
-     * @return the output directory
-     */
-    Path outputDirectory() {
-        return outputDirectory.toPath();
-    }
 }

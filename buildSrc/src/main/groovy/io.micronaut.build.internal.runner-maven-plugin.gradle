@@ -40,6 +40,12 @@ tasks.named('checkstyleMain', Checkstyle) {
     exclude '**/maven/help/**'
 }
 
+// The same generated HelpMojo documents itself with the legacy Maven javadoc tags (@goal,
+// @requiresProject), which the javadoc tool rejects outright.
+tasks.named('javadoc', Javadoc) {
+    exclude '**/maven/help/**'
+}
+
 // A Maven plugin jar embeds META-INF/maven/plugin.xml, which repeats the plugin's own version. The
 // -DUMMY twin publication that the functional tests resolve republishes the very same jar under a
 // different version, and Maven rejects the mismatch with "Invalid plugin descriptor", so no Maven sample
@@ -94,6 +100,10 @@ def patchTestRepoDescriptor = tasks.register('patchTestRepoDescriptor') {
     }
 }
 
-tasks.named('publishToTestRepo') {
-    finalizedBy patchTestRepoDescriptor
+patchTestRepoDescriptor.configure {
+    dependsOn tasks.named('publishToTestRepo')
+}
+
+tasks.named('finalizeTestRepo') {
+    dependsOn patchTestRepoDescriptor
 }
