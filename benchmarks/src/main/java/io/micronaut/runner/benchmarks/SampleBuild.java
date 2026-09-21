@@ -61,6 +61,15 @@ import java.util.zip.ZipEntry;
  * <h2>Failure is data</h2>
  * <p>Every variant is built inside its own try/catch. One that fails becomes an unavailable
  * {@link Variant} carrying the reason, and the run carries on with the rest.</p>
+ *
+ * <h2>Every variant is self-contained</h2>
+ * <p>Nothing that gets measured is read out of the sample's own {@code build} directory. The class files,
+ * the dependency jars and the shaded jar are all copied into the harness's artifacts directory first, and
+ * the commands point only at those copies. The reason is not tidiness: a benchmark run takes minutes, and
+ * anything else that builds the sample in that window - a developer, the end-to-end test suite, a second
+ * agent - runs {@code clean} and takes the artifacts out from under a run in flight. That failure mode is
+ * genuinely confusing when it happens ("the jar was there when I checked"), and copying makes it
+ * impossible.</p>
  */
 final class SampleBuild {
 
@@ -219,13 +228,16 @@ final class SampleBuild {
         }
     }
 
-    private Variant explodedClasspath() {
+    private Variant explodedClasspath() throws IOException {
+        Path directory = recreate(artifacts.resolve("exploded"));
         List<String> classPath = new ArrayList<>(applicationOutput.size() + dependencies.size());
-        for (Path entry : applicationOutput) {
-            classPath.add(entry.toAbsolutePath().toString());
+        for (int i = 0; i < applicationOutput.size(); i++) {
+            Path target = directory.resolve("app-" + i);
+            copyDirectory(applicationOutput.get(i), target);
+            classPath.add(target.toAbsolutePath().toString());
         }
-        for (Path entry : dependencies) {
-            classPath.add(entry.toAbsolutePath().toString());
+        for (Path dependency : copyDependenciesTo(directory.resolve("lib"))) {
+            classPath.add(dependency.toAbsolutePath().toString());
         }
         List<String> command = new ArrayList<>();
         command.add(javaExecutable().toString());
@@ -234,23 +246,14 @@ final class SampleBuild {
         command.add(mainClass);
         return Variant.available("exploded-cp",
                 "Class files and dependency jars on an explicit, ordered -cp",
-                command, sample, applicationOutput.get(0));
+                command, directory, directory);
     }
 
     private Variant thinJar() throws IOException {
         Path directory = recreate(artifacts.resolve("thin"));
-        Path lib = Files.createDirectories(directory.resolve("lib"));
         List<String> classPath = new ArrayList<>(dependencies.size());
-        Set<String> used = new LinkedHashSet<>();
-        for (int i = 0; i < dependencies.size(); i++) {
-            Path dependency = dependencies.get(i);
-            String fileName = dependency.getFileName().toString();
-            if (!used.add(fileName)) {
-                fileName = i + "-" + fileName;
-                used.add(fileName);
-            }
-            Files.copy(dependency, lib.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
-            classPath.add("lib/" + encodeClassPathEntry(fileName));
+        for (Path copy : copyDependenciesTo(directory.resolve("lib"))) {
+            classPath.add("lib/" + encodeClassPathEntry(copy.getFileName().toString()));
         }
 
         Manifest manifest = new Manifest();
@@ -282,11 +285,14 @@ final class SampleBuild {
         if (!Files.isRegularFile(shadowJar)) {
             throw new IOException("The Shadow plugin produced no " + shadowJar);
         }
+        Path directory = recreate(artifacts.resolve("shadow"));
+        Path copy = directory.resolve(shadowJar.getFileName().toString());
+        Files.copy(shadowJar, copy, StandardCopyOption.REPLACE_EXISTING);
         List<String> command = List.of(javaExecutable().toString(), "-jar",
-                shadowJar.toAbsolutePath().toString());
+                copy.toAbsolutePath().toString());
         return Variant.available("shadow",
                 "Everything flattened into one jar by the Shadow plugin",
-                command, sample, shadowJar);
+                command, directory, copy);
     }
 
     private Variant runnerJar(String name, Compression compression) throws IOException {
@@ -341,6 +347,46 @@ final class SampleBuild {
         return Variant.available("runner-extracted",
                 "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
                 run, destination, destination);
+    }
+
+    /**
+     * Copies the dependency jars into one directory, keeping class path order and de-duplicating names.
+     *
+     * @param lib the directory to fill, created if it is not there
+     * @return the copies, in class path order
+     * @throws IOException if a jar cannot be copied
+     */
+    private List<Path> copyDependenciesTo(Path lib) throws IOException {
+        Files.createDirectories(lib);
+        List<Path> copies = new ArrayList<>(dependencies.size());
+        Set<String> used = new LinkedHashSet<>();
+        for (int i = 0; i < dependencies.size(); i++) {
+            Path dependency = dependencies.get(i);
+            String fileName = dependency.getFileName().toString();
+            if (!used.add(fileName)) {
+                // Two jars with the same file name from different groups. Both have to survive, and the
+                // one that arrived second keeps its position on the class path.
+                fileName = i + "-" + fileName;
+                used.add(fileName);
+            }
+            Path copy = lib.resolve(fileName);
+            Files.copy(dependency, copy, StandardCopyOption.REPLACE_EXISTING);
+            copies.add(copy);
+        }
+        return copies;
+    }
+
+    private static void copyDirectory(Path source, Path target) throws IOException {
+        Files.createDirectories(target);
+        List<Path> files = new ArrayList<>();
+        try (var stream = Files.walk(source)) {
+            stream.filter(Files::isRegularFile).forEach(files::add);
+        }
+        for (Path file : files) {
+            Path destination = target.resolve(source.relativize(file).toString());
+            Files.createDirectories(destination.getParent());
+            Files.copy(file, destination, StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     private static Path singleJarIn(Path directory) throws IOException {

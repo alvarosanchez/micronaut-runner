@@ -69,6 +69,17 @@ final class StartupHarness implements AutoCloseable {
     /** How long a destroyed process is given to die before it is killed. */
     private static final Duration SHUTDOWN_GRACE = Duration.ofSeconds(10);
 
+    /**
+     * How long an application that <em>is</em> answering, but with the wrong status, is given before the
+     * run is failed.
+     *
+     * <p>Without this the run would sit out the whole start-up timeout, and the report would say "did not
+     * answer within two minutes", which reads like a slow start. An application that returns 404 on the
+     * readiness path has finished starting and is broken - typically its beans were not discovered, which
+     * is a fault of the packaging and exactly the sort of thing this harness should catch loudly.</p>
+     */
+    private static final Duration SERVING_GRACE = Duration.ofSeconds(5);
+
     /** Micronaut's own startup line, recorded as a separate metric. */
     private static final Pattern STARTUP_LINE = Pattern.compile("Startup completed in (\\d+)ms");
 
@@ -164,6 +175,9 @@ final class StartupHarness implements AutoCloseable {
             long deadline = start + startupTimeout.toNanos();
             long lastFailureEnd = start;
             long ready = -1;
+            long firstResponse = -1;
+            int lastStatus = -1;
+            String lastBody = "";
             while (System.nanoTime() < deadline) {
                 if (!process.isAlive()) {
                     throw new IOException(variant.name() + " exited with status " + process.exitValue()
@@ -175,10 +189,22 @@ final class StartupHarness implements AutoCloseable {
                         ready = System.nanoTime();
                         break;
                     }
+                    if (firstResponse < 0) {
+                        firstResponse = System.nanoTime();
+                    }
+                    lastStatus = response.statusCode();
+                    lastBody = response.body();
                 } catch (IOException e) {
                     // Connection refused for most of the poll, because the server is not listening yet;
                     // once in a while a connection that was accepted and then dropped mid-handshake.
                     // Both mean the same thing here: not ready, try again.
+                }
+                if (firstResponse > 0 && System.nanoTime() - firstResponse > SERVING_GRACE.toNanos()) {
+                    throw new IOException(variant.name() + " is serving " + readiness + " with HTTP "
+                            + lastStatus + " and has been for " + SERVING_GRACE.toSeconds() + "s."
+                            + " The application started; it is not serving the readiness endpoint, which"
+                            + " points at the packaging rather than at a slow start. Response body: "
+                            + snippet(lastBody) + tail(output));
                 }
                 lastFailureEnd = System.nanoTime();
                 Thread.sleep(POLL_INTERVAL.toMillis());
@@ -275,6 +301,14 @@ final class StartupHarness implements AutoCloseable {
         thread.setDaemon(true);
         thread.start();
         return thread;
+    }
+
+    private static String snippet(String body) {
+        if (body == null || body.isEmpty()) {
+            return "(empty)";
+        }
+        String single = body.replace('\n', ' ').replace('\r', ' ');
+        return single.length() > 200 ? single.substring(0, 200) + " …" : single;
     }
 
     private static String tail(StringBuilder output) {

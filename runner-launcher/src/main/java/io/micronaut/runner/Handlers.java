@@ -157,9 +157,7 @@ public final class Handlers {
             jarPrefixes = new String[index.jarCount()];
             jarNames = new String[index.jarCount()];
             nestedJarFiles = new NestedJarFile[index.jarCount()];
-            StringBuilder url = new StringBuilder(absolute.getPath().length() + 8);
-            url.append("file:");
-            encodePath(url, absolute.getPath());
+            StringBuilder url = new StringBuilder(fileUrl(absolute.getPath(), File.separatorChar));
             StringBuilder prefix = new StringBuilder(url.length() + 6);
             prefix.append("jar:").append(url).append(SEPARATOR);
             archiveJarPrefix = prefix.toString();
@@ -512,11 +510,44 @@ public final class Handlers {
         }
     }
 
+    /**
+     * Builds the {@code file:} URL of the archive from a file system path.
+     *
+     * <p>The scheme specific part has to begin with {@code '/'} for the URI to be <em>hierarchical</em>.
+     * A POSIX path already begins with one. A Windows path begins with a drive letter, so without an
+     * added separator the URL reads {@code file:C:/dir/app.jar}, which {@link java.net.URI} classifies as
+     * opaque and {@code new File(URI)} rejects with "URI is not hierarchical".</p>
+     *
+     * <p>That is not a cosmetic difference. micronaut-core enumerates the merged service directory by
+     * taking the part of this URL before the archive separator and handing it to
+     * {@code new File(URI.create(...))}, so an opaque URL breaks bean discovery, on Windows only.</p>
+     *
+     * <p>The separator is a parameter rather than {@link File#separatorChar} so that both platforms'
+     * shapes can be tested from either platform.</p>
+     *
+     * @param path      the absolute path of the archive
+     * @param separator the platform's file separator
+     * @return the {@code file:} URL
+     */
+    static String fileUrl(String path, char separator) {
+        StringBuilder out = new StringBuilder(path.length() + 8);
+        out.append("file:");
+        if (path.isEmpty() || (path.charAt(0) != '/' && path.charAt(0) != separator)) {
+            out.append('/');
+        }
+        encodePath(out, path, separator);
+        return out.toString();
+    }
+
     private static void encodePath(StringBuilder out, String path) {
+        encodePath(out, path, File.separatorChar);
+    }
+
+    private static void encodePath(StringBuilder out, String path, char separator) {
         int length = path.length();
         for (int i = 0; i < length; i++) {
             char c = path.charAt(i);
-            if (c == File.separatorChar) {
+            if (c == separator) {
                 c = '/';
             }
             if (c < 0x80) {
