@@ -410,7 +410,9 @@ public final class ArchiveSource implements AutoCloseable {
      * Locates {@code MICRONAUT-INF/index.bin} in the outer archive without {@code java.util.zip}.
      *
      * <p>The end of central directory record is found by scanning back from the end of the file, following
-     * the ZIP64 locator when one sits immediately before it, and the central directory is then walked until
+     * the ZIP64 locator when one sits immediately before it, falling back to the 32-bit fields when the
+     * entry count carries the {@code 0xFFFF} marker but no locator does, and the central directory is
+     * then walked until
      * the index entry is found. By construction it is the second entry, right after the manifest, so this
      * reads a couple of records. The entry's true data offset comes from its <em>local</em> header, whose
      * name and extra field lengths may differ from the central directory's.</p>
@@ -424,9 +426,13 @@ public final class ArchiveSource implements AutoCloseable {
         long entries = u16(endOfCentralDirectory + 10);
         long directorySize = u32(endOfCentralDirectory + 12);
         long directoryOffset = u32(endOfCentralDirectory + 16);
+        // A 16-bit entry count of 0xFFFF is not on its own a promise that the ZIP64 records are there:
+        // a writer that compares with > rather than >= leaves an archive of exactly 65535 entries looking
+        // like this, and 65535 is then the true count. java.util.zip reads such an archive, so the
+        // launcher must too, or a jar every other tool accepts refuses to start. A marked directory size
+        // or offset is different: the real value exists only in the ZIP64 record.
         boolean needsZip64 = directoryOffset == IndexFormat.ZIP64_MARKER
-                || directorySize == IndexFormat.ZIP64_MARKER
-                || entries == 0xFFFF;
+                || directorySize == IndexFormat.ZIP64_MARKER;
         long locator = endOfCentralDirectory - IndexFormat.ZIP64_LOCATOR_SIZE;
         boolean hasLocator = locator >= 0
                 && i32(locator) == IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE;

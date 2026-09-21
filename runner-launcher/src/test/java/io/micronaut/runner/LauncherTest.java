@@ -98,6 +98,46 @@ class LauncherTest {
     }
 
     @Test
+    void invokesAMainInheritedFromAnInterface() throws Throwable {
+        // jdk.internal.misc.MethodFinder, which is what the java launcher itself uses, searches the
+        // interface hierarchy as well as the superclass chain. Walking only getSuperclass() made a class
+        // whose main is an interface default method look like a class with no main at all, so a program
+        // that `java -cp classes demo.App` starts did not start from a runner jar.
+        Method chosen = Launcher.findMainMethod(InterfaceArgs.class);
+        assertNotNull(chosen, "an interface default main is inherited like any other method");
+        assertEquals(1, chosen.getParameterCount());
+
+        Launcher.invokeMain(InterfaceArgs.class, new String[] {"x"});
+        assertEquals(List.of("interface-args:x"), CALLS);
+    }
+
+    @Test
+    void invokesANoArgumentMainInheritedFromAnInterface() throws Throwable {
+        Launcher.invokeMain(InterfaceNoArgs.class, new String[0]);
+        assertEquals(List.of("interface-no-args"), CALLS);
+    }
+
+    @Test
+    void prefersAnInterfaceMainWithArgumentsOverADeclaredStaticMainWithout() throws Throwable {
+        // The silent half of the same defect: the application started, but through a different method
+        // than java would have chosen, so its command line arguments were dropped without a word.
+        Launcher.invokeMain(InterfaceArgsBeatsStaticNoArgs.class, new String[] {"kept"});
+        assertEquals(List.of("interface-args:kept"), CALLS);
+    }
+
+    @Test
+    void prefersAMainDeclaredByAClassOverOneDeclaredByAnInterface() throws Throwable {
+        Launcher.invokeMain(ClassBeatsInterface.class, new String[] {"y"});
+        assertEquals(List.of("class-args:y"), CALLS,
+                "a class always wins over an interface for the same signature, as it does for the JDK");
+    }
+
+    @Test
+    void ignoresAStaticInterfaceMethodBecauseItIsNotInherited() {
+        assertNull(Launcher.findMainMethod(StaticInterfaceMain.class));
+    }
+
+    @Test
     void ignoresAPrivateMain() throws Throwable {
         Launcher.invokeMain(PrivateMain.class, new String[0]);
         assertEquals(List.of("public-no-args"), CALLS);
@@ -269,6 +309,76 @@ class LauncherTest {
 
     /** No main method at all. */
     static class NoMain {
+    }
+
+    /** Declares {@code main(String[])} as an interface default method. */
+    interface HasArgsMain {
+
+        /**
+         * The inherited main.
+         *
+         * @param args the arguments
+         */
+        default void main(String[] args) {
+            called("interface-args:" + String.join(",", args));
+        }
+    }
+
+    /** Declares {@code main()} as an interface default method. */
+    interface HasNoArgsMain {
+
+        /** The inherited main. */
+        default void main() {
+            called("interface-no-args");
+        }
+    }
+
+    /** Declares a static {@code main(String[])}, which an implementing class does not inherit. */
+    interface HasStaticMain {
+
+        /**
+         * The static main, which is not inherited.
+         *
+         * @param args the arguments
+         */
+        static void main(String[] args) {
+            called("interface-static:" + String.join(",", args));
+        }
+    }
+
+    /** Its only main comes from an interface. */
+    static class InterfaceArgs implements HasArgsMain {
+    }
+
+    /** Its only main comes from an interface and takes nothing. */
+    static class InterfaceNoArgs implements HasNoArgsMain {
+    }
+
+    /** Declares the no-argument form; the form taking arguments arrives from an interface. */
+    static class InterfaceArgsBeatsStaticNoArgs implements HasArgsMain {
+
+        /** Records that it was called. */
+        public static void main() {
+            called("static-no-args");
+        }
+    }
+
+    /** Declares the same signature the interface does, and wins. */
+    static class ClassBeatsInterface implements HasArgsMain {
+
+        /**
+         * Records that it was called.
+         *
+         * @param args the arguments
+         */
+        @Override
+        public void main(String[] args) {
+            called("class-args:" + String.join(",", args));
+        }
+    }
+
+    /** Implements an interface whose only main is static, which is not a candidate. */
+    static class StaticInterfaceMain implements HasStaticMain {
     }
 
     /** An instance main whose class has no no-argument constructor. */

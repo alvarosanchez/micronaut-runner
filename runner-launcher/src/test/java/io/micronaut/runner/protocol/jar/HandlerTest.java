@@ -51,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -164,6 +165,43 @@ class HandlerTest {
         JarURLConnection connection = (JarURLConnection) URI.create(url.toString()).toURL().openConnection();
         assertEquals(IndexFormat.CLASSES_PREFIX + BANG, connection.getEntryName());
         assertArrayEquals(BANG_TEXT, read(url));
+    }
+
+    @Test
+    void describesAnApplicationLayerDirectoryFromItsIndexRecord() throws IOException {
+        // The application layer is stored exploded, so the outer archive carries no entry for a directory
+        // inside it. Asking the outer JarFile for one answered null while getEntryName() was not null and
+        // getInputStream() worked: four accessors that no longer described the same entry, and a
+        // NullPointerException for the usual conn.getJarEntry().isDirectory() way of classifying a URL.
+        URL url = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "weird/");
+        JarURLConnection connection = (JarURLConnection) url.openConnection();
+        connection.setUseCaches(false);
+
+        assertEquals(IndexFormat.CLASSES_PREFIX + "weird/", connection.getEntryName());
+        JarEntry entry = connection.getJarEntry();
+        assertNotNull(entry, "a URL that resolves has to describe an entry");
+        assertEquals(connection.getEntryName(), entry.getName());
+        assertTrue(entry.isDirectory());
+        assertEquals(0, entry.getSize());
+        assertNull(connection.getJarFile().getEntry(connection.getEntryName()),
+                "the outer archive really does not carry this entry, which is the whole point");
+        try (InputStream in = connection.getInputStream()) {
+            assertEquals(0, in.readAllBytes().length);
+        }
+    }
+
+    @Test
+    void describesAnApplicationLayerFileFromItsIndexRecord() throws IOException {
+        JarURLConnection connection =
+                (JarURLConnection) Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")
+                        .openConnection();
+        connection.setUseCaches(false);
+
+        JarEntry entry = connection.getJarEntry();
+        assertEquals(IndexFormat.CLASSES_PREFIX + "app.txt", entry.getName());
+        assertEquals(APP_TEXT.length, entry.getSize());
+        assertFalse(entry.isDirectory());
+        assertEquals(DOS_TIME_MILLIS, entry.getTime());
     }
 
     @Test

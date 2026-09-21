@@ -100,6 +100,8 @@ class RunnerClassLoaderTest {
         application.add("javax/net/Shadow.class", classBytes("javax.net.Shadow", "shadow"));
         application.add("io/micronaut/runner/generated/AppEntry.class",
                 classBytes("io.micronaut.runner.generated.AppEntry", "generated"));
+        application.add("io/micronaut/runner/app/Sneaky.class",
+                classBytes("io.micronaut.runner.app.Sneaky", "sneaky"));
         application.add("org/example/Corrupt.class",
                 classBytes("org.example.Corrupt", "corrupt")).corruptCrc();
         application.add("shared.txt", text("jar0-shared"));
@@ -224,6 +226,42 @@ class RunnerClassLoaderTest {
         Class<?> generated = loader.loadClass("io.micronaut.runner.generated.AppEntry");
         assertSame(loader, generated.getClassLoader(), "generated classes belong to the application");
         assertEquals("generated", id(generated));
+    }
+
+    @Test
+    void loadsAnApplicationClassUnderTheLauncherPrefix() throws Exception {
+        // Nothing stops an application, or a dependency, from using a package under io.micronaut.runner.
+        // The launcher's loader is preferred for that prefix so that its own types are shared, but it does
+        // not have this class, and reporting it missing told the user their runner jar had been modified
+        // when there was nothing wrong with it.
+        RunnerClassLoader loader = newLoader();
+
+        Class<?> sneaky = loader.loadClass("io.micronaut.runner.app.Sneaky");
+
+        assertSame(loader, sneaky.getClassLoader(), "it is an application class like any other");
+        assertEquals("sneaky", id(sneaky));
+        assertSame(Entry.class, loader.loadClass("io.micronaut.runner.Entry"),
+                "and the launcher's own types still come from the launcher's loader");
+        assertThrows(ClassNotFoundException.class,
+                () -> loader.loadClass("io.micronaut.runner.app.Absent"),
+                "a class neither side has is still missing");
+    }
+
+    @Test
+    void findsADirectoryResourceWithoutATrailingSlash() throws Exception {
+        // ZipFile.getEntry, and NestedJarFile.getEntry with it, retry a name that missed with a trailing
+        // slash. A URLClassLoader over a jar answers getResource("some/package") that way, and code that
+        // probes for a package directory by name depends on it.
+        assumeHandlersRegistered();
+        RunnerClassLoader loader = newLoader();
+
+        assertNotNull(loader.getResource("org/example/"));
+        assertEquals(loader.getResource("org/example/"), loader.getResource("org/example"),
+                "the same directory, asked for the other way");
+        assertNotNull(loader.getResource("org/alpha"), "a directory of a nested jar too");
+        assertEquals(list(loader.findResources("org/example/")), list(loader.findResources("org/example")),
+                "and every jar that has it is still enumerated");
+        assertNull(loader.getResource("org/nowhere"), "a directory that does not exist is still absent");
     }
 
     @Test
@@ -417,6 +455,14 @@ class RunnerClassLoaderTest {
         assertNull(RunnerClassLoader.normalizeResourceName("../a"));
         assertNull(RunnerClassLoader.normalizeResourceName("a/../../b"));
         assertNull(RunnerClassLoader.normalizeResourceName(null));
+        // An empty segment is collapsed whether or not a dot segment happens to be in the same name.
+        assertEquals("a/b", RunnerClassLoader.normalizeResourceName("a//b"));
+        assertEquals("a/b", RunnerClassLoader.normalizeResourceName("a/.//b"));
+        assertEquals("a/b", RunnerClassLoader.normalizeResourceName("//a/b"));
+        assertEquals("a/", RunnerClassLoader.normalizeResourceName("a//"));
+        assertEquals("a/", RunnerClassLoader.normalizeResourceName("a/"),
+                "one trailing slash is how a directory is asked for, and it survives");
+        assertEquals("", RunnerClassLoader.normalizeResourceName(""));
     }
 
     @Test

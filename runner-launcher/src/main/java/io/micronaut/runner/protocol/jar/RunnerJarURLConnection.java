@@ -54,7 +54,11 @@ import java.util.jar.Manifest;
  * <p>For an entry of the application layer, {@code jar:file:/app.jar!/MICRONAUT-INF/classes/a/B.class},
  * the answers are the ordinary ones over the outer archive: the jar URL is {@code file:/app.jar}, the
  * entry name is {@code MICRONAUT-INF/classes/a/B.class}, and the jar is the outer archive as an ordinary
- * {@link JarFile}.</p>
+ * {@link JarFile}. The entry itself comes from the index record the connection resolved rather than from
+ * that {@link JarFile}, because the application layer's directories are recorded in the index and are not
+ * entries of the outer archive: asking the archive for one would answer {@code null} for a URL whose
+ * {@link #getEntryName()} is not null and whose {@link #getInputStream()} works, and the four answers
+ * would stop describing the same thing.</p>
  *
  * <p>A URL that names a whole nested jar, whether it ends with {@value Handlers#SEPARATOR} or stops at the
  * jar, streams the bytes of that jar, so that code which wants to treat a dependency as an archive can.</p>
@@ -224,6 +228,14 @@ public final class RunnerJarURLConnection extends JarURLConnection {
      * {@code META-INF/versions/<n>/} name, so that is the entry reported, in the same spirit as
      * {@link JarEntry#getRealName()}.</p>
      *
+     * <p>An application layer entry is described from the index record, which is where its size, checksum,
+     * compression method and timestamp are recorded and where {@link #getInputStream()} already reads
+     * from. That is also the only way a directory of the application layer can be described at all: the
+     * layer is stored exploded and the outer archive carries no entry for every directory in it, so
+     * delegating to the outer {@link JarFile} would answer {@code null} for a URL that resolves
+     * perfectly well, and {@code conn.getJarEntry().isDirectory()} - the usual way to classify a class
+     * path URL - would fail with a {@link NullPointerException}.</p>
+     *
      * @return the entry, or {@code null} when the URL names a whole jar
      * @throws IOException if the jar cannot be opened
      */
@@ -235,8 +247,36 @@ public final class RunnerJarURLConnection extends JarURLConnection {
         }
         JarEntry entry = jarEntry;
         if (entry == null) {
-            entry = getJarFile().getJarEntry(nested ? name : physicalName());
+            if (nested) {
+                entry = getJarFile().getJarEntry(name);
+            } else if (record != IndexFormat.NO_INDEX) {
+                entry = entryFromRecord();
+            } else {
+                entry = getJarFile().getJarEntry(physicalName());
+            }
             jarEntry = entry;
+        }
+        return entry;
+    }
+
+    /**
+     * Describes the resolved index record as a {@link JarEntry}, the way {@link NestedJarEntry} describes
+     * a record of a nested jar.
+     *
+     * @return the entry, named after the outer entry that physically holds the bytes
+     */
+    private JarEntry entryFromRecord() {
+        JarEntry entry = new JarEntry(physicalName());
+        int method = index.entryMethod(record);
+        if (method == IndexFormat.METHOD_STORED || method == IndexFormat.METHOD_DEFLATED) {
+            entry.setMethod(method);
+        }
+        entry.setSize(index.entryUncompressedSize(record));
+        entry.setCompressedSize(index.entryCompressedSize(record));
+        entry.setCrc(index.entryCrc32(record));
+        long time = NestedJarEntry.dosTimeToMillis(index.entryDosTime(record));
+        if (time >= 0) {
+            entry.setTime(time);
         }
         return entry;
     }

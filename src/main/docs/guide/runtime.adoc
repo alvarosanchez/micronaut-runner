@@ -9,6 +9,12 @@ Arguments after the JAR are passed to your application untouched, and an excepti
 application propagates exactly as it would from an ordinary main class: the JVM prints the stack trace and
 exits with status 1. The launcher never wraps it.
 
+The main method is chosen the way the `java` launcher chooses it, JEP 512 included: `main(String[])` is
+preferred over `main()`, the whole hierarchy - superclasses and the interfaces they implement - is searched
+for the first form before the second is considered, a `main` inherited as an interface default method
+counts, and a non-static one is invoked on a new instance built from a non-private no-argument
+constructor.
+
 == System properties
 
 [cols="30,15,55"]

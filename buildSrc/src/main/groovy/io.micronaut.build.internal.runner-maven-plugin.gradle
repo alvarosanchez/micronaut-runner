@@ -13,6 +13,11 @@ dependencies {
     compileOnly libs.maven.plugin.api
     compileOnly libs.maven.core
     compileOnly libs.maven.plugin.annotations
+
+    // Nothing provides them to a test, which has to build a MavenProject and call the Mojo itself.
+    testImplementation libs.maven.plugin.api
+    testImplementation libs.maven.core
+    testImplementation libs.maven.plugin.annotations
 }
 
 mavenPlugin {
@@ -33,4 +38,62 @@ publishing {
 // of the main source set. It is machine-generated, so it is exempt from the code style rules.
 tasks.named('checkstyleMain', Checkstyle) {
     exclude '**/maven/help/**'
+}
+
+// A Maven plugin jar embeds META-INF/maven/plugin.xml, which repeats the plugin's own version. The
+// -DUMMY twin publication that the functional tests resolve republishes the very same jar under a
+// different version, and Maven rejects the mismatch with "Invalid plugin descriptor", so no Maven sample
+// could run. Rewrite the version inside the descriptors of the published copy, in the throwaway test
+// repository only: the real publication is untouched, and there the version always matches by construction.
+def patchTestRepoDescriptor = tasks.register('patchTestRepoDescriptor') {
+    description = 'Rewrites the plugin descriptor version inside the -DUMMY jar published to the test repository'
+    def testRepoDir = layout.buildDirectory.dir('test-repo')
+    def realVersion = providers.gradleProperty('projectVersion')
+    def dummyVersion = realVersion.map { it.replace('-SNAPSHOT', '-DUMMY') }
+    outputs.upToDateWhen { false }
+    doLast {
+        def from = realVersion.get()
+        def to = dummyVersion.get()
+        def descriptors = ['META-INF/maven/plugin.xml',
+                           "META-INF/maven/${project.group}/${project.name}/plugin-help.xml".toString()] as Set
+        testRepoDir.get().asFile.eachFileRecurse { file ->
+            if (!file.name.endsWith("-${to}.jar")) {
+                return
+            }
+            def patched = new File(file.parentFile, file.name + '.patched')
+            def rewritten = []
+            new java.util.zip.ZipInputStream(file.newInputStream()).withCloseable { input ->
+                new java.util.zip.ZipOutputStream(patched.newOutputStream()).withCloseable { output ->
+                    def entry
+                    while ((entry = input.nextEntry) != null) {
+                        byte[] bytes = input.readAllBytes()
+                        if (descriptors.contains(entry.name)) {
+                            def text = new String(bytes, 'UTF-8')
+                            if (text.contains("<version>${from}</version>")) {
+                                bytes = text.replace("<version>${from}</version>", "<version>${to}</version>")
+                                        .getBytes('UTF-8')
+                                rewritten << entry.name
+                            }
+                        }
+                        // Always STORED-or-DEFLATED as a fresh entry: sizes change when the version does.
+                        def copy = new java.util.zip.ZipEntry(entry.name)
+                        copy.time = entry.time
+                        output.putNextEntry(copy)
+                        output.write(bytes)
+                        output.closeEntry()
+                    }
+                }
+            }
+            if (rewritten.isEmpty()) {
+                patched.delete()
+            } else {
+                assert patched.renameTo(file) || (file.delete() && patched.renameTo(file))
+                logger.info("Rewrote ${rewritten} to version ${to} in ${file.name}")
+            }
+        }
+    }
+}
+
+tasks.named('publishToTestRepo') {
+    finalizedBy patchTestRepoDescriptor
 }

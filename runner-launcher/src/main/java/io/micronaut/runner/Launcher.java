@@ -297,10 +297,12 @@ public final class Launcher {
      *
      * <p>A candidate is named {@code main}, returns {@code void} and is not private. The form taking a
      * {@code String[]} is preferred over the form taking nothing <em>regardless of whether either is
-     * static</em>, and the whole class hierarchy is searched for the first form before the second is
-     * considered at all: an inherited {@code main(String[])} beats a declared {@code main()}, and an
-     * instance {@code main(String[])} beats a static {@code main()}. A non-static candidate is invoked on
-     * a new instance built from a non-private no-argument constructor.</p>
+     * static</em>, and the whole hierarchy - superclasses and the interfaces they implement - is searched
+     * for the first form before the second is considered at all: an inherited {@code main(String[])} beats
+     * a declared {@code main()}, an instance {@code main(String[])} beats a static {@code main()}, and a
+     * {@code main} inherited as an interface default method is as good as one inherited from a superclass.
+     * A non-static candidate is invoked on a new instance built from a non-private no-argument
+     * constructor.</p>
      *
      * @param type the application class
      * @param args the command line arguments
@@ -338,36 +340,113 @@ public final class Launcher {
      * @return the method, or {@code null} when the class has no candidate
      */
     static Method findMainMethod(Class<?> type) {
-        Method method = findCandidate(type, true);
+        Method method = findCandidate(type, true, true);
         if (method == null) {
-            method = findCandidate(type, false);
+            method = findCandidate(type, false, true);
+        }
+        if (method == null || !isUsableMain(method)) {
+            method = findCandidate(type, false, false);
+        }
+        if (method == null || !isUsableMain(method)) {
+            return null;
         }
         return method;
     }
 
-    private static Method findCandidate(Class<?> type, boolean withArguments) {
-        Class<?> current = type;
-        while (current != null) {
-            Method[] methods = current.getDeclaredMethods();
-            for (int i = 0; i < methods.length; i++) {
-                Method candidate = methods[i];
-                if (!MAIN_METHOD.equals(candidate.getName())
-                        || candidate.getReturnType() != void.class
-                        || Modifier.isPrivate(candidate.getModifiers())) {
-                    continue;
-                }
-                Class<?>[] parameters = candidate.getParameterTypes();
-                if (withArguments) {
-                    if (parameters.length == 1 && parameters[0] == String[].class) {
-                        return candidate;
-                    }
-                } else if (parameters.length == 0) {
-                    return candidate;
-                }
-            }
-            current = current.getSuperclass();
+    /**
+     * Whether a candidate is a main method a program can be started through.
+     *
+     * @param candidate the method the search settled on
+     * @return {@code true} when it returns {@code void} and is not private
+     */
+    private static boolean isUsableMain(Method candidate) {
+        return candidate.getReturnType() == void.class && !Modifier.isPrivate(candidate.getModifiers());
+    }
+
+    /**
+     * The {@code main} of one arity in a type's hierarchy, chosen the way {@code java} chooses it.
+     *
+     * <p>This mirrors {@code java.lang.Class.getMethodsRecursive}, which is what
+     * {@code jdk.internal.misc.MethodFinder} - the code the {@code java} launcher itself runs - searches
+     * with. A type's own declared methods win outright; failing that the superclass is searched and its
+     * answer merged with the answer from every directly implemented interface. Static methods count in the
+     * class hierarchy but not in the interface hierarchy, because a static interface method is not
+     * inherited.</p>
+     *
+     * @param type          the type to search
+     * @param publicOnly    whether only public declared methods are considered, which is the first pass
+     * @param withArguments whether to look for {@code main(String[])} rather than {@code main()}
+     * @return the method, or {@code null} when the hierarchy declares none
+     */
+    private static Method findCandidate(Class<?> type, boolean publicOnly, boolean withArguments) {
+        return findCandidate(type, publicOnly, withArguments, true);
+    }
+
+    private static Method findCandidate(Class<?> type, boolean publicOnly, boolean withArguments,
+            boolean includeStatic) {
+        Method declared = declaredCandidate(type, publicOnly, withArguments, includeStatic);
+        if (declared != null) {
+            // A match among the declared methods overrides anything a supertype declares with the same
+            // signature, so the search stops here.
+            return declared;
         }
-        return null;
+        Method best = null;
+        Class<?> superclass = type.getSuperclass();
+        if (superclass != null) {
+            best = findCandidate(superclass, publicOnly, withArguments, includeStatic);
+        }
+        Class<?>[] interfaces = type.getInterfaces();
+        for (int i = 0; i < interfaces.length; i++) {
+            best = moreSpecific(best, findCandidate(interfaces[i], publicOnly, withArguments, false));
+        }
+        return best;
+    }
+
+    private static Method declaredCandidate(Class<?> type, boolean publicOnly, boolean withArguments,
+            boolean includeStatic) {
+        Method[] methods = type.getDeclaredMethods();
+        Method found = null;
+        for (int i = 0; i < methods.length; i++) {
+            Method candidate = methods[i];
+            if (!MAIN_METHOD.equals(candidate.getName())) {
+                continue;
+            }
+            int modifiers = candidate.getModifiers();
+            if (publicOnly && !Modifier.isPublic(modifiers)) {
+                continue;
+            }
+            if (!includeStatic && Modifier.isStatic(modifiers)) {
+                continue;
+            }
+            Class<?>[] parameters = candidate.getParameterTypes();
+            boolean matches = withArguments
+                    ? parameters.length == 1 && parameters[0] == String[].class
+                    : parameters.length == 0;
+            if (!matches) {
+                continue;
+            }
+            if (found == null
+                    || (found.getReturnType() != void.class && candidate.getReturnType() == void.class)) {
+                found = candidate;
+            }
+        }
+        return found;
+    }
+
+    private static Method moreSpecific(Method existing, Method candidate) {
+        if (candidate == null) {
+            return existing;
+        }
+        if (existing == null) {
+            return candidate;
+        }
+        Class<?> arriving = candidate.getDeclaringClass();
+        Class<?> present = existing.getDeclaringClass();
+        if (present.isInterface() != arriving.isInterface()) {
+            // A method declared by a class always wins over one declared by an interface.
+            return present.isInterface() ? candidate : existing;
+        }
+        return present.isAssignableFrom(arriving) ? candidate : existing;
     }
 
     private static Object newInstance(Class<?> type) throws Throwable {

@@ -25,9 +25,14 @@ not.
 |The Micronaut bean metadata of the application and of every dependency, merged and de-duplicated, with
 explicit directory entries. See <<serviceDiscovery>>.
 
+|`MICRONAUT-INF/classes/`
+|An explicit directory entry for the application layer, so that the `CodeSource` location of every
+application class names something the archive really carries and can be opened.
+
 |`MICRONAUT-INF/classes/**`
 |The application's own classes and resources, stored exploded. This is "jar 0"; an entry's _logical name_
-is its path with this prefix removed.
+is its path with this prefix removed. Directories inside the layer are not stored; the index carries a
+synthetic record for each one instead.
 
 |`MICRONAUT-INF/lib/<name>.jar`
 |The dependencies, in classpath order, each a complete JAR.
@@ -62,8 +67,13 @@ returns the first and `getResources` walks the chain, emitting one URL per contr
 
 Multi-release aliases:: For a JAR declaring `Multi-Release: true`, each `META-INF/versions/N/<path>` entry
 is indexed a second time under `<path>`, marked with its version. Aliases precede the base entry in
-descending version order, so resolution takes the first record the running JDK accepts. Paths that
-themselves start with `META-INF/` are never aliased, matching the JDK's own rule.
+descending version order, so resolution takes the first record the running JDK accepts. The rule for what
+counts as a version directory is `java.util.jar.JarFile`'s, so that a JAR resolves to the same bytes
+inside a runner JAR as it does on an ordinary class path: `N` must start with `1`-`9`, so
+`META-INF/versions/09/` is an ordinary entry and is never selected; `N` is considered from 8 upwards, and
+only when the effective runtime version is above 8, so a versioned entry is ignored altogether when
+`jdk.util.jar.enableMultiRelease` is `false` or `jdk.util.jar.version` selects 8; and paths that themselves
+start with `META-INF/` are never aliased.
 
 Package table:: The per-package `Name:` sections of each dependency's manifest, which override the
 manifest's main attributes attribute by attribute when a package is defined.
@@ -93,6 +103,12 @@ de-duplicated and in classpath order, into `META-INF/micronaut/` at the *root* o
 real directory entries. The class loader resolves any name under that prefix against the merged copy
 alone, so `getResources("META-INF/micronaut/")` returns exactly one URL and Micronaut lists it in a single
 pass over an archive the JVM already has open.
+
+Almost all of these entries are empty markers whose name carries the information, but one that has content
+keeps it: the merged copy is written with the bytes of the first contributor in classpath order, and a
+build warns when two JARs contribute the same name with different content. Since every lookup under the
+prefix is answered from the merged copy, the alternative would be serving an empty stream for a file that
+is not empty.
 
 Classic `META-INF/services/` files are left exactly where they are, one per dependency: they are read as
 files through their URL, which works per JAR without any special handling.

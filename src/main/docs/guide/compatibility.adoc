@@ -6,7 +6,10 @@ JARs, comparing resource resolution, resource ordering, class bytes, package att
 
 * `getResource` returns the first match in classpath order; `getResources` returns one URL per contributing
 JAR, in classpath order, with the first element equal to what `getResource` returned.
-* Duplicate resources in different dependencies stay distinct.
+* Duplicate resources in different dependencies stay distinct, including two entries of one dependency
+that share a name, which stay two records.
+* A directory resolves whether or not the name ends with a slash, as `ZipFile.getEntry` resolves one.
+* A manifest attribute that is present but empty is reported as `""` on the `Package`, not as absent.
 * Multi-release JARs resolve per JAR against the running JDK's feature version, honouring
 `jdk.util.jar.enableMultiRelease` and `jdk.util.jar.version`. Paths under `META-INF/` are never versioned.
 * Each dependency keeps its own manifest, so `Package.getImplementationVersion()` and the other
@@ -25,6 +28,11 @@ and report the archive passed to the constructor, which is the outer one. A `Jar
 nested dependency therefore reports the outer archive's state from those two methods. Entry _lookup_ still
 applies the nested JAR's own multi-release policy, so resolution is correct; only these two reporting
 methods cannot be corrected.
+
+Classes in `io.micronaut.runner`:: The launcher's own classes are loaded from the launcher, so an
+application or dependency class whose binary name is one of theirs - `io.micronaut.runner.Index`, say -
+resolves to the launcher's copy. Any other class under that package prefix is loaded from the archive like
+any other application class.
 
 The system class loader:: Only the thread context class loader is the runner class loader.
 `ClassLoader.getSystemClassLoader()` still sees the real `java.class.path`, which contains only the runner

@@ -944,16 +944,18 @@ public final class Index {
      * packager guarantees by not emitting aliases for them, so no special case is needed here.</p>
      *
      * @param chainHead        a record, usually the result of {@link #find(String)}
-     * @param effectiveVersion the runtime feature version, or anything below 9 for base entries only
+     * @param effectiveVersion the runtime feature version, or at most {@link #BASE_VERSION} for base
+     *                         entries only
      * @return the first applicable record, or {@link IndexFormat#NO_INDEX}
      */
     public int resolve(int chainHead, int effectiveVersion) {
+        int highest = versionedCeiling(effectiveVersion);
         int record = chainHead;
         int guard = entryCount;
         while (record != IndexFormat.NO_INDEX) {
             int offset = entryOffset(record);
             int version = buffer.get(offset + IndexFormat.E_MR_VERSION) & 0xFF;
-            if (version == 0 || version <= effectiveVersion) {
+            if (version == 0 || version <= highest) {
                 return record;
             }
             record = buffer.getInt(offset + IndexFormat.E_NEXT_SAME_NAME);
@@ -970,18 +972,20 @@ public final class Index {
      * {@code ClassLoader.getResources} does.
      *
      * @param chainHead        a record, usually the result of {@link #find(String)}
-     * @param effectiveVersion the runtime feature version, or anything below 9 for base entries only
+     * @param effectiveVersion the runtime feature version, or at most {@link #BASE_VERSION} for base
+     *                         entries only
      * @param jarId            the only jar to consider
      * @return the first applicable record of that jar, or {@link IndexFormat#NO_INDEX}
      */
     public int resolveInJar(int chainHead, int effectiveVersion, int jarId) {
+        int highest = versionedCeiling(effectiveVersion);
         int record = chainHead;
         int guard = entryCount;
         while (record != IndexFormat.NO_INDEX) {
             int offset = entryOffset(record);
             int version = buffer.get(offset + IndexFormat.E_MR_VERSION) & 0xFF;
             if ((buffer.getShort(offset + IndexFormat.E_JAR_ID) & 0xFFFF) == jarId
-                    && (version == 0 || version <= effectiveVersion)) {
+                    && (version == 0 || version <= highest)) {
                 return record;
             }
             record = buffer.getInt(offset + IndexFormat.E_NEXT_SAME_NAME);
@@ -991,6 +995,23 @@ public final class Index {
             }
         }
         return IndexFormat.NO_INDEX;
+    }
+
+    /**
+     * The highest {@code META-INF/versions/N} that a lookup may select for an effective runtime version.
+     *
+     * <p>{@code JarFile} consults versioned entries only when the version it runs for is <em>above</em>
+     * {@link #BASE_VERSION}: with {@code jdk.util.jar.enableMultiRelease} set to {@code false}, or with
+     * {@code jdk.util.jar.version} pinned to 8, a {@code META-INF/versions/8/} entry is not selected even
+     * though its version is not above what was asked for. Reporting {@code 0} for that case keeps the
+     * test inside the two resolve loops a single comparison, because no alias ever records version
+     * {@code 0} and every base record does.</p>
+     *
+     * @param effectiveVersion the runtime feature version
+     * @return the highest alias version that applies, or {@code 0} when only base entries apply
+     */
+    private static int versionedCeiling(int effectiveVersion) {
+        return effectiveVersion > BASE_VERSION ? effectiveVersion : 0;
     }
 
     /**

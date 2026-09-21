@@ -317,6 +317,33 @@ class ArchiveSourceTest {
         assertFalse(track(ArchiveSource.open(file)).mapped());
     }
 
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void findsTheIndexEntryWhenTheEntryCountCarriesTheMarker(boolean mapped) throws IOException {
+        // Exactly 65535 entries: the 16-bit count field of the end record has no value for that number
+        // which is not also the ZIP64 marker, and a writer that does not notice leaves no ZIP64 records
+        // behind it. java.util.zip falls back to the 32-bit fields and reads the archive, so the launcher
+        // has to as well; refusing it means a jar every other tool accepts does not start.
+        byte[] index = smallIndex();
+        TestArchiveBuilder archive = new TestArchiveBuilder();
+        archive.stored("META-INF/MANIFEST.MF", HELLO);
+        long at = archive.stored(IndexFormat.INDEX_ENTRY_NAME, index);
+        for (int i = 2; i < 0xFFFF; i++) {
+            archive.stored("MICRONAUT-INF/classes/f/" + i, new byte[0]);
+        }
+        byte[] content = archive.build();
+        ArchiveSource source = open(content, mapped);
+
+        long[] location = source.openIndex();
+        assertEquals(at, location[0]);
+        assertEquals(index.length, location[1]);
+        assertEquals(IndexFormat.MAGIC, source.i32(location[0]));
+
+        try (ZipFile zip = new ZipFile(write(content))) {
+            assertEquals(0xFFFF, zip.size(), "the JDK reads the same archive");
+        }
+    }
+
     private static byte[] payload(int length) {
         byte[] bytes = new byte[length];
         for (int i = 0; i < bytes.length; i++) {

@@ -228,6 +228,9 @@ public final class RunnerClassLoader extends ClassLoader {
             return Collections.enumeration(urls);
         }
         int head = index.find(logical);
+        if (head == IndexFormat.NO_INDEX && !namesDirectory(logical)) {
+            head = index.find(withTrailingSlash(logical));
+        }
         if (head == IndexFormat.NO_INDEX) {
             return Collections.emptyEnumeration();
         }
@@ -310,10 +313,10 @@ public final class RunnerClassLoader extends ClassLoader {
     /**
      * Normalises a resource name against the root of the archive.
      *
-     * <p>One leading slash is dropped, {@code .} segments are removed and {@code ..} segments are
-     * resolved; a name that climbs above the root is not a name in this archive and yields {@code null}.
-     * A trailing slash survives normalisation, because it is what distinguishes a request for a directory
-     * from a request for a file.</p>
+     * <p>One leading slash is dropped, {@code .} segments are removed, {@code ..} segments are resolved
+     * and empty segments are collapsed; a name that climbs above the root is not a name in this archive
+     * and yields {@code null}. A trailing slash survives normalisation, because it is what distinguishes a
+     * request for a directory from a request for a file.</p>
      *
      * @param name the name as the caller wrote it
      * @return the name relative to the root of a jar, or {@code null} when it escapes the archive
@@ -326,7 +329,7 @@ public final class RunnerClassLoader extends ClassLoader {
         if (!value.isEmpty() && value.charAt(0) == '/') {
             value = value.substring(1);
         }
-        if (!hasDotSegment(value)) {
+        if (!needsNormalising(value)) {
             return value;
         }
         return resolveSegments(value);
@@ -367,7 +370,7 @@ public final class RunnerClassLoader extends ClassLoader {
         return packages;
     }
 
-    private static boolean hasDotSegment(String value) {
+    private static boolean needsNormalising(String value) {
         int length = value.length();
         int start = 0;
         for (int i = 0; i <= length; i++) {
@@ -377,6 +380,13 @@ public final class RunnerClassLoader extends ClassLoader {
                     return true;
                 }
                 if (size == 2 && value.charAt(start) == '.' && value.charAt(start + 1) == '.') {
+                    return true;
+                }
+                if (size == 0 && i < length) {
+                    // A doubled or leading slash. The final empty segment of a name that ends with one
+                    // slash is not an empty segment in this sense: it is how a directory is asked for, it
+                    // survives normalisation unchanged, and leaving it on the fast path keeps every
+                    // directory lookup allocation free.
                     return true;
                 }
                 start = i + 1;
@@ -454,11 +464,24 @@ public final class RunnerClassLoader extends ClassLoader {
 
     private Class<?> load(String name) throws ClassNotFoundException {
         if (name.startsWith(LAUNCHER_PREFIX) && !name.startsWith(GENERATED_PREFIX)) {
+            // The launcher's own loader is preferred, not imposed: Entry, Index and the rest must be the
+            // same types on both sides of the boundary, and only the classes that loader actually has can
+            // be. An application or a dependency is free to use a package under this prefix, and such a
+            // class lives in the archive like any other, so a miss here falls through to it rather than
+            // being reported as a class the runner jar has lost.
             ClassLoader owner = launcherLoader;
-            if (owner == null) {
-                return Class.forName(name, false, null);
+            try {
+                if (owner == null) {
+                    return Class.forName(name, false, null);
+                }
+                return owner.loadClass(name);
+            } catch (ClassNotFoundException e) {
+                Class<?> found = findInArchive(name);
+                if (found != null) {
+                    return found;
+                }
+                throw e;
             }
-            return owner.loadClass(name);
         }
         if (isParentVisible(name)) {
             Class<?> fromParent = loadFromParent(name);
@@ -680,11 +703,52 @@ public final class RunnerClassLoader extends ClassLoader {
      * @return the record, or {@link IndexFormat#NO_INDEX} when nothing matches
      */
     private int resolveResource(String logical) {
+        int record = resolveExact(logical);
+        if (record == IndexFormat.NO_INDEX && !namesDirectory(logical)) {
+            // ZipFile.getEntry and NestedJarFile.getEntry both retry a name that missed with a trailing
+            // slash, so that a lookup of "some/package" finds the directory entry. A URLClassLoader over
+            // a jar, or over a directory, answers getResource("some/package") the same way. Without this
+            // the loader would disagree with its own JarFile view of the very same archive.
+            record = resolveExact(withTrailingSlash(logical));
+        }
+        return record;
+    }
+
+    /**
+     * Resolves a name exactly as it was written, with no retry.
+     *
+     * @param logical the normalised name
+     * @return the record, or {@link IndexFormat#NO_INDEX} when nothing matches
+     */
+    private int resolveExact(String logical) {
         int head = index.find(logical);
         if (logical.startsWith(IndexFormat.MICRONAUT_SERVICES_PREFIX)) {
             return index.resolveInJar(head, multiReleaseVersion, IndexFormat.APPLICATION_JAR_ID);
         }
         return index.resolve(head, multiReleaseVersion);
+    }
+
+    /**
+     * Whether a name already asks for a directory.
+     *
+     * @param logical the normalised name
+     * @return {@code true} when it ends with a slash
+     */
+    private static boolean namesDirectory(String logical) {
+        int length = logical.length();
+        return length > 0 && logical.charAt(length - 1) == '/';
+    }
+
+    /**
+     * The same name with a trailing slash appended.
+     *
+     * @param logical the normalised name
+     * @return the directory form of the name
+     */
+    private static String withTrailingSlash(String logical) {
+        StringBuilder directory = new StringBuilder(logical.length() + 1);
+        directory.append(logical).append('/');
+        return directory.toString();
     }
 
     private void addUrl(ArrayList<URL> urls, int record) {

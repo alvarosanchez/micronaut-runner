@@ -1,0 +1,526 @@
+/*
+ * Copyright 2017-2026 original authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.micronaut.runner.build;
+
+import io.micronaut.runner.IndexFormat;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
+import java.util.zip.CRC32;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Tests for {@link ZipReader}, which parses archives by hand so that entry data offsets are exact.
+ *
+ * <p>The archives under test are built with {@link ZipOutputStream}, so every assertion is against an
+ * independent implementation, and the reported data offsets are cross-checked by seeking to them in the
+ * file and comparing the bytes with what {@link ZipFile} returns for the same entry.</p>
+ */
+class ZipReaderTest {
+
+    @TempDir
+    Path temp;
+
+    @Test
+    void readsEveryFieldOfAMixedArchive() throws IOException {
+        byte[] classBytes = repeat("class-bytes-", 300);
+        byte[] storedBytes = "stored content".getBytes(StandardCharsets.UTF_8);
+        Path jar = temp.resolve("mixed.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            zip.setComment("an archive comment");
+            deflated(zip, "META-INF/MANIFEST.MF", manifestBytes("Multi-Release", "true"));
+            directory(zip, "org/");
+            directory(zip, "org/example/");
+            deflated(zip, "org/example/App.class", classBytes);
+            stored(zip, "org/example/data.bin", storedBytes);
+            deflated(zip, "org/example/caf\u00e9-\u65e5\u672c.txt", "unicode".getBytes(StandardCharsets.UTF_8));
+            deflated(zip, "META-INF/versions/17/org/example/App.class", repeat("v17-", 200));
+            deflated(zip, "META-INF/versions/21/org/example/App.class", repeat("v21-", 200));
+        }
+
+        try (ZipReader reader = ZipReader.open(jar); ZipFile oracle = new ZipFile(jar.toFile())) {
+            assertEquals("an archive comment", reader.comment());
+            assertEquals(Files.size(jar), reader.fileLength());
+            assertEquals(jar, reader.path());
+            assertEquals(names(oracle), reader.entries().stream().map(ZipEntryInfo::name).toList(),
+                    "entries must be reported in central directory order");
+
+            for (ZipEntryInfo entry : reader.entries()) {
+                ZipEntry expected = oracle.getEntry(entry.name());
+                assertEquals(expected.getSize(), entry.uncompressedSize(), entry.name());
+                assertEquals(expected.getCompressedSize(), entry.compressedSize(), entry.name());
+                assertEquals(expected.getCrc(), entry.crc32(), entry.name());
+                assertEquals(expected.getMethod(), entry.method(), entry.name());
+                assertEquals(expected.isDirectory(), entry.directory(), entry.name());
+                byte[] content = readAll(oracle, expected);
+                assertArrayEquals(content, reader.read(entry), entry.name());
+                assertArrayEquals(content, contentAt(jar, entry), entry.name() + " at its reported data offset");
+                assertArrayEquals(new byte[] {0x50, 0x4B, 0x03, 0x04}, bytesAt(jar, entry.localHeaderOffset(), 4),
+                        entry.name() + " local file header");
+            }
+
+            ZipEntryInfo stored = reader.entry("org/example/data.bin").orElseThrow();
+            assertEquals(IndexFormat.METHOD_STORED, stored.method());
+            assertArrayEquals(storedBytes, reader.readRaw(stored), "a stored entry's raw bytes are its content");
+
+            ZipEntryInfo deflated = reader.entry("org/example/App.class").orElseThrow();
+            assertEquals(IndexFormat.METHOD_DEFLATED, deflated.method());
+            assertNotEquals(deflated.uncompressedSize(), deflated.compressedSize());
+            assertArrayEquals(classBytes, reader.read(deflated));
+
+            assertTrue(reader.entry("META-INF/versions/17/org/example/App.class").isPresent(),
+                    "multi-release entries are ordinary entries");
+            assertTrue(reader.entry("org/").orElseThrow().directory());
+            assertEquals(0, reader.entry("org/").orElseThrow().uncompressedSize());
+            assertTrue(reader.entry("nope").isEmpty());
+
+            Manifest manifest = reader.manifest().orElseThrow();
+            assertEquals("true", manifest.getMainAttributes().getValue("Multi-Release"));
+            assertFalse(reader.hasSignatureFiles());
+        }
+    }
+
+    @Test
+    void readsEntriesWrittenWithADataDescriptor() throws IOException {
+        byte[] content = repeat("descriptor-", 500);
+        Path jar = temp.resolve("descriptor.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "a/B.class", content);
+        }
+        // ZipOutputStream writes deflated entries with the sizes in a trailing data descriptor: general
+        // purpose bit 3 is set and the local header's size fields are zero.
+        byte[] header = bytesAt(jar, 0, 30);
+        assertEquals(8, header[6] & 0xFF, "general purpose bit 3 must be set for this fixture to be meaningful");
+        assertEquals(0, intAt(header, 18), "the local header carries no compressed size");
+        assertEquals(0, intAt(header, 22), "the local header carries no uncompressed size");
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            ZipEntryInfo entry = reader.entry("a/B.class").orElseThrow();
+            assertEquals(content.length, entry.uncompressedSize(), "sizes come from the central directory");
+            assertTrue(entry.compressedSize() > 0);
+            assertArrayEquals(content, reader.read(entry));
+            assertArrayEquals(content, contentAt(jar, entry));
+        }
+    }
+
+    @Test
+    void readsAZip64EndOfCentralDirectoryRecord() throws IOException {
+        // More than 65535 entries forces ZipOutputStream to write a ZIP64 end record and locator, and to
+        // put the 0xFFFF marker in the 16-bit count of the ordinary end record.
+        int count = 65_600;
+        Path jar = temp.resolve("many.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            byte[] empty = new byte[0];
+            for (int i = 0; i < count; i++) {
+                stored(zip, "e/" + i, empty);
+            }
+        }
+        try (ZipReader reader = ZipReader.open(jar)) {
+            assertEquals(count, reader.entries().size());
+            assertEquals("e/0", reader.entries().get(0).name());
+            assertEquals("e/" + (count - 1), reader.entries().get(count - 1).name());
+            ZipEntryInfo last = reader.entries().get(count - 1);
+            assertArrayEquals(new byte[] {0x50, 0x4B, 0x03, 0x04}, bytesAt(jar, last.localHeaderOffset(), 4));
+            assertEquals(last.localHeaderOffset() + 30 + "e/65599".length(), last.dataOffset());
+        }
+    }
+
+    @Test
+    void readsSizesAndOffsetsFromTheZip64ExtraField() throws IOException {
+        Path plain = temp.resolve("plain.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(plain))) {
+            stored(zip, "a/one.txt", "first".getBytes(StandardCharsets.UTF_8));
+            deflated(zip, "a/two.txt", repeat("second-", 100));
+        }
+        List<ZipEntryInfo> expected;
+        try (ZipReader reader = ZipReader.open(plain)) {
+            expected = List.copyOf(reader.entries());
+        }
+
+        // Rewrite the central directory so that every size and offset carries the 0xFFFFFFFF marker and the
+        // real value lives in a ZIP64 extended information extra field. The values do not change, so the
+        // entries must come back exactly as before - through a different code path.
+        Path patched = temp.resolve("zip64-extra.jar");
+        Files.write(patched, withZip64Extras(Files.readAllBytes(plain)));
+
+        try (ZipFile oracle = new ZipFile(patched.toFile())) {
+            assertEquals(List.of("a/one.txt", "a/two.txt"), names(oracle), "the fixture must be a valid archive");
+            assertArrayEquals("first".getBytes(StandardCharsets.UTF_8), readAll(oracle, oracle.getEntry("a/one.txt")));
+        }
+        try (ZipReader reader = ZipReader.open(patched)) {
+            assertEquals(expected, reader.entries());
+            assertArrayEquals("first".getBytes(StandardCharsets.UTF_8),
+                    reader.read(reader.entry("a/one.txt").orElseThrow()));
+            assertArrayEquals(repeat("second-", 100), reader.read(reader.entry("a/two.txt").orElseThrow()));
+        }
+    }
+
+    @Test
+    void rejectsAMarkedFieldWithNoZip64ExtraField() throws IOException {
+        Path plain = temp.resolve("marked.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(plain))) {
+            stored(zip, "a/one.txt", "first".getBytes(StandardCharsets.UTF_8));
+        }
+        byte[] archive = Files.readAllBytes(plain);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        putInt(archive, central + 20, 0xFFFFFFFFL);
+        Path broken = temp.resolve("marked-broken.jar");
+        Files.write(broken, archive);
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(broken));
+        assertTrue(failure.getMessage().contains("ZIP64"), failure.getMessage());
+    }
+
+    @Test
+    void readsAnArchiveWithNoEntries() throws IOException {
+        Path jar = temp.resolve("empty.jar");
+        new ZipOutputStream(Files.newOutputStream(jar)).close();
+        try (ZipReader reader = ZipReader.open(jar)) {
+            assertEquals(List.of(), reader.entries());
+            assertTrue(reader.manifest().isEmpty());
+            assertEquals("", reader.comment());
+        }
+    }
+
+    @Test
+    void detectsSignatureFiles() throws IOException {
+        Path jar = temp.resolve("signed.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "META-INF/MANIFEST.MF", manifestBytes("Created-By", "test"));
+            deflated(zip, "META-INF/my.sf", "signature".getBytes(StandardCharsets.UTF_8));
+            deflated(zip, "META-INF/MY.RSA", new byte[] {1, 2, 3});
+            deflated(zip, "a/B.class", new byte[] {4});
+        }
+        try (ZipReader reader = ZipReader.open(jar)) {
+            assertTrue(reader.hasSignatureFiles());
+        }
+
+        assertTrue(ZipReader.isSignatureFile("META-INF/X.SF"));
+        assertTrue(ZipReader.isSignatureFile("meta-inf/x.sf"));
+        assertTrue(ZipReader.isSignatureFile("META-INF/X.DSA"));
+        assertTrue(ZipReader.isSignatureFile("META-INF/X.rsa"));
+        assertTrue(ZipReader.isSignatureFile("META-INF/x.ec"));
+        assertTrue(ZipReader.isSignatureFile("META-INF/SIG-anything"));
+        assertTrue(ZipReader.isSignatureFile("meta-inf/sig-anything"));
+        assertFalse(ZipReader.isSignatureFile("META-INF/MANIFEST.MF"));
+        assertFalse(ZipReader.isSignatureFile("META-INF/nested/x.SF"));
+        assertFalse(ZipReader.isSignatureFile("a/B.SF"));
+        assertFalse(ZipReader.isSignatureFile("META-INF/"));
+        assertTrue(ZipReader.isIndexList("META-INF/INDEX.LIST"));
+        assertTrue(ZipReader.isIndexList("meta-inf/index.list"));
+        assertFalse(ZipReader.isIndexList("META-INF/INDEX.LIST/x"));
+    }
+
+    @Test
+    void rejectsUnsafeEntryNames() throws IOException {
+        assertUnsafe("../escape.txt");
+        assertUnsafe("a/../../escape.txt");
+        assertUnsafe("/absolute.txt");
+        assertUnsafe("./relative.txt");
+        assertUnsafe("a/./b.txt");
+        assertUnsafe("a//b.txt");
+        assertUnsafe("windows\\path.txt");
+        assertUnsafe("nul\u0000name.txt");
+    }
+
+    @Test
+    void acceptsOrdinaryEntryNames() {
+        assertTrue(ZipReader.isSafeEntryName("a"));
+        assertTrue(ZipReader.isSafeEntryName("a/b/C.class"));
+        assertTrue(ZipReader.isSafeEntryName("a/b/"));
+        assertTrue(ZipReader.isSafeEntryName("META-INF/versions/17/a/B.class"));
+        assertTrue(ZipReader.isSafeEntryName("caf\u00e9/na\u00efve.txt"));
+        assertTrue(ZipReader.isSafeEntryName("a..b/c.txt"));
+        assertTrue(ZipReader.isSafeEntryName("...."));
+        assertFalse(ZipReader.isSafeEntryName(""));
+        assertFalse(ZipReader.isSafeEntryName("C:/windows"));
+        assertFalse(ZipReader.isSafeEntryName("/"));
+        assertFalse(ZipReader.isSafeEntryName(".."));
+        assertFalse(ZipReader.isSafeEntryName("."));
+    }
+
+    @Test
+    void rejectsSomethingThatIsNotAnArchive() throws IOException {
+        Path notAJar = temp.resolve("not-a-jar.txt");
+        Files.write(notAJar, "hello".getBytes(StandardCharsets.UTF_8));
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(notAJar));
+        assertTrue(failure.getMessage().contains("not-a-jar.txt"), failure.getMessage());
+    }
+
+    @Test
+    void readingADeflatedEntryFailsWhenItsDataIsCorrupt() throws IOException {
+        Path jar = temp.resolve("corrupt.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "a/B.class", repeat("corrupt-me-", 100));
+        }
+        ZipEntryInfo entry;
+        try (ZipReader reader = ZipReader.open(jar)) {
+            entry = reader.entry("a/B.class").orElseThrow();
+        }
+        byte[] all = Files.readAllBytes(jar);
+        // A run of zero bytes decodes as a stored deflate block whose length fields contradict each other,
+        // which the inflater always rejects.
+        for (int i = 0; i < 16; i++) {
+            all[(int) entry.dataOffset() + i] = 0;
+        }
+        Files.write(jar, all);
+        try (ZipReader reader = ZipReader.open(jar)) {
+            ZipEntryInfo corrupt = reader.entry("a/B.class").orElseThrow();
+            assertThrows(IOException.class, () -> reader.read(corrupt));
+        }
+    }
+
+    private void assertUnsafe(String name) throws IOException {
+        assertFalse(ZipReader.isSafeEntryName(name), name);
+        Path jar = temp.resolve("unsafe-" + Integer.toHexString(name.hashCode()) + ".jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, name, new byte[] {1});
+        }
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar), name);
+        assertTrue(failure.getMessage().contains(jar.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains(name), failure.getMessage());
+    }
+
+    static byte[] manifestBytes(String key, String value) throws IOException {
+        Manifest manifest = new Manifest();
+        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().putValue(key, value);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        manifest.write(bytes);
+        return bytes.toByteArray();
+    }
+
+    static byte[] repeat(String text, int times) {
+        StringBuilder builder = new StringBuilder(text.length() * times);
+        for (int i = 0; i < times; i++) {
+            builder.append(text);
+        }
+        return builder.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    static void stored(ZipOutputStream zip, String name, byte[] data) throws IOException {
+        ZipEntry entry = new ZipEntry(name);
+        entry.setMethod(ZipEntry.STORED);
+        entry.setSize(data.length);
+        entry.setCompressedSize(data.length);
+        CRC32 crc = new CRC32();
+        crc.update(data);
+        entry.setCrc(crc.getValue());
+        zip.putNextEntry(entry);
+        zip.write(data);
+        zip.closeEntry();
+    }
+
+    static void deflated(ZipOutputStream zip, String name, byte[] data) throws IOException {
+        ZipEntry entry = new ZipEntry(name);
+        entry.setMethod(ZipEntry.DEFLATED);
+        zip.putNextEntry(entry);
+        zip.write(data);
+        zip.closeEntry();
+    }
+
+    static void directory(ZipOutputStream zip, String name) throws IOException {
+        stored(zip, name, new byte[0]);
+    }
+
+    static List<String> names(ZipFile file) {
+        List<String> names = new ArrayList<>();
+        Enumeration<? extends ZipEntry> entries = file.entries();
+        while (entries.hasMoreElements()) {
+            names.add(entries.nextElement().getName());
+        }
+        return names;
+    }
+
+    static byte[] readAll(ZipFile file, ZipEntry entry) throws IOException {
+        try (InputStream in = file.getInputStream(entry)) {
+            return in.readAllBytes();
+        }
+    }
+
+    static byte[] bytesAt(Path file, long offset, int length) throws IOException {
+        byte[] result = new byte[length];
+        try (InputStream in = Files.newInputStream(file)) {
+            in.skipNBytes(offset);
+            in.readNBytes(result, 0, length);
+        }
+        return result;
+    }
+
+    /**
+     * Reads an entry's content straight from the file at the offset the reader reported, decompressing it
+     * when needed, which is exactly what the launcher does with the index.
+     */
+    static byte[] contentAt(Path file, ZipEntryInfo entry) throws IOException {
+        byte[] raw = bytesAt(file, entry.dataOffset(), (int) entry.compressedSize());
+        if (entry.method() == IndexFormat.METHOD_STORED) {
+            return raw;
+        }
+        byte[] result = new byte[(int) entry.uncompressedSize()];
+        Inflater inflater = new Inflater(true);
+        try {
+            inflater.setInput(raw);
+            int total = 0;
+            while (total < result.length) {
+                int read = inflater.inflate(result, total, result.length - total);
+                if (read == 0) {
+                    break;
+                }
+                total += read;
+            }
+            if (total != result.length) {
+                throw new IOException("Inflated " + total + " of " + result.length + " bytes");
+            }
+        } catch (DataFormatException e) {
+            throw new IOException(e);
+        } finally {
+            inflater.end();
+        }
+        return result;
+    }
+
+    /**
+     * Rewrites an archive's central directory so that every record's sizes and local header offset carry the
+     * ZIP64 marker and their real values sit in a ZIP64 extended information extra field.
+     */
+    static byte[] withZip64Extras(byte[] archive) {
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int count = shortAt(archive, end + 10);
+        int central = intAt(archive, end + 16);
+        ByteArrayOutputStream directory = new ByteArrayOutputStream();
+        int at = central;
+        for (int i = 0; i < count; i++) {
+            int nameLength = shortAt(archive, at + 28);
+            int extraLength = shortAt(archive, at + 30);
+            int commentLength = shortAt(archive, at + 32);
+            byte[] header = new byte[46];
+            System.arraycopy(archive, at, header, 0, 46);
+            putShort(header, 6, 45);
+            long compressed = intAt(header, 20) & 0xFFFFFFFFL;
+            long uncompressed = intAt(header, 24) & 0xFFFFFFFFL;
+            long localHeader = intAt(header, 42) & 0xFFFFFFFFL;
+            putInt(header, 20, 0xFFFFFFFFL);
+            putInt(header, 24, 0xFFFFFFFFL);
+            putInt(header, 42, 0xFFFFFFFFL);
+            putShort(header, 30, 28);
+            directory.write(header, 0, header.length);
+            directory.write(archive, at + 46, nameLength);
+            byte[] extra = new byte[28];
+            putShort(extra, 0, IndexFormat.ZIP64_EXTRA_FIELD_ID);
+            putShort(extra, 2, 24);
+            putLong(extra, 4, uncompressed);
+            putLong(extra, 12, compressed);
+            putLong(extra, 20, localHeader);
+            directory.write(extra, 0, extra.length);
+            at += 46 + nameLength + extraLength + commentLength;
+        }
+        byte[] newDirectory = directory.toByteArray();
+        byte[] newEnd = new byte[IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE];
+        System.arraycopy(archive, end, newEnd, 0, newEnd.length);
+        putInt(newEnd, 12, newDirectory.length);
+        putInt(newEnd, 16, central);
+        byte[] result = new byte[central + newDirectory.length + newEnd.length];
+        System.arraycopy(archive, 0, result, 0, central);
+        System.arraycopy(newDirectory, 0, result, central, newDirectory.length);
+        System.arraycopy(newEnd, 0, result, central + newDirectory.length, newEnd.length);
+        return result;
+    }
+
+    static int shortAt(byte[] buffer, int offset) {
+        return (buffer[offset] & 0xFF) | ((buffer[offset + 1] & 0xFF) << 8);
+    }
+
+    @Test
+    void readsAnEntryCountMarkerThatNoZip64RecordExplains() throws IOException {
+        // What a writer that compared the entry count with > rather than >= left behind: exactly 65535
+        // entries, the marker in the 16-bit count field, and no ZIP64 end record or locator. It is a
+        // perfectly good archive to java.util.zip, which falls back to the 32-bit fields, and refusing it
+        // would mean refusing a jar every other tool on the machine accepts.
+        int count = 0xFFFF;
+        Path full = temp.resolve("marked.jar");
+        try (ZipWriter writer = ZipWriter.create(full, ZipWriter.DEFAULT_TIMESTAMP)) {
+            for (int i = 0; i < count; i++) {
+                writer.writeEntry("e/" + i, new byte[] {(byte) i});
+            }
+        }
+        byte[] bytes = Files.readAllBytes(full);
+        int endOffset = bytes.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int zip64EndOffset = endOffset - IndexFormat.ZIP64_LOCATOR_SIZE - 56;
+        byte[] legacy = new byte[zip64EndOffset + IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE];
+        System.arraycopy(bytes, 0, legacy, 0, zip64EndOffset);
+        System.arraycopy(bytes, endOffset, legacy, zip64EndOffset,
+                IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE);
+        Path jar = temp.resolve("legacy.jar");
+        Files.write(jar, legacy);
+
+        try (ZipFile oracle = new ZipFile(jar.toFile())) {
+            assertEquals(count, oracle.size(), "the JDK reads it, so this reader has to as well");
+        }
+        try (ZipReader reader = ZipReader.open(jar)) {
+            assertEquals(count, reader.entries().size());
+            assertArrayEquals(new byte[] {0}, reader.read(reader.entry("e/0").orElseThrow()));
+            assertArrayEquals(new byte[] {(byte) (count - 1)},
+                    reader.read(reader.entry("e/" + (count - 1)).orElseThrow()));
+        }
+    }
+
+    static void putShort(byte[] buffer, int offset, int value) {
+        buffer[offset] = (byte) value;
+        buffer[offset + 1] = (byte) (value >>> 8);
+    }
+
+    static void putInt(byte[] buffer, int offset, long value) {
+        buffer[offset] = (byte) value;
+        buffer[offset + 1] = (byte) (value >>> 8);
+        buffer[offset + 2] = (byte) (value >>> 16);
+        buffer[offset + 3] = (byte) (value >>> 24);
+    }
+
+    static void putLong(byte[] buffer, int offset, long value) {
+        putInt(buffer, offset, value);
+        putInt(buffer, offset + 4, value >>> 32);
+    }
+
+    static int intAt(byte[] buffer, int offset) {
+        return (buffer[offset] & 0xFF)
+                | ((buffer[offset + 1] & 0xFF) << 8)
+                | ((buffer[offset + 2] & 0xFF) << 16)
+                | ((buffer[offset + 3] & 0xFF) << 24);
+    }
+}
