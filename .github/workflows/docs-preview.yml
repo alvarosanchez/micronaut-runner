@@ -38,10 +38,38 @@ jobs:
       - name: "📖 Build the guide"
         run: ./gradlew docs --no-daemon
 
-      # With no VERSION the action publishes into snapshot/, which is where the README points.
+      # Published by hand rather than with micronaut-projects/github-pages-deploy-action: that action
+      # builds its remote as https://$TOKEN@github.com/..., which git reads as a username with no
+      # password. That works for a classic personal access token, which is what the organisation's
+      # GH_TOKEN secret is, but not for the ephemeral token a workflow run is given, which has to be
+      # presented as x-access-token:$TOKEN. The layout below is the one that action produces: the guide
+      # under snapshot/, which is where the README points.
       - name: "📑 Publish to GitHub Pages"
-        uses: micronaut-projects/github-pages-deploy-action@76d63aafbab7108d74e83be4e5b3b0501382e829 # master
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: gh-pages
-          FOLDER: build/docs
+          REMOTE: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads "$REMOTE" gh-pages >/dev/null 2>&1; then
+            git clone --depth 1 --branch gh-pages "$REMOTE" "$work"
+          else
+            git clone --depth 1 "$REMOTE" "$work"
+            git -C "$work" checkout --orphan gh-pages
+            git -C "$work" rm -rf . >/dev/null 2>&1 || true
+          fi
+          rm -rf "$work/snapshot"
+          mkdir -p "$work/snapshot"
+          cp -r build/docs/. "$work/snapshot/"
+          # Asciidoc output contains directories Jekyll would skip, and the repository root should not 404.
+          touch "$work/.nojekyll"
+          printf '<!doctype html>\n<meta http-equiv="refresh" content="0; url=snapshot/guide/">\n' > "$work/index.html"
+          git -C "$work" add -A
+          if git -C "$work" diff --cached --quiet; then
+            echo "The published guide is already up to date."
+            exit 0
+          fi
+          git -C "$work" commit -q -m "Publish the guide from ${{ github.sha }}"
+          git -C "$work" push -q "$REMOTE" gh-pages
+          echo "Published to https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/snapshot/guide/"
