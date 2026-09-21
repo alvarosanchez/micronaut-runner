@@ -1,0 +1,586 @@
+/*
+ * Copyright 2017-2026 original authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.micronaut.runner.benchmarks;
+
+import io.micronaut.runner.build.BuildLogger;
+import io.micronaut.runner.build.Compression;
+import io.micronaut.runner.build.Dependency;
+import io.micronaut.runner.build.RunnerJarBuilder;
+import io.micronaut.runner.build.RunnerJarSpec;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.jar.Attributes;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
+
+/**
+ * Turns the sample application into every packaging the benchmark compares.
+ *
+ * <h2>Identical application bytes</h2>
+ * <p>All six variants are built from the same compiled classes and the same resolved dependency jars,
+ * taken from one Gradle build of the sample. That is the only way the comparison means anything: if the
+ * shaded jar were built from one compilation and the runner jar from another, any difference could be a
+ * difference in the application rather than in the format.</p>
+ *
+ * <p>The two runner jars are built here by calling {@link RunnerJarBuilder} directly rather than by asking
+ * the Gradle plugin for them. Not because the plugin is in doubt - the end-to-end test suite covers that -
+ * but because the plugin produces one compression mode per build and the benchmark needs two, from bytes
+ * that are identical to the other four variants'.</p>
+ *
+ * <h2>Failure is data</h2>
+ * <p>Every variant is built inside its own try/catch. One that fails becomes an unavailable
+ * {@link Variant} carrying the reason, and the run carries on with the rest.</p>
+ */
+final class SampleBuild {
+
+    /** The task the init script registers on the sample's build. */
+    private static final String METADATA_TASK = "runnerBenchmarkMetadata";
+
+    /** Where that task writes, relative to the sample's project directory. */
+    private static final String METADATA_FILE = "build/runner-benchmark-metadata.txt";
+
+    /** The init script, carried as a resource of this module. */
+    private static final String INIT_SCRIPT = "/io/micronaut/runner/benchmarks/sample-metadata.init.gradle";
+
+    /** How long the sample's Gradle build may take; it resolves the whole Micronaut platform. */
+    private static final long BUILD_TIMEOUT_MINUTES = 30;
+
+    /** How long the extraction of a runner jar may take. */
+    private static final long EXTRACT_TIMEOUT_SECONDS = 120;
+
+    private final Path sample;
+    private final Path artifacts;
+    private final PrintStream log;
+    private final String mainClass;
+    private final String projectName;
+    private final List<Path> applicationOutput;
+    private final List<Path> dependencies;
+    private final Path shadowJar;
+
+    private SampleBuild(Path sample,
+                        Path artifacts,
+                        PrintStream log,
+                        Metadata metadata) {
+        this.sample = sample;
+        this.artifacts = artifacts;
+        this.log = log;
+        this.mainClass = metadata.mainClass();
+        this.projectName = metadata.projectName();
+        this.applicationOutput = metadata.applicationOutput();
+        this.dependencies = metadata.dependencies();
+        this.shadowJar = metadata.shadowJar();
+    }
+
+    /**
+     * Builds the sample and reads back what it produced.
+     *
+     * @param sample    the sample's project directory
+     * @param repo      the Maven repository the runner plugins are published to, as a URI string
+     * @param version   the version they were published under
+     * @param artifacts where the variants' artifacts are written
+     * @param log       where build progress goes
+     * @return the prepared build
+     * @throws IOException          if the build fails, times out, or writes no metadata
+     * @throws InterruptedException if the wait is interrupted
+     */
+    static SampleBuild prepare(Path sample, String repo, String version, Path artifacts, PrintStream log)
+            throws IOException, InterruptedException {
+        Path init = artifacts.resolve("sample-metadata.init.gradle");
+        Files.createDirectories(artifacts);
+        try (InputStream in = SampleBuild.class.getResourceAsStream(INIT_SCRIPT)) {
+            if (in == null) {
+                throw new IOException("The init script " + INIT_SCRIPT + " is not on the class path");
+            }
+            Files.copy(in, init, StandardCopyOption.REPLACE_EXISTING);
+        }
+
+        Path gradlew = findGradlew(sample);
+        List<String> command = List.of(
+                gradlew.toString(),
+                "--project-dir", sample.toAbsolutePath().toString(),
+                "-Prunner.repo=" + repo,
+                "-Prunner.version=" + version,
+                "--init-script", init.toAbsolutePath().toString(),
+                // The init script's task reads the project at execution time, which a configuration cache
+                // would refuse. Nothing here is hot enough to want the cache.
+                "--no-configuration-cache",
+                "--stacktrace",
+                METADATA_TASK,
+                "shadowJar");
+        log.println("[startup-benchmark] building the sample: " + String.join(" ", command));
+        ProcessBuilder builder = new ProcessBuilder(command)
+                .directory(sample.toFile())
+                .redirectErrorStream(true);
+        // The nested build must run on the same JDK as this harness, which is the JDK the packaged
+        // applications will be started with.
+        builder.environment().put("JAVA_HOME", System.getProperty("java.home"));
+        Process process = builder.start();
+        StringBuilder output = new StringBuilder();
+        Thread drain = drain(process, output);
+        boolean finished = process.waitFor(BUILD_TIMEOUT_MINUTES, java.util.concurrent.TimeUnit.MINUTES);
+        if (!finished) {
+            process.destroyForcibly();
+            throw new IOException("The sample build did not finish within " + BUILD_TIMEOUT_MINUTES
+                    + " minutes" + tail(output));
+        }
+        drain.join(5_000);
+        if (process.exitValue() != 0) {
+            throw new IOException("The sample build failed with status " + process.exitValue() + tail(output));
+        }
+
+        Path metadataFile = sample.resolve(METADATA_FILE);
+        if (!Files.isRegularFile(metadataFile)) {
+            throw new IOException("The sample build produced no " + metadataFile + tail(output));
+        }
+        Metadata metadata = Metadata.read(metadataFile);
+        log.println("[startup-benchmark] sample built: " + metadata.dependencies().size()
+                + " dependency jars, main class " + metadata.mainClass());
+        return new SampleBuild(sample, artifacts, log, metadata);
+    }
+
+    /**
+     * The sample's project directory.
+     *
+     * @return the directory
+     */
+    Path sample() {
+        return sample;
+    }
+
+    /**
+     * Builds every variant, in report order.
+     *
+     * @return the variants, available and unavailable alike
+     */
+    List<Variant> variants() {
+        List<Variant> variants = new ArrayList<>(6);
+        variants.add(attempt("exploded-cp",
+                "Class files and dependency jars on an explicit, ordered -cp",
+                this::explodedClasspath));
+        variants.add(attempt("thin-jar",
+                "Application jar with a Class-Path manifest pointing at lib/",
+                this::thinJar));
+        variants.add(attempt("shadow",
+                "Everything flattened into one jar by the Shadow plugin",
+                this::shadowJar));
+        Variant stored = attempt("runner-stored",
+                "Runner jar, nested dependencies re-packed uncompressed",
+                () -> runnerJar("runner-stored", Compression.STORED));
+        variants.add(stored);
+        variants.add(attempt("runner-preserve",
+                "Runner jar, nested dependencies copied byte for byte (still deflated)",
+                () -> runnerJar("runner-preserve", Compression.PRESERVE)));
+        variants.add(attempt("runner-extracted",
+                "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
+                () -> extracted(stored)));
+        return variants;
+    }
+
+    private Variant attempt(String name, String description, VariantFactory factory) {
+        try {
+            Variant variant = factory.create();
+            log.println("[startup-benchmark] prepared " + name);
+            return variant;
+        } catch (Exception e) {
+            String reason = oneLine(e.getClass().getSimpleName() + ": " + e.getMessage());
+            log.println("[startup-benchmark] " + name + " is unavailable: " + reason);
+            return Variant.unavailable(name, description, reason);
+        }
+    }
+
+    private Variant explodedClasspath() {
+        List<String> classPath = new ArrayList<>(applicationOutput.size() + dependencies.size());
+        for (Path entry : applicationOutput) {
+            classPath.add(entry.toAbsolutePath().toString());
+        }
+        for (Path entry : dependencies) {
+            classPath.add(entry.toAbsolutePath().toString());
+        }
+        List<String> command = new ArrayList<>();
+        command.add(javaExecutable().toString());
+        command.add("-cp");
+        command.add(String.join(java.io.File.pathSeparator, classPath));
+        command.add(mainClass);
+        return Variant.available("exploded-cp",
+                "Class files and dependency jars on an explicit, ordered -cp",
+                command, sample, applicationOutput.get(0));
+    }
+
+    private Variant thinJar() throws IOException {
+        Path directory = recreate(artifacts.resolve("thin"));
+        Path lib = Files.createDirectories(directory.resolve("lib"));
+        List<String> classPath = new ArrayList<>(dependencies.size());
+        Set<String> used = new LinkedHashSet<>();
+        for (int i = 0; i < dependencies.size(); i++) {
+            Path dependency = dependencies.get(i);
+            String fileName = dependency.getFileName().toString();
+            if (!used.add(fileName)) {
+                fileName = i + "-" + fileName;
+                used.add(fileName);
+            }
+            Files.copy(dependency, lib.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+            classPath.add("lib/" + encodeClassPathEntry(fileName));
+        }
+
+        Manifest manifest = new Manifest();
+        Attributes main = manifest.getMainAttributes();
+        main.put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        main.put(Attributes.Name.MAIN_CLASS, mainClass);
+        main.put(Attributes.Name.CLASS_PATH, String.join(" ", classPath));
+
+        Path jar = directory.resolve(projectName + "-thin.jar");
+        Set<String> written = new LinkedHashSet<>();
+        try (OutputStream out = Files.newOutputStream(jar);
+             JarOutputStream jarOut = new JarOutputStream(out, manifest)) {
+            written.add("META-INF/MANIFEST.MF");
+            for (Path root : applicationOutput) {
+                copyTree(root, jarOut, written);
+            }
+        }
+
+        List<String> command = List.of(javaExecutable().toString(), "-jar", jar.toAbsolutePath().toString());
+        return Variant.available("thin-jar",
+                "Application jar with a Class-Path manifest pointing at lib/",
+                command, directory, jar);
+    }
+
+    private Variant shadowJar() throws IOException {
+        if (shadowJar == null) {
+            throw new IOException("The sample's build declares no shadowJar task");
+        }
+        if (!Files.isRegularFile(shadowJar)) {
+            throw new IOException("The Shadow plugin produced no " + shadowJar);
+        }
+        List<String> command = List.of(javaExecutable().toString(), "-jar",
+                shadowJar.toAbsolutePath().toString());
+        return Variant.available("shadow",
+                "Everything flattened into one jar by the Shadow plugin",
+                command, sample, shadowJar);
+    }
+
+    private Variant runnerJar(String name, Compression compression) throws IOException {
+        Path output = artifacts.resolve(name + ".jar");
+        Files.deleteIfExists(output);
+        RunnerJarSpec spec = RunnerJarSpec.builder()
+                .mainClass(mainClass)
+                .applicationOutput(applicationOutput)
+                .dependencies(dependencies.stream().map(Dependency::new).toList())
+                .output(output)
+                .compression(compression)
+                .build();
+        RunnerJarBuilder.build(spec, BuildLogger.noOp());
+        List<String> command = List.of(javaExecutable().toString(), "-jar",
+                output.toAbsolutePath().toString());
+        return Variant.available(name,
+                compression == Compression.STORED
+                        ? "Runner jar, nested dependencies re-packed uncompressed"
+                        : "Runner jar, nested dependencies copied byte for byte (still deflated)",
+                command, artifacts, output);
+    }
+
+    private Variant extracted(Variant stored) throws IOException, InterruptedException {
+        if (!stored.available()) {
+            throw new IOException("there is no runner jar to extract: " + stored.unavailableReason());
+        }
+        Path destination = artifacts.resolve("extracted");
+        deleteRecursively(destination);
+        List<String> command = List.of(
+                javaExecutable().toString(),
+                "-Dmicronaut.runner.mode=extract",
+                "-jar", stored.artifact().toAbsolutePath().toString(),
+                "--destination", destination.toAbsolutePath().toString(),
+                "--force");
+        ProcessBuilder builder = new ProcessBuilder(command)
+                .directory(artifacts.toFile())
+                .redirectErrorStream(true);
+        Process process = builder.start();
+        StringBuilder output = new StringBuilder();
+        Thread drain = drain(process, output);
+        if (!process.waitFor(EXTRACT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            throw new IOException("extraction did not finish within " + EXTRACT_TIMEOUT_SECONDS + "s");
+        }
+        drain.join(5_000);
+        if (process.exitValue() != 0) {
+            throw new IOException("extraction failed with status " + process.exitValue() + tail(output));
+        }
+        Path applicationJar = singleJarIn(destination);
+        List<String> run = List.of(javaExecutable().toString(), "-jar",
+                applicationJar.toAbsolutePath().toString());
+        return Variant.available("runner-extracted",
+                "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
+                run, destination, destination);
+    }
+
+    private static Path singleJarIn(Path directory) throws IOException {
+        List<Path> jars;
+        try (var stream = Files.list(directory)) {
+            jars = stream.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".jar"))
+                    .sorted(Comparator.comparing(Path::toString))
+                    .toList();
+        }
+        if (jars.size() != 1) {
+            throw new IOException("expected exactly one jar directly under " + directory
+                    + ", found " + jars.size());
+        }
+        return jars.get(0);
+    }
+
+    private static void copyTree(Path root, JarOutputStream out, Set<String> written) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        if (Files.isRegularFile(root)) {
+            throw new IOException(root + " is a jar, not a directory; the harness packages exploded"
+                    + " application output only");
+        }
+        List<Path> files = new ArrayList<>();
+        try (var stream = Files.walk(root)) {
+            stream.filter(Files::isRegularFile).sorted().forEach(files::add);
+        }
+        for (Path file : files) {
+            String name = root.relativize(file).toString().replace('\\', '/');
+            if (name.equals("META-INF/MANIFEST.MF")) {
+                // The thin jar's manifest is the one this class wrote; the application's own would
+                // overwrite Main-Class and Class-Path.
+                continue;
+            }
+            // Directory entries matter: Micronaut lists META-INF/micronaut/ with getResources, and a jar
+            // without directory entries answers that listing with nothing at all.
+            int slash = 0;
+            while ((slash = name.indexOf('/', slash + 1)) > 0) {
+                String directory = name.substring(0, slash + 1);
+                if (written.add(directory)) {
+                    out.putNextEntry(new ZipEntry(directory));
+                    out.closeEntry();
+                }
+            }
+            if (!written.add(name)) {
+                continue;
+            }
+            out.putNextEntry(new ZipEntry(name));
+            Files.copy(file, out);
+            out.closeEntry();
+        }
+    }
+
+    private static String encodeClassPathEntry(String fileName) {
+        StringBuilder encoded = new StringBuilder(fileName.length());
+        for (int i = 0; i < fileName.length(); i++) {
+            char c = fileName.charAt(i);
+            if (c == ' ') {
+                encoded.append("%20");
+            } else if (c == '%') {
+                encoded.append("%25");
+            } else {
+                encoded.append(c);
+            }
+        }
+        return encoded.toString();
+    }
+
+    /**
+     * The {@code java} of the JDK running this harness, which is the JDK every variant is started with.
+     *
+     * @return the executable
+     */
+    static Path javaExecutable() {
+        Path home = Path.of(System.getProperty("java.home"));
+        Path candidate = home.resolve("bin").resolve("java");
+        if (!Files.isExecutable(candidate)) {
+            candidate = home.resolve("bin").resolve("java.exe");
+        }
+        return candidate;
+    }
+
+    private static Path findGradlew(Path sample) throws IOException {
+        String name = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
+                ? "gradlew.bat" : "gradlew";
+        Path directory = sample.toAbsolutePath().normalize();
+        while (directory != null) {
+            Path candidate = directory.resolve(name);
+            if (Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+            directory = directory.getParent();
+        }
+        throw new IOException("No " + name + " above " + sample + "; the harness drives the sample's"
+                + " build with the repository's own wrapper");
+    }
+
+    private static Thread drain(Process process, StringBuilder into) {
+        Thread thread = new Thread(() -> {
+            byte[] buffer = new byte[8192];
+            try (InputStream in = process.getInputStream()) {
+                int read;
+                while ((read = in.read(buffer)) != -1) {
+                    synchronized (into) {
+                        into.append(new String(buffer, 0, read, StandardCharsets.UTF_8));
+                    }
+                }
+            } catch (IOException e) {
+                synchronized (into) {
+                    into.append("\n[output capture stopped: ").append(e).append(']');
+                }
+            }
+        }, "sample-build-output");
+        thread.setDaemon(true);
+        thread.start();
+        return thread;
+    }
+
+    private static String tail(StringBuilder output) {
+        String text;
+        synchronized (output) {
+            text = output.toString();
+        }
+        String[] lines = text.split("\n");
+        int from = Math.max(0, lines.length - 40);
+        StringBuilder result = new StringBuilder("\n--- last ").append(lines.length - from)
+                .append(" lines ---\n");
+        for (int i = from; i < lines.length; i++) {
+            result.append(lines[i]).append('\n');
+        }
+        return result.toString();
+    }
+
+    private static String oneLine(String message) {
+        return message == null ? "no message" : message.replace('\n', ' ').replace('\r', ' ').trim();
+    }
+
+    private static Path recreate(Path directory) throws IOException {
+        deleteRecursively(directory);
+        return Files.createDirectories(directory);
+    }
+
+    private static void deleteRecursively(Path directory) throws IOException {
+        if (!Files.exists(directory)) {
+            return;
+        }
+        Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                Files.deleteIfExists(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException failure) throws IOException {
+                Files.deleteIfExists(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    /** How much disk a variant's artifact takes, summed over a tree when the artifact is a directory. */
+    static long sizeOf(Path artifact) {
+        if (artifact == null) {
+            return -1;
+        }
+        try {
+            if (Files.isRegularFile(artifact)) {
+                return Files.size(artifact);
+            }
+            if (!Files.isDirectory(artifact)) {
+                return -1;
+            }
+            try (var stream = Files.walk(artifact)) {
+                return stream.filter(Files::isRegularFile).mapToLong(path -> {
+                    try {
+                        return Files.size(path);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                }).sum();
+            }
+        } catch (IOException | UncheckedIOException e) {
+            return -1;
+        }
+    }
+
+    /** Builds one variant, or explains why it cannot. */
+    @FunctionalInterface
+    private interface VariantFactory {
+        Variant create() throws Exception;
+    }
+
+    /** What the init script's task wrote: the application's class path, in order. */
+    private record Metadata(String projectName,
+                            String projectVersion,
+                            String mainClass,
+                            List<Path> applicationOutput,
+                            List<Path> dependencies,
+                            Path shadowJar) {
+
+        static Metadata read(Path file) throws IOException {
+            String projectName = "application";
+            String projectVersion = "";
+            String mainClass = null;
+            List<Path> applicationOutput = new ArrayList<>();
+            List<Path> dependencies = new ArrayList<>();
+            Path shadowJar = null;
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                int separator = line.indexOf('=');
+                if (separator < 0) {
+                    continue;
+                }
+                String key = line.substring(0, separator);
+                String value = line.substring(separator + 1);
+                switch (key) {
+                    case "projectName" -> projectName = value;
+                    case "projectVersion" -> projectVersion = value;
+                    case "mainClass" -> mainClass = value;
+                    case "classes", "resources" -> applicationOutput.add(Path.of(value));
+                    case "dependency" -> dependencies.add(Path.of(value));
+                    case "shadowJar" -> shadowJar = Path.of(value);
+                    default -> {
+                    }
+                }
+            }
+            if (mainClass == null) {
+                throw new IOException(file + " names no main class");
+            }
+            List<Path> existing = applicationOutput.stream().filter(Files::exists).toList();
+            if (existing.isEmpty()) {
+                throw new IOException(file + " names no application output that exists");
+            }
+            if (dependencies.isEmpty()) {
+                throw new IOException(file + " names no dependencies");
+            }
+            return new Metadata(projectName, projectVersion, mainClass, existing,
+                    List.copyOf(dependencies), shadowJar);
+        }
+    }
+}

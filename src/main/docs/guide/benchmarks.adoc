@@ -47,25 +47,37 @@ startup completed. Treat them as a direction, not a specification; the CI harnes
 |Variant |Total |Framework-reported |Archive size
 
 |Runner JAR, dependencies stored
-|317 ms
-|175 ms
+|318 ms
+|178 ms
 |31.4 MB
 
 |Shaded JAR
-|357 ms
-|197 ms
+|363 ms
+|202 ms
 |12.8 MB
 
 |Exploded classpath
-|368 ms
-|368 ms is the whole process; 197 ms reported
+|374 ms
+|374 ms is the whole process; 201 ms reported
 |n/a
 |===
 
-The runner JAR started 11% faster than the shaded JAR and 14% faster than an exploded classpath. The
+The runner JAR started 12% faster than the shaded JAR and 15% faster than an exploded classpath. The
 framework-reported figure moves with it, which matters: it means the saving comes from class loading and
 from bean discovery reading one merged service directory, not merely from a cheap launcher.
 
 The cost is size. Storing dependencies uncompressed made the archive 2.5 times larger than the shaded JAR.
 That trade is why `PRESERVE` exists, and why the cold-page-cache case is measured separately: an archive
 this much larger can lose on a cold start what it gains on a warm one.
+
+=== A measurement that did not move
+
+The launcher's own share of startup, which `-Dmicronaut.runner.timing=true` reports, fell from 17.4 ms to
+12.3 ms when the archive reader stopped reading through `VarHandle`-backed layout accessors. Total startup
+did not change. The most likely reason is that the work was not removed from the process, only from the
+launcher: the first use of a var handle initialises `java.lang.invoke`, and the framework initialises it
+moments later regardless.
+
+The change is kept because it is strictly less work, and because it does help an application that never
+touches method handles at all, such as a short-lived command line tool. It is recorded here because it is
+the clearest example of why this module measures the whole process rather than the phase it is proud of.

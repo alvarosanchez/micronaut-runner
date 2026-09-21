@@ -1,0 +1,60 @@
+/*
+ * Copyright 2017-2026 original authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * Applied with -I by StartupBenchmark to the sample's own build.
+ *
+ * The harness has to package the sample six different ways over *identical* application bytes, and for
+ * three of those six it needs the runtime class path in resolution order. A directory listing of an
+ * installDist layout cannot give it that - the order is the whole point, because it decides which copy of
+ * a duplicated resource wins - so the order is taken from the only place that knows it, which is Gradle.
+ *
+ * The task writes one "key=value" line per item. Keys repeat; the first '=' separates them.
+ */
+gradle.rootProject { rootProject ->
+    rootProject.tasks.register('runnerBenchmarkMetadata') { task ->
+        task.group = 'benchmark'
+        task.description = 'Writes the application class path that the startup benchmark harness packages'
+        task.dependsOn('classes')
+        // The harness always wants the current answer; there is nothing to be gained from skipping it.
+        task.outputs.upToDateWhen { false }
+        task.doLast {
+            def main = rootProject.extensions.getByName('sourceSets').getByName('main')
+            def application = rootProject.extensions.getByName('application')
+            def lines = []
+            lines << "projectName=${rootProject.name}"
+            lines << "projectVersion=${rootProject.version}"
+            lines << "mainClass=${application.mainClass.get()}"
+            main.output.classesDirs.files.each { lines << "classes=${it.absolutePath}" }
+            def resources = main.output.resourcesDir
+            if (resources != null) {
+                lines << "resources=${resources.absolutePath}"
+            }
+            rootProject.configurations.getByName('runtimeClasspath').files.each {
+                lines << "dependency=${it.absolutePath}"
+            }
+            def shadowJar = rootProject.tasks.findByName('shadowJar')
+            if (shadowJar != null) {
+                lines << "shadowJar=${shadowJar.archiveFile.get().asFile.absolutePath}"
+            }
+            def output = rootProject.layout.buildDirectory
+                    .file('runner-benchmark-metadata.txt').get().asFile
+            output.parentFile.mkdirs()
+            output.text = lines.join('\n') + '\n'
+            println "runnerBenchmarkMetadata: wrote ${output}"
+        }
+    }
+}
