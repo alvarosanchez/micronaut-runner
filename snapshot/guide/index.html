@@ -1,0 +1,1176 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+    <title>Micronaut Runner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <link rel="stylesheet" href="../css/main.css" type="text/css" media="screen, print" title="Style" charset="utf-8" />
+    <link rel="stylesheet" href="../css/custom.css" type="text/css" media="screen, print" title="Style" charset="utf-8" />
+    <link rel="stylesheet" href="../css/pdf.css" type="text/css" media="print" title="PDF" charset="utf-8" />
+    <link rel="stylesheet" href="../css/highlight/agate.css">
+    <script src="../js/highlight.pack.js"></script>
+    <script src="../js/guide.js"></script>
+    <script src="../js/multi-language-sample.js"></script>
+    <script>hljs.initHighlightingOnLoad();</script>
+    <link rel="stylesheet" href="../css/multi-language-sample.css"/>
+    <script src="../js/docs.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.11/clipboard.min.js"></script>
+    <script type="text/javascript">
+        function addJsClass(el) {
+            var classes = document.body.className.split(" ");
+            classes.push("js");
+            document.body.className = classes.join(" ");
+        }
+    </script>
+    <style type="text/css">
+        .lang-java { display: block }; .lang-python { display: block }; .lang-kotlin { display: block }; .lang-groovy { display: block }; .lang-scala { display: block }; 
+    </style>
+</head>
+
+<body class="body" id="docs" onload="addJsClass();" onhashchange="highlightMenu()">
+
+<div id="table-of-content-nav-link" class="desktop">
+    <a id="theme-switcher" title="Switch to dark theme" href="javascript:switchTheme(true)"><i class="fa fa-moon-o"></i></a>
+    <a title="Collapse/Open Table of contents" title="Hide Table of Contents" href="javascript:hideTableOfContents();" class="button">[ + ]</a>
+</div>
+
+<div id="main">
+    <div id="navigation" class="no-print">
+        <div class="navTitle">
+            <span id="logo"><a href="http://micronaut.io" title="Go to Micronaut Website"><img src="../img/micronaut-logo-white.svg" alt="Micronaut"/></a></span>
+        </div>
+        <div class="navLinks">
+            <ul>
+                    <li><div id="nav-summary" onmouseover="toggleNavSummary(false)" onmouseout="toggleNavSummary(true)" class="desktop">
+                            <a href="../guide/index.html" class="button">Table of contents</a>
+                            <div id="nav-summary-childs" style="display:none;">
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#introduction"><strong>1</strong><span>Introduction</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#quickStart"><strong>2</strong><span>Quick Start</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#format"><strong>3</strong><span>The Runner JAR Format</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#runtime"><strong>4</strong><span>Running a Runner JAR</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#compatibility"><strong>5</strong><span>Compatibility and Limitations</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#cdsAndAot"><strong>6</strong><span>Class Data Sharing and the AOT Cache</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#benchmarks"><strong>7</strong><span>Benchmarks</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#troubleshooting"><strong>8</strong><span>Troubleshooting</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#repository"><strong>9</strong><span>Repository</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#releaseHistory"><strong>10</strong><span>Release History</span></a></div>
+                                
+                            </div>
+                        </div>
+                    </li>
+
+                <li id="table-of-content-nav-link-mobile" class="mobile">
+                    <a title="Scroll to Table of contents" href="javascript:scrollToTop();" class="button">Toc</a>
+                </li>
+                <li class="desktop">
+                    <a title="Go to API documentation" href="../api/index.html" class="button">API Reference</a>
+                </li>
+                <li class="mobile">
+                    <a title="Go to API documentation" href="../api/index.html" class="button">API</a>
+                </li>
+                <li class="desktop">
+                    <a title="Go to Configuration Reference documentation" href="../guide/configurationreference.html" class="button">Configuration Reference</a>
+                </li>
+                <li class="mobile">
+                    <a title="Go to Configuration Reference documentation" href="../guide/configurationreference.html" class="button">Conf</a>
+                </li>
+            </ul>
+
+        </div>
+    </div>
+    
+    <div id="table-of-content">
+        <div class="toc-content">
+
+        <h2>Table of Contents</h2>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-introduction"><a href="#introduction"><strong>1</strong><span>Introduction</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-quickStart"><a href="#quickStart"><strong>2</strong><span>Quick Start</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-format"><a href="#format"><strong>3</strong><span>The Runner JAR Format</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-runtime"><a href="#runtime"><strong>4</strong><span>Running a Runner JAR</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-compatibility"><a href="#compatibility"><strong>5</strong><span>Compatibility and Limitations</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-cdsAndAot"><a href="#cdsAndAot"><strong>6</strong><span>Class Data Sharing and the AOT Cache</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-benchmarks"><a href="#benchmarks"><strong>7</strong><span>Benchmarks</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-troubleshooting"><a href="#troubleshooting"><strong>8</strong><span>Troubleshooting</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-repository"><a href="#repository"><strong>9</strong><span>Repository</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-releaseHistory"><a href="#releaseHistory"><strong>10</strong><span>Release History</span></a></div>
+        
+        </div>
+    </div>
+    
+    <div class="docs-content">
+    <div class="project">
+        <h1>Micronaut Runner</h1>
+        <p></p>
+        <p>Fast-starting single-jar packaging for Micronaut applications (launcher, Gradle and Maven plugins)</p>
+        <p><strong>Version:</strong> 1.0.0-SNAPSHOT </p>
+    </div>
+    
+<h1 id="introduction"><a class="anchor" href="#introduction"></a>1 Introduction</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/introduction.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>A Micronaut application is usually shipped as a single executable JAR, and until now that has meant a
+<em>shaded</em> JAR: Gradle Shadow or Maven Shade copy the contents of every dependency into one archive and
+flatten them into a single namespace.</p>
+</div>
+<div class="paragraph">
+<p>Flattening is lossy. Two dependencies that both ship <code>META-INF/services/java.sql.Driver</code> collide, so the
+build needs a transformer to merge them. Micronaut 4 and later publish their bean metadata as a directory
+tree under <code>META-INF/micronaut/</code>, which collides the same way. Signature files have to be stripped or the
+result fails verification. <code>module-info.class</code> files collide. <code>META-INF/versions/</code> trees from several
+multi-release JARs are merged into one that belongs to no particular library. Each dependency&#8217;s own
+manifest, and with it <code>Implementation-Version</code> and package sealing, is discarded. Every one of these is a
+silent failure mode: the build succeeds and the application misbehaves at run time.</p>
+</div>
+<div class="paragraph">
+<p>Micronaut Runner takes a different approach. The archive it produces is still a single file you run with
+<code>java -jar</code>, but every dependency inside it remains an intact JAR:</p>
+</div>
+<div class="listingblock">
+<div class="title">The shape of a runner JAR</div>
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-none hljs">app.jar
+├── META-INF/MANIFEST.MF          <i class="conum" data-value="1"></i><b>(1)</b>
+├── MICRONAUT-INF/index.bin       <i class="conum" data-value="2"></i><b>(2)</b>
+├── io/micronaut/runner/*.class   <i class="conum" data-value="3"></i><b>(3)</b>
+├── META-INF/micronaut/**         <i class="conum" data-value="4"></i><b>(4)</b>
+├── MICRONAUT-INF/classes/**      <i class="conum" data-value="5"></i><b>(5)</b>
+└── MICRONAUT-INF/lib/*.jar       <i class="conum" data-value="6"></i><b>(6)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td><code>Main-Class</code> points at the launcher</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>the index: every entry of every nested JAR, with its byte offset in this file</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>the launcher and its class loader, a handful of classes with no dependencies</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>the merged Micronaut bean metadata, so the framework finds it in one pass</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
+<td>the application&#8217;s own classes and resources</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td>the dependencies, each one a complete, untouched JAR</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Because the boundaries survive, so do the semantics. Duplicate resources stay distinct and are returned in
+classpath order, each JAR keeps its own manifest and package metadata, sealed packages are still enforced,
+and multi-release JARs still resolve per JAR against the running JDK.</p>
+</div>
+<div class="sect1">
+<h2 id="_why_it_is_fast">Why it is fast</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Reading nested JARs is normally <strong>slower</strong> than an ordinary classpath, which is why the usual advice for
+this style of archive is to unpack it before running in production. Micronaut Runner avoids that cost by
+moving all of the work to build time.</p>
+</div>
+<div class="paragraph">
+<p>When the archive is packaged, every entry of every nested JAR is recorded in <code>MICRONAUT-INF/index.bin</code>
+together with its absolute byte offset in the outer file. At startup the launcher memory-maps the archive
+once and reads that index directly out of the mapping. Looking up a class is a single hash probe followed
+by a byte comparison; no central directory is parsed, no nested archive is opened, nothing is extracted to
+disk, and no temporary files are written. Dependencies are stored uncompressed by default, so a class is
+defined straight from the mapped bytes with no intermediate array and no decompression.</p>
+</div>
+<div class="paragraph">
+<p>The launcher itself is written to keep off the JVM&#8217;s slow paths: no lambdas, no string concatenation
+through <code>invokedynamic</code>, no reflection on the entry path, and no <code>java.util.logging</code>. It is a handful of
+classes, and it hands control to your <code>main</code> method through an interface call.</p>
+</div>
+</div>
+</div>
+
+<h1 id="quickStart"><a class="anchor" href="#quickStart"></a>2 Quick Start</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/quickStart.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="sect1">
+<h2 id="_gradle">Gradle</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Apply the plugin alongside the Micronaut application plugin:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">plugins {
+    id 'io.micronaut.application' version '5.0.2'
+    id 'io.micronaut.runner' version '{version}'
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>That is the whole configuration. The plugin adds a <code>micronautRunnerJar</code> task, wires it into <code>assemble</code>,
+and takes your main class from the <code>application</code> block and your dependencies from the runtime classpath,
+in resolution order.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">./gradlew micronautRunnerJar
+java -jar build/libs/my-app-0.1-all.jar</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The archive is named with the <code>all</code> classifier, the same name the Shadow plugin uses, so existing
+Dockerfiles and CI scripts that reference <code>build/libs/*-all.jar</code> keep working.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+Do not apply the Shadow plugin and configure it to write the same file. The two produce different
+archives under one name. The plugin fails the build if it detects that.
+</td>
+</tr>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_configuration">Configuration</h3>
+<div class="paragraph">
+<p>Every setting is a property of the task:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">micronautRunnerJar {
+    // Defaults to application.mainClass
+    mainClass = 'com.example.Application'
+
+    // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
+    // PRESERVE copies each dependency byte for byte, producing a smaller archive that loads more slowly.
+    compression = 'STORED'
+
+    // Written into the manifest, so users need not pass the matching command line flags.
+    addOpens.add('java.base/java.lang')
+    addExports.add('java.base/sun.nio.ch=ALL-UNNAMED')
+    enableNativeAccess = true
+
+    manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
+}</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_maven">Maven</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Add the plugin to your build. Bind it to <code>package</code>, so it runs after the JAR is built:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;plugin&gt;
+    &lt;groupId&gt;io.micronaut.runner&lt;/groupId&gt;
+    &lt;artifactId&gt;micronaut-runner-maven-plugin&lt;/artifactId&gt;
+    &lt;version&gt;{version}&lt;/version&gt;
+    &lt;executions&gt;
+        &lt;execution&gt;
+            &lt;goals&gt;
+                &lt;goal&gt;package&lt;/goal&gt;
+            &lt;/goals&gt;
+        &lt;/execution&gt;
+    &lt;/executions&gt;
+&lt;/plugin&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">mvn package
+java -jar target/my-app-0.1.jar</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>By default the runner JAR replaces the project&#8217;s main artifact, exactly as the Shade plugin does, and the
+JAR produced by <code>maven-jar-plugin</code> is kept alongside it as <code>original-my-app-0.1.jar</code>. Set a <code>classifier</code> to
+attach it as an additional artifact instead and leave the main one untouched.</p>
+</div>
+<div class="paragraph">
+<p>The main class is taken from the <code>exec.mainClass</code> property, which the Micronaut parent POM already sets.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_what_to_check_first">What to check first</h2>
+<div class="sectionbody">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -Dmicronaut.runner.mode=inspect -jar my-app-0.1-all.jar</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>prints the format version, the number of dependencies and entries, and the application main class, which
+confirms the archive is what you expect before you deploy it.</p>
+</div>
+</div>
+</div>
+
+<h1 id="format"><a class="anchor" href="#format"></a>3 The Runner JAR Format</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/format.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>This chapter documents the archive layout. You do not need any of it to use Micronaut Runner; it is here so
+the format can be inspected, reimplemented and reasoned about.</p>
+</div>
+<div class="sect1">
+<h2 id="_outer_archive">Outer archive</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Every entry of the outer archive is <code>STORED</code>, that is, uncompressed. That is what allows a nested JAR&#8217;s
+bytes to be read in place at a known offset.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 35%;">
+<col style="width: 65%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Entry</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>META-INF/MANIFEST.MF</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Written first. <code>Main-Class</code> is <code>io.micronaut.runner.Launcher</code>. <code>Micronaut-Runner-Format</code> carries the
+format version, <code>Micronaut-Runner-Start-Class</code> the application main class, for information only.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>MICRONAUT-INF/index.bin</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Written second, so the launcher finds it after reading only a couple of central directory records.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>io/micronaut/runner/**.class</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The launcher. Only class files are copied from the launcher library; its manifest and Maven metadata are
+not.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>META-INF/micronaut/**</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The Micronaut bean metadata of the application and of every dependency, merged and de-duplicated, with
+explicit directory entries. See <a href="#serviceDiscovery">Micronaut service discovery</a>.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>MICRONAUT-INF/classes/</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An explicit directory entry for the application layer, so that the <code>CodeSource</code> location of every
+application class names something the archive really carries and can be opened.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>MICRONAUT-INF/classes/**</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The application&#8217;s own classes and resources, stored exploded. This is "jar 0"; an entry&#8217;s <em>logical name</em>
+is its path with this prefix removed. Directories inside the layer are not stored; the index carries a
+synthetic record for each one instead.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>MICRONAUT-INF/lib/&lt;name&gt;.jar</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The dependencies, in classpath order, each a complete JAR.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>By default each dependency is re-packed so that its own entries are <code>STORED</code> too, which removes
+decompression from class loading at the cost of a larger archive. Re-packing also drops signature files
+(<code>META-INF/<strong>.SF</code>, <code></strong>.DSA</code>, <code><strong>.RSA</code>, <code></strong>.EC</code>, <code>META-INF/SIG-*</code>) and <code>META-INF/INDEX.LIST</code>. Manifests are
+never rewritten, so package metadata and sealing survive intact. The <code>PRESERVE</code> option copies each
+dependency byte for byte instead.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_the_index">The index</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><code>MICRONAUT-INF/index.bin</code> is a little-endian binary structure designed to be used directly from the memory
+mapping, with bounds checks but no parsing into objects. It consists of a fixed 128-byte header followed
+by five sections: a jar table, a package table, an entry table, a hash table and a string table. The exact
+byte layout is defined, as compile-time constants with documentation, in <code>IndexFormat</code> in the
+<code>micronaut-runner-launcher</code> artifact, which is the authoritative description.</p>
+</div>
+<div class="paragraph">
+<p>The parts worth understanding:</p>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">Entry records</dt>
+<dd>
+<p>One per entry, per jar, carrying the entry&#8217;s absolute offset in the outer file, its sizes,
+CRC-32, compression method and MS-DOS timestamp. Records for one jar are contiguous, with the physical
+entries first in their original central directory order, so <code>JarFile.entries()</code> can report them faithfully.</p>
+</dd>
+<dt class="hdlist1">Hash table</dt>
+<dd>
+<p>Maps a logical name to the first record with that name, using open addressing and linear
+probing. The maximum probe length actually needed is recorded at build time and validated when the index
+is opened, so a lookup has a hard bound.</p>
+</dd>
+<dt class="hdlist1">Same-name chains</dt>
+<dd>
+<p>Entries that share a logical name are linked in classpath order, so <code>getResource</code>
+returns the first and <code>getResources</code> walks the chain, emitting one URL per contributing JAR.</p>
+</dd>
+<dt class="hdlist1">Multi-release aliases</dt>
+<dd>
+<p>For a JAR declaring <code>Multi-Release: true</code>, each <code>META-INF/versions/N/&lt;path&gt;</code> entry
+is indexed a second time under <code>&lt;path&gt;</code>, marked with its version. Aliases precede the base entry in
+descending version order, so resolution takes the first record the running JDK accepts. The rule for what
+counts as a version directory is <code>java.util.jar.JarFile&#8217;s, so that a JAR resolves to the same bytes
+inside a runner JAR as it does on an ordinary class path: `N</code> must start with <code>1</code>-<code>9</code>, so
+<code>META-INF/versions/09/</code> is an ordinary entry and is never selected; <code>N</code> is considered from 8 upwards, and
+only when the effective runtime version is above 8, so a versioned entry is ignored altogether when
+<code>jdk.util.jar.enableMultiRelease</code> is <code>false</code> or <code>jdk.util.jar.version</code> selects 8; and paths that themselves
+start with <code>META-INF/</code> are never aliased.</p>
+</dd>
+<dt class="hdlist1">Package table</dt>
+<dd>
+<p>The per-package <code>Name:</code> sections of each dependency&#8217;s manifest, which override the
+manifest&#8217;s main attributes attribute by attribute when a package is defined.</p>
+</dd>
+</dl>
+</div>
+<div class="sect2">
+<h3 id="_detecting_a_stale_archive">Detecting a stale archive</h3>
+<div class="paragraph">
+<p>The index stores the outer file&#8217;s length, and every jar record stores the offset of the local file header
+that introduces it. Both are checked, the second lazily per JAR, and a mismatch fails with a message
+telling you to rebuild. This detects an archive that was appended to, truncated or re-zipped after
+packaging, which would otherwise mean reading from wrong offsets. It is a staleness check, not an
+integrity check: it is not designed to detect deliberate tampering, and a modification that preserves the
+length and the header positions passes it. Full CRC verification on every read is available with
+<code>-Dmicronaut.runner.verify=true</code>.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="serviceDiscovery">Micronaut service discovery</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut locates beans by calling <code>getResources("META-INF/micronaut/")</code> and then <em>listing the directory</em>
+that each returned URL denotes. Listing a directory is not something a URL can do generically, so the
+framework opens the archive behind the URL. For a JAR nested inside another JAR it has to mount a ZIP file
+system over a ZIP file system, and the JDK implements that by reading the whole inner archive into memory.
+Doing this once per dependency would dominate startup.</p>
+</div>
+<div class="paragraph">
+<p>Micronaut Runner avoids it by merging that metadata at build time. Every
+<code>META-INF/micronaut/&lt;service&gt;/&lt;name&gt;</code> entry from the application and from every dependency is written,
+de-duplicated and in classpath order, into <code>META-INF/micronaut/</code> at the <strong>root</strong> of the outer archive, with
+real directory entries. The class loader resolves any name under that prefix against the merged copy
+alone, so <code>getResources("META-INF/micronaut/")</code> returns exactly one URL and Micronaut lists it in a single
+pass over an archive the JVM already has open.</p>
+</div>
+<div class="paragraph">
+<p>Almost all of these entries are empty markers whose name carries the information, but one that has content
+keeps it: the merged copy is written with the bytes of the first contributor in classpath order, and a
+build warns when two JARs contribute the same name with different content. Since every lookup under the
+prefix is answered from the merged copy, the alternative would be serving an empty stream for a file that
+is not empty.</p>
+</div>
+<div class="paragraph">
+<p>Classic <code>META-INF/services/</code> files are left exactly where they are, one per dependency: they are read as
+files through their URL, which works per JAR without any special handling.</p>
+</div>
+</div>
+</div>
+
+<h1 id="runtime"><a class="anchor" href="#runtime"></a>4 Running a Runner JAR</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/runtime.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>A runner JAR is an ordinary executable JAR. Everything below is optional tuning and diagnostics.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -jar build/libs/my-app-0.1-all.jar</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Arguments after the JAR are passed to your application untouched, and an exception thrown by your
+application propagates exactly as it would from an ordinary main class: the JVM prints the stack trace and
+exits with status 1. The launcher never wraps it.</p>
+</div>
+<div class="paragraph">
+<p>The main method is chosen the way the <code>java</code> launcher chooses it, JEP 512 included: <code>main(String[])</code> is
+preferred over <code>main()</code>, the whole hierarchy - superclasses and the interfaces they implement - is searched
+for the first form before the second is considered, a <code>main</code> inherited as an interface default method
+counts, and a non-static one is invoked on a new instance built from a non-private no-argument
+constructor.</p>
+</div>
+<div class="sect1">
+<h2 id="_system_properties">System properties</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 30%;">
+<col style="width: 15%;">
+<col style="width: 55%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Property</th>
+<th class="tableblock halign-left valign-top">Default</th>
+<th class="tableblock halign-left valign-top">Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.mode</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>run</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>run</code> starts the application. <code>inspect</code> prints the index header and jar table, <code>list</code> prints the entries,
+and <code>extract</code> writes an exploded copy. The non-<code>run</code> modes consume the remaining command line arguments.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.timing</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Prints the time reached by each startup phase to standard error: archive opened, index read, class loader
+ready, application entered. Use it to separate launcher cost from framework cost.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.mmap</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set to <code>false</code> to read the archive with positional file reads instead of a memory mapping. Slower, and
+only needed on a platform or file system where mapping is unavailable or undesirable.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.verify</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set to <code>true</code> to verify every entry&#8217;s CRC-32 as it is read. Useful when you suspect a corrupted archive.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.parent</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>platform</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The parent of the application class loader. <code>platform</code> isolates the application from anything on the real
+<code>java.class.path</code>. <code>system</code> is an escape hatch for an agent or tool that must share types with the
+application.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exit_codes">Exit codes</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 10%;">
+<col style="width: 90%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Code</th>
+<th class="tableblock halign-left valign-top">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>0</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Normal termination.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>1</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The application threw. The JVM&#8217;s default handler printed it.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>2</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The launcher could not start: the archive could not be located, it was modified after packaging, or
+its format version is not supported.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_running_from_an_exploded_layout">Running from an exploded layout</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><code>extract</code> writes the archive out as a directory: the dependencies as real JAR files under <code>lib/</code>, and the
+application classes in a JAR whose manifest names your main class and lists those dependencies in its
+<code>Class-Path</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination ./app
+java -jar ./app/my-app.jar</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The extracted form runs entirely on the JDK&#8217;s own application class loader, with no custom class loader
+anywhere. That matters for the JDK&#8217;s ahead-of-time cache: as described in <a href="#cdsAndAot">[cdsAndAot]</a>, classes loaded by
+a user-defined class loader cannot be AOT-linked, so an application that will be started thousands of
+times in the same container image may be better served by extracting once at image build time.</p>
+</div>
+</div>
+</div>
+
+<h1 id="compatibility"><a class="anchor" href="#compatibility"></a>5 Compatibility and Limitations</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/compatibility.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>The goal is that an application behaves identically whether it runs from a runner JAR or from an ordinary
+classpath. The class loader is tested differentially against <code>java.net.URLClassLoader</code> over the same set of
+JARs, comparing resource resolution, resource ordering, class bytes, package attributes and code sources.</p>
+</div>
+<div class="sect1">
+<h2 id="_what_behaves_exactly_as_on_a_classpath">What behaves exactly as on a classpath</h2>
+<div class="sectionbody">
+<div class="ulist">
+<ul>
+<li>
+<p><code>getResource</code> returns the first match in classpath order; <code>getResources</code> returns one URL per contributing
+JAR, in classpath order, with the first element equal to what <code>getResource</code> returned.</p>
+</li>
+<li>
+<p>Duplicate resources in different dependencies stay distinct, including two entries of one dependency
+that share a name, which stay two records.</p>
+</li>
+<li>
+<p>A directory resolves whether or not the name ends with a slash, as <code>ZipFile.getEntry</code> resolves one.</p>
+</li>
+<li>
+<p>A manifest attribute that is present but empty is reported as <code>""</code> on the <code>Package</code>, not as absent.</p>
+</li>
+<li>
+<p>Multi-release JARs resolve per JAR against the running JDK&#8217;s feature version, honouring
+<code>jdk.util.jar.enableMultiRelease</code> and <code>jdk.util.jar.version</code>. Paths under <code>META-INF/</code> are never versioned.</p>
+</li>
+<li>
+<p>Each dependency keeps its own manifest, so <code>Package.getImplementationVersion()</code> and the other
+specification and implementation attributes are correct per package, including per-package <code>Name:</code>
+sections that override the main attributes.</p>
+</li>
+<li>
+<p>Sealed packages are enforced: loading a class into an already sealed package from a different JAR, or
+sealing a package that is already open, raises <code>SecurityException</code>.</p>
+</li>
+<li>
+<p>Every class has a <code>ProtectionDomain</code> whose <code>CodeSource</code> location identifies the JAR it came from.</p>
+</li>
+<li>
+<p>Resources resolve through ordinary <code>jar:file:</code> URLs, so <code>URL.openStream()</code>, <code>URLConnection</code> metadata and
+<code>JarURLConnection.getJarFile()</code> all work, which is what libraries that scan the classpath rely on.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_known_limitations">Known limitations</h2>
+<div class="sectionbody">
+<div class="dlist">
+<dl>
+<dt class="hdlist1">Nested <code>JarFile</code> reporting</dt>
+<dd>
+<p><code>JarFile.isMultiRelease()</code> and <code>JarFile.getVersion()</code> are <code>final</code> in the JDK
+and report the archive passed to the constructor, which is the outer one. A <code>JarFile</code> obtained for a
+nested dependency therefore reports the outer archive&#8217;s state from those two methods. Entry <em>lookup</em> still
+applies the nested JAR&#8217;s own multi-release policy, so resolution is correct; only these two reporting
+methods cannot be corrected.</p>
+</dd>
+<dt class="hdlist1">Classes in <code>io.micronaut.runner</code></dt>
+<dd>
+<p>The launcher&#8217;s own classes are loaded from the launcher, so an
+application or dependency class whose binary name is one of theirs - <code>io.micronaut.runner.Index</code>, say -
+resolves to the launcher&#8217;s copy. Any other class under that package prefix is loaded from the archive like
+any other application class.</p>
+</dd>
+<dt class="hdlist1">The system class loader</dt>
+<dd>
+<p>Only the thread context class loader is the runner class loader.
+<code>ClassLoader.getSystemClassLoader()</code> still sees the real <code>java.class.path</code>, which contains only the runner
+JAR itself. Code that resolves classes through the system class loader, or that parses <code>java.class.path</code>
+to discover the application&#8217;s dependencies, will not find them. Micronaut resolves its application class
+loader from the thread context class loader, so the framework is unaffected.</p>
+</dd>
+<dt class="hdlist1">Signatures are not verified</dt>
+<dd>
+<p>Re-packing removes signature files, and nothing is verified at run time.
+Sign the outer archive if you need a signature. Code that depends on <code>CodeSource.getCodeSigners()</code> being
+populated, such as a JCE provider requiring a signed JAR, is not supported.</p>
+</dd>
+<dt class="hdlist1">The Java Platform Module System</dt>
+<dd>
+<p>Everything runs in the unnamed module of the runner class loader. A
+dependency&#8217;s <code>module-info.class</code> is carried but is inert, and modules added with <code>--module-path</code> are not
+visible to the application.</p>
+</dd>
+<dt class="hdlist1">Dependency <code>Class-Path</code> manifest attributes</dt>
+<dd>
+<p>Ignored, with a warning at packaging time. They point at
+sibling files that do not exist inside an archive. They become active again after <code>extract</code>.</p>
+</dd>
+<dt class="hdlist1">Native libraries</dt>
+<dd>
+<p>Libraries that ship native code, such as Netty&#8217;s transports, unpack it to a temporary
+directory themselves, exactly as they do from any JAR. Micronaut Runner does not extract anything, but it does
+not prevent a library from doing so.</p>
+</dd>
+</dl>
+</div>
+</div>
+</div>
+
+<h1 id="cdsAndAot"><a class="anchor" href="#cdsAndAot"></a>6 Class Data Sharing and the AOT Cache</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/cdsAndAot.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>Modern JVMs can cache the work of loading and linking classes between runs. Understanding how that
+interacts with a runner JAR matters if startup time is your reason for being here.</p>
+</div>
+<div class="sect1">
+<h2 id="_the_constraint">The constraint</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><a href="https://openjdk.org/jeps/483">JEP 483</a>, which introduced the AOT cache in JDK 24, is explicit:</p>
+</div>
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p>Only classes loaded from the class path, the module path, and the JDK itself, by the JDK&#8217;s built-in class
+loaders, can be cached.</p>
+</div>
+</blockquote>
+</div>
+<div class="paragraph">
+<p>A runner JAR loads application classes through its own class loader, so those classes cannot be
+<strong>AOT-linked</strong>. This is not specific to Micronaut Runner: it applies to every executable-JAR format that
+keeps its dependencies nested, and it is why Quarkus added a separate packaging mode whose class loading
+is delegated entirely to the JDK.</p>
+</div>
+<div class="paragraph">
+<p>What still applies is the older Class Data Sharing machinery. HotSpot archives classes defined by a
+user-defined class loader as <em>unregistered</em> classes, and when such a loader later defines a class whose
+name, class file size and CRC-32 match an archived one, the pre-parsed and pre-verified copy is used
+instead of parsing the bytes again. So an archive is still worth creating; it simply does not carry the
+full benefit that AOT linking gives an ordinary classpath.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_two_options">Two options</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Keep the single JAR.</strong> Create a CDS archive in the usual way. The same command must be used for the
+training run and for production:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=app.jsa -jar my-app-0.1-all.jar</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><code>-XX:+AutoCreateSharedArchive</code> requires <code>-XX:SharedArchiveFile</code>; it creates the archive when it is missing
+or stale and reuses it otherwise.</p>
+</div>
+<div class="paragraph">
+<p><strong>Extract once, then get everything.</strong> If the image is built once and started many times, extract at image
+build time and run from the exploded layout, which uses no custom class loader at all and is therefore
+fully AOT-linkable:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination ./app
+java -XX:AOTCacheOutput=app.aot -jar ./app/my-app.jar     # training run
+java -XX:AOTCache=app.aot -jar ./app/my-app.jar           # production</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>HotSpot reads the <code>Class-Path</code> manifest attribute of the extracted application JAR and records every JAR
+it names, validating each by file size and modification time, so the whole dependency set is covered.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_verifying_that_it_worked">Verifying that it worked</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Do not assume an archive is being used. Check that your own classes are coming from it:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -XX:AOTCache=app.aot -Xlog:class+load -jar ./app/my-app.jar | grep 'shared objects file' | grep com.example</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><code>-Xlog:class+path=info</code> reports how the recorded class path was validated, which is the first thing to look
+at when a cache is silently ignored.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+Measure before committing to either option. The cost and benefit depend on the size of the
+application and on how often the process starts, and the numbers move between JDK releases.
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+
+<h1 id="benchmarks"><a class="anchor" href="#benchmarks"></a>7 Benchmarks</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/benchmarks.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>Performance claims about startup are easy to make and easy to get wrong, so the numbers for Micronaut
+Runner are produced by a harness in the repository rather than quoted from memory.</p>
+</div>
+<div class="sect1">
+<h2 id="_what_is_measured">What is measured</h2>
+<div class="sectionbody">
+<div class="dlist">
+<dl>
+<dt class="hdlist1">Micro-benchmarks</dt>
+<dd>
+<p>JMH benchmarks over the class loader&#8217;s hot path: index lookup hit and miss, class
+loading against <code>URLClassLoader</code> on the same set of JARs, and defining a class from a mapped buffer versus
+a byte array. These isolate the mechanism.</p>
+</dd>
+<dt class="hdlist1">Startup</dt>
+<dd>
+<p>The whole process, from spawn to readiness, for the same application packaged several ways: an
+exploded classpath, a thin JAR with a <code>Class-Path</code> manifest, a shaded JAR, a runner JAR with dependencies
+stored and preserved, and the extracted layout, each also with a CDS archive and with a JDK 25 AOT cache.</p>
+</dd>
+</dl>
+</div>
+<div class="paragraph">
+<p>Readiness is measured externally, as the time from process spawn to the first successful HTTP response,
+because that is what a user waits for and it captures class loading that happens on the first request.
+The framework&#8217;s own "startup completed" line is recorded separately, as a second metric rather than as a
+substitute.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_methodology">Methodology</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The harness interleaves the variants in random order rather than running each in a block, discards warm-up
+runs, keeps every raw sample, and reports the median, the 90th percentile and a confidence interval. Timing
+runs carry no diagnostic flags: <code>-Xlog</code> changes what is being measured, so class-load counts and cache-hit
+counts are collected in separate runs. Both a warm and a cold page cache are measured, because storing
+dependencies uncompressed trades archive size against I/O.</p>
+</div>
+<div class="paragraph">
+<p>Run it locally with:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">./gradlew :benchmarks:jmh
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Reports are written to <code>benchmarks/build/reports/</code>. In CI the benchmarks run weekly and on demand rather
+than on every pull request, because shared runners are too noisy to gate a build on.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_first_measurements">First measurements</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>These are the numbers from the prototype gate, taken on one developer machine (Apple silicon, JDK 25) with
+the <code>hello-netty</code> sample: a Micronaut 5 application with 35 dependencies. Nine runs per variant,
+interleaved rather than run in blocks, measuring from process spawn to the framework reporting that
+startup completed. Treat them as a direction, not a specification; the CI harness is the authority.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 30%;">
+<col style="width: 20%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Variant</th>
+<th class="tableblock halign-left valign-top">Total</th>
+<th class="tableblock halign-left valign-top">Framework-reported</th>
+<th class="tableblock halign-left valign-top">Archive size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR, dependencies stored</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">318 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">178 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">31.4 MB</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shaded JAR</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">363 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">202 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">12.8 MB</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Exploded classpath</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">374 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">374 ms is the whole process; 201 ms reported</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">n/a</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>The runner JAR started 12% faster than the shaded JAR and 15% faster than an exploded classpath. The
+framework-reported figure moves with it, which matters: it means the saving comes from class loading and
+from bean discovery reading one merged service directory, not merely from a cheap launcher.</p>
+</div>
+<div class="paragraph">
+<p>The cost is size. Storing dependencies uncompressed made the archive 2.5 times larger than the shaded JAR.
+That trade is why <code>PRESERVE</code> exists, and why the cold-page-cache case is measured separately: an archive
+this much larger can lose on a cold start what it gains on a warm one.</p>
+</div>
+<div class="sect2">
+<h3 id="_two_clocks_not_one">Two clocks, not one</h3>
+<div class="paragraph">
+<p>The harness reports readiness and the framework&#8217;s startup line as separate columns, and they are far
+apart: on the sample, roughly 410 ms against roughly 330 ms for the same run. The gap is serving the first
+request on a cold JVM, which readiness includes by definition and a measurement that watches the console
+does not.</p>
+</div>
+<div class="paragraph">
+<p>The figures in the table above are the startup line, because that is what a careful measurement by hand
+produces and what most published comparisons quote. Readiness is the more honest answer to "when can this
+serve traffic". Neither is wrong; quoting one while implying the other is. The framework&#8217;s own reported
+figure is a third quantity again, the smallest of the three, because the application only starts counting
+once the JVM has already done most of the work.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_a_measurement_that_did_not_move">A measurement that did not move</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The launcher&#8217;s own share of startup, which <code>-Dmicronaut.runner.timing=true</code> reports, fell from 17.4 ms to
+12.3 ms when the archive reader stopped reading through <code>VarHandle</code>-backed layout accessors. Total startup
+did not change. The most likely reason is that the work was not removed from the process, only from the
+launcher: the first use of a var handle initialises <code>java.lang.invoke</code>, and the framework initialises it
+moments later regardless.</p>
+</div>
+<div class="paragraph">
+<p>The change is kept because it is strictly less work, and because it does help an application that never
+touches method handles at all, such as a short-lived command line tool. It is recorded here because it is
+the clearest example of why this module measures the whole process rather than the phase it is proud of.</p>
+</div>
+</div>
+</div>
+
+<h1 id="troubleshooting"><a class="anchor" href="#troubleshooting"></a>8 Troubleshooting</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/troubleshooting.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="sect1">
+<h2 id="_runner_jar_was_modified_after_packaging">"runner jar was modified after packaging"</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The index records the archive&#8217;s length and the position of every nested JAR. One of those checks failed,
+which means the file changed after it was built: something appended to it, re-zipped it, or signed it in
+place. Rebuild the archive. If you need a signature, sign the finished archive with a tool that does not
+rewrite existing entries, or use the extracted layout.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_a_resource_is_not_found_or_the_wrong_one_is_found">A resource is not found, or the wrong one is found</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Resources resolve in classpath order: the application first, then dependencies in resolution order. Check
+what the archive actually contains:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -Dmicronaut.runner.mode=list -jar my-app-0.1-all.jar META-INF/services</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If a library finds nothing at all, check whether it discovers resources through
+<code>ClassLoader.getSystemClassLoader()</code> or by parsing <code>java.class.path</code> rather than through the thread
+context class loader. Neither sees the application&#8217;s dependencies; see the compatibility chapter.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_no_beans_are_found_or_the_application_context_is_empty">No beans are found, or the application context is empty</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut discovers beans by listing <code>META-INF/micronaut/</code>. Confirm the merged directory is present and
+populated:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -Dmicronaut.runner.mode=list -jar my-app-0.1-all.jar META-INF/micronaut</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If it is empty, the dependencies were not processed by annotation processing at build time, which is a
+build configuration problem rather than a packaging one.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_startup_is_slower_than_expected">Startup is slower than expected</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Separate the launcher from the framework before tuning anything:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -Dmicronaut.runner.timing=true -jar my-app-0.1-all.jar</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>That prints when the archive was opened, when the index was read, when the class loader was ready and when
+your application was entered. If the time is spent after "application entered", it is the framework or the
+application, not the packaging.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_a_library_fails_with_an_unexpected_url">A library fails with an unexpected URL</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Resources are exposed through ordinary <code>jar:file:</code> URLs. A resource inside a dependency uses the nested
+form <code>jar:file:/path/app.jar!/MICRONAUT-INF/lib/dep.jar!/name</code>. Libraries that split such a URL at the
+first <code>!/</code> rather than the last may misread it. Report it: in most cases it can be handled on our side.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_an_exception_mentions_securityexception_sealing_violation">An exception mentions <code>SecurityException: sealing violation</code></h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>A dependency declares a sealed package and another JAR contributes a class to the same package. That is a
+genuine conflict which a shaded JAR would have hidden. Resolve the duplicate dependency, or relocate one
+of them.</p>
+</div>
+</div>
+</div>
+
+<h1 id="repository"><a class="anchor" href="#repository"></a>9 Repository</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/repository.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>You can find the source code of this project in this repository:</p>
+</div>
+<div class="paragraph">
+<p><a href="https://github.com/micronaut-projects/micronaut-runner">https://github.com/micronaut-projects/micronaut-runner</a></p>
+</div>
+
+<h1 id="releaseHistory"><a class="anchor" href="#releaseHistory"></a>10 Release History</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/releaseHistory.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>For this project, you can find a list of releases (with release notes) here:</p>
+</div>
+<div class="paragraph">
+<p><a href="https://github.com/micronaut-projects/micronaut-runner/releases">https://github.com/micronaut-projects/micronaut-runner/releases</a></p>
+</div>
+
+    </div>
+</div>
+
+<script type="text/javascript">
+
+</script>
+</body>
+</html>
