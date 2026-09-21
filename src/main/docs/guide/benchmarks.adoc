@@ -70,6 +70,50 @@ The cost is size. Storing dependencies uncompressed made the archive 2.5 times l
 That trade is why `PRESERVE` exists, and why the cold-page-cache case is measured separately: an archive
 this much larger can lose on a cold start what it gains on a warm one.
 
+=== Class loading in isolation
+
+The JMH benchmarks measure the mechanism rather than the application. Over a synthetic classpath of 30
+jars and 3,600 classes, loading 200 classes through a freshly created loader, including opening the
+archive:
+
+[cols="55,45"]
+|===
+|Loader |Time for 200 classes
+
+|`RunnerClassLoader`, dependencies stored
+|1.4 ms
+
+|`RunnerClassLoader`, dependencies left compressed
+|2.1 ms
+
+|`URLClassLoader` over the same jars
+|9.2 ms
+|===
+
+Storing dependencies uncompressed is worth about 35% of the class-loading time, which is what pays for
+the larger archive. Defining a class from a memory-mapped buffer rather than a byte array is worth about
+2%: on JDK 26 the virtual machine copies a direct buffer for a non-builtin loader anyway, so what is saved
+is the application-side array and the copy into it, not the copy itself.
+
+=== Archive size
+
+[cols="55,45"]
+|===
+|Packaging |Size
+
+|Runner JAR, dependencies stored
+|31.4 MB
+
+|Runner JAR, dependencies preserved
+|14.1 MB
+
+|Shaded JAR
+|12.8 MB
+|===
+
+`PRESERVE` copies each dependency byte for byte, so the archive is close to the shaded one and class
+loading pays for decompression. It is the right choice when artifact size matters more than start time.
+
 === Two clocks, not one
 
 The harness reports readiness and the framework's startup line as separate columns, and they are far
