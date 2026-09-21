@@ -70,7 +70,20 @@ The cost is size. Storing dependencies uncompressed made the archive 2.5 times l
 That trade is why `PRESERVE` exists, and why the cold-page-cache case is measured separately: an archive
 this much larger can lose on a cold start what it gains on a warm one.
 
-=== A measurement that did not move
+=== Two clocks, not one
+
+The harness reports readiness and the framework's startup line as separate columns, and they are far
+apart: on the sample, roughly 410 ms against roughly 330 ms for the same run. The gap is serving the first
+request on a cold JVM, which readiness includes by definition and a measurement that watches the console
+does not.
+
+The figures in the table above are the startup line, because that is what a careful measurement by hand
+produces and what most published comparisons quote. Readiness is the more honest answer to "when can this
+serve traffic". Neither is wrong; quoting one while implying the other is. The framework's own reported
+figure is a third quantity again, the smallest of the three, because the application only starts counting
+once the JVM has already done most of the work.
+
+== A measurement that did not move
 
 The launcher's own share of startup, which `-Dmicronaut.runner.timing=true` reports, fell from 17.4 ms to
 12.3 ms when the archive reader stopped reading through `VarHandle`-backed layout accessors. Total startup
