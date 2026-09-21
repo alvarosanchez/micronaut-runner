@@ -34,3 +34,38 @@ Run it locally with:
 
 Reports are written to `benchmarks/build/reports/`. In CI the benchmarks run weekly and on demand rather
 than on every pull request, because shared runners are too noisy to gate a build on.
+
+== First measurements
+
+These are the numbers from the prototype gate, taken on one developer machine (Apple silicon, JDK 25) with
+the `hello-netty` sample: a Micronaut 5 application with 35 dependencies. Nine runs per variant,
+interleaved rather than run in blocks, measuring from process spawn to the framework reporting that
+startup completed. Treat them as a direction, not a specification; the CI harness is the authority.
+
+[cols="30,20,25,25"]
+|===
+|Variant |Total |Framework-reported |Archive size
+
+|Runner JAR, dependencies stored
+|317 ms
+|175 ms
+|31.4 MB
+
+|Shaded JAR
+|357 ms
+|197 ms
+|12.8 MB
+
+|Exploded classpath
+|368 ms
+|368 ms is the whole process; 197 ms reported
+|n/a
+|===
+
+The runner JAR started 11% faster than the shaded JAR and 14% faster than an exploded classpath. The
+framework-reported figure moves with it, which matters: it means the saving comes from class loading and
+from bean discovery reading one merged service directory, not merely from a cheap launcher.
+
+The cost is size. Storing dependencies uncompressed made the archive 2.5 times larger than the shaded JAR.
+That trade is why `PRESERVE` exists, and why the cold-page-cache case is measured separately: an archive
+this much larger can lose on a cold start what it gains on a warm one.

@@ -21,6 +21,10 @@ micronaut {
 dependencies {
     annotationProcessor 'io.micronaut:micronaut-inject-java'
     implementation 'io.micronaut:micronaut-http-server-netty'
+    // Micronaut's HTTP server requires a JSON body provider even for a plain text endpoint, because the
+    // default error response processor depends on one.
+    annotationProcessor 'io.micronaut.serde:micronaut-serde-processor'
+    implementation 'io.micronaut.serde:micronaut-serde-jackson'
     runtimeOnly 'ch.qos.logback:logback-classic'
 }
 
@@ -31,4 +35,11 @@ application {
 java {
     sourceCompatibility = JavaVersion.VERSION_25
     targetCompatibility = JavaVersion.VERSION_25
+}
+
+// The runner jar takes the -all.jar name, because that is the name existing Dockerfiles and CI scripts
+// already point at. The shaded jar is only here so the benchmark can compare the two formats over
+// identical application bytes, so it is the one that moves aside.
+tasks.named('shadowJar') {
+    archiveClassifier = 'shadow'
 }
