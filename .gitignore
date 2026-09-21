@@ -6,6 +6,13 @@ target/
 build/
 !build-logic/src/main/java/io/micronaut/build
 !build-logic/src/main/kotlin/io/micronaut/build
+
+# The packaging library's Java package is literally named "build", and the unanchored "build/" rule above
+# matches a directory of that name at ANY depth, so it silently excluded the whole
+# io.micronaut.runner.build package from every commit. Re-include the directory itself: git never descends
+# into an excluded directory, so negating the files inside it would not be enough.
+!**/src/main/java/io/micronaut/runner/build/
+!**/src/test/java/io/micronaut/runner/build/
 classes/
 out/
 *.db

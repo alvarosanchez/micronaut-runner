@@ -7,7 +7,9 @@ name: Publish snapshot release
 on: [workflow_dispatch]
 jobs:
   build:
-    if: github.repository != 'micronaut-projects/micronaut-project-template'
+    # TEMPORARY (revert on transfer to micronaut-projects): nothing may be released from a
+    # personal fork. Removing these lines is the deliberate act that re-enables releasing.
+    if: github.repository != 'micronaut-projects/micronaut-project-template' && github.repository_owner == 'micronaut-projects'
     runs-on: ubuntu-latest
     steps:
       - name: Remove system JDKs
