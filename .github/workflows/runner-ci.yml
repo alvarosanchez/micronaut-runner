@@ -42,6 +42,26 @@ jobs:
       - name: "🔧 Setup Gradle"
         uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
 
+      # A workflow file that does not parse is not reported as a failure of anything: GitHub records a
+      # run with no jobs and no name, which reads like a passing build. Parsing them here, from a
+      # workflow that does parse, turns that into an ordinary test failure.
+      - name: "🔎 Validate the workflow files"
+        run: |
+          python3 - <<'PY'
+          import glob, sys, yaml
+          bad = []
+          for path in sorted(glob.glob('.github/workflows/*.yml')):
+              try:
+                  document = yaml.safe_load(open(path))
+                  if not document.get('name'):
+                      bad.append(f'{path}: no name')
+              except Exception as error:
+                  bad.append(f'{path}: {error}')
+          for line in bad:
+              print(line)
+          sys.exit(1 if bad else 0)
+          PY
+
       - name: "🛠 Build and test"
         run: ./gradlew check --continue --no-daemon
 

@@ -24,7 +24,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   benchmark:
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'relates-to: benchmarks')
+    # Quoted as a whole: the label name contains a colon followed by a space, which YAML would
+    # otherwise read as a nested mapping, making the entire workflow file unparseable.
+    if: "github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'relates-to: benchmarks')"
     runs-on: ubuntu-latest
     steps:
       - name: "📥 Checkout repository"
