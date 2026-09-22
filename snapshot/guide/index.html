@@ -1045,6 +1045,22 @@ not silently run without its trained application cache.</p>
 <p>Reports are written to <code>benchmarks/build/reports/</code>. In CI the benchmarks run weekly and on demand rather
 than on every pull request, because shared runners are too noisy to gate a build on.</p>
 </div>
+<div class="paragraph">
+<p>The startup harness uses a required, fail-closed matrix by default. Every required packaging variant must
+be built and complete every requested measured iteration; otherwise the task exits nonzero <em>after</em> writing
+both <code>results.json</code> and <code>summary.md</code>. Both reports show requested, attempted, successful, failed and skipped
+counts separately for warm-up and measured phases. <code>results.json</code> also records every process attempt with
+its variant, iteration, global schedule order, phase, outcome, failure and exit information, and timing only
+when the attempt produced a valid measurement. A build-unavailable variant is skipped, not mislabeled as a
+failed process attempt. A warm-up failure is visible but does not by itself invalidate a complete measured
+matrix.</p>
+</div>
+<div class="paragraph">
+<p>For investigation only, <code>-Pbenchmarks.allowPartial=true</code> selects the explicit partial policy. An incomplete
+partial run is labelled as such in both reports and exits zero only when at least one measured attempt
+succeeds. Its timing distributions remain explicitly conditional on successful attempts; the harness never
+turns a timeout into a zero duration or retries until a favorable sample appears.</p>
+</div>
 </div>
 </div>
 </div>

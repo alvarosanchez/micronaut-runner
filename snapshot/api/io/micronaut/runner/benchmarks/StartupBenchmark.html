@@ -94,6 +94,7 @@ java io.micronaut.runner.benchmarks.StartupBenchmark \
   [ --readiness  &lt;p&gt;  ]  the HTTP path polled for readiness (default /hello)
   [ --timeout    &lt;s&gt;  ]  how long one start may take (default 120)
   [ --diagnostics     ]  additionally make one -Xlog:class+load run per variant
+  [ --allow-partial   ]  exploratory mode: exit zero if any measured run succeeds
 </pre>
 
 <h2 id="the-methodology-and-why-each-rule-is-there-heading">The methodology, and why each rule is there</h2>
@@ -115,9 +116,9 @@ java io.micronaut.runner.benchmarks.StartupBenchmark \
   <li><strong>A variant that cannot be built is reported, not dropped.</strong></li>
 </ol>
 
-<p>Exit status is <code>0</code> when at least one variant was measured, <code>1</code> otherwise. Both reports
-are written either way, because "nothing could be built, and here is why" is the most useful thing the
-harness can say on a bad day.</p></div>
+<p>The default required policy exits <code>0</code> only when every required variant produced every requested
+measured run. Explicit partial mode exits <code>0</code> when at least one measured run succeeded. Both
+reports are written before either decision.</p></div>
 </div>
 </section>
 <section class="summary">
