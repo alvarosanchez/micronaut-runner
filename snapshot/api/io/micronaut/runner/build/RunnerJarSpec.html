@@ -195,8 +195,7 @@ restricted method warnings a dependency using the foreign function API would oth
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryStub()" class="member-name-link">entryStub</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether the packager may generate the entry stub that lets the launcher start the application through
-an interface call instead of reflection.</div>
+<div class="block">Whether the generated entry stub was requested.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#mainClass()" class="member-name-link">mainClass</a>()</code></div>
@@ -380,12 +379,17 @@ the index, including its per-package sections.</p></div>
 <h3>entryStub</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">entryStub</span>()</div>
-<div class="block">Whether the packager may generate the entry stub that lets the launcher start the application through
-an interface call instead of reflection.
+<div class="block">Whether the generated entry stub was requested.
 
-<p>Generating the stub is not implemented yet: the flag is carried through the spec so that the
-plugins can already expose it, and the launcher's reflective fallback starts the application in the
-meantime.</p></div>
+<p>A request does not guarantee a stub. The packager generates one only when the main class is a
+public, non-abstract class in a named package that declares its own
+<code>public static void main(String[])</code>. When the application layer is declared multi-release, every
+multi-release variant of that class that the runner can select must have the same directly callable
+shape. If the request is disabled, a class is ineligible, or the generated class name is already
+occupied, the packager reports why and leaves the index without a stub; the launcher then uses its
+reflective fallback.</p>
+
+<p>The raw builder defaults to <code>false</code>. The Gradle and Maven plugins default to <code>true</code>.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>whether an entry stub was requested</dd>

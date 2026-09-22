@@ -232,6 +232,41 @@ classes, and it hands control to your <code>main</code> method through an interf
 
 
 <div class="sect1">
+<h2 id="_prerequisites">Prerequisites</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut Runner&#8217;s published libraries and build plugins target Java 25. Use a JDK 25 installation to run
+the build and Java 25 to launch the packaged application. JDK 25 is the supported baseline. The project&#8217;s
+non-blocking early-access JDK 26 CI job is a forward-compatibility signal, not a requirement or an unlimited
+compatibility guarantee for later JDKs.</p>
+</div>
+<div class="paragraph">
+<p>The Java installations selected for the shell, the build tool, application compilation and deployment can
+be different. In particular, a Gradle or Maven Java toolchain controls application compilation; it does not
+change the build-tool JVM that loads the Micronaut Runner plugin. Point <code>JAVA_HOME</code> at JDK 25 (and put its
+<code>bin</code> directory first on <code>PATH</code>) before invoking Gradle or Maven. If the build has an explicit Gradle daemon
+JVM or Maven launcher configuration, update that selection as well. The deployment image or host that runs
+the resulting runner JAR must also provide Java 25; selecting a Java 25 compilation toolchain alone does not
+update that runtime.</p>
+</div>
+<div class="paragraph">
+<p>Check each relevant JVM before applying the plugin or launching the application:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -version
+./gradlew --version
+mvn -version</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><code>java -version</code> reports the shell and deployment command&#8217;s runtime. In <code>./gradlew --version</code>, verify the
+launcher and daemon JVM; in <code>mvn -version</code>, verify the reported Java version and runtime path. Each must show
+the intended JDK 25 installation for the corresponding quick-start path.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
 <h2 id="_gradle">Gradle</h2>
 <div class="sectionbody">
 <div class="paragraph">
@@ -287,6 +322,12 @@ archives under one name. The plugin fails the build if it detects that.
     // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
     // PRESERVE copies each dependency byte for byte, producing a smaller archive that loads more slowly.
     compression = 'STORED'
+
+    // Both build plugins default to requesting an entry stub. The low-level RunnerJarSpec builder does not.
+    entryStub = true
+
+    // Set this only when the application's own output is a multi-release JAR.
+    multiRelease = false
 
     // Written into the manifest, so users need not pass the matching command line flags.
     addOpens.add('java.base/java.lang')
@@ -355,6 +396,14 @@ attach it as an additional artifact instead and leave the main one untouched.</p
 </div>
 <div class="paragraph">
 <p>The main class is taken from the <code>exec.mainClass</code> property, which the Micronaut parent POM already sets.</p>
+</div>
+<div class="paragraph">
+<p>Both plugins request a generated entry stub by default; the low-level <code>RunnerJarSpec.Builder</code> default is
+<code>false</code>. A request produces a stub only when the main class is a public, non-abstract class in a named
+package that declares its own <code>public static void main(String[])</code>. For a declared multi-release application,
+every selectable version of the main class must have that shape. Otherwise the packager reports the reason,
+records no stub in the index and the launcher enters the application through its reflective fallback. The
+request is therefore not a promise that a stub will be present or that startup will be faster.</p>
 </div>
 <div class="paragraph">
 <p>The Maven list syntax follows the same manifest grammar:</p>
