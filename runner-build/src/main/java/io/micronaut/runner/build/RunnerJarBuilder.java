@@ -446,8 +446,10 @@ public final class RunnerJarBuilder {
      * the flag turned off, a main class this packager cannot prove is callable, or - impossible short of an
      * application that generates classes into the runner's own package - the name already being taken.</p>
      *
-     * <p>The main class is <em>parsed</em>, never loaded: a packager that loaded application classes would
-     * run their static initialisers in the build JVM.</p>
+     * <p>The base main class and every versioned variant the runner can select are <em>parsed</em>, never
+     * loaded: a packager that loaded application classes would run their static initialisers in the build
+     * JVM. A versioned directory matters only when the application layer is declared multi-release, and it
+     * is recognised with the same rules the index writer uses to create aliases.</p>
      *
      * @throws IOException if the main class cannot be read back from the application output
      */
@@ -457,9 +459,7 @@ public final class RunnerJarBuilder {
                     + spec.mainClass() + " reflectively");
             return;
         }
-        ApplicationEntry main = application.get(mainClassEntryName());
-        byte[] classFile = main.bytes != null ? main.bytes : Files.readAllBytes(main.file);
-        String reason = EntryStubGenerator.ineligibilityReason(spec.mainClass(), classFile);
+        String reason = entryStubIneligibilityReason();
         if (reason != null) {
             logger.info("No entry stub was generated because " + reason + "; the launcher will start "
                     + spec.mainClass() + " reflectively");
@@ -476,6 +476,31 @@ public final class RunnerJarBuilder {
         entryStubClass = EntryStubGenerator.STUB_CLASS;
         logger.info("Generated the entry stub " + EntryStubGenerator.STUB_CLASS + ", which enters "
                 + spec.mainClass() + " without reflection");
+    }
+
+    private String entryStubIneligibilityReason() throws IOException {
+        String mainName = mainClassEntryName();
+        String reason = EntryStubGenerator.ineligibilityReason(spec.mainClass(),
+                applicationBytes(application.get(mainName)));
+        if (reason != null || !spec.multiRelease()) {
+            return reason;
+        }
+        for (Map.Entry<String, ApplicationEntry> candidate : application.entrySet()) {
+            String name = candidate.getKey();
+            if (IndexWriter.versionOf(name) == 0 || !mainName.equals(IndexWriter.pathOf(name))) {
+                continue;
+            }
+            reason = EntryStubGenerator.ineligibilityReason(spec.mainClass(),
+                    applicationBytes(candidate.getValue()));
+            if (reason != null) {
+                return "the multi-release variant '" + name + "' is not directly callable: " + reason;
+            }
+        }
+        return null;
+    }
+
+    private static byte[] applicationBytes(ApplicationEntry entry) throws IOException {
+        return entry.bytes != null ? entry.bytes : Files.readAllBytes(entry.file);
     }
 
     /**
