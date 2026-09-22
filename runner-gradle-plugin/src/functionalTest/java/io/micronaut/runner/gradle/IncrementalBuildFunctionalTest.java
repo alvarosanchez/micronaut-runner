@@ -15,16 +15,30 @@
  */
 package io.micronaut.runner.gradle;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.jar.JarOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -98,6 +112,108 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
     }
 
     /**
+     * Dependency order is part of the local build-cache key, including when two inputs have the same name.
+     *
+     * @param root a fresh directory to hold both projects and the cache
+     * @throws IOException          if the fixtures cannot be written
+     * @throws InterruptedException if the forked application is interrupted
+     */
+    @Test
+    void dependencyOrderIsPartOfTheLocalBuildCacheKey(@TempDir Path root)
+            throws IOException, InterruptedException {
+        Path cache = root.resolve("build-cache");
+        String settings = """
+                buildCache {
+                    local {
+                        directory = new File('@cache@')
+                    }
+                }
+                """.replace("@cache@", cache.toAbsolutePath().toString().replace('\\', '/'));
+
+        assertCacheTracksDependencyOrder(root, settings);
+    }
+
+    /**
+     * Dependency order is part of an HTTP build-cache key, without relying on another Gradle process or
+     * shared cache state.
+     *
+     * @param root a fresh directory to hold the relocated projects
+     * @throws IOException          if the fixtures or HTTP cache cannot be written
+     * @throws InterruptedException if the forked application is interrupted
+     */
+    @Test
+    void dependencyOrderIsPartOfTheHttpBuildCacheKey(@TempDir Path root)
+            throws IOException, InterruptedException {
+        try (BuildCacheServer cache = new BuildCacheServer()) {
+            String settings = """
+                    buildCache {
+                        local { enabled = false }
+                        remote(HttpBuildCache) {
+                            url = uri('@url@')
+                            allowInsecureProtocol = true
+                            push = true
+                        }
+                    }
+                    """.replace("@url@", cache.url().toString());
+
+            assertCacheTracksDependencyOrder(root, settings);
+        }
+    }
+
+    /**
+     * Coordinates are output metadata and therefore must invalidate the task even when the dependency bytes
+     * stay unchanged.
+     *
+     * @param directory a fresh project directory
+     * @throws IOException          if the fixture cannot be written
+     * @throws InterruptedException if the archive cannot be inspected or launched
+     */
+    @Test
+    void coordinatesArePartOfTheTaskInputs(@TempDir Path directory) throws IOException, InterruptedException {
+        writeFixture(directory, """
+                tasks.named('micronautRunnerJar') {
+                    coordinates.put(file('libs/alpha.jar').absolutePath,
+                        providers.gradleProperty('coordinate').getOrElse('com.example:alpha:1'))
+                }
+                """, "");
+
+        BuildResult first = build(directory, "micronautRunnerJar");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(first, RUNNER_JAR_TASK));
+        assertIndexContains(directory, "com.example:alpha:1");
+
+        BuildResult unchanged = build(directory, "micronautRunnerJar");
+        assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(unchanged, RUNNER_JAR_TASK));
+
+        BuildResult changed = build(directory, "micronautRunnerJar", "-Pcoordinate=com.example:alpha:2");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(changed, RUNNER_JAR_TASK),
+                () -> "changing only coordinates did not rebuild the index:\n" + changed.getOutput());
+        assertIndexContains(directory, "com.example:alpha:2");
+        runJarSuccessfully(directory.resolve(DEFAULT_ARCHIVE));
+    }
+
+    /**
+     * Raw ZIP bytes remain inputs in PRESERVE mode even when names and uncompressed contents do not change.
+     *
+     * @param directory a fresh project directory
+     * @throws IOException if the fixture or archive cannot be read
+     */
+    @Test
+    void rawDependencyBytesArePartOfTheTaskInputs(@TempDir Path directory) throws IOException {
+        writeFixture(directory, "micronautRunnerJar { compression = 'PRESERVE' }", "");
+
+        BuildResult first = build(directory, "micronautRunnerJar");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(first, RUNNER_JAR_TASK));
+        byte[] before = nestedJar(directory.resolve(DEFAULT_ARCHIVE), "MICRONAUT-INF/lib/alpha.jar");
+
+        rewriteZipWithTimestamp(directory.resolve("libs/alpha.jar"), 1_000_000_200_000L);
+        BuildResult changed = build(directory, "micronautRunnerJar");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(changed, RUNNER_JAR_TASK),
+                () -> "changing raw ZIP bytes did not rebuild PRESERVE output:\n" + changed.getOutput());
+        byte[] after = nestedJar(directory.resolve(DEFAULT_ARCHIVE), "MICRONAUT-INF/lib/alpha.jar");
+        assertFalse(java.util.Arrays.equals(before, after), "the preserved nested jar still has the old bytes");
+    }
+
+    /**
      * The build configures under the configuration cache, and a second run reuses the stored entry.
      *
      * <p>A source file is changed between the two runs on purpose: that forces the task to execute from the
@@ -111,7 +227,11 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
      */
     @Test
     void theConfigurationCacheIsStoredAndReused(@TempDir Path directory) throws IOException, InterruptedException {
-        writeFixture(directory);
+        writeFixture(directory, """
+                tasks.named('micronautRunnerJar') {
+                    coordinates.put(file('libs/alpha.jar').absolutePath, 'com.example:alpha:configuration-cache')
+                }
+                """, "");
 
         BuildResult stored = build(directory, "micronautRunnerJar", "--configuration-cache");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(stored, RUNNER_JAR_TASK));
@@ -129,6 +249,102 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
         String output = runJarSuccessfully(directory.resolve(DEFAULT_ARCHIVE));
         assertTrue(output.contains("marker=from the configuration cache"),
                 () -> "the archive was not rebuilt from the reused configuration:\n" + output);
+        assertIndexContains(directory, "com.example:alpha:configuration-cache");
+    }
+
+    private static void assertCacheTracksDependencyOrder(Path root, String settings)
+            throws IOException, InterruptedException {
+        Path first = writeOrderFixture(root.resolve("first"), settings);
+        Path second = writeOrderFixture(root.resolve("second"), settings);
+
+        BuildResult stored = build(first, "micronautRunnerJar", "--build-cache");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(stored, RUNNER_JAR_TASK));
+        assertOrder(first, "A");
+
+        BuildResult relocated = build(second, "micronautRunnerJar", "--build-cache");
+        assertEquals(TaskOutcome.FROM_CACHE, outcomeOf(relocated, RUNNER_JAR_TASK),
+                () -> "identical ordered inputs did not survive relocation:\n" + relocated.getOutput());
+        assertOrder(second, "A");
+
+        BuildResult reversed = build(second, "micronautRunnerJar", "--build-cache", "-Preversed=true");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(reversed, RUNNER_JAR_TASK),
+                () -> "reordered equal-named dependencies reused stale output:\n" + reversed.getOutput());
+        assertOrder(second, "B");
+
+        BuildResult unchanged = build(second, "micronautRunnerJar", "--build-cache", "-Preversed=true");
+        assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(unchanged, RUNNER_JAR_TASK));
+    }
+
+    private static Path writeOrderFixture(Path directory, String settings) throws IOException {
+        writeFixture(directory, """
+                def reversed = providers.gradleProperty('reversed').getOrElse('false').toBoolean()
+                dependencies {
+                    runtimeOnly files(reversed
+                        ? ['libs/second/same.jar', 'libs/first/same.jar']
+                        : ['libs/first/same.jar', 'libs/second/same.jar'])
+                }
+                """, settings);
+        Path source = directory.resolve("src/main/java/com/example/App.java");
+        write(source, Files.readString(source).replace(
+                "System.out.println(\"message=\" + resource(\"/message.txt\"));",
+                "System.out.println(\"order=\" + resource(\"/value.txt\"));\n"
+                        + "        System.out.println(\"message=\" + resource(\"/message.txt\"));"));
+        writeResourceJar(directory.resolve("libs/first/same.jar"), "A");
+        writeResourceJar(directory.resolve("libs/second/same.jar"), "B");
+        return directory;
+    }
+
+    private static void assertOrder(Path directory, String expected) throws IOException, InterruptedException {
+        String output = runJarSuccessfully(directory.resolve(DEFAULT_ARCHIVE));
+        assertTrue(output.contains("order=" + expected),
+                () -> "expected dependency " + expected + " to win:\n" + output);
+    }
+
+    private static void assertIndexContains(Path directory, String coordinates)
+            throws IOException, InterruptedException {
+        Forked inspected = runJarInMode(directory.resolve(DEFAULT_ARCHIVE), "inspect");
+        assertEquals(0, inspected.status(), inspected::output);
+        assertTrue(inspected.output().contains(coordinates),
+                () -> "the index does not contain " + coordinates + ":\n" + inspected.output());
+    }
+
+    private static void writeResourceJar(Path file, String value) throws IOException {
+        Files.createDirectories(file.getParent());
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(file))) {
+            ZipEntry entry = new ZipEntry("value.txt");
+            entry.setTime(1_000_000_000_000L);
+            out.putNextEntry(entry);
+            out.write(value.getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+    }
+
+    private static byte[] nestedJar(Path archive, String name) throws IOException {
+        try (ZipFile zip = new ZipFile(archive.toFile())) {
+            ZipEntry entry = zip.getEntry(name);
+            assertTrue(entry != null, () -> name + " is missing from " + archive);
+            return zip.getInputStream(entry).readAllBytes();
+        }
+    }
+
+    private static void rewriteZipWithTimestamp(Path file, long timestamp) throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        try (ZipFile zip = new ZipFile(file.toFile())) {
+            var records = zip.entries();
+            while (records.hasMoreElements()) {
+                ZipEntry entry = records.nextElement();
+                entries.put(entry.getName(), zip.getInputStream(entry).readAllBytes());
+            }
+        }
+        try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(file))) {
+            for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+                ZipEntry record = new ZipEntry(entry.getKey());
+                record.setTime(timestamp);
+                out.putNextEntry(record);
+                out.write(entry.getValue());
+                out.closeEntry();
+            }
+        }
     }
 
     /**
@@ -145,5 +361,46 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
                 "System.out.println(\"RESULT OK\");",
                 "System.out.println(\"marker=" + marker + "\");\n"
                         + "        System.out.println(\"RESULT OK\");"));
+    }
+
+    private static final class BuildCacheServer implements AutoCloseable {
+
+        private final Map<String, byte[]> entries = new ConcurrentHashMap<>();
+        private final HttpServer server;
+
+        private BuildCacheServer() throws IOException {
+            server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+            server.createContext("/", this::handle);
+            server.start();
+        }
+
+        private URI url() {
+            return URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/cache/");
+        }
+
+        private void handle(HttpExchange exchange) throws IOException {
+            String key = exchange.getRequestURI().getPath();
+            try (exchange) {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    byte[] value = entries.get(key);
+                    if (value == null) {
+                        exchange.sendResponseHeaders(404, -1);
+                    } else {
+                        exchange.sendResponseHeaders(200, value.length);
+                        exchange.getResponseBody().write(value);
+                    }
+                } else if ("PUT".equals(exchange.getRequestMethod())) {
+                    entries.put(key, exchange.getRequestBody().readAllBytes());
+                    exchange.sendResponseHeaders(200, -1);
+                } else {
+                    exchange.sendResponseHeaders(405, -1);
+                }
+            }
+        }
+
+        @Override
+        public void close() {
+            server.stop(0);
+        }
     }
 }

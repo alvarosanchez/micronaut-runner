@@ -34,6 +34,7 @@ import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.PathSensitive;
@@ -110,6 +111,27 @@ public abstract class MicronautRunnerJar extends DefaultTask {
      */
     @Internal
     public abstract MapProperty<String, String> getCoordinates();
+
+    /**
+     * The ordered, relocatable identity of every dependency used to build the archive.
+     *
+     * <p>The file collection above retains task dependency inference. This nested sequence adds the ordering
+     * Gradle's file collection snapshot does not retain and pairs each position with its file name,
+     * coordinates and raw bytes. Path sensitivity is deliberately {@code NONE}: moving an otherwise
+     * identical project must not change its cache key.</p>
+     *
+     * @return dependency inputs in runtime classpath order
+     */
+    @Nested
+    public List<DependencyInput> getDependencyInputs() {
+        Map<String, String> coordinates = getCoordinates().get();
+        List<DependencyInput> inputs = new ArrayList<>();
+        for (File file : getClasspath().getFiles()) {
+            String gav = coordinates.get(file.getAbsolutePath());
+            inputs.add(gav == null ? new DependencyInput(file) : new DependencyInput(file, gav));
+        }
+        return inputs;
+    }
 
     /**
      * Where the archive is written.
@@ -275,6 +297,53 @@ public abstract class MicronautRunnerJar extends DefaultTask {
         } catch (IllegalArgumentException e) {
             throw new GradleException("Unknown compression '" + getCompression().get()
                     + "'. Supported values are STORED and PRESERVE.", e);
+        }
+    }
+
+    /** One position in the ordered dependency input sequence. */
+    public static final class DependencyInput {
+
+        private final File file;
+        private final String coordinates;
+
+        private DependencyInput(File file) {
+            this(file, "");
+        }
+
+        private DependencyInput(File file, String coordinates) {
+            this.file = file;
+            this.coordinates = coordinates;
+        }
+
+        /**
+         * The dependency bytes, without their machine-specific path.
+         *
+         * @return the dependency file
+         */
+        @InputFile
+        @PathSensitive(PathSensitivity.NONE)
+        public File getFile() {
+            return file;
+        }
+
+        /**
+         * The file name retained in the runner archive.
+         *
+         * @return the dependency file name
+         */
+        @Input
+        public String getFileName() {
+            return file.getName();
+        }
+
+        /**
+         * The coordinates written into the runner index.
+         *
+         * @return the coordinates, or an empty string for a file dependency
+         */
+        @Input
+        public String getCoordinates() {
+            return coordinates;
         }
     }
 
