@@ -14,6 +14,7 @@ plugins {
 }
 
 def testRepoPath = layout.buildDirectory.dir('test-repo')
+def testRepoStagingPath = layout.buildDirectory.dir('test-repo-staging')
 
 configurations {
     repository {
@@ -80,10 +81,6 @@ tasks.withType(GenerateModuleMetadata).configureEach {
     }
 }
 
-def cleanTestRepo = tasks.register('cleanTestRepo', Delete) {
-    delete testRepoPath
-}
-
 // A live collection, deliberately, rather than the list of names collected while the publications were
 // being registered. java-gradle-plugin contributes its publications from afterEvaluate, so that list is
 // still growing after this task is configured: whether the plugin's own artifacts were published at all
@@ -92,25 +89,69 @@ def cleanTestRepo = tasks.register('cleanTestRepo', Delete) {
 def publishTwinsToTestRepo = tasks.withType(PublishToMavenRepository).matching { task ->
     task.name.startsWith('publishLocal') && task.name.endsWith('PublicationToTestRepoRepository')
 }
+def stagedPublications = objects.fileCollection()
 
-publishTwinsToTestRepo.configureEach {
-    mustRunAfter cleanTestRepo
+publishTwinsToTestRepo.configureEach { task ->
+    def publicationName = (task.name - 'publish' - 'PublicationToTestRepoRepository').uncapitalize()
+    def stagingPath = layout.buildDirectory.dir("test-repo-staging/${publicationName}")
+    def stagingRepository = project.repositories.maven {
+        name = "testRepoStaging${publicationName.capitalize()}"
+        url = stagingPath
+    }
+    project.repositories.remove(stagingRepository)
+    task.repository = stagingRepository
+
+    inputs.property('testRepoCoordinates', provider {
+        "${task.publication.groupId}:${task.publication.artifactId}:${task.publication.version}".toString()
+    })
+    inputs.property('testRepoArtifacts', provider {
+        task.publication.artifacts.collect { "${it.file.name}:${it.classifier ?: ''}:${it.extension}" }.sort()
+    })
+    inputs.files(provider { task.publication.artifacts.collect { it.file } })
+            .withPropertyName('testRepoArtifactFiles')
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(tasks.named("generatePomFileFor${publicationName.capitalize()}Publication"))
+            .withPropertyName('testRepoPom')
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(stagingPath).withPropertyName('testRepoStagingDirectory')
+    outputs.cacheIf('test repository publication has complete declared inputs and isolated outputs') { true }
+    stagedPublications.from(stagingPath)
+    stagedPublications.builtBy(task)
+    doFirst {
+        // Gradle assigns the configured publication repository after task creation; replace it at execution time
+        // with this task's private repository so concurrently published twins never share mutable state.
+        task.repository = stagingRepository
+        // Publishing does not own stale files. Give each publication an isolated, deterministic boundary.
+        delete stagingPath
+    }
 }
 
 def publishToTestRepo = tasks.register('publishToTestRepo') {
     description = 'Publishes the -DUMMY twin publications into build/test-repo'
-    dependsOn cleanTestRepo
     dependsOn publishTwinsToTestRepo
+    inputs.files(stagedPublications)
+            .withPropertyName('stagedPublications')
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(testRepoPath).withPropertyName('testRepository')
+    outputs.cacheIf('repository aggregation has complete declared inputs and outputs') { true }
+    doLast {
+        project.sync { spec ->
+            spec.from(stagedPublications)
+            spec.into(testRepoPath)
+        }
+        def owned = stagedPublications.files.collect { it.canonicalFile } as Set
+        testRepoStagingPath.get().asFile.listFiles()?.findAll { !owned.contains(it.canonicalFile) }?.each {
+            delete it
+        }
+    }
 }
 
 /**
- * The point at which the test repository is complete. A project that has to post-process what it
- * published - the Maven plugin rewrites the version inside its own descriptor - makes its task a
- * dependency of this one. finalizedBy would not do: a finalizer is ordered against the task it finalises,
- * not against the tasks that consume that task's output, so a consumer can read the repository first.
+ * The point at which the test repository is complete. Consumers are built by this task so they cannot read
+ * a partially published or partially aggregated repository.
  */
 def finalizeTestRepo = tasks.register('finalizeTestRepo') {
-    description = 'Marks the -DUMMY test repository as complete, after any post-processing'
+    description = 'Marks the -DUMMY test repository as complete after publication and aggregation'
     dependsOn publishToTestRepo
 }
 
@@ -121,9 +162,9 @@ configurations.repository.outgoing {
 }
 
 // The DUMMY twins must never reach the real 'Build' repo (bundled for Maven Central), Sonatype or mavenLocal
-tasks.withType(PublishToMavenRepository).configureEach {
+tasks.withType(PublishToMavenRepository).configureEach { task ->
     def isLocal = provider { publication.name.startsWith('local') }
-    def isTestRepo = provider { repository.name == 'testRepo' }
+    def isTestRepo = provider { task.name.endsWith('PublicationToTestRepoRepository') }
     onlyIf('local publications only go to testRepo, real publications never do') {
         isLocal.get() == isTestRepo.get()
     }
