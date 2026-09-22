@@ -19,11 +19,31 @@ dependencies {
 }
 
 def testTask = tasks.named('test', Test) {
+    // This smoke gate runs several isolated Gradle/Maven builds. Do not overlap it with the Gradle plugin's
+    // process/deadline tests: both suites deliberately fork many short-lived JVMs and resource contention
+    // makes those timing regressions non-deterministic on developer machines and small CI agents.
+    mustRunAfter ':micronaut-runner-gradle-plugin:functionalTest'
     // Sample sources are inputs; their build outputs are not.
     inputs.files(fileTree('samples') { exclude '**/build/**', '**/.gradle/**', '**/target/**' })
           .withPathSensitivity(PathSensitivity.RELATIVE)
           .withPropertyName('samples')
+    // The publication smoke test copies and builds these sources. Track every input it can publish while
+    // excluding mutable checkout/build state, so cached tests cannot hide changed production metadata.
+    inputs.files(rootProject.fileTree(rootProject.layout.projectDirectory) {
+        exclude { details ->
+            def segments = details.relativePath.segments as List
+            int source = segments.indexOf('src')
+            segments.any { it in ['.git', '.gradle', '.idea'] }
+                    || segments.withIndex().any { name, index ->
+                        name in ['build', 'target'] && (source < 0 || index < source)
+                    }
+        }
+    }).withPathSensitivity(PathSensitivity.RELATIVE)
+      .withPropertyName('publicationSources')
     systemProperty 'runner.test.samplesDir', layout.projectDirectory.dir('samples').asFile.absolutePath
+    systemProperty 'runner.test.projectDir', rootProject.layout.projectDirectory.asFile.absolutePath
+    systemProperty 'runner.test.publicationSmokeDir',
+            layout.buildDirectory.dir('publication-smoke').get().asFile.absolutePath
 }
 
 def integrationMode = IntegrationMode.resolve(
@@ -33,7 +53,9 @@ def requiredScenarios = [
         'io.micronaut.runner.suite.HelloNettySampleTest.packagesTheSampleAndServesARequestFromTheRunnerJar',
         'io.micronaut.runner.suite.MavenBasicSampleTest.strictMavenAndTheChecksumAssertionRejectStaleSidecars',
         'io.micronaut.runner.suite.MavenBasicSampleTest.packagesTheSampleAndRunsTheRunnerJar',
-        'io.micronaut.runner.suite.MavenBasicSampleTest.refreshesManifestMetadataAcrossNonCleanPackageCycles'
+        'io.micronaut.runner.suite.MavenBasicSampleTest.refreshesManifestMetadataAcrossNonCleanPackageCycles',
+        'io.micronaut.runner.suite.PublicationMetadataSmokeTest.gradleConsumerPackagesAndLaunchesFromFreshCache',
+        'io.micronaut.runner.suite.PublicationMetadataSmokeTest.mavenConsumerPackagesAndLaunchesStrictlyFromFreshCache'
 ]
 def integrationReport = layout.buildDirectory.file('reports/integration-scenarios.txt')
 

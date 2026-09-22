@@ -1,0 +1,13 @@
+pluginManagement {
+    repositories {
+        maven {
+            url = uri(providers.gradleProperty('runner.repo').get())
+            metadataSources { mavenPom() }
+        }
+    }
+    plugins {
+        id 'io.micronaut.runner' version providers.gradleProperty('runner.version').get()
+    }
+}
+
+rootProject.name = 'published-marker-consumer'
