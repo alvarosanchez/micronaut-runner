@@ -405,11 +405,13 @@ application manifest. <code>Manifest-Version</code>, <code>Main-Class</code> and
 <code>Micronaut-Runner-*</code> namespace are reserved and rejected case-insensitively because the runner
 jar format and launcher depend on them.</p>
 
-<p>The order the caller configured is preserved, because the manifest is written by iterating this
-map and a runner jar has to be byte for byte reproducible.</p></div>
+<p>By default the order the caller configured is preserved, because the manifest is written by
+iterating this map. Callers must therefore supply a map with stable iteration order for byte-for-byte
+reproducibility, or use <a href="RunnerJarSpec.Builder.html#canonicalManifestAttributes(java.util.Map)"><code>RunnerJarSpec.Builder.canonicalManifestAttributes(Map)</code></a> to make logical map equality
+the reproducibility input.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the extra attributes, in the order they were configured</dd>
+<dd>the extra attributes, in the selected emission order</dd>
 </dl>
 </div>
 </section>

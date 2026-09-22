@@ -70,6 +70,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#multiRelease(boolean)" tabindex="0">multiRelease(boolean)</a></li>
 <li><a href="#entryStub(boolean)" tabindex="0">entryStub(boolean)</a></li>
 <li><a href="#manifestAttributes(java.util.Map)" tabindex="0">manifestAttributes(Map)</a></li>
+<li><a href="#canonicalManifestAttributes(java.util.Map)" tabindex="0">canonicalManifestAttributes(Map)</a></li>
 <li><a href="#addOpens(java.util.List)" tabindex="0">addOpens(List)</a></li>
 <li><a href="#addExports(java.util.List)" tabindex="0">addExports(List)</a></li>
 <li><a href="#enableNativeAccess(boolean)" tabindex="0">enableNativeAccess(boolean)</a></li>
@@ -160,48 +161,53 @@ be reused afterwards.</p></div>
 <div class="block">Takes a snapshot of the builder.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#compression(io.micronaut.runner.build.Compression)" class="member-name-link">compression</a><wbr>(<a href="Compression.html" title="enum class in io.micronaut.runner.build">Compression</a>&nbsp;value)</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#canonicalManifestAttributes(java.util.Map)" class="member-name-link">canonicalManifestAttributes</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Sets extra main attributes in canonical order.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#compression(io.micronaut.runner.build.Compression)" class="member-name-link">compression</a><wbr>(<a href="Compression.html" title="enum class in io.micronaut.runner.build">Compression</a>&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets how the nested dependencies are stored.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#dependencies(java.util.List)" class="member-name-link">dependencies</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="Dependency.html" title="class in io.micronaut.runner.build">Dependency</a>&gt;&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#dependencies(java.util.List)" class="member-name-link">dependencies</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="Dependency.html" title="class in io.micronaut.runner.build">Dependency</a>&gt;&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the dependencies to nest, in class path order.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#enableNativeAccess(boolean)" class="member-name-link">enableNativeAccess</a><wbr>(boolean&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#enableNativeAccess(boolean)" class="member-name-link">enableNativeAccess</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Enables native access for the unnamed module.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryStub(boolean)" class="member-name-link">entryStub</a><wbr>(boolean&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryStub(boolean)" class="member-name-link">entryStub</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Requests the generated entry stub, which is not implemented yet and is ignored.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#mainClass(java.lang.String)" class="member-name-link">mainClass</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#mainClass(java.lang.String)" class="member-name-link">mainClass</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the application main class.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#manifestAttributes(java.util.Map)" class="member-name-link">manifestAttributes</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#manifestAttributes(java.util.Map)" class="member-name-link">manifestAttributes</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets extra main attributes for the manifest.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#multiRelease(boolean)" class="member-name-link">multiRelease</a><wbr>(boolean&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#multiRelease(boolean)" class="member-name-link">multiRelease</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Declares the application layer multi-release.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#output(java.nio.file.Path)" class="member-name-link">output</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#output(java.nio.file.Path)" class="member-name-link">output</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the file the runner jar is written to.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the instant every entry is dated with.</div>
 </div>
 </div>
@@ -401,7 +407,12 @@ be reused afterwards.</p></div>
 <h3>manifestAttributes</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></span>&nbsp;<span class="element-name">manifestAttributes</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</span></div>
-<div class="block">Sets extra main attributes for the manifest.</div>
+<div class="block">Sets extra main attributes for the manifest.
+
+<p>This method preserves iteration order. An unordered map such as one returned by
+<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html#of(K,V,K,V)" title="class or interface in java.util" class="external-link"><code>Map.of(Object, Object, Object, Object)</code></a> can iterate differently in separate JVMs; use a
+deterministically ordered map or <a href="#canonicalManifestAttributes(java.util.Map)"><code>canonicalManifestAttributes(Map)</code></a> when archive bytes must
+be reproducible across build JVMs.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>value</code> - the attributes, in the order they should be written</dd>
@@ -411,6 +422,29 @@ be reused afterwards.</p></div>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/NullPointerException.html" title="class or interface in java.lang" class="external-link">NullPointerException</a></code> - if the map, a key or a value is <code>null</code></dd>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link">IllegalArgumentException</a></code> - if a key is <code>Manifest-Version</code>, <code>Main-Class</code> or in
                                  the <code>Micronaut-Runner-*</code> namespace, ignoring case</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="canonicalManifestAttributes(java.util.Map)">
+<h3>canonicalManifestAttributes</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></span>&nbsp;<span class="element-name">canonicalManifestAttributes</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</span></div>
+<div class="block">Sets extra main attributes in canonical order.
+
+<p>Names are written in their natural lexicographic order, which is locale independent, so maps
+with equal entries produce the same manifest bytes regardless of their iteration order. Manifest
+attribute names are case insensitive; two names that differ only by case are therefore rejected
+rather than choosing one value based on source-map order.</p></div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>value</code> - the attributes to write in canonical order</dd>
+<dt>Returns:</dt>
+<dd>this builder</dd>
+<dt>Throws:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/NullPointerException.html" title="class or interface in java.lang" class="external-link">NullPointerException</a></code> - if the map, a key or a value is <code>null</code></dd>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link">IllegalArgumentException</a></code> - if a key is reserved, or two keys differ only by case</dd>
 </dl>
 </div>
 </section>

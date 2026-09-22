@@ -302,6 +302,13 @@ archives under one name. The plugin fails the build if it detects that.
 <code>Main-Class</code> and every attribute whose name begins with <code>Micronaut-Runner-</code> are reserved for the runner
 format and are rejected case-insensitively.</p>
 </div>
+<div class="paragraph">
+<p>The low-level <code>RunnerJarSpec.Builder.manifestAttributes</code> API preserves the map&#8217;s iteration order. Pass a
+deterministically ordered map, such as <code>LinkedHashMap</code>, when builds in separate JVMs must produce identical
+bytes. Code that wants logical map equality to be the reproducibility input can instead call
+<code>canonicalManifestAttributes</code>; it sorts names lexicographically without using the default locale and rejects
+two names that differ only by case, because manifest attribute names are case insensitive.</p>
+</div>
 </div>
 </div>
 </div>
