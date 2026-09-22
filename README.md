@@ -12,13 +12,17 @@ Fast-starting single-jar packaging for Micronaut applications.
 
 `micronaut-runner` packages an application and all of its dependencies into one executable JAR that you
 run with `java -jar app.jar`, **without** flattening the dependencies into a single namespace the way
-Gradle Shadow and Maven Shade do. Every dependency stays an intact nested JAR, so `META-INF/services`
-entries, `META-INF/micronaut/**` trees, multi-release classes, per-JAR manifests and duplicate resources
-all keep the semantics they have on an ordinary classpath.
+Gradle Shadow and Maven Shade do. Dependencies remain separately addressable nested JARs, so ordinary
+resources such as `META-INF/services` entries, multi-release classes, per-JAR manifests and duplicate
+resources retain classpath lookup and ordering semantics. One namespace is intentionally different:
+`META-INF/micronaut/**` metadata is deliberately merged and de-duplicated at the archive root so Micronaut
+can discover it in one listing.
 
 The archive carries a binary index built at packaging time that maps every entry to its absolute byte
-offset in the outer file. At startup the launcher memory-maps the archive once and resolves a class with a
-single hash probe, so no nested central directory is ever parsed and nothing is extracted to disk.
+offset in the outer file. At startup the launcher memory-maps the archive once; lookup starts at a hashed
+slot and follows a build-time-bounded linear-probe sequence. Same-name records retain classpath order, and
+each nested JAR's multi-release policy selects the applicable record. No nested central directory is parsed
+and nothing is extracted to disk.
 
 ## Documentation
 

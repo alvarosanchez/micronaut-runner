@@ -1,6 +1,8 @@
-The goal is that an application behaves identically whether it runs from a runner JAR or from an ordinary
-classpath. The class loader is tested differentially against `java.net.URLClassLoader` over the same set of
-JARs, comparing resource resolution, resource ordering, class bytes, package attributes and code sources.
+For ordinary resources, the goal is that an application behaves identically whether it runs from a runner
+JAR or from an ordinary classpath. The class loader is tested differentially against
+`java.net.URLClassLoader` over the same set of JARs, comparing resource resolution, resource ordering, class
+bytes, package attributes and code sources. The deliberate `META-INF/micronaut/` metadata-tree exception and the
+known limitations below bound that compatibility contract; they are not ordinary-classpath behavior.
 
 == What behaves exactly as on a classpath
 
@@ -20,6 +22,16 @@ sealing a package that is already open, raises `SecurityException`.
 * Every class has a `ProtectionDomain` whose `CodeSource` location identifies the JAR it came from.
 * Resources resolve through ordinary `jar:file:` URLs, so `URL.openStream()`, `URLConnection` metadata and
 `JarURLConnection.getJarFile()` all work, which is what libraries that scan the classpath rely on.
+
+== Deliberate Micronaut metadata exception
+
+Micronaut Runner merges every entry below `META-INF/micronaut/` from the application and its dependencies into
+one de-duplicated tree at the outer archive root. A lookup anywhere under that prefix uses only the merged
+tree, and `getResources("META-INF/micronaut/")` returns one merged URL rather than one URL per contributing
+JAR. When contributors provide the same file name, the first content in classpath order is retained and a
+warning reports differing later content. This is intentional build-time aggregation for Micronaut bean
+discovery, not ordinary resource enumeration. Classic `META-INF/services/**` resources are not merged and
+keep the classpath behavior described above.
 
 == Archive path URLs
 

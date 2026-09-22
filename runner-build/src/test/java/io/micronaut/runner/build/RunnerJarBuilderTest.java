@@ -655,6 +655,29 @@ class RunnerJarBuilderTest {
     }
 
     @Test
+    void mergesMicronautMetadataFromTwoJarsIntoTheArchiveRoot() throws IOException {
+        String prefix = "META-INF/micronaut/example.Service/";
+        String firstName = prefix + "impl.A";
+        String secondName = prefix + "impl.B";
+        Path first = fixtures.resolve("libs/metadata-a.jar");
+        Path second = fixtures.resolve("libs/metadata-b.jar");
+        writeJar(first, manifest(attributes -> { }), Map.of(firstName, new byte[0]));
+        writeJar(second, manifest(attributes -> { }), Map.of(secondName, new byte[0]));
+
+        Path output = output();
+        RunnerJarResult result = RunnerJarBuilder.build(spec(output)
+                .applicationOutput(List.of(applicationClasses))
+                .dependencies(List.of(new Dependency(first, null), new Dependency(second, null)))
+                .build(), BuildLogger.noOp());
+
+        assertEquals(2, result.mergedServiceEntryCount());
+        try (ZipReader archive = ZipReader.open(output)) {
+            assertTrue(archive.entry(firstName).isPresent(), "the first JAR's marker is in the merged root");
+            assertTrue(archive.entry(secondName).isPresent(), "the second JAR's marker is in the merged root");
+        }
+    }
+
+    @Test
     void mergesTheContentOfANonEmptyMicronautServiceEntry() throws IOException {
         // Every lookup under META-INF/micronaut/ is answered from the merged copy at the archive root, so
         // a merged copy written empty serves zero bytes for a file that is not empty, silently.

@@ -39,9 +39,10 @@ that the current harness implements:
 |The stored Runner JAR extracted and launched by the JDK's built-in loader
 |===
 
-Each sample starts a fresh JVM. Readiness is measured externally, from process spawn to the first successful
-HTTP response, because that is what a user waits for and it captures class loading on the first request. The
-framework's own "startup completed" line is recorded separately rather than substituted for readiness.
+Each sample starts a fresh JVM. This is a cold JVM process start, not a claim that storage or the OS page cache
+is cold. Readiness is measured externally, from process spawn to the first successful HTTP response, because
+that is what a user waits for and it captures class loading on the first request. The framework's own "startup
+completed" line is recorded separately rather than substituted for readiness.
 
 None of these eight commands uses a trained application cache. Default JDK class sharing remains enabled when
 the selected JDK enables it, but reuse of platform classes from the JDK's default archive is not evidence of
@@ -118,111 +119,21 @@ once and attributed to the first component that names them. Symbolic links are n
 distinct hard-linked paths are counted separately. Build workspaces, logs, reports and neighboring variants
 are outside the explicitly declared inputs and are never included.
 
-== First measurements
+== Publishing results
 
-These are the numbers from the prototype gate, taken on one developer machine (Apple silicon, JDK 25) with
-the `hello-netty` sample: a Micronaut 5 application with 35 dependencies. Nine runs per variant,
-interleaved rather than run in blocks, measuring from process spawn to the framework reporting that
-startup completed. Treat them as a direction, not a specification; the CI harness is the authority.
+This guide does not retain the early prototype numbers because their raw samples and complete executable
+configuration were not archived publicly. They cannot substantiate a current speedup claim. In particular,
+allocation avoided by defining from a mapped buffer must not be restated as elapsed-time savings, and
+cold-storage performance has not been measured by this harness.
 
-[cols="30,20,25,25"]
-|===
-|Variant |Total |Framework-reported |Archive size
+A publishable result must link to an immutable source revision and the raw `results.json` and `summary.md`
+produced by that revision. It must identify the machine and operating system, exact JDK build, sample and
+dependency set, packaging variant, benchmark command and properties, warm-up and measured counts, timeout,
+and application-cache and OS-page-cache conditions. Startup numbers must say whether the metric is external
+process-to-HTTP-readiness, process-to-startup-line, or framework-reported self-time.
 
-|Runner JAR, dependencies stored
-|318 ms
-|178 ms
-|31.4 MB
-
-|Shaded JAR
-|363 ms
-|202 ms
-|12.8 MB
-
-|Exploded classpath
-|374 ms
-|374 ms is the whole process; 201 ms reported
-|n/a
-|===
-
-The descriptive medians put the runner JAR 12% below the shaded JAR and 15% below an exploded classpath in
-that prototype run. With only nine observations per variant, the current harness would label those values
-descriptive-only and emit no interval, so they are not evidence of a general startup speedup. The accompanying
-framework-reported figures moved in the same direction, a hypothesis for follow-up rather than a significance
-claim.
-
-The measured cost was size: storing dependencies uncompressed made the archive 2.5 times larger than the
-shaded JAR. That observation motivated `PRESERVE`; the prototype did not control the OS page cache, so it
-did not measure whether the larger archive loses after filesystem-cache eviction.
-
-=== Class loading in isolation
-
-The JMH benchmarks measure the mechanism rather than the application. Over a synthetic classpath of 30
-jars and 3,600 classes, loading 200 classes through a freshly created loader, including opening the
-archive:
-
-[cols="55,45"]
-|===
-|Loader |Time for 200 classes
-
-|`RunnerClassLoader`, dependencies stored
-|1.4 ms
-
-|`RunnerClassLoader`, dependencies left compressed
-|2.1 ms
-
-|`URLClassLoader` over the same jars
-|9.2 ms
-|===
-
-Storing dependencies uncompressed is worth about 35% of the class-loading time, which is what pays for
-the larger archive. Defining a class from a memory-mapped buffer rather than a byte array is worth about
-2%: on JDK 26 the virtual machine copies a direct buffer for a non-builtin loader anyway, so what is saved
-is the application-side array and the copy into it, not the copy itself.
-
-=== Archive size
-
-[cols="55,45"]
-|===
-|Packaging |Size
-
-|Runner JAR, dependencies stored
-|31.4 MB
-
-|Runner JAR, dependencies preserved
-|14.1 MB
-
-|Shaded JAR
-|12.8 MB
-|===
-
-`PRESERVE` copies each dependency byte for byte, so the archive is close to the shaded one and class
-loading pays for decompression. It reduces deployment size when that matters more than the measured
-warm-state class-loading cost. A larger `STORED` archive may require more storage I/O after filesystem-cache
-eviction, but cold-storage performance has not been measured by this harness, so these figures do not
-establish a cold-start winner.
-
-=== Two clocks, not one
-
-The harness reports readiness and the framework's startup line as separate columns, and they are far
-apart: on the sample, roughly 410 ms against roughly 330 ms for the same run. The gap is serving the first
-request on a cold JVM, which readiness includes by definition and a measurement that watches the console
-does not.
-
-The figures in the table above are the startup line, because that is what a careful measurement by hand
-produces and what most published comparisons quote. Readiness is the more honest answer to "when can this
-serve traffic". Neither is wrong; quoting one while implying the other is. The framework's own reported
-figure is a third quantity again, the smallest of the three, because the application only starts counting
-once the JVM has already done most of the work.
-
-== A measurement that did not move
-
-The launcher's own share of startup, which `-Dmicronaut.runner.timing=true` reports, fell from 17.4 ms to
-12.3 ms when the archive reader stopped reading through `VarHandle`-backed layout accessors. Total startup
-did not change. The most likely reason is that the work was not removed from the process, only from the
-launcher: the first use of a var handle initialises `java.lang.invoke`, and the framework initialises it
-moments later regardless.
-
-The change is kept because it is strictly less work, and because it does help an application that never
-touches method handles at all, such as a short-lived command line tool. It is recorded here because it is
-the clearest example of why this module measures the whole process rather than the phase it is proud of.
+Attributing a difference to stored dependencies, merged discovery, mapped-buffer definition or another
+mechanism additionally requires a matched ablation that changes only that mechanism. Hash-collision,
+resource-resolution and merged-metadata fixtures validate behavior; they cannot prove a performance cause.
+Until a report meeting these requirements is archived at an immutable public URL, run the harness for the
+environment of interest and treat its output as local descriptive evidence rather than a published result.
