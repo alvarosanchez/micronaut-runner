@@ -16,7 +16,23 @@ Micronaut Runner can be imported into IntelliJ IDEA by opening the `build.gradle
 
 ## Running Tests
 
-To run the tests, use `./gradlew check`.
+Integration scenarios fail closed by default: missing dependencies or tools fail the build rather than becoming successful assumption skips. Run the required policy used by CI with:
+
+```sh
+./gradlew check -Prunner.integration=required
+```
+
+The build downloads Apache Maven at the version and SHA-512 checksum pinned in `gradle/maven-distribution.properties`; it does not use `MAVEN_HOME`, `M2_HOME`, or `PATH`.
+
+When deliberately working without dependency-repository access, opt out explicitly. Descriptor-only coverage still runs, dependency-resolving scenarios appear as skipped in JUnit XML, and the result cannot be reused by a later required run:
+
+```sh
+./gradlew check -Prunner.integration=offline
+# Backwards-compatible local shorthand:
+RUNNER_TEST_OFFLINE=true ./gradlew check
+```
+
+Combining `-Prunner.integration=required` with `RUNNER_TEST_OFFLINE=true` is an error.
 
 ## Building Documentation
 

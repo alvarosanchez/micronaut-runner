@@ -4,6 +4,10 @@
  *
  * Adapted from micronaut-gradle-plugin's io.micronaut.internal.build.functional-testing convention plugin.
  */
+import io.micronaut.runner.buildlogic.IntegrationMode
+
+import java.security.MessageDigest
+
 plugins {
     id 'io.micronaut.build.internal.runner-base'
 }
@@ -13,7 +17,63 @@ configurations {
         canBeResolved = true
         canBeConsumed = false
     }
+    mavenDistribution {
+        canBeResolved = true
+        canBeConsumed = false
+        transitive = false
+    }
 }
+
+def mavenPin = new Properties()
+def mavenPinFile = rootProject.layout.projectDirectory.file('gradle/maven-distribution.properties')
+mavenPinFile.asFile.withInputStream { mavenPin.load(it) }
+def mavenVersion = mavenPin.getProperty('version')
+def mavenSha512 = mavenPin.getProperty('sha512')
+if (!mavenVersion || !mavenSha512) {
+    throw new GradleException("${mavenPinFile.asFile} must define version and sha512")
+}
+if (mavenVersion != libs.versions.maven.asProvider().get()) {
+    throw new GradleException("Pinned Maven distribution ${mavenVersion} must match the Maven libraries "
+            + "version ${libs.versions.maven.asProvider().get()}")
+}
+
+dependencies {
+    mavenDistribution "org.apache.maven:apache-maven:${mavenVersion}:bin@tar.gz"
+}
+
+def mavenArchive = providers.provider { configurations.mavenDistribution.singleFile }
+def verifyMavenDistribution = tasks.register('verifyMavenDistribution') {
+    description = 'Verifies the pinned Apache Maven binary distribution checksum'
+    inputs.file(mavenArchive).withPathSensitivity(PathSensitivity.NONE)
+    inputs.property('mavenVersion', mavenVersion)
+    inputs.property('mavenSha512', mavenSha512)
+
+    doLast {
+        MessageDigest digest = MessageDigest.getInstance('SHA-512')
+        byte[] buffer = new byte[64 * 1024]
+        mavenArchive.get().withInputStream { input ->
+            int count
+            while ((count = input.read(buffer)) >= 0) {
+                if (count > 0) {
+                    digest.update(buffer, 0, count)
+                }
+            }
+        }
+        String actual = digest.digest().encodeHex().toString()
+        if (actual != mavenSha512) {
+            throw new GradleException("Apache Maven ${mavenVersion} checksum mismatch: expected ${mavenSha512}, "
+                    + "got ${actual} from ${mavenArchive.get()}")
+        }
+    }
+}
+
+def provisionMaven = tasks.register('provisionMaven', Sync) {
+    description = 'Provisions the pinned Apache Maven distribution for integration tests'
+    dependsOn verifyMavenDistribution
+    from { tarTree(resources.gzip(mavenArchive.get())) }
+    into layout.buildDirectory.dir('maven-distribution')
+}
+def mavenHome = layout.buildDirectory.dir("maven-distribution/apache-maven-${mavenVersion}")
 
 def prepareRepository = tasks.register('prepareRepository', Sync) {
     description = 'Aggregates the -DUMMY test repositories of all modules under test'
@@ -56,14 +116,35 @@ abstract class RepositoryProvider implements CommandLineArgumentProvider {
     }
 }
 
+def integrationMode = IntegrationMode.resolve(
+        providers.gradleProperty('runner.integration').orNull,
+        providers.environmentVariable('RUNNER_TEST_OFFLINE').orNull).id()
+def usesPinnedMaven = project.path == ':test-suite'
+
 tasks.withType(Test).configureEach {
     def repoProvider = objects.newInstance(RepositoryProvider)
     repoProvider.repositoryDir.from(prepareRepository)
     repoProvider.version.set(providers.gradleProperty('projectVersion'))
     jvmArgumentProviders.add(repoProvider)
+
+    inputs.property('integrationMode', integrationMode)
+    systemProperty 'runner.test.mode', integrationMode
+    if (usesPinnedMaven) {
+        inputs.property('mavenVersion', mavenVersion)
+        inputs.property('mavenSha512', mavenSha512)
+        systemProperty 'runner.test.mavenHome', mavenHome.get().asFile.absolutePath
+        if (integrationMode == IntegrationMode.REQUIRED.id()) {
+            dependsOn provisionMaven
+            inputs.files(provisionMaven)
+                  .withPathSensitivity(PathSensitivity.RELATIVE)
+                  .withPropertyName('mavenDistribution')
+        }
+    }
+
     systemProperty 'runner.test.gradleVersions', providers.gradleProperty('runner.testkit.gradleVersions').getOrElse('')
     systemProperty 'runner.test.micronautVersion', libs.versions.micronaut.asProvider().get()
     systemProperty 'runner.test.micronautPlatformVersion', libs.versions.micronaut.platform.get()
+    testLogging.events('passed', 'skipped', 'failed')
     // Sample builds and `java -jar` servers: keep them sequential
     maxParallelForks = 1
 }

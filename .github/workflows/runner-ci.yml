@@ -63,7 +63,7 @@ jobs:
           PY
 
       - name: "🛠 Build and test"
-        run: ./gradlew check --continue --no-daemon
+        run: ./gradlew check --continue --no-daemon -Prunner.integration=required
 
       - name: "📊 Publish Test Report"
         if: always()
@@ -72,6 +72,16 @@ jobs:
           check_name: Runner CI / Test Report (${{ matrix.java }})
           report_paths: '**/build/test-results/**/TEST-*.xml'
           check_retries: 'true'
+
+      - name: "📜 Retain integration scenario evidence"
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: integration-scenario-evidence-linux-${{ matrix.java }}
+          path: |
+            test-suite/build/test-results/test/TEST-*.xml
+            test-suite/build/reports/integration-scenarios.txt
+          if-no-files-found: error
 
   windows:
     name: "Windows JDK 25"
@@ -95,7 +105,7 @@ jobs:
       # Path separators, drive letters, UNC paths and file locking on memory-mapped archives all behave
       # differently here, which is exactly what the launcher and the packager touch.
       - name: "🛠 Test the launcher, the packager and the end-to-end suite"
-        run: ./gradlew :micronaut-runner-launcher:test :micronaut-runner-build:test :test-suite:test --no-daemon
+        run: ./gradlew :micronaut-runner-launcher:test :micronaut-runner-build:test :test-suite:verifyIntegrationScenarios --no-daemon -Prunner.integration=required
 
       - name: "📊 Publish Test Report"
         if: always()
@@ -104,3 +114,13 @@ jobs:
           check_name: Runner CI / Test Report (Windows)
           report_paths: '**/build/test-results/**/TEST-*.xml'
           check_retries: 'true'
+
+      - name: "📜 Retain integration scenario evidence"
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: integration-scenario-evidence-windows-25
+          path: |
+            test-suite/build/test-results/test/TEST-*.xml
+            test-suite/build/reports/integration-scenarios.txt
+          if-no-files-found: error
