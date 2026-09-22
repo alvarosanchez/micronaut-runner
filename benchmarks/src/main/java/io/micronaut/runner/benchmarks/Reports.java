@@ -143,7 +143,9 @@ final class Reports {
         out.append("      \"unavailableReason\": ").append(quote(variant.unavailableReason())).append(",\n");
         out.append("      \"artifact\": ")
                 .append(quote(variant.artifact() == null ? null : variant.artifact().toString())).append(",\n");
-        out.append("      \"artifactBytes\": ").append(result.sizeBytes()).append(",\n");
+        out.append("      \"deploymentSize\": ");
+        appendDeploymentSize(out, variant.deploymentSize());
+        out.append(",\n");
         out.append("      \"command\": [");
         for (int i = 0; i < variant.command().size(); i++) {
             out.append(i == 0 ? "" : ", ").append(quote(variant.command().get(i)));
@@ -180,6 +182,26 @@ final class Reports {
         }
         out.append("      ]\n");
         out.append("    }");
+    }
+
+    private static void appendDeploymentSize(StringBuilder out, DeploymentSize deploymentSize) {
+        if (deploymentSize == null) {
+            out.append("null");
+            return;
+        }
+        out.append("{\"boundary\": ").append(quote(DeploymentSize.BOUNDARY))
+                .append(", \"unit\": ").append(quote(DeploymentSize.UNIT))
+                .append(", \"symlinkPolicy\": ").append(quote(DeploymentSize.SYMLINK_POLICY))
+                .append(", \"hardLinkPolicy\": ").append(quote(DeploymentSize.HARD_LINK_POLICY))
+                .append(", \"totalBytes\": ").append(deploymentSize.totalBytes())
+                .append(", \"components\": [");
+        for (int i = 0; i < deploymentSize.components().size(); i++) {
+            DeploymentSize.Component component = deploymentSize.components().get(i);
+            out.append(i == 0 ? "" : ", ")
+                    .append("{\"name\": ").append(quote(component.name()))
+                    .append(", \"bytes\": ").append(component.bytes()).append('}');
+        }
+        out.append("]}");
     }
 
     private static void appendCounts(StringBuilder out, PhaseCounts counts) {
@@ -375,7 +397,7 @@ final class Reports {
                 .append(" attempts are never replaced with zeroes or invented durations.\n\n");
 
         out.append("| Variant | Runs | Readiness, median | p90 | 95% CI of median | Min | Max |")
-                .append(" To startup line, median | Framework's own figure | Artifact |\n");
+                .append(" To startup line, median | Framework's own figure | Complete deployment |\n");
         out.append("|---|---:|---:|---:|---|---:|---:|---:|---:|---:|\n");
         for (VariantResult result : results) {
             Variant variant = result.variant();
@@ -395,10 +417,11 @@ final class Reports {
                     .append(result.logLine() == null ? "not seen" : millis(result.logLine().median()))
                     .append(" | ")
                     .append(result.framework() == null ? "not seen" : millis(result.framework().median()))
-                    .append(" | ").append(size(result.sizeBytes())).append(" |\n");
+                    .append(" | ").append(size(result.deploymentBytes())).append(" |\n");
         }
         out.append('\n');
 
+        appendDeploymentSizes(out, results);
         appendPairedComparisons(out, context, results);
         appendIncompleteDetails(out, context, results, status);
 
@@ -452,6 +475,29 @@ final class Reports {
                 .append(" status and attempt records distinguish skipped cells from failed processes.\n");
         out.append("- Every raw sample, warm-up runs included, is in `").append(RESULTS_FILE).append("`.\n");
         return out.toString();
+    }
+
+    private static void appendDeploymentSizes(StringBuilder out, List<VariantResult> results) {
+        out.append("## Deployment sizes\n\n");
+        out.append("Complete deployment is the sum of required regular-file lengths in logical bytes;")
+                .append(" allocated filesystem blocks and compressed transfer sizes are not reported. Repeated")
+                .append(" normalized paths are counted once and attributed to their first component. Symbolic")
+                .append(" links are not followed or counted; distinct hard-linked paths count separately.\n\n");
+        out.append("| Variant | Component | Component bytes | Complete deployment |\n")
+                .append("|---|---|---:|---:|\n");
+        for (VariantResult result : results) {
+            DeploymentSize deploymentSize = result.variant().deploymentSize();
+            if (deploymentSize == null || deploymentSize.components().isEmpty()) {
+                out.append("| `").append(result.variant().name()).append("` | — | — | — |\n");
+                continue;
+            }
+            for (DeploymentSize.Component component : deploymentSize.components()) {
+                out.append("| `").append(result.variant().name()).append("` | ")
+                        .append(component.name()).append(" | ").append(exactSize(component.bytes()))
+                        .append(" | ").append(exactSize(deploymentSize.totalBytes())).append(" |\n");
+            }
+        }
+        out.append('\n');
     }
 
     private static void appendPairedComparisons(StringBuilder out,
@@ -591,6 +637,10 @@ final class Reports {
                     + " successful measured samples required)";
         }
         return millis(statistics.ciLow()) + " – " + millis(statistics.ciHigh());
+    }
+
+    private static String exactSize(long bytes) {
+        return bytes < 0 ? "—" : bytes + " B";
     }
 
     private static String size(long bytes) {
