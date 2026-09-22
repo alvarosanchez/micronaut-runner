@@ -27,13 +27,23 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -461,6 +471,324 @@ class ToolsTest {
         assertFalse(Files.exists(destination.resolve("stale.txt")));
         assertTrue(Files.isRegularFile(destination.resolve("app.jar")));
         assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
+    void extractPreservesADestinationThatArrivesBeforeUnforcedPublication() throws Exception {
+        Path destination = workspace.resolve("extract/late-arrival");
+        CountDownLatch staged = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Extract.PublicationOperations operations = new Extract.PublicationOperations() {
+            @Override
+            public void beforePublication(Path work, Path target) throws IOException {
+                staged.countDown();
+                try {
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        throw new IOException("timed out waiting to publish the staged extraction");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("interrupted while waiting to publish the staged extraction", e);
+                }
+            }
+        };
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<IOException> result = executor.submit(() -> assertThrows(IOException.class,
+                    () -> Extract.run(new String[] {Extract.OPTION_DESTINATION, destination.toString()},
+                            archive, index, source, operations)));
+            assertTrue(staged.await(5, TimeUnit.SECONDS), "extraction never reached publication");
+            Files.createDirectories(destination);
+            Files.writeString(destination.resolve("precious.txt"), "keep me");
+            release.countDown();
+
+            IOException failure = result.get(5, TimeUnit.SECONDS);
+
+            assertTrue(failure.getMessage().contains("is not empty"), failure.getMessage());
+            assertEquals("keep me", Files.readString(destination.resolve("precious.txt")));
+            assertFalse(Files.exists(destination.resolve("app.jar")));
+            assertNoLeftovers(destination.getParent());
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void extractPreservesASymbolicLinkThatArrivesBeforeUnforcedPublication() throws IOException {
+        Path destination = workspace.resolve("extract/late-symbolic-link");
+        Path linkTarget = Files.createDirectories(workspace.resolve("late-link-target"));
+        Extract.PublicationOperations operations = new Extract.PublicationOperations() {
+            @Override
+            public void beforePublication(Path work, Path target) throws IOException {
+                createSymbolicLink(target, linkTarget);
+            }
+        };
+
+        IOException failure = assertThrows(IOException.class, () -> Extract.run(new String[] {
+            Extract.OPTION_DESTINATION, destination.toString()
+        }, archive, index, source, operations));
+
+        assertTrue(failure.getMessage().contains("changed during extraction"), failure.getMessage());
+        assertTrue(Files.isSymbolicLink(destination));
+        assertEquals(linkTarget, Files.readSymbolicLink(destination));
+        assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
+    void extractDoesNotDeleteAReplacementOfAnInitiallyEmptyDestination() throws IOException {
+        Path destination = Files.createDirectories(workspace.resolve("extract/swapped-empty"));
+        AtomicBoolean injected = new AtomicBoolean();
+        Extract.PublicationOperations operations = new Extract.PublicationOperations() {
+            @Override
+            public void move(Path sourcePath, Path targetPath, CopyOption... options) throws IOException {
+                if (sourcePath.equals(destination)
+                        && targetPath.getFileName().toString().startsWith(".micronaut-runner-backup-")) {
+                    Files.delete(destination);
+                    Files.writeString(destination, "replacement file");
+                    injected.set(true);
+                }
+                Extract.PublicationOperations.super.move(sourcePath, targetPath, options);
+            }
+        };
+
+        IOException failure = assertThrows(IOException.class, () -> Extract.run(new String[] {
+            Extract.OPTION_DESTINATION, destination.toString()
+        }, archive, index, source, operations));
+
+        assertTrue(injected.get(), "the test did not replace the checked empty directory");
+        assertTrue(failure.getMessage().contains("changed during extraction"), failure.getMessage());
+        assertTrue(Files.isRegularFile(destination));
+        assertEquals("replacement file", Files.readString(destination));
+        assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
+    void extractPublishesOverAnExistingEmptyDestinationWithoutForce() throws Throwable {
+        Path destination = Files.createDirectories(workspace.resolve("extract/existing-empty"));
+
+        capture(() -> Extract.run(new String[] {
+            Extract.OPTION_DESTINATION, destination.toString()
+        }, archive, index, source));
+
+        assertTrue(Files.isRegularFile(destination.resolve("app.jar")));
+        assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
+    void extractRestoresAnExistingEmptyDestinationAfterAnUnrelatedMoveFailure() throws IOException {
+        Path destination = Files.createDirectories(workspace.resolve("extract/existing-empty-failure"));
+        Extract.PublicationOperations operations = new Extract.PublicationOperations() {
+            @Override
+            public void move(Path sourcePath, Path targetPath, CopyOption... options) throws IOException {
+                if (targetPath.equals(destination)
+                        && sourcePath.getFileName().toString().startsWith(".micronaut-runner-extract-")) {
+                    throw new IOException("injected disk failure");
+                }
+                Extract.PublicationOperations.super.move(sourcePath, targetPath, options);
+            }
+        };
+
+        IOException failure = assertThrows(IOException.class, () -> Extract.run(new String[] {
+            Extract.OPTION_DESTINATION, destination.toString()
+        }, archive, index, source, operations));
+
+        assertEquals("injected disk failure", failure.getMessage());
+        assertTrue(Files.isDirectory(destination));
+        try (var children = Files.list(destination)) {
+            assertTrue(children.findAny().isEmpty(), "the restored destination must remain empty");
+        }
+        assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
+    void extractDoesNotReplaceAnUnforcedDestinationThatWinsTheFinalMove() throws IOException {
+        Path destination = workspace.resolve("extract/final-move-race");
+        AtomicBoolean injected = new AtomicBoolean();
+        Extract.PublicationOperations operations = new Extract.PublicationOperations() {
+            @Override
+            public void move(Path sourcePath, Path targetPath, CopyOption... options) throws IOException {
+                if (targetPath.equals(destination)
+                        && sourcePath.getFileName().toString().startsWith(".micronaut-runner-extract-")) {
+                    assertEquals(0, options.length,
+                            "unforced publication must use a conditional, non-replacing move");
+                    Files.createDirectories(destination);
+                    Files.writeString(destination.resolve("precious.txt"), "late winner");
+                    injected.set(true);
+                }
+                Extract.PublicationOperations.super.move(sourcePath, targetPath, options);
+            }
+        };
+
+        IOException failure = assertThrows(IOException.class, () -> Extract.run(new String[] {
+            Extract.OPTION_DESTINATION, destination.toString()
+        }, archive, index, source, operations));
+
+        assertTrue(injected.get(), "the test did not inject the final-move race");
+        assertTrue(failure.getMessage().contains("became occupied"), failure.getMessage());
+        assertEquals("late winner", Files.readString(destination.resolve("precious.txt")));
+        assertFalse(Files.exists(destination.resolve("app.jar")));
+        assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
+    void extractRestoresForcedDestinationWhenPublicationFails() throws IOException {
+        Path destination = workspace.resolve("extract/forced-failure");
+        Files.createDirectories(destination);
+        Files.writeString(destination.resolve("precious.txt"), "keep me");
+        Extract.PublicationOperations operations = new Extract.PublicationOperations() {
+            @Override
+            public void move(Path sourcePath, Path targetPath, CopyOption... options) throws IOException {
+                if (targetPath.equals(destination)
+                        && sourcePath.getFileName().toString().startsWith(".micronaut-runner-extract-")) {
+                    throw new IOException("injected publication failure");
+                }
+                Extract.PublicationOperations.super.move(sourcePath, targetPath, options);
+            }
+        };
+
+        IOException failure = assertThrows(IOException.class, () -> Extract.run(new String[] {
+            Extract.OPTION_DESTINATION, destination.toString(), Extract.OPTION_FORCE
+        }, archive, index, source, operations));
+
+        assertTrue(failure.getMessage().contains("restored"), failure.getMessage());
+        assertEquals("keep me", Files.readString(destination.resolve("precious.txt")));
+        assertFalse(Files.exists(destination.resolve("app.jar")));
+        assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
+    void extractIdentifiesRecoverableBackupWhenRollbackFails() throws IOException {
+        Path destination = workspace.resolve("extract/rollback-failure");
+        Files.createDirectories(destination);
+        Files.writeString(destination.resolve("precious.txt"), "old output");
+        Extract.PublicationOperations operations = new Extract.PublicationOperations() {
+            @Override
+            public void move(Path sourcePath, Path targetPath, CopyOption... options) throws IOException {
+                if (targetPath.equals(destination)) {
+                    throw new IOException("injected move to destination failure");
+                }
+                Extract.PublicationOperations.super.move(sourcePath, targetPath, options);
+            }
+        };
+
+        IOException failure = assertThrows(IOException.class, () -> Extract.run(new String[] {
+            Extract.OPTION_DESTINATION, destination.toString(), Extract.OPTION_FORCE
+        }, archive, index, source, operations));
+
+        assertTrue(failure.getMessage().contains("previous output remains recoverable at"),
+                failure.getMessage());
+        List<Path> backups;
+        try (var children = Files.list(destination.getParent())) {
+            backups = children.filter(path -> path.getFileName().toString()
+                            .startsWith(".micronaut-runner-backup-"))
+                    .toList();
+        }
+        assertEquals(1, backups.size(), "the old output must remain under one named backup");
+        assertEquals("old output", Files.readString(backups.get(0).resolve("precious.txt")));
+        Files.delete(backups.get(0).resolve("precious.txt"));
+        Files.delete(backups.get(0));
+        assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
+    void extractFallsBackOnlyWhenAtomicPublicationIsUnsupported() throws Throwable {
+        Path destination = workspace.resolve("extract/atomic-unsupported");
+        Files.createDirectories(destination);
+        Files.writeString(destination.resolve("stale.txt"), "old");
+        AtomicInteger atomicAttempts = new AtomicInteger();
+        AtomicInteger fallbacks = new AtomicInteger();
+        Extract.PublicationOperations operations = new Extract.PublicationOperations() {
+            @Override
+            public void move(Path sourcePath, Path targetPath, CopyOption... options) throws IOException {
+                for (CopyOption option : options) {
+                    if (option == StandardCopyOption.ATOMIC_MOVE) {
+                        atomicAttempts.incrementAndGet();
+                        throw new AtomicMoveNotSupportedException(sourcePath.toString(), targetPath.toString(),
+                                "injected unsupported atomic move");
+                    }
+                }
+                fallbacks.incrementAndGet();
+                Extract.PublicationOperations.super.move(sourcePath, targetPath, options);
+            }
+        };
+
+        capture(() -> Extract.run(new String[] {
+            Extract.OPTION_DESTINATION, destination.toString(), Extract.OPTION_FORCE
+        }, archive, index, source, operations));
+
+        assertEquals(2, atomicAttempts.get(), "backup and publication should first request atomic moves");
+        assertEquals(2, fallbacks.get(), "both unsupported atomic moves should fall back");
+        assertFalse(Files.exists(destination.resolve("stale.txt")));
+        assertTrue(Files.isRegularFile(destination.resolve("app.jar")));
+        assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
+    void extractIdentifiesRetainedBackupWhenCleanupFails() throws IOException {
+        Path destination = workspace.resolve("extract/backup-cleanup-failure");
+        Files.createDirectories(destination);
+        Files.writeString(destination.resolve("precious.txt"), "old output");
+        Extract.PublicationOperations operations = new Extract.PublicationOperations() {
+            @Override
+            public void deleteRecursively(Path directory) throws IOException {
+                if (directory.getFileName().toString().startsWith(".micronaut-runner-backup-")) {
+                    throw new IOException("injected backup cleanup failure");
+                }
+                Extract.PublicationOperations.super.deleteRecursively(directory);
+            }
+        };
+
+        IOException failure = assertThrows(IOException.class, () -> Extract.run(new String[] {
+            Extract.OPTION_DESTINATION, destination.toString(), Extract.OPTION_FORCE
+        }, archive, index, source, operations));
+
+        assertTrue(failure.getMessage().contains("Published the extracted tree"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("could not completely remove the previous output at"),
+                failure.getMessage());
+        assertTrue(Files.isRegularFile(destination.resolve("app.jar")));
+        List<Path> backups;
+        try (var children = Files.list(destination.getParent())) {
+            backups = children.filter(path -> path.getFileName().toString()
+                            .startsWith(".micronaut-runner-backup-"))
+                    .toList();
+        }
+        assertEquals(1, backups.size(), "the recoverable backup named in the error must remain");
+        assertEquals("old output", Files.readString(backups.get(0).resolve("precious.txt")));
+        Files.delete(backups.get(0).resolve("precious.txt"));
+        Files.delete(backups.get(0));
+        assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
+    void extractRechecksSourceIdentityImmediatelyBeforePublication() throws IOException {
+        Path sourceDirectory = Files.createDirectories(workspace.resolve("publication-source"));
+        Path sourceArchive = sourceDirectory.resolve("original.jar");
+        Files.copy(archive.toPath(), sourceArchive);
+        byte[] original = Files.readAllBytes(sourceArchive);
+        Path sentinel = sourceDirectory.resolve("precious.txt");
+        Files.writeString(sentinel, "keep me");
+        Path safeDirectory = Files.createDirectories(workspace.resolve("publication-safe"));
+        Path destination = createSymbolicLink(workspace.resolve("publication-destination"), safeDirectory);
+        Extract.PublicationOperations operations = new Extract.PublicationOperations() {
+            @Override
+            public void beforePublication(Path work, Path target) throws IOException {
+                Files.delete(target);
+                Files.createSymbolicLink(target, sourceDirectory);
+            }
+        };
+
+        try (ArchiveSource other = ArchiveSource.open(sourceArchive.toFile())) {
+            Index otherIndex = Index.open(other);
+            IOException failure = assertThrows(IOException.class, () -> Extract.run(new String[] {
+                Extract.OPTION_DESTINATION, destination.toString(), Extract.OPTION_FORCE
+            }, sourceArchive.toFile(), otherIndex, other, operations));
+
+            assertTrue(failure.getMessage().contains("holds the runner jar itself"), failure.getMessage());
+        }
+        assertArrayEquals(original, Files.readAllBytes(sourceArchive));
+        assertEquals("keep me", Files.readString(sentinel));
+        assertNoLeftovers(workspace);
     }
 
     @Test

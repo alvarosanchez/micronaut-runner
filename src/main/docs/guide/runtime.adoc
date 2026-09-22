@@ -75,3 +75,23 @@ The extracted form runs entirely on the JDK's own application class loader, with
 anywhere. That matters for the JDK's ahead-of-time cache: as described in <<cdsAndAot>>, classes loaded by
 a user-defined class loader cannot be AOT-linked, so an application that will be started thousands of
 times in the same container image may be better served by extracting once at image build time.
+
+=== Publication and replacement
+
+Extraction stages the complete layout in a temporary sibling directory before publishing it. Without
+`--force`, the destination is checked again after staging and the final move does not replace an existing
+path. If another process populates the destination while extraction is running, extraction fails and
+preserves that occupant.
+
+With `--force`, existing output is renamed to a temporary sibling backup before the staged layout is moved
+into place. A publication failure restores the backup when possible. If restoration or cleanup also fails,
+the error names the backup (or the part of it cleanup could not remove). A failed restoration therefore
+leaves the old output recoverable instead of silently losing it. Successful replacement removes the backup.
+
+Forced backup, publication, and restoration first request an atomic filesystem move and fall back to an
+ordinary same-filesystem move only when atomic moves are unsupported. Java's portable filesystem API does
+not provide an atomic directory exchange or bind earlier path-identity checks to a later move. Consequently,
+publishing over an existing empty destination or performing a forced replacement can briefly leave the
+destination absent. Forced replacement is rollback-protected but not universally transactional, and a
+process able to rewrite destination path components can still race publication. Keep the source and
+destination parent writable only by trusted participants.
