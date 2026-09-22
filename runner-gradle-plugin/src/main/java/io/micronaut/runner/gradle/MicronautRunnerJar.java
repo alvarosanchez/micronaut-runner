@@ -209,11 +209,13 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract MapProperty<String, String> getManifestAttributes();
 
     /**
-     * The archive of a shading task writing to the same location, if one is configured. Present only so
-     * the task can refuse to run rather than silently produce whichever archive happened to be built last.
+     * The archive of a shading task that may write to the same location.
      *
-     * @return the conflicting archive
+     * @return the possible conflicting archive
+     * @deprecated collision validation is now performed before both archive producers by
+     *             {@link ValidateShadowArchiveCollision}; this compatibility property is ignored
      */
+    @Deprecated
     @Internal
     public abstract RegularFileProperty getConflictingArchive();
 
@@ -234,14 +236,6 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     @TaskAction
     public void packageArchive() throws IOException {
         File output = getArchiveFile().get().getAsFile();
-        if (getConflictingArchive().isPresent()
-                && getConflictingArchive().get().getAsFile().equals(output)) {
-            throw new GradleException("The shadow plugin is configured to write " + output
-                    + ", which is also the runner jar. A runner jar and a shaded jar are different archives"
-                    + " and cannot share a file name. Give one of them another classifier, for example"
-                    + " micronautRunnerJar { archiveClassifier = 'runner' }.");
-        }
-
         RunnerJarResult result = RunnerJarBuilder.build(buildSpec(output), new GradleBuildLogger(getLogger()));
 
         getLogger().lifecycle("Runner jar written to {} ({} dependencies, {} entries, {} bytes)",
