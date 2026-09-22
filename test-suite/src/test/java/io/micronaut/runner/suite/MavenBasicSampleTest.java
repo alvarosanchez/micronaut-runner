@@ -109,6 +109,19 @@ class MavenBasicSampleTest {
     }
 
     @Test
+    void copyingTheSampleSkipsExistingBuildOutput() throws IOException {
+        Path source = temporary.resolve("source");
+        Files.createDirectories(source.resolve("target"));
+        Files.writeString(source.resolve("pom.xml"), "fixture", StandardCharsets.UTF_8);
+        Files.writeString(source.resolve("target/stale.jar"), "stale", StandardCharsets.UTF_8);
+
+        Path copy = copySample(source, temporary.resolve("copy"));
+
+        assertEquals("fixture", Files.readString(copy.resolve("pom.xml"), StandardCharsets.UTF_8));
+        assertFalse(Files.exists(copy.resolve("target")), "build output must not be copied into the test fixture");
+    }
+
+    @Test
     void packagesTheSampleAndRunsTheRunnerJar() throws Exception {
         Samples.assumeTheNetworkIsAvailable();
         Samples.requirePublishedArtifact("io/micronaut/runner/micronaut-runner-maven-plugin/"
@@ -306,7 +319,11 @@ class MavenBasicSampleTest {
     private static Path copySample(Path source, Path target) throws IOException {
         try (var files = Files.walk(source)) {
             for (Path file : files.toList()) {
-                Path destination = target.resolve(source.relativize(file));
+                Path relative = source.relativize(file);
+                if (relative.getNameCount() > 0 && relative.getName(0).toString().equals("target")) {
+                    continue;
+                }
+                Path destination = target.resolve(relative);
                 if (Files.isDirectory(file)) {
                     Files.createDirectories(destination);
                 } else {
