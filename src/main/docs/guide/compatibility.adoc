@@ -40,9 +40,11 @@ JAR itself. Code that resolves classes through the system class loader, or that 
 to discover the application's dependencies, will not find them. Micronaut resolves its application class
 loader from the thread context class loader, so the framework is unaffected.
 
-Signatures are not verified:: Re-packing removes signature files, and nothing is verified at run time.
-Sign the outer archive if you need a signature. Code that depends on `CodeSource.getCodeSigners()` being
-populated, such as a JCE provider requiring a signed JAR, is not supported.
+Signatures are not verified:: The default re-packing mode removes nested signature files. `PRESERVE` keeps
+the nested JAR bytes, including signature files, but the runner still does not verify them. Application and
+dependency `CodeSource` objects have a null `CodeSigner[]`. External authentication of the outer artifact
+does not change that, so code that requires signed-JAR semantics, such as a signed JCE provider, is not
+supported. See <<authenticating>> for deployment-artifact authentication.
 
 The Java Platform Module System:: Everything runs in the unnamed module of the runner class loader. A
 dependency's `module-info.class` is carried but is inert, and modules added with `--module-path` are not
@@ -54,3 +56,47 @@ sibling files that do not exist inside an archive. They become active again afte
 Native libraries:: Libraries that ship native code, such as Netty's transports, unpack it to a temporary
 directory themselves, exactly as they do from any JAR. Micronaut Runner does not extract anything, but it does
 not prevent a library from doing so.
+
+[[authenticating]]
+== Authenticating a deployment artifact
+
+Authenticate the final runner JAR as an immutable deployment artifact. Do not run `jarsigner`, update the
+manifest, re-zip the file or otherwise mutate it after packaging: those operations change the bytes and can
+invalidate both the precomputed runner index and any signature or checksum made over the previous bytes.
+
+The publisher can create an armored detached signature after the runner JAR is final. The sidecar remains
+outside the JAR, so signing does not alter the indexed artifact:
+
+[source,bash]
+----
+artifact=my-app-0.1-all.jar
+gpg --batch --local-user "$RELEASE_KEY_FINGERPRINT" \
+    --armor --detach-sign --output "$artifact.asc" "$artifact"
+----
+
+Provision the verifier's GnuPG home separately with only public keys whose complete fingerprints were
+checked against the release policy. Merely accepting any cryptographically valid signature, or importing a
+key delivered beside an untrusted artifact, does not establish the publisher's identity. Then make successful
+verification a precondition of launch:
+
+[source,bash]
+----
+artifact=/opt/my-app/my-app-0.1-all.jar
+signature="$artifact.asc"
+verifier_home=/etc/my-app/gnupg
+gpg --batch --homedir "$verifier_home" --verify "$signature" "$artifact" &&
+exec java -jar "$artifact"
+----
+
+The verifier must authenticate the same bytes that are executed. Keep the artifact, signature, verifier
+keyring and their parent directories read-only to untrusted principals, or use a deployment system that
+binds verification to an immutable, content-addressed object. Otherwise another process can replace the
+path between verification and launch. Any mutation requires producing and distributing a new detached
+signature.
+
+CRC-32 checks, including `-Dmicronaut.runner.verify=true`, detect accidental corruption; they do not
+authenticate a publisher. A SHA-256 checksum has the same trust boundary when it is delivered unsigned from
+the same source as the artifact. When enabled for the `micronaut-projects` organization, the repository's
+https://github.com/{githubSlug}/blob/master/.github/workflows/release.yml[release workflow] computes SHA-256
+subjects for its published library JAR and POM files and binds them into SLSA provenance. That release
+behavior does not authenticate an application runner JAR and does not make the runner verify nested JARs.

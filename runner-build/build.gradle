@@ -43,4 +43,10 @@ tasks.named('processResources', ProcessResources) {
 
 tasks.named('test', Test) {
     systemProperty 'runner.test.runtimeClasspath', sourceSets.test.runtimeClasspath.asPath
+
+    def compatibilityGuide = rootProject.layout.projectDirectory.file('src/main/docs/guide/compatibility.adoc')
+    inputs.file(compatibilityGuide)
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+            .withPropertyName('compatibilityGuide')
+    systemProperty 'runner.test.compatibilityGuide', compatibilityGuide.asFile
 }

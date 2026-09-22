@@ -2,8 +2,9 @@
 
 The index records the archive's length and the position of every nested JAR. One of those checks failed,
 which means the file changed after it was built: something appended to it, re-zipped it, or signed it in
-place. Rebuild the archive. If you need a signature, sign the finished archive with a tool that does not
-rewrite existing entries, or use the extracted layout.
+place. Rebuild the archive; do not sign or otherwise rewrite it in place. To authenticate a deployment,
+create a detached signature over the final bytes and require successful verification before launch, as
+described in <<authenticating,authenticating a deployment artifact>>.
 
 == A resource is not found, or the wrong one is found
 

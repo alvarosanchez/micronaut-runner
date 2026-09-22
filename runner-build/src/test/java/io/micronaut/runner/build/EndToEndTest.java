@@ -26,7 +26,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +43,9 @@ import java.util.zip.ZipEntry;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -60,8 +66,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * dependency with two versioned copies of the same class.</p>
  *
  * <p>The forked JVM is the one at the system property {@code runner.test.javaHome}, which the build sets to
- * the JDK running the build. The test is hermetic: it downloads nothing, reads nothing outside its temporary
- * directory and the bundled launcher jar, and starts four short-lived JVMs.</p>
+ * the JDK running the build. The fixture downloads nothing. Its detached-signature test uses a locally
+ * installed GnuPG executable and ephemeral keyrings; the other tests read only their temporary directory and
+ * the bundled launcher jar. Together they start five short-lived JVMs.</p>
  */
 class EndToEndTest {
 
@@ -665,6 +672,180 @@ class EndToEndTest {
         assertPassed(fork(preserveArchive, workspace, List.of(), List.of()));
     }
 
+    @Test
+    void compatibilityGuideRequiresDetachedVerificationBeforeLaunch() throws Exception {
+        String guide = Files.readString(Path.of(System.getProperty("runner.test.compatibilityGuide")),
+                StandardCharsets.UTF_8).replace("\r\n", "\n").replace('\r', '\n');
+
+        assertFalse(guide.contains("Sign the outer archive if you need a signature"));
+        assertFalse(guide.contains("sign the finished archive with a tool"));
+        assertTrue(guide.contains("--armor --detach-sign --output \"$artifact.asc\" \"$artifact\""));
+        assertTrue(guide.contains("--verify \"$signature\" \"$artifact\" &&\nexec java -jar \"$artifact\""));
+        assertTrue(guide.contains("complete fingerprints were\nchecked against the release policy"));
+        assertTrue(guide.contains("same bytes that are executed"));
+        assertTrue(guide.contains("another process can replace the\npath between verification and launch"));
+        assertTrue(guide.contains("CRC-32 checks") && guide.contains("they do not\nauthenticate a publisher"));
+        assertTrue(guide.contains("null `CodeSigner[]`"));
+        assertTrue(guide.contains("does not make the runner verify nested JARs"));
+    }
+
+    @Test
+    void detachedVerificationAuthenticatesFinalBytesWithoutMutatingThem() throws Exception {
+        String gpg = gpgExecutable();
+        if (gpg == null) {
+            throw new AssertionError("GnuPG is required for detached-signature verification tests");
+        }
+
+        Path scenario = Files.createDirectories(workspace.resolve("detached-signature"));
+        Path artifact = scenario.resolve("app.jar");
+        Files.copy(storedArchive, artifact, StandardCopyOption.REPLACE_EXISTING);
+        byte[] packagedHash = sha256(artifact);
+
+        // GnuPG on macOS places agent sockets below the home and is limited by the short sockaddr_un path.
+        // Keep these temporary homes directly below the user's home rather than JUnit's long temporary path.
+        Path gpgRoot = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".mr-gpg-");
+        try {
+            Path signerHome = gpgHome(gpgRoot.resolve("s"));
+            String signer = generateSigningKey(gpg, signerHome,
+                    "Runner Release Test <release@example.invalid>");
+            Path trustedHome = gpgHome(gpgRoot.resolve("t"));
+            importPublicKey(gpg, signerHome, signer, trustedHome, scenario.resolve("release-key.asc"));
+
+            Path signature = scenario.resolve("app.jar.asc");
+            requireSuccess(command(scenario, gpg, "--batch", "--homedir", signerHome.toString(),
+                    "--pinentry-mode", "loopback", "--passphrase", "", "--local-user", signer,
+                    "--armor", "--detach-sign", "--output", signature.toString(), artifact.toString()));
+            assertArrayEquals(packagedHash, sha256(artifact), "detached signing changed the runner JAR");
+
+            VerificationRun verified = verifyThenRun(gpg, trustedHome, signature, artifact);
+            assertTrue(verified.launched(),
+                    () -> "valid signature did not permit launch\n" + verified.verification().output());
+            assertPassed(verified.run());
+            assertArrayEquals(packagedHash, sha256(artifact), "verification or launch changed the runner JAR");
+
+            Path tampered = scenario.resolve("app-tampered.jar");
+            Files.copy(artifact, tampered, StandardCopyOption.REPLACE_EXISTING);
+            Files.write(tampered, new byte[] {0}, StandardOpenOption.APPEND);
+            VerificationRun modified = verifyThenRun(gpg, trustedHome, signature, tampered);
+            assertFalse(modified.launched(), "modified bytes were launched after signature verification");
+            assertFalse(modified.verification().status() == 0, "modified bytes passed detached verification");
+
+            Path otherSignerHome = gpgHome(gpgRoot.resolve("o"));
+            String otherSigner = generateSigningKey(gpg, otherSignerHome,
+                    "Untrusted Runner Test <untrusted@example.invalid>");
+            Path wrongTrustedHome = gpgHome(gpgRoot.resolve("w"));
+            importPublicKey(gpg, otherSignerHome, otherSigner, wrongTrustedHome,
+                    scenario.resolve("untrusted-key.asc"));
+            VerificationRun wrongIdentity = verifyThenRun(gpg, wrongTrustedHome, signature, artifact);
+            assertFalse(wrongIdentity.launched(), "an artifact was launched with the wrong trusted identity");
+            assertFalse(wrongIdentity.verification().status() == 0,
+                    "a signature from outside the pinned keyring was accepted");
+        } finally {
+            deleteRecursively(gpgRoot);
+        }
+    }
+
+    private static VerificationRun verifyThenRun(String gpg, Path verifierHome, Path signature, Path artifact)
+            throws IOException, InterruptedException {
+        CommandResult verification = command(workspace, gpg, "--batch", "--homedir", verifierHome.toString(),
+                "--verify", signature.toString(), artifact.toString());
+        if (verification.status() != 0) {
+            return new VerificationRun(false, null, verification);
+        }
+        return new VerificationRun(true, fork(artifact, workspace, List.of(), List.of()), verification);
+    }
+
+    private static String generateSigningKey(String gpg, Path home, String identity)
+            throws IOException, InterruptedException {
+        requireSuccess(command(workspace, gpg, "--batch", "--homedir", home.toString(),
+                "--pinentry-mode", "loopback", "--passphrase", "", "--quick-generate-key", identity,
+                "ed25519", "sign", "0"));
+        CommandResult listing = command(workspace, gpg, "--batch", "--homedir", home.toString(),
+                "--with-colons", "--list-secret-keys", identity);
+        requireSuccess(listing);
+        for (String line : listing.output().split("\\R")) {
+            String[] fields = line.split(":", -1);
+            if (fields.length > 9 && "fpr".equals(fields[0])) {
+                return fields[9];
+            }
+        }
+        throw new AssertionError("GnuPG did not report a fingerprint for " + identity + "\n" + listing.output());
+    }
+
+    private static void importPublicKey(String gpg, Path signerHome, String fingerprint, Path verifierHome,
+            Path exportedKey) throws IOException, InterruptedException {
+        requireSuccess(command(workspace, gpg, "--batch", "--homedir", signerHome.toString(), "--armor",
+                "--output", exportedKey.toString(), "--export", fingerprint));
+        requireSuccess(command(workspace, gpg, "--batch", "--homedir", verifierHome.toString(),
+                "--import", exportedKey.toString()));
+    }
+
+    private static Path gpgHome(Path directory) throws IOException {
+        Files.createDirectories(directory);
+        try {
+            Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwx------"));
+        } catch (UnsupportedOperationException ignored) {
+            // Windows has no POSIX mode bits; GnuPG uses the platform ACLs instead.
+        }
+        return directory;
+    }
+
+    private static String gpgExecutable() throws IOException, InterruptedException {
+        for (String candidate : List.of("gpg", "gpg.exe")) {
+            try {
+                CommandResult result = command(workspace, candidate, "--version");
+                if (result.status() == 0) {
+                    return candidate;
+                }
+            } catch (IOException ignored) {
+                // Try the platform-specific spelling next.
+            }
+        }
+        return null;
+    }
+
+    private static byte[] sha256(Path file) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream in = Files.newInputStream(file)) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = in.read(buffer)) >= 0) {
+                if (read > 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+        }
+        return digest.digest();
+    }
+
+    private static void deleteRecursively(Path directory) throws IOException {
+        if (!Files.exists(directory)) {
+            return;
+        }
+        try (var entries = Files.walk(directory)) {
+            for (Path entry : entries.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(entry);
+            }
+        }
+    }
+
+    private static CommandResult command(Path workingDirectory, String... command)
+            throws IOException, InterruptedException {
+        Process process = new ProcessBuilder(command)
+                .directory(workingDirectory.toFile())
+                .redirectErrorStream(true)
+                .start();
+        String output;
+        try (InputStream in = process.getInputStream()) {
+            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        return new CommandResult(process.waitFor(), output, List.of(command));
+    }
+
+    private static void requireSuccess(CommandResult result) {
+        assertEquals(0, result.status(), () -> String.join(" ", result.command()) + " failed\n" + result.output());
+    }
+
     /**
      * Fails with the application's own {@code FAIL} lines when any assertion inside it did not hold.
      */
@@ -785,5 +966,11 @@ class EndToEndTest {
      * @param output standard output and standard error, interleaved
      */
     private record Forked(int status, String output) {
+    }
+
+    private record CommandResult(int status, String output, List<String> command) {
+    }
+
+    private record VerificationRun(boolean launched, Forked run, CommandResult verification) {
     }
 }
