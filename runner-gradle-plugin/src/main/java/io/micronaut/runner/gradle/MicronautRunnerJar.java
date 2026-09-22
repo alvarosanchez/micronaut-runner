@@ -209,6 +209,17 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract MapProperty<String, String> getManifestAttributes();
 
     /**
+     * The archive of a shading task that may write to the same location.
+     *
+     * @return the possible conflicting archive
+     * @deprecated collision validation is now performed before both archive producers by
+     *             {@link ValidateShadowArchiveCollision}; this compatibility property is ignored
+     */
+    @Deprecated
+    @Internal
+    public abstract RegularFileProperty getConflictingArchive();
+
+    /**
      * The project's target Java version, reported in the build log to make a mismatch between the JDK that
      * compiled the application and the JDK that will run it easy to spot.
      *

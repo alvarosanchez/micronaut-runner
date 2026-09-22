@@ -64,6 +64,29 @@ class ShadowCollisionFunctionalTest extends AbstractFunctionalTest {
             """;
 
     /**
+     * Build scripts compiled against the original public collision property can still configure it while
+     * validation is owned by the dedicated task.
+     *
+     * @param project a fresh project directory
+     * @throws IOException          if the fixture cannot be written
+     * @throws InterruptedException if the runner cannot be launched
+     */
+    @Test
+    void legacyCollisionPropertyRemainsConfigurable(@TempDir Path project)
+            throws IOException, InterruptedException {
+        writeFixture(project, """
+                tasks.named('micronautRunnerJar') {
+                    conflictingArchive = layout.buildDirectory.file('legacy-shadow.jar')
+                }
+                """, "");
+
+        BuildResult result = build(project, "micronautRunnerJar");
+
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, RUNNER_JAR_TASK));
+        runJarSuccessfully(project.resolve(DEFAULT_ARCHIVE));
+    }
+
+    /**
      * Changing only Shadow's output from safe to conflicting must invalidate the guard even though all
      * packaging inputs and the existing runner archive are unchanged.
      *
