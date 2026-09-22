@@ -37,6 +37,14 @@ abstract class RepositoryProvider implements CommandLineArgumentProvider {
         repositoryDir.asFileTree.matching { include('**/*.pom') }
     }
 
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    FileTree getChecksums() {
+        repositoryDir.asFileTree.matching {
+            include('**/*.md5', '**/*.sha1', '**/*.sha256', '**/*.sha512')
+        }
+    }
+
     @Input
     abstract Property<String> getVersion()
 
