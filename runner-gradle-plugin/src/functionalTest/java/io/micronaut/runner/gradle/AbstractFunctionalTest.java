@@ -27,6 +27,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -192,7 +193,13 @@ abstract class AbstractFunctionalTest {
     private static final long FIXTURE_TIME = 1_000_000_000_000L;
 
     /** How long a forked application may take before the test gives up on it. */
-    private static final long FORK_TIMEOUT_SECONDS = 60L;
+    private static final Duration FORK_TIMEOUT = Duration.ofSeconds(60);
+
+    /** Maximum time spent terminating a child or finishing its output drain. */
+    private static final Duration FORK_CLEANUP_GRACE = Duration.ofSeconds(2);
+
+    /** Maximum output retained from a runaway child; the stream is still drained after this limit. */
+    private static final int MAX_FORK_OUTPUT_BYTES = 1024 * 1024;
 
     /** The directory holding the compiled fixture dependency jars, built once per test JVM. */
     private static Path libraries;
@@ -308,7 +315,7 @@ abstract class AbstractFunctionalTest {
      * @throws InterruptedException if the wait is interrupted
      */
     static Forked runJar(Path archive, String... arguments) throws IOException, InterruptedException {
-        return runJar(archive, List.of(), arguments);
+        return runJar(archive, List.of(), FORK_TIMEOUT, arguments);
     }
 
     /**
@@ -323,12 +330,30 @@ abstract class AbstractFunctionalTest {
      */
     static Forked runJarInMode(Path archive, String mode, String... arguments)
             throws IOException, InterruptedException {
-        return runJar(archive, List.of("-Dmicronaut.runner.mode=" + mode), arguments);
+        return runJar(archive, List.of("-Dmicronaut.runner.mode=" + mode), FORK_TIMEOUT, arguments);
     }
 
-    private static Forked runJar(Path archive, List<String> jvmArguments, String... arguments)
+    /**
+     * Runs an archive with a test-specific deadline.
+     *
+     * @param archive   the archive to run
+     * @param timeout   how long the child may run before cleanup starts
+     * @param arguments the application arguments
+     * @return the exit status and combined output
+     * @throws IOException          if the process fails or exceeds its deadline
+     * @throws InterruptedException if the wait is interrupted, after the child is reaped
+     */
+    static Forked runJar(Path archive, Duration timeout, String... arguments)
+            throws IOException, InterruptedException {
+        return runJar(archive, List.of(), timeout, arguments);
+    }
+
+    private static Forked runJar(Path archive, List<String> jvmArguments, Duration timeout, String... arguments)
             throws IOException, InterruptedException {
         assertTrue(Files.isRegularFile(archive), () -> archive + " was never written");
+        if (timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalArgumentException("timeout must be positive: " + timeout);
+        }
         List<String> command = new ArrayList<>();
         command.add(javaExecutable().toString());
         command.addAll(jvmArguments);
@@ -339,16 +364,83 @@ abstract class AbstractFunctionalTest {
                 .directory(archive.toAbsolutePath().getParent().toFile())
                 .redirectErrorStream(true)
                 .start();
-        String output;
-        try (InputStream in = process.getInputStream()) {
-            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        OutputCapture capture = new OutputCapture(process.getInputStream());
+        Thread drain = new Thread(capture, "forked-application-output-" + process.pid());
+        drain.setDaemon(true);
+        drain.start();
+
+        boolean finished;
+        try {
+            finished = process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+            cleanup(process, drain);
+            Thread.currentThread().interrupt();
+            throw e;
         }
-        if (!process.waitFor(FORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+        if (!finished) {
+            cleanup(process, drain);
+            throw new IOException("The forked application did not finish within " + timeout
+                    + describe(command, capture.output()));
+        }
+
+        try {
+            drain.join(FORK_CLEANUP_GRACE.toMillis());
+        } catch (InterruptedException e) {
+            cleanup(process, drain);
+            Thread.currentThread().interrupt();
+            throw e;
+        }
+        if (drain.isAlive()) {
+            cleanup(process, drain);
+            throw new IOException("The forked application's output did not finish within "
+                    + FORK_CLEANUP_GRACE + describe(command, capture.output()));
+        }
+        if (capture.failure() != null) {
+            throw new IOException("Could not capture the forked application's output"
+                    + describe(command, capture.output()), capture.failure());
+        }
+        return new Forked(process.exitValue(), capture.output());
+    }
+
+    private static void cleanup(Process process, Thread drain) {
+        boolean interrupted = false;
+        process.destroy();
+        try {
+            if (!process.waitFor(FORK_CLEANUP_GRACE.toMillis(), TimeUnit.MILLISECONDS)) {
+                process.destroyForcibly();
+                process.waitFor(FORK_CLEANUP_GRACE.toMillis(), TimeUnit.MILLISECONDS);
+            }
+        } catch (InterruptedException e) {
+            interrupted = true;
             process.destroyForcibly();
-            throw new IOException("The forked application did not finish within "
-                    + FORK_TIMEOUT_SECONDS + " seconds:\n" + output);
+            try {
+                process.waitFor(FORK_CLEANUP_GRACE.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (InterruptedException again) {
+                interrupted = true;
+            }
+        } finally {
+            try {
+                process.getInputStream().close();
+            } catch (IOException ignored) {
+                // Closing the process stream is best-effort after the child has been terminated.
+            }
         }
-        return new Forked(process.exitValue(), output);
+        try {
+            drain.join(FORK_CLEANUP_GRACE.toMillis());
+        } catch (InterruptedException e) {
+            interrupted = true;
+        }
+        if (drain.isAlive()) {
+            drain.interrupt();
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static String describe(List<String> command, String output) {
+        return "\n--- command ---\n" + String.join(" ", command)
+                + "\n--- output ---\n" + (output.isEmpty() ? "(nothing)" : output) + "\n--------------";
     }
 
     /**
@@ -534,6 +626,51 @@ abstract class AbstractFunctionalTest {
             }
         } catch (UncheckedIOException e) {
             throw e.getCause();
+        }
+    }
+
+    private static final class OutputCapture implements Runnable {
+
+        private final InputStream input;
+        private final byte[] output = new byte[MAX_FORK_OUTPUT_BYTES];
+        private int retained;
+        private long received;
+        private volatile IOException failure;
+
+        private OutputCapture(InputStream input) {
+            this.input = input;
+        }
+
+        @Override
+        public void run() {
+            byte[] buffer = new byte[8192];
+            try (input) {
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    append(buffer, read);
+                }
+            } catch (IOException e) {
+                failure = e;
+            }
+        }
+
+        private synchronized void append(byte[] bytes, int length) {
+            received += length;
+            int copied = Math.min(length, output.length - retained);
+            System.arraycopy(bytes, 0, output, retained, copied);
+            retained += copied;
+        }
+
+        private synchronized String output() {
+            String captured = new String(output, 0, retained, StandardCharsets.UTF_8);
+            if (received > retained) {
+                return captured + "\n[output truncated after " + retained + " of " + received + " bytes]";
+            }
+            return captured;
+        }
+
+        private IOException failure() {
+            return failure;
         }
     }
 
