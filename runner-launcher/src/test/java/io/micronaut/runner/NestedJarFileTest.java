@@ -25,6 +25,7 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.Manifest;
+import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 
 import org.junit.jupiter.api.AfterEach;
@@ -56,6 +57,8 @@ class NestedJarFileTest {
     private static final byte[] BASE_CLASS = bytes("base class bytes");
     private static final byte[] VERSIONED_CLASS = bytes("versioned class bytes");
     private static final byte[] TEXT = bytes("nested deflated payload ".repeat(40));
+    private static final byte[] CORRUPT_STORED = bytes("corrupt stored resource");
+    private static final byte[] CORRUPT_DEFLATED = bytes("corrupt deflated resource ".repeat(20));
     private static final byte[] DIRECTORY = new byte[0];
     private static final byte[] MANIFEST = bytes("Manifest-Version: 1.0\r\n"
             + "Implementation-Title: Dependency\r\n"
@@ -77,23 +80,28 @@ class NestedJarFileTest {
     @BeforeEach
     void openArchive() throws IOException {
         TestArchiveBuilder dependency = new TestArchiveBuilder();
-        long[] inner = new long[5];
+        long[] inner = new long[8];
         inner[0] = dependency.stored("META-INF/MANIFEST.MF", MANIFEST);
         inner[1] = dependency.stored("a/", DIRECTORY);
         inner[2] = dependency.stored("a/B.class", BASE_CLASS);
         inner[3] = dependency.deflated(TEXT_NAME, TEXT);
         inner[4] = dependency.stored("META-INF/versions/21/a/B.class", VERSIONED_CLASS);
+        inner[5] = dependency.stored("corrupt-stored.txt", CORRUPT_STORED);
+        inner[6] = dependency.deflated("corrupt-deflated.txt", CORRUPT_DEFLATED);
+        inner[7] = dependency.stored("corrupt-empty.txt", DIRECTORY);
         byte[] dependencyBytes = dependency.build();
         int compressed = dependency.storedSize(TEXT_NAME);
+        int corruptCompressed = dependency.storedSize("corrupt-deflated.txt");
 
         TestArchiveBuilder outer = new TestArchiveBuilder();
         outer.stored("META-INF/MANIFEST.MF", bytes("Manifest-Version: 1.0\r\n\r\n"));
-        byte[] draft = buildIndex(0, inner, 0, 0, 0, compressed);
+        byte[] draft = buildIndex(0, inner, 0, 0, 0, compressed, corruptCompressed);
         outer.reserve(IndexFormat.INDEX_ENTRY_NAME, draft.length);
         long application = outer.stored(IndexFormat.CLASSES_PREFIX + "app.txt", bytes("application"));
         long base = outer.stored(DEPENDENCY, dependencyBytes);
         long header = outer.localHeaderOffset(DEPENDENCY);
-        byte[] real = buildIndex(application, inner, base, dependencyBytes.length, header, compressed);
+        byte[] real = buildIndex(application, inner, base, dependencyBytes.length, header, compressed,
+                corruptCompressed);
         assertEquals(draft.length, real.length, "the index size must not depend on the offsets");
         outer.replace(IndexFormat.INDEX_ENTRY_NAME, real);
 
@@ -105,6 +113,7 @@ class NestedJarFileTest {
 
     @AfterEach
     void closeArchive() {
+        System.clearProperty(RunnerClassLoader.VERIFY_PROPERTY);
         if (jar != null) {
             jar.closeNested();
             jar = null;
@@ -132,7 +141,8 @@ class NestedJarFileTest {
             names.add(entries.nextElement().getName());
         }
         assertEquals(List.of("META-INF/MANIFEST.MF", "a/", "a/B.class", TEXT_NAME,
-                "META-INF/versions/21/a/B.class"), names);
+                "META-INF/versions/21/a/B.class", "corrupt-stored.txt", "corrupt-deflated.txt",
+                "corrupt-empty.txt"), names);
         assertEquals(names.size(), jar.size());
         assertEquals(names, jar.stream().map(JarEntry::getName).toList());
         assertTrue(index.jarEntryCount(1) > names.size(),
@@ -169,6 +179,72 @@ class NestedJarFileTest {
         assertTrue(deflated.getCompressedSize() < TEXT.length);
         // Repeated reads of the same entry must each deliver the whole content.
         for (int i = 0; i < 3; i++) {
+            assertArrayEquals(TEXT, read(jar.getJarEntry(TEXT_NAME)));
+        }
+    }
+
+    @Test
+    void verifiesStoredAndDeflatedEntryStreamsWhenAskedTo() throws IOException {
+        assertArrayEquals(CORRUPT_STORED, read(jar.getJarEntry("corrupt-stored.txt")));
+        assertArrayEquals(CORRUPT_DEFLATED, read(jar.getJarEntry("corrupt-deflated.txt")));
+
+        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        IOException stored = assertThrows(IOException.class,
+                () -> read(jar.getJarEntry("corrupt-stored.txt")));
+        assertTrue(stored.getMessage().contains("corrupt-stored.txt"), stored.getMessage());
+        IOException deflated = assertThrows(IOException.class,
+                () -> read(jar.getJarEntry("corrupt-deflated.txt")));
+        assertTrue(deflated.getMessage().contains("corrupt-deflated.txt"), deflated.getMessage());
+        assertArrayEquals(TEXT, read(jar.getJarEntry(TEXT_NAME)),
+                "an intact deflated entry still reads with verification on");
+    }
+
+    @Test
+    void verificationCoversSkipAndDoesNotDrainPartialStreamsOnClose() throws IOException {
+        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+
+        InputStream partial = jar.getInputStream(jar.getJarEntry("corrupt-deflated.txt"));
+        assertTrue(partial.read() >= 0);
+        partial.close();
+        partial.close();
+
+        try (InputStream skipped = jar.getInputStream(jar.getJarEntry("corrupt-stored.txt"))) {
+            IOException failure = assertThrows(IOException.class, () -> skipped.skip(Long.MAX_VALUE));
+            assertTrue(failure.getMessage().contains("corrupt-stored.txt"), failure.getMessage());
+        }
+
+        try (InputStream valid = jar.getInputStream(jar.getJarEntry(TEXT_NAME))) {
+            long skipped = valid.skip(17);
+            byte[] remainder = valid.readAllBytes();
+            assertEquals(TEXT.length, skipped + remainder.length,
+                    "skipped bytes are checksummed rather than silently omitted from verification");
+        }
+    }
+
+    @Test
+    void verifiesZeroLengthAndExactLengthReads() throws IOException {
+        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        try (InputStream empty = jar.getInputStream(jar.getJarEntry("a/"))) {
+            assertEquals(-1, empty.read());
+            assertEquals(-1, empty.read());
+        }
+        try (InputStream corruptEmpty = jar.getInputStream(jar.getJarEntry("corrupt-empty.txt"))) {
+            IOException failure = assertThrows(IOException.class, corruptEmpty::read);
+            assertTrue(failure.getMessage().contains("corrupt-empty.txt"), failure.getMessage());
+        }
+        try (InputStream exact = jar.getInputStream(jar.getJarEntry("corrupt-stored.txt"))) {
+            byte[] content = new byte[CORRUPT_STORED.length];
+            IOException failure = assertThrows(IOException.class,
+                    () -> exact.readNBytes(content, 0, content.length));
+            assertTrue(failure.getMessage().contains("corrupt-stored.txt"), failure.getMessage());
+        }
+    }
+
+    @Test
+    void verificationFailuresDoNotPoisonRepeatedDeflatedReads() throws IOException {
+        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        for (int i = 0; i < 10; i++) {
+            assertThrows(IOException.class, () -> read(jar.getJarEntry("corrupt-deflated.txt")));
             assertArrayEquals(TEXT, read(jar.getJarEntry(TEXT_NAME)));
         }
     }
@@ -239,7 +315,7 @@ class NestedJarFileTest {
         for (int i = 0; i < 3; i++) {
             assertArrayEquals(VERSIONED_CLASS, read(entry));
         }
-        assertEquals(5, jar.size());
+        assertEquals(8, jar.size());
     }
 
     @Test
@@ -250,7 +326,7 @@ class NestedJarFileTest {
     }
 
     private byte[] buildIndex(long application, long[] inner, long base, long length, long header,
-                              int compressed) {
+                              int compressed, int corruptCompressed) {
         TestIndexBuilder builder = new TestIndexBuilder();
         TestIndexBuilder.Jar layer = builder.addJar(IndexFormat.CLASSES_PREFIX);
         layer.addEntry("app.txt").data(application, 11, 11);
@@ -259,14 +335,23 @@ class NestedJarFileTest {
                 .manifest(null, null, null, "Dependency", "1.0", null)
                 .multiRelease();
         dependency.addEntry("META-INF/MANIFEST.MF").data(base + inner[0], MANIFEST.length, MANIFEST.length)
-                .dosTime(DOS_TIME);
-        dependency.addEntry("a/").data(base + inner[1], 0, 0).dosTime(DOS_TIME);
+                .crc32(crc32(MANIFEST)).dosTime(DOS_TIME);
+        dependency.addEntry("a/").data(base + inner[1], 0, 0).crc32(0).dosTime(DOS_TIME);
         dependency.addEntry("a/B.class").data(base + inner[2], BASE_CLASS.length, BASE_CLASS.length)
-                .dosTime(DOS_TIME);
+                .crc32(crc32(BASE_CLASS)).dosTime(DOS_TIME);
         dependency.addEntry(TEXT_NAME).data(base + inner[3], compressed, TEXT.length)
-                .method(IndexFormat.METHOD_DEFLATED).dosTime(DOS_TIME);
+                .method(IndexFormat.METHOD_DEFLATED).crc32(crc32(TEXT)).dosTime(DOS_TIME);
         dependency.addEntry("META-INF/versions/21/a/B.class")
-                .data(base + inner[4], VERSIONED_CLASS.length, VERSIONED_CLASS.length).dosTime(DOS_TIME);
+                .data(base + inner[4], VERSIONED_CLASS.length, VERSIONED_CLASS.length)
+                .crc32(crc32(VERSIONED_CLASS)).dosTime(DOS_TIME);
+        dependency.addEntry("corrupt-stored.txt")
+                .data(base + inner[5], CORRUPT_STORED.length, CORRUPT_STORED.length)
+                .crc32(crc32(CORRUPT_STORED) ^ 0xFFFFFFFFL);
+        dependency.addEntry("corrupt-deflated.txt")
+                .data(base + inner[6], corruptCompressed, CORRUPT_DEFLATED.length)
+                .method(IndexFormat.METHOD_DEFLATED)
+                .crc32(crc32(CORRUPT_DEFLATED) ^ 0xFFFFFFFFL);
+        dependency.addEntry("corrupt-empty.txt").data(base + inner[7], 0, 0).crc32(1);
         return builder.build();
     }
 
@@ -278,5 +363,11 @@ class NestedJarFileTest {
 
     private static byte[] bytes(String value) {
         return value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static long crc32(byte[] value) {
+        CRC32 checksum = new CRC32();
+        checksum.update(value);
+        return checksum.getValue();
     }
 }

@@ -27,6 +27,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.net.JarURLConnection;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -45,6 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -87,6 +89,8 @@ class HandlerTest {
     private static final byte[] BASE_CLASS = bytes("base class bytes");
     private static final byte[] VERSIONED_CLASS = bytes("versioned class bytes");
     private static final byte[] NESTED_TEXT = bytes("nested deflated payload ".repeat(40));
+    private static final byte[] CORRUPT_STORED = bytes("corrupt stored resource");
+    private static final byte[] CORRUPT_DEFLATED = bytes("corrupt deflated resource ".repeat(20));
     private static final byte[] NESTED_MANIFEST = bytes("Manifest-Version: 1.0\r\n"
             + "Implementation-Title: Dependency\r\n"
             + "Multi-Release: true\r\n\r\n");
@@ -108,31 +112,35 @@ class HandlerTest {
     @BeforeEach
     void openArchive() throws IOException {
         TestArchiveBuilder dependency = new TestArchiveBuilder();
-        long[] inner = new long[4];
+        long[] inner = new long[5];
         inner[0] = dependency.stored("META-INF/MANIFEST.MF", NESTED_MANIFEST);
         inner[1] = dependency.stored("a/B.class", BASE_CLASS);
         inner[2] = dependency.deflated(NESTED_TEXT_NAME, NESTED_TEXT);
         inner[3] = dependency.stored("META-INF/versions/21/a/B.class", VERSIONED_CLASS);
+        inner[4] = dependency.deflated("corrupt-deflated.txt", CORRUPT_DEFLATED);
         byte[] dependencyBytes = dependency.build();
         int nestedCompressed = dependency.storedSize(NESTED_TEXT_NAME);
+        int corruptNestedCompressed = dependency.storedSize("corrupt-deflated.txt");
 
         TestArchiveBuilder outer = new TestArchiveBuilder();
         outer.stored("META-INF/MANIFEST.MF", OUTER_MANIFEST);
         outer.stored("outer.txt", bytes("outer resource"));
-        byte[] draft = buildIndex(new long[5], inner, 0, 0, 0, 0, nestedCompressed);
+        byte[] draft = buildIndex(new long[6], inner, 0, 0, 0, 0, nestedCompressed,
+                corruptNestedCompressed);
         outer.reserve(IndexFormat.INDEX_ENTRY_NAME, draft.length);
-        long[] application = new long[5];
+        long[] application = new long[6];
         application[0] = outer.stored(IndexFormat.CLASSES_PREFIX + "app.txt", APP_TEXT);
         application[1] = outer.deflated(IndexFormat.CLASSES_PREFIX + AWKWARD, AWKWARD_TEXT);
         application[2] = outer.stored(IndexFormat.CLASSES_PREFIX + BANG, BANG_TEXT);
         application[3] = outer.stored(SERVICE, new byte[0]);
         application[4] = outer.stored(IndexFormat.CLASSES_PREFIX + "META-INF/MANIFEST.MF",
                 APPLICATION_MANIFEST);
+        application[5] = outer.stored(IndexFormat.CLASSES_PREFIX + "corrupt-stored.txt", CORRUPT_STORED);
         int awkwardCompressed = outer.storedSize(IndexFormat.CLASSES_PREFIX + AWKWARD);
         long base = outer.stored(DEPENDENCY, dependencyBytes);
         long header = outer.localHeaderOffset(DEPENDENCY);
         byte[] real = buildIndex(application, inner, base, dependencyBytes.length, header, awkwardCompressed,
-                nestedCompressed);
+                nestedCompressed, corruptNestedCompressed);
         assertEquals(draft.length, real.length, "the index size must not depend on the offsets");
         outer.replace(IndexFormat.INDEX_ENTRY_NAME, real);
 
@@ -145,6 +153,7 @@ class HandlerTest {
 
     @AfterEach
     void closeArchive() {
+        System.clearProperty(io.micronaut.runner.RunnerClassLoader.VERIFY_PROPERTY);
         Handlers.unregister();
         if (source != null) {
             source.close();
@@ -352,6 +361,67 @@ class HandlerTest {
     }
 
     @Test
+    void verifiesStoredAndDeflatedUrlStreamsWithAndWithoutCaching() throws IOException {
+        URL stored = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt");
+        URL deflated = Handlers.urlFor(1, "corrupt-deflated.txt");
+        assertArrayEquals(CORRUPT_STORED, read(stored));
+        assertArrayEquals(CORRUPT_DEFLATED, read(deflated));
+
+        System.setProperty(io.micronaut.runner.RunnerClassLoader.VERIFY_PROPERTY, "true");
+        for (boolean caches : List.of(true, false)) {
+            IOException storedFailure = assertThrows(IOException.class, () -> read(stored, caches));
+            assertTrue(storedFailure.getMessage().contains("corrupt-stored.txt"), storedFailure.getMessage());
+            IOException deflatedFailure = assertThrows(IOException.class, () -> read(deflated, caches));
+            assertTrue(deflatedFailure.getMessage().contains("corrupt-deflated.txt"),
+                    deflatedFailure.getMessage());
+        }
+        assertArrayEquals(APP_TEXT, read(Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")),
+                "an intact URL still reads with verification on");
+    }
+
+    @Test
+    void urlStreamsPerformLazyNestedHeaderValidationWithoutMetadataAccess() throws IOException {
+        try (RandomAccessFile editable = new RandomAccessFile(archive, "rw")) {
+            editable.seek(index.jarLocalHeaderOffset(1));
+            editable.write(new byte[4]);
+        }
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> Handlers.urlFor(1, NESTED_TEXT_NAME).openStream());
+        assertTrue(failure.getMessage().contains("no local file header"), failure.getMessage());
+    }
+
+    @Test
+    void verificationIsIndependentAcrossConcurrentRepeatedUrlReads() throws Exception {
+        System.setProperty(io.micronaut.runner.RunnerClassLoader.VERIFY_PROPERTY, "true");
+        URL valid = Handlers.urlFor(1, NESTED_TEXT_NAME);
+        URL corrupt = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt");
+        ExecutorService pool = Executors.newFixedThreadPool(4);
+        try {
+            List<Future<Void>> reads = new ArrayList<>();
+            for (boolean caches : List.of(true, false)) {
+                for (int task = 0; task < 4; task++) {
+                    reads.add(pool.submit(() -> {
+                        for (int i = 0; i < 20; i++) {
+                            assertArrayEquals(NESTED_TEXT, read(valid, caches));
+                            IOException failure = assertThrows(IOException.class, () -> read(corrupt, caches));
+                            assertTrue(failure.getMessage().contains("corrupt-stored.txt"),
+                                    failure.getMessage());
+                        }
+                        return null;
+                    }));
+                }
+            }
+            for (Future<Void> read : reads) {
+                read.get(30, TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
     void readsRepeatedlyWithCachesDisabled() throws IOException {
         URLConnection connection = Handlers.urlFor(1, NESTED_TEXT_NAME).openConnection();
         connection.setUseCaches(false);
@@ -552,7 +622,7 @@ class HandlerTest {
 
         List<String> names = entryNames(withSeparator);
         assertEquals(List.of("META-INF/MANIFEST.MF", "a/B.class", NESTED_TEXT_NAME,
-                "META-INF/versions/21/a/B.class"), names);
+                "META-INF/versions/21/a/B.class", "corrupt-deflated.txt"), names);
     }
 
     @Test
@@ -629,31 +699,43 @@ class HandlerTest {
     }
 
     private byte[] buildIndex(long[] application, long[] inner, long base, long length, long header,
-                         int awkwardCompressed, int nestedCompressed) {
+                              int awkwardCompressed, int nestedCompressed, int corruptNestedCompressed) {
         TestIndexBuilder builder = new TestIndexBuilder()
                 .startClass("com.example.Application")
                 .headerFlags(IndexFormat.HEADER_FLAG_NESTED_STORED);
         TestIndexBuilder.Jar layer = builder.addJar(IndexFormat.CLASSES_PREFIX);
         layer.addEntry("app.txt").data(application[0], APP_TEXT.length, APP_TEXT.length)
-                .dosTime(DOS_TIME);
+                .crc32(crc32(APP_TEXT)).dosTime(DOS_TIME);
         layer.addEntry(AWKWARD).data(application[1], awkwardCompressed, AWKWARD_TEXT.length)
-                .method(IndexFormat.METHOD_DEFLATED);
-        layer.addEntry(BANG).data(application[2], BANG_TEXT.length, BANG_TEXT.length);
-        layer.addEntry(SERVICE).data(application[3], 0, 0);
+                .method(IndexFormat.METHOD_DEFLATED).crc32(crc32(AWKWARD_TEXT));
+        layer.addEntry(BANG).data(application[2], BANG_TEXT.length, BANG_TEXT.length)
+                .crc32(crc32(BANG_TEXT));
+        layer.addEntry(SERVICE).data(application[3], 0, 0).crc32(0);
         layer.addEntry("META-INF/MANIFEST.MF")
-                .data(application[4], APPLICATION_MANIFEST.length, APPLICATION_MANIFEST.length);
+                .data(application[4], APPLICATION_MANIFEST.length, APPLICATION_MANIFEST.length)
+                .crc32(crc32(APPLICATION_MANIFEST));
+        layer.addEntry("corrupt-stored.txt")
+                .data(application[5], CORRUPT_STORED.length, CORRUPT_STORED.length)
+                .crc32(crc32(CORRUPT_STORED) ^ 0xFFFFFFFFL);
         TestIndexBuilder.Jar dependency = builder.addJar(DEPENDENCY)
                 .coordinates("com.example:dep:1.0")
                 .location(base, length, header)
                 .manifest(null, null, null, "Dependency", "1.0", null)
                 .multiRelease();
         dependency.addEntry("META-INF/MANIFEST.MF")
-                .data(base + inner[0], NESTED_MANIFEST.length, NESTED_MANIFEST.length);
-        dependency.addEntry("a/B.class").data(base + inner[1], BASE_CLASS.length, BASE_CLASS.length);
+                .data(base + inner[0], NESTED_MANIFEST.length, NESTED_MANIFEST.length)
+                .crc32(crc32(NESTED_MANIFEST));
+        dependency.addEntry("a/B.class").data(base + inner[1], BASE_CLASS.length, BASE_CLASS.length)
+                .crc32(crc32(BASE_CLASS));
         dependency.addEntry(NESTED_TEXT_NAME).data(base + inner[2], nestedCompressed, NESTED_TEXT.length)
-                .method(IndexFormat.METHOD_DEFLATED);
+                .method(IndexFormat.METHOD_DEFLATED).crc32(crc32(NESTED_TEXT));
         dependency.addEntry("META-INF/versions/21/a/B.class")
-                .data(base + inner[3], VERSIONED_CLASS.length, VERSIONED_CLASS.length);
+                .data(base + inner[3], VERSIONED_CLASS.length, VERSIONED_CLASS.length)
+                .crc32(crc32(VERSIONED_CLASS));
+        dependency.addEntry("corrupt-deflated.txt")
+                .data(base + inner[4], corruptNestedCompressed, CORRUPT_DEFLATED.length)
+                .method(IndexFormat.METHOD_DEFLATED)
+                .crc32(crc32(CORRUPT_DEFLATED) ^ 0xFFFFFFFFL);
         return builder.build();
     }
 
@@ -688,6 +770,14 @@ class HandlerTest {
         }
     }
 
+    private byte[] read(URL url, boolean caches) throws IOException {
+        URLConnection connection = url.openConnection();
+        connection.setUseCaches(caches);
+        try (InputStream in = connection.getInputStream()) {
+            return in.readAllBytes();
+        }
+    }
+
     private File newFile(String name) {
         files++;
         StringBuilder unique = new StringBuilder();
@@ -710,5 +800,11 @@ class HandlerTest {
 
     private static byte[] bytes(String value) {
         return value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static long crc32(byte[] value) {
+        CRC32 checksum = new CRC32();
+        checksum.update(value);
+        return checksum.getValue();
     }
 }

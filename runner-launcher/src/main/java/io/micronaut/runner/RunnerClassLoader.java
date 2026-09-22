@@ -303,8 +303,7 @@ public final class RunnerClassLoader extends ClassLoader {
             return null;
         }
         try {
-            return source.stream(index.entryDataOffset(record), index.entryCompressedSize(record),
-                    index.entryUncompressedSize(record), index.entryMethod(record));
+            return index.openEntryStream(record, verify);
         } catch (IOException e) {
             return null;
         }
