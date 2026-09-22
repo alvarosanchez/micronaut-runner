@@ -27,6 +27,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -67,6 +68,19 @@ import java.util.zip.CheckedOutputStream;
  * <p>The result is reproducible: entries are visited in a fixed order, every one of them is dated with
  * {@link RunnerJarSpec#timestamp()} converted in UTC, and nothing about the machine that ran the build
  * reaches the bytes. Building the same inputs twice, in different time zones, produces identical files.</p>
+ *
+ * <h2>Path safety</h2>
+ * <p>Configured input paths may themselves be symbolic links. The builder resolves their real identities,
+ * and resolves a not-yet-created output through its nearest existing ancestor, before comparing them. It
+ * rejects an output that aliases an application jar, dependency or manifest source, or is canonically below
+ * an application directory. The same checks run again immediately before publication. Symbolic links found
+ * inside an application directory are rejected rather than followed; this also rejects directory-link
+ * cycles and prevents the scan from escaping the configured tree.</p>
+ *
+ * <p>These checks protect normal builds from accidental aliases. The standard {@link Path} API cannot make
+ * checking and replacement one indivisible operation, so a hostile process that can replace path components
+ * concurrently can still race them. Output and input directories must therefore be writable only by trusted
+ * build participants.</p>
  *
  * @since 1.0
  */
@@ -289,18 +303,58 @@ public final class RunnerJarBuilder {
                 throw new IOException("The dependency " + dependency.path() + " does not exist");
             }
         }
+        Optional<Path> manifestSource = spec.applicationManifestSource();
+        if (manifestSource.isPresent() && !Files.isRegularFile(manifestSource.get())) {
+            throw new IOException("The application manifest source " + manifestSource.get() + " does not exist");
+        }
+        Path resolvedOutput = resolveExistingAncestor(output);
         for (Path input : spec.applicationOutput()) {
-            Path normalized = input.toAbsolutePath().normalize();
-            if (output.equals(normalized) || output.startsWith(normalized)) {
+            Path resolvedInput = input.toRealPath();
+            boolean directory = Files.isDirectory(input);
+            boolean collision = directory
+                    ? resolvedOutput.startsWith(resolvedInput)
+                    : sameFile(output, input, resolvedOutput, resolvedInput);
+            if (collision) {
                 throw new IOException("The output " + output + " is inside the application output "
-                        + normalized + "; packaging it would read what it is writing");
+                        + resolvedInput + "; packaging it would read what it is writing");
             }
         }
         for (Dependency dependency : spec.dependencies()) {
-            if (output.equals(dependency.path().toAbsolutePath().normalize())) {
+            Path dependencyPath = dependency.path();
+            if (sameFile(output, dependencyPath, resolvedOutput, dependencyPath.toRealPath())) {
                 throw new IOException("The output " + output + " is also a dependency of the application");
             }
         }
+        if (manifestSource.isPresent()) {
+            Path manifest = manifestSource.get();
+            if (sameFile(output, manifest, resolvedOutput, manifest.toRealPath())) {
+                throw new IOException("The output " + output + " is also the application manifest source");
+            }
+        }
+    }
+
+    private static boolean sameFile(Path candidate, Path input, Path resolvedCandidate, Path resolvedInput)
+            throws IOException {
+        return Files.exists(candidate) && Files.isSameFile(candidate, input)
+                || resolvedCandidate.equals(resolvedInput);
+    }
+
+    private static Path resolveExistingAncestor(Path path) throws IOException {
+        Path existing = path.toAbsolutePath().normalize();
+        List<Path> suffix = new ArrayList<>();
+        while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
+            Path name = existing.getFileName();
+            if (name == null || existing.getParent() == null) {
+                throw new IOException("No existing ancestor of " + path);
+            }
+            suffix.add(name);
+            existing = existing.getParent();
+        }
+        Path resolved = existing.toRealPath();
+        for (int i = suffix.size() - 1; i >= 0; i--) {
+            resolved = resolved.resolve(suffix.get(i));
+        }
+        return resolved.normalize();
     }
 
     /**
@@ -329,6 +383,10 @@ public final class RunnerJarBuilder {
         // Sorted, so that the archive does not depend on the order the file system happens to report.
         children.sort(Comparator.comparing(RunnerJarBuilder::fileName));
         for (Path child : children) {
+            if (Files.isSymbolicLink(child)) {
+                throw new IOException("The application output " + root + " contains the symbolic link " + child
+                        + "; symbolic links inside application directories are not supported");
+            }
             if (Files.isDirectory(child)) {
                 collectDirectory(root, child);
             } else if (Files.isRegularFile(child)) {
@@ -967,6 +1025,9 @@ public final class RunnerJarBuilder {
     }
 
     private void move(Path archive) throws IOException {
+        // Inputs and path components may have changed while the archive was assembled. This narrows the
+        // accidental race window; see the class documentation for the remaining hostile-race boundary.
+        validate();
         try {
             Files.move(archive, output, StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);

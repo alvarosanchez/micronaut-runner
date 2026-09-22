@@ -274,6 +274,126 @@ class RunnerJarBuilderTest {
     }
 
     @Test
+    void rejectsADependencyReachedThroughAnOutputDirectoryAlias() throws IOException {
+        Path source = Files.createDirectories(fixtures.resolve("dependency-alias-source"));
+        Path dependency = source.resolve("dep.jar");
+        Files.copy(plainDependency, dependency);
+        byte[] original = Files.readAllBytes(dependency);
+        Path alias = createSymbolicLink(fixtures.resolve("dependency-alias"), source);
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(alias.resolve("dep.jar"))
+                .dependencies(List.of(new Dependency(dependency, null)))
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains("also a dependency"), failure.getMessage());
+        assertArrayEquals(original, Files.readAllBytes(dependency),
+                "rejecting an aliased output must leave the dependency byte-identical");
+    }
+
+    @Test
+    void rejectsAnExistingHardLinkToADependency() throws IOException {
+        Path dependency = fixtures.resolve("hard-link-dependency.jar");
+        Files.copy(plainDependency, dependency);
+        byte[] original = Files.readAllBytes(dependency);
+        Path output = createHardLink(fixtures.resolve("hard-link-output.jar"), dependency);
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .dependencies(List.of(new Dependency(dependency, null)))
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains("also a dependency"), failure.getMessage());
+        assertArrayEquals(original, Files.readAllBytes(dependency),
+                "rejecting an existing-file alias must leave the dependency byte-identical");
+    }
+
+    @Test
+    void rejectsACaseAliasToADependencyOnCaseInsensitiveFileSystems() throws IOException {
+        Path directory = Files.createDirectories(fixtures.resolve("case-alias"));
+        Path dependency = directory.resolve("dependency.jar");
+        Files.copy(plainDependency, dependency);
+        Path output = directory.resolve("DEPENDENCY.JAR");
+        Assumptions.assumeTrue(Files.exists(output), "the test file system is case-sensitive");
+        byte[] original = Files.readAllBytes(dependency);
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .dependencies(List.of(new Dependency(dependency, null)))
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains("also a dependency"), failure.getMessage());
+        assertArrayEquals(original, Files.readAllBytes(dependency),
+                "rejecting a case alias must leave the dependency byte-identical");
+    }
+
+    @Test
+    void rejectsAnApplicationJarReachedThroughAnOutputAlias() throws IOException {
+        Path applicationJar = fixtures.resolve("application-input.jar");
+        Files.copy(plainDependency, applicationJar);
+        byte[] original = Files.readAllBytes(applicationJar);
+        Path output = createSymbolicLink(fixtures.resolve("application-input-alias.jar"), applicationJar);
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .applicationOutput(List.of(applicationJar))
+                .dependencies(List.of())
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains("inside the application output"), failure.getMessage());
+        assertArrayEquals(original, Files.readAllBytes(applicationJar),
+                "rejecting an aliased output must leave the application jar byte-identical");
+    }
+
+    @Test
+    void rejectsANonexistentOutputBelowAnAliasedApplicationDirectory() throws IOException {
+        Path alias = createSymbolicLink(fixtures.resolve("application-directory-alias"), applicationClasses);
+        Path output = alias.resolve("new/subdirectory/runner.jar");
+
+        IOException failure = assertThrows(IOException.class,
+                () -> RunnerJarBuilder.build(spec(output).build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains("inside the application output"), failure.getMessage());
+        assertFalse(Files.exists(output), "validation must fail before creating the output directories");
+    }
+
+    @Test
+    void rejectsAManifestSourceReachedThroughAnOutputDirectoryAlias() throws IOException {
+        Path source = Files.createDirectories(fixtures.resolve("manifest-alias-source"));
+        Path manifest = source.resolve("MANIFEST.MF");
+        byte[] original = "Manifest-Version: 1.0\nImplementation-Title: original\n\n"
+                .getBytes(StandardCharsets.UTF_8);
+        Files.write(manifest, original);
+        Path alias = createSymbolicLink(fixtures.resolve("manifest-alias"), source);
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(alias.resolve("MANIFEST.MF"))
+                .applicationManifest(manifest)
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains("also the application manifest source"), failure.getMessage());
+        assertArrayEquals(original, Files.readAllBytes(manifest),
+                "rejecting an aliased output must leave the manifest source byte-identical");
+    }
+
+    @Test
+    void rejectsSymbolicLinksInsideApplicationDirectories() throws IOException {
+        Path application = fixtures.resolve("application-with-link");
+        Path mainClass = application.resolve("com/example/Application.class");
+        Files.createDirectories(mainClass.getParent());
+        Files.copy(applicationClasses.resolve("com/example/Application.class"), mainClass);
+        createSymbolicLink(application.resolve("linked-resources"), applicationResources);
+        Path output = output();
+        Files.createDirectories(output.getParent());
+        byte[] previous = "the existing good output".getBytes(StandardCharsets.UTF_8);
+        Files.write(output, previous);
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .applicationOutput(List.of(application))
+                .dependencies(List.of())
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains("symbolic link"), failure.getMessage());
+        assertArrayEquals(previous, Files.readAllBytes(output),
+                "a rejected application tree must leave an existing good output intact");
+    }
+
+    @Test
     void mergesTheContentOfANonEmptyMicronautServiceEntry() throws IOException {
         // Every lookup under META-INF/micronaut/ is answered from the merged copy at the archive root, so
         // a merged copy written empty serves zero bytes for a file that is not empty, silently.
@@ -480,6 +600,24 @@ class RunnerJarBuilderTest {
             names.add(index.entryName(i));
         }
         return names;
+    }
+
+    private static Path createSymbolicLink(Path link, Path target) throws IOException {
+        try {
+            return Files.createSymbolicLink(link, target);
+        } catch (UnsupportedOperationException | IOException e) {
+            Assumptions.assumeTrue(false, "symbolic links are not supported: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    private static Path createHardLink(Path link, Path target) throws IOException {
+        try {
+            return Files.createLink(link, target);
+        } catch (UnsupportedOperationException | IOException e) {
+            Assumptions.assumeTrue(false, "hard links are not supported: " + e.getMessage());
+            throw e;
+        }
     }
 
     private RunnerJarSpec.Builder spec(Path output) {
