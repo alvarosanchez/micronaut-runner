@@ -309,6 +309,31 @@ class PackageMojoTest {
     }
 
     @Test
+    void preservesTheThinJarWhenUpdatingTheOriginalFailsAfterPackaging() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        Path mainArtifact = buildDirectory.resolve("demo-1.0.jar");
+        Path original = buildDirectory.resolve("original-demo-1.0.jar");
+        writeJarPluginOutput(mainArtifact, "v2");
+        Files.createDirectories(original.resolve("replacement-blocker"));
+
+        assertThrows(MojoExecutionException.class, mojo::execute);
+
+        assertTrue(isRunnerJar(mainArtifact), "runner packaging succeeded before the original update failed");
+        List<Path> preserved;
+        try (var files = Files.list(buildDirectory)) {
+            preserved = files.filter(path -> path.getFileName().toString().startsWith(".micronaut-runner-original-"))
+                    .toList();
+        }
+        assertEquals(1, preserved.size(),
+                () -> "the only thin-jar copy must survive under its temporary name: " + preserved);
+        assertEquals("v2", manifest(preserved.get(0)).getMainAttributes().getValue("Implementation-Version"));
+        assertEquals(1, log.warnings.size(), () -> "expected the preserved location in one warning: " + log.warnings);
+        assertTrue(log.warnings.get(0).contains(preserved.get(0).toString()),
+                () -> "the warning must identify the preserved thin jar: " + log.warnings);
+    }
+
+    @Test
     void packagesWithoutAJarPluginOutput() throws Exception {
         // Nothing requires maven-jar-plugin to have run: the manifest source is optional.
         assumePackagingIsPossible();

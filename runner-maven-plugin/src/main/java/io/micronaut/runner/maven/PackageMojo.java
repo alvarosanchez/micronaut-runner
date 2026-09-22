@@ -158,6 +158,7 @@ public class PackageMojo extends AbstractMojo {
         File original = new File(outputDirectory, "original-" + finalName + ".jar");
 
         Path savedThinArtifact = null;
+        boolean mainArtifactReplaced = false;
         try {
             // Keep the jar plugin's output, both as the source of the application manifest and as the
             // artifact users expect beside a replaced main artifact. Running the goal twice must not turn
@@ -179,6 +180,7 @@ public class PackageMojo extends AbstractMojo {
 
             RunnerJarResult result = RunnerJarBuilder.build(
                     buildSpec(classes, target, manifestSource), new MavenBuildLogger(getLog()));
+            mainArtifactReplaced = replaceMainArtifact;
 
             if (replaceMainArtifact) {
                 if (savedThinArtifact != null) {
@@ -192,9 +194,13 @@ public class PackageMojo extends AbstractMojo {
             getLog().info("Runner jar written to " + target + " (" + (result.dependencyCount())
                     + " dependencies, " + result.entryCount() + " entries)");
         } catch (IOException e) {
+            if (mainArtifactReplaced && savedThinArtifact != null && Files.isRegularFile(savedThinArtifact)) {
+                getLog().warn("Could not update " + original + "; the thin jar is preserved at "
+                        + savedThinArtifact, e);
+            }
             throw new MojoExecutionException("Failed to package " + target, e);
         } finally {
-            if (savedThinArtifact != null) {
+            if (savedThinArtifact != null && !mainArtifactReplaced) {
                 try {
                     Files.deleteIfExists(savedThinArtifact);
                 } catch (IOException e) {
