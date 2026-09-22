@@ -306,6 +306,31 @@ class ZipReaderTest {
         }
     }
 
+    @Test
+    void readingADeflatedEntryRejectsMissingTerminalBlock() throws IOException {
+        Path jar = temp.resolve("unterminated.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "a/B.class", repeat("make-room-for-the-fixture-", 20));
+        }
+        ZipEntryInfo original;
+        try (ZipReader reader = ZipReader.open(jar)) {
+            original = reader.entry("a/B.class").orElseThrow();
+        }
+        byte[] all = Files.readAllBytes(jar);
+        byte[] unterminated = new byte[] {0, 1, 0, (byte) 0xFE, (byte) 0xFF, 'x'};
+        System.arraycopy(unterminated, 0, all, (int) original.dataOffset(), unterminated.length);
+        int end = all.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(all, end + 16);
+        putInt(all, central + 20, unterminated.length);
+        putInt(all, central + 24, 1);
+        Files.write(jar, all);
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            ZipEntryInfo entry = reader.entry("a/B.class").orElseThrow();
+            assertThrows(IOException.class, () -> reader.read(entry));
+        }
+    }
+
     private void assertUnsafe(String name) throws IOException {
         assertFalse(ZipReader.isSafeEntryName(name), name);
         Path jar = temp.resolve("unsafe-" + Integer.toHexString(name.hashCode()) + ".jar");

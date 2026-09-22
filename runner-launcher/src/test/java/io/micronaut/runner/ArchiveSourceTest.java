@@ -191,6 +191,53 @@ class ArchiveSourceTest {
 
     @ParameterizedTest(name = "mapped={0}")
     @ValueSource(booleans = {true, false})
+    void rejectsUnterminatedDeflateAfterExpectedPlaintext(boolean mapped) throws IOException {
+        byte[] unterminated = new byte[] {0, 1, 0, (byte) 0xFE, (byte) 0xFF, 'x'};
+        ArchiveSource source = open(unterminated, mapped);
+
+        assertThrows(IOException.class, () -> source.inflate(0, unterminated.length, 1));
+        try (InputStream in = source.stream(0, unterminated.length, 1, IndexFormat.METHOD_DEFLATED)) {
+            assertThrows(IOException.class, in::readAllBytes);
+        }
+    }
+
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void acceptsTerminalDeflateFramingAfterExpectedPlaintext(boolean mapped) throws IOException {
+        byte[] complete = new byte[] {
+            0, 1, 0, (byte) 0xFE, (byte) 0xFF, 'x',
+            1, 0, 0, (byte) 0xFF, (byte) 0xFF
+        };
+        ArchiveSource source = open(complete, mapped);
+
+        assertArrayEquals(new byte[] {'x'}, source.inflate(0, complete.length, 1));
+        try (InputStream in = source.stream(0, complete.length, 1, IndexFormat.METHOD_DEFLATED)) {
+            assertArrayEquals(new byte[] {'x'}, in.readAllBytes());
+        }
+    }
+
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void validatesEmptyDeflateStreamsAndReusesInflatersAfterFailures(boolean mapped) throws IOException {
+        byte[] completeEmpty = new byte[] {1, 0, 0, (byte) 0xFF, (byte) 0xFF};
+        ArchiveSource source = open(completeEmpty, mapped);
+
+        for (int i = 0; i < 16; i++) {
+            assertThrows(IOException.class, () -> source.inflate(0, 0, 0));
+        }
+        assertArrayEquals(new byte[0], source.inflate(0, completeEmpty.length, 0));
+
+        try (InputStream in = source.stream(0, 0, 0, IndexFormat.METHOD_DEFLATED)) {
+            assertThrows(IOException.class, in::readAllBytes);
+        }
+        assertArrayEquals(new byte[0], source.inflate(0, completeEmpty.length, 0));
+        try (InputStream in = source.stream(0, completeEmpty.length, 0, IndexFormat.METHOD_DEFLATED)) {
+            assertArrayEquals(new byte[0], in.readAllBytes());
+        }
+    }
+
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
     void streamsCorruptDataAsAnIoException(boolean mapped) throws IOException {
         TestArchiveBuilder archive = new TestArchiveBuilder();
         long at = archive.raw("broken.bin", new byte[] {1, 2, 3, 4, 5, 6, 7, 8},
