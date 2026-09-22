@@ -384,13 +384,25 @@ class RunnerJarBuilderTest {
                 List<String> names = logicalNames(index, 1);
                 assertEquals(2, names.stream().filter("dup/same.txt"::equals).count(),
                         compression + ": both records survive");
-                List<String> contents = new ArrayList<>();
+                List<String> physicalContents = new ArrayList<>();
+                int firstRecord = index.jarFirstEntry(1);
+                int limit = firstRecord + index.jarEntryCount(1);
+                for (int physical = firstRecord; physical < limit; physical++) {
+                    if (index.entryPhysical(physical) && "dup/same.txt".equals(index.entryName(physical))) {
+                        physicalContents.add(new String(reader.read(physical), StandardCharsets.UTF_8));
+                    }
+                }
+                assertEquals(List.of("first", "second"), physicalContents,
+                        compression + ": physical enumeration keeps central-directory order and content");
+
+                List<String> lookupContents = new ArrayList<>();
                 int record = index.find("dup/same.txt");
                 while (record != IndexFormat.NO_INDEX) {
-                    contents.add(new String(reader.read(record), StandardCharsets.UTF_8));
+                    lookupContents.add(new String(reader.read(record), StandardCharsets.UTF_8));
                     record = index.next(record);
                 }
-                assertEquals(List.of("first", "second"), contents, compression + ": with their content");
+                assertEquals(List.of("second", "first"), lookupContents,
+                        compression + ": lookup chain starts with the JDK-compatible last duplicate");
             }
         }
     }

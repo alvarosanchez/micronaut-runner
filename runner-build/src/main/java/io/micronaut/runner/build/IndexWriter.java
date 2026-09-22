@@ -1248,8 +1248,10 @@ public final class IndexWriter {
     }
 
     /**
-     * Orders the records that share a logical name: by jar in class path order, and within a jar the
-     * versioned aliases in descending version before the base record.
+     * Orders the records that share a logical name: by jar in class path order, within a jar the versioned
+     * aliases in descending version before the base record, and within a nested jar and one version in
+     * reverse central directory order so lookup selects the same duplicate as {@code JarFile}. The exploded
+     * application layer keeps insertion order because its records can originate from separate output roots.
      */
     private static final class ChainOrder implements Comparator<Record> {
 
@@ -1263,7 +1265,10 @@ public final class IndexWriter {
             if (byVersion != 0) {
                 return byVersion;
             }
-            return Integer.compare(left.index, right.index);
+            if (left.jarId == IndexFormat.APPLICATION_JAR_ID) {
+                return Integer.compare(left.index, right.index);
+            }
+            return Integer.compare(right.index, left.index);
         }
 
         private static int rank(Record record) {

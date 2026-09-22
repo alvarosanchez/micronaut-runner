@@ -220,6 +220,23 @@ public final class TestArchiveBuilder {
     }
 
     /**
+     * The stored length of the last entry with a name, matching {@code ZipFile.getEntry} duplicate
+     * precedence.
+     *
+     * @param name the entry name
+     * @return the last matching record's stored length
+     */
+    public int latestStoredSize(String name) {
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            Entry entry = entries.get(i);
+            if (entry.nameText.equals(name)) {
+                return entry.stored.length;
+            }
+        }
+        throw new IllegalArgumentException("No entry named " + name);
+    }
+
+    /**
      * Finishes the archive. The central directory is written once; further calls hand out a fresh copy of
      * the same bytes, so a test can build, write and then mutate a copy.
      *

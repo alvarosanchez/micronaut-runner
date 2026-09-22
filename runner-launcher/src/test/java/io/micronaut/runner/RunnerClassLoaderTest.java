@@ -120,16 +120,30 @@ class RunnerClassLoaderTest {
         alpha.add("org/alpha/pkg/Attrs.class", classBytes("org.alpha.pkg.Attrs", "attrs"));
         alpha.add("org/example/Shared.class", classBytes("org.example.Shared", "jar1"));
         alpha.add("shared.txt", text("jar1-shared"));
+        alpha.add("duplicate.txt", text("alpha-first"));
+        alpha.add("duplicate.txt", text("alpha-last!"));
+        alpha.add("duplicate-dir/", new byte[0]);
+        alpha.add("duplicate-dir/", new byte[0]);
         alpha.add("corrupt-deflated.txt", text("corrupt deflated resource")).corruptCrc();
         alpha.add(ALPHA_SERVICE, text("alpha-copy"));
 
         Fixture.Jar beta = fixture.addJar(BETA).multiRelease();
         beta.add("org/beta/Beta.class", classBytes("org.beta.Beta", "base"));
         beta.add("META-INF/versions/9/org/beta/Beta.class", classBytes("org.beta.Beta", "v9"));
+        beta.add("org/beta/Duplicate.class", classBytes("org.beta.Duplicate", "base1"));
+        beta.add("org/beta/Duplicate.class", classBytes("org.beta.Duplicate", "base2"));
+        beta.add("META-INF/versions/9/org/beta/Duplicate.class",
+                classBytes("org.beta.Duplicate", "version1"));
+        beta.add("META-INF/versions/9/org/beta/Duplicate.class",
+                classBytes("org.beta.Duplicate", "version2"));
         beta.add("META-INF/versions/99/org/beta/Future.class",
                 classBytes("org.beta.Future", "future"));
         beta.add("shared.txt", text("jar2-shared"));
         beta.add("META-INF/versions/9/shared.txt", text("jar2-v9-shared"));
+        beta.add("duplicate.txt", text("beta-base1"));
+        beta.add("duplicate.txt", text("beta-base2"));
+        beta.add("META-INF/versions/9/duplicate.txt", text("beta-version1"));
+        beta.add("META-INF/versions/9/duplicate.txt", text("beta-version2"));
 
         fixture.addJar(SEALED).sealed()
                 .add("org/sealed/First.class", classBytes("org.sealed.First", "sealed-first"));
@@ -204,6 +218,39 @@ class RunnerClassLoaderTest {
     @Test
     void selectsTheVersionedEntryOfAMultiReleaseJar() throws Exception {
         assertEquals("v9", id(newLoader().loadClass("org.beta.Beta")));
+    }
+
+    @Test
+    void duplicateLookupsMatchJdkPrecedenceInMappedAndPositionalModes() throws Exception {
+        for (boolean mapped : List.of(true, false)) {
+            System.setProperty(ArchiveSource.MMAP_PROPERTY, Boolean.toString(mapped));
+            try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
+                assertEquals(mapped, modeSource.mapped());
+                Index modeIndex = Index.open(modeSource);
+                RunnerClassLoader loader = new RunnerClassLoader(modeIndex, modeSource,
+                        ClassLoader.getPlatformClassLoader());
+                assertEquals("version2", id(loader.loadClass("org.beta.Duplicate")),
+                        "the last class in the highest applicable MR version wins");
+                assertEquals("alpha-last!", string(loader.getResourceAsStream("duplicate.txt")),
+                        "the first dependency still wins, selecting its last duplicate");
+
+                System.setProperty("jdk.util.jar.enableMultiRelease", "false");
+                RunnerClassLoader baseLoader = new RunnerClassLoader(modeIndex, modeSource,
+                        ClassLoader.getPlatformClassLoader());
+                assertEquals("base2", id(baseLoader.loadClass("org.beta.Duplicate")),
+                        "the last base duplicate wins when MR lookup is disabled");
+                System.clearProperty("jdk.util.jar.enableMultiRelease");
+            }
+        }
+
+        assumeHandlersRegistered();
+        RunnerClassLoader loader = newLoader();
+        assertEquals("alpha-last!", string(loader.findResource("duplicate.txt").openStream()));
+        List<URL> urls = list(loader.findResources("duplicate.txt"));
+        assertEquals(2, urls.size(), "resource enumeration returns one selected duplicate per jar");
+        assertEquals("alpha-last!", string(urls.get(0).openStream()));
+        assertEquals("beta-version2", string(urls.get(1).openStream()));
+        assertNotNull(loader.findResource("duplicate-dir"), "duplicate directories remain lookup-visible");
     }
 
     @Test
@@ -639,14 +686,14 @@ class RunnerClassLoaderTest {
             for (Item item : application.items) {
                 String outer = item.root ? item.name : IndexFormat.CLASSES_PREFIX + item.name;
                 item.offset = store(builder, outer, item, application.deflate);
-                item.compressed = builder.storedSize(outer);
+                item.compressed = builder.latestStoredSize(outer);
             }
             for (int i = 1; i < jars.size(); i++) {
                 Jar jar = jars.get(i);
                 TestArchiveBuilder nested = new TestArchiveBuilder();
                 for (Item item : jar.items) {
                     item.offset = store(nested, item.name, item, jar.deflate);
-                    item.compressed = nested.storedSize(item.name);
+                    item.compressed = nested.latestStoredSize(item.name);
                 }
                 byte[] bytes = nested.build();
                 jar.dataOffset = builder.stored(jar.name, bytes);

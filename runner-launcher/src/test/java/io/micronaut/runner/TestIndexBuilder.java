@@ -38,8 +38,9 @@ import java.util.TreeSet;
  * <p>The builder derives everything the format requires from the entry names: multi-release aliases for
  * {@code META-INF/versions/N/<path>} entries of a jar flagged multi-release, synthetic directory records
  * for implied parent directories, the chain of records that share a logical name ordered by classpath
- * position with a jar's aliases in descending version order before its base record, and an open addressed
- * hash table sized at twice the number of distinct names.</p>
+ * position with a jar's aliases in descending version order before its base record and duplicate records of
+ * nested jars in reverse central-directory order, and an open addressed hash table sized at twice the number
+ * of distinct names.</p>
  *
  * <p>This is test code and is deliberately written in ordinary Java: the hot path rules that govern
  * {@code io.micronaut.runner} do not apply here.</p>
@@ -388,7 +389,7 @@ public final class TestIndexBuilder {
         }
         Comparator<Record> order = Comparator.<Record>comparingInt(r -> r.jarId)
                 .thenComparingInt(r -> r.mrVersion == 0 ? Integer.MAX_VALUE : -r.mrVersion)
-                .thenComparingInt(r -> r.index);
+                .thenComparingInt(r -> r.jarId == IndexFormat.APPLICATION_JAR_ID ? r.index : -r.index);
         for (List<Record> chain : chains.values()) {
             chain.sort(order);
         }
