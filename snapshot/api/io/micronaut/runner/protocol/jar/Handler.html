@@ -160,7 +160,8 @@ exactly as it did before the launcher started.</p></div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>protected int</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#hashCode(java.net.URL)" class="member-name-link">hashCode</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a>&nbsp;url)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Hashes a jar URL consistently with <a href="#sameFile(java.net.URL,java.net.URL)"><code>sameFile(URL, URL)</code></a>: same protocol and same text, same hash.</div>
+<div class="block">Hashes a jar URL consistently with <a href="#sameFile(java.net.URL,java.net.URL)"><code>sameFile(URL, URL)</code></a> and with the JDK for local <code>jar:file:</code>
+URLs.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>protected <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLConnection.html" title="class or interface in java.net" class="external-link">URLConnection</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#openConnection(java.net.URL)" class="member-name-link">openConnection</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a>&nbsp;url)</code></div>
@@ -296,7 +297,14 @@ URLs of the same entry are not <code>equals</code> here even though the JDK woul
 <h3>hashCode</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">protected</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">hashCode</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a>&nbsp;url)</span></div>
-<div class="block">Hashes a jar URL consistently with <a href="#sameFile(java.net.URL,java.net.URL)"><code>sameFile(URL, URL)</code></a>: same protocol and same text, same hash.</div>
+<div class="block">Hashes a jar URL consistently with <a href="#sameFile(java.net.URL,java.net.URL)"><code>sameFile(URL, URL)</code></a> and with the JDK for local <code>jar:file:</code>
+URLs.
+
+<p>The JDK hashes a jar URL as the jar protocol, the enclosed URL and the entry after the first
+<a href="../../Handlers.html#SEPARATOR">"!/"</a>. Runner URLs always enclose a local file URL, whose JDK hash is entirely
+textual. Computing that value directly avoids constructing another URL and, unlike the JDK's generic
+URL hash implementation, can never resolve a host name. A non-local or non-file enclosed URL keeps
+the text hash used by <a href="#sameFile(java.net.URL,java.net.URL)"><code>sameFile(URL, URL)</code></a>; Runner never produces such a URL.</p></div>
 <dl class="notes">
 <dt>Overrides:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#hashCode(java.net.URL)" title="class or interface in java.net" class="external-link">hashCode</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html" title="class or interface in java.net" class="external-link">URLStreamHandler</a></code></dd>
