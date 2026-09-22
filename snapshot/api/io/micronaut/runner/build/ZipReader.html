@@ -484,7 +484,8 @@ returned object is the reader's own instance and is mutable; callers must not mo
 <dd>the uncompressed content, of length <a href="ZipEntryInfo.html#uncompressedSize()"><code>ZipEntryInfo.uncompressedSize()</code></a></dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the data cannot be read, the compression method is neither stored nor deflated,
-                    or the deflate stream is truncated or corrupt</dd>
+                    or the deflate stream is truncated, corrupt, overproduces, or does not consume its
+                    complete recorded compressed region</dd>
 </dl>
 </div>
 </section>
