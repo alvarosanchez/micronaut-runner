@@ -73,6 +73,13 @@ import java.util.zip.ZipEntry;
  */
 final class SampleBuild {
 
+    private static final String EXPLODED_CLASSPATH = "exploded-cp";
+    private static final String THIN_JAR = "thin-jar";
+    private static final String SHADOW = "shadow";
+    private static final String RUNNER_STORED = "runner-stored";
+    private static final String RUNNER_PRESERVE = "runner-preserve";
+    private static final String RUNNER_EXTRACTED = "runner-extracted";
+
     /** The task the init script registers on the sample's build. */
     private static final String METADATA_TASK = "runnerBenchmarkMetadata";
 
@@ -188,29 +195,38 @@ final class SampleBuild {
     }
 
     /**
+     * Names every variant in report order without building their artifacts.
+     *
+     * @return the canonical variant names
+     */
+    static List<String> variantNames() {
+        return List.of(EXPLODED_CLASSPATH, THIN_JAR, SHADOW, RUNNER_STORED, RUNNER_PRESERVE, RUNNER_EXTRACTED);
+    }
+
+    /**
      * Builds every variant, in report order.
      *
      * @return the variants, available and unavailable alike
      */
     List<Variant> variants() {
         List<Variant> variants = new ArrayList<>(6);
-        variants.add(attempt("exploded-cp",
+        variants.add(attempt(EXPLODED_CLASSPATH,
                 "Class files and dependency jars on an explicit, ordered -cp",
                 this::explodedClasspath));
-        variants.add(attempt("thin-jar",
+        variants.add(attempt(THIN_JAR,
                 "Application jar with a Class-Path manifest pointing at lib/",
                 this::thinJar));
-        variants.add(attempt("shadow",
+        variants.add(attempt(SHADOW,
                 "Everything flattened into one jar by the Shadow plugin",
                 this::shadowJar));
-        Variant stored = attempt("runner-stored",
+        Variant stored = attempt(RUNNER_STORED,
                 "Runner jar, nested dependencies re-packed uncompressed",
-                () -> runnerJar("runner-stored", Compression.STORED));
+                () -> runnerJar(RUNNER_STORED, Compression.STORED));
         variants.add(stored);
-        variants.add(attempt("runner-preserve",
+        variants.add(attempt(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte (still deflated)",
-                () -> runnerJar("runner-preserve", Compression.PRESERVE)));
-        variants.add(attempt("runner-extracted",
+                () -> runnerJar(RUNNER_PRESERVE, Compression.PRESERVE)));
+        variants.add(attempt(RUNNER_EXTRACTED,
                 "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
                 () -> extracted(stored)));
         return variants;
@@ -244,7 +260,7 @@ final class SampleBuild {
         command.add("-cp");
         command.add(String.join(java.io.File.pathSeparator, classPath));
         command.add(mainClass);
-        return Variant.available("exploded-cp",
+        return Variant.available(EXPLODED_CLASSPATH,
                 "Class files and dependency jars on an explicit, ordered -cp",
                 command, directory, directory);
     }
@@ -273,7 +289,7 @@ final class SampleBuild {
         }
 
         List<String> command = List.of(javaExecutable().toString(), "-jar", jar.toAbsolutePath().toString());
-        return Variant.available("thin-jar",
+        return Variant.available(THIN_JAR,
                 "Application jar with a Class-Path manifest pointing at lib/",
                 command, directory, jar);
     }
@@ -290,7 +306,7 @@ final class SampleBuild {
         Files.copy(shadowJar, copy, StandardCopyOption.REPLACE_EXISTING);
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 copy.toAbsolutePath().toString());
-        return Variant.available("shadow",
+        return Variant.available(SHADOW,
                 "Everything flattened into one jar by the Shadow plugin",
                 command, directory, copy);
     }
@@ -344,7 +360,7 @@ final class SampleBuild {
         Path applicationJar = singleJarIn(destination);
         List<String> run = List.of(javaExecutable().toString(), "-jar",
                 applicationJar.toAbsolutePath().toString());
-        return Variant.available("runner-extracted",
+        return Variant.available(RUNNER_EXTRACTED,
                 "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
                 run, destination, destination);
     }

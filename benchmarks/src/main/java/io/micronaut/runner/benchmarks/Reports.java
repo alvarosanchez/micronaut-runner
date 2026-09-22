@@ -76,6 +76,9 @@ final class Reports {
         out.append("  \"seed\": ").append(context.seed()).append(",\n");
         out.append("  \"interleaved\": true,\n");
         out.append("  \"timingRunsCarryLoggingFlags\": false,\n");
+        out.append("  \"jvmProcessState\": \"fresh per sample\",\n");
+        out.append("  \"osPageCacheState\": \"uncontrolled\",\n");
+        out.append("  \"applicationCacheMode\": \"none\",\n");
         out.append("  \"environment\": {\n");
         out.append("    \"javaVersion\": ").append(quote(System.getProperty("java.version"))).append(",\n");
         out.append("    \"javaVendor\": ").append(quote(System.getProperty("java.vendor"))).append(",\n");
@@ -186,6 +189,11 @@ final class Reports {
                 .append(" measured iterations per variant after ").append(context.warmupIterations())
                 .append(" discarded warm-up iterations; the variants are **interleaved in a random order")
                 .append(" within each iteration** (seed ").append(context.seed()).append(")\n");
+        out.append("- **JVM process**: fresh for every sample\n");
+        out.append("- **OS page cache**: uncontrolled; discarded warm-ups do not establish a controlled")
+                .append(" warm-cache or cold-filesystem-cache state\n");
+        out.append("- **Application cache**: no trained CDS archive or AOT cache; default JDK class")
+                .append(" sharing may still be active\n");
         out.append("- **Readiness**: first HTTP 200 from `").append(context.readinessPath())
                 .append("`, polled every 2 ms with one persistent client, timed on a single monotonic")
                 .append(" clock that starts immediately before the process is spawned\n");

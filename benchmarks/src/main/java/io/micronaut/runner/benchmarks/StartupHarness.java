@@ -68,6 +68,10 @@ import java.util.regex.Pattern;
  */
 final class StartupHarness implements AutoCloseable {
 
+    /** JVM option environment variables that would make a nominally plain variant use different flags. */
+    private static final List<String> INHERITED_JVM_OPTIONS = List.of(
+            "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS");
+
     /** How often readiness is polled. */
     private static final Duration POLL_INTERVAL = Duration.ofMillis(2);
 
@@ -170,6 +174,7 @@ final class StartupHarness implements AutoCloseable {
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(variant.workingDirectory().toFile())
                 .redirectErrorStream(true);
+        removeInheritedJvmOptions(builder);
         builder.environment().put("SERVER_PORT", Integer.toString(port));
 
         URI readiness = URI.create("http://127.0.0.1:" + port + readinessPath);
@@ -270,6 +275,15 @@ final class StartupHarness implements AutoCloseable {
         } catch (IOException e) {
             throw new UncheckedIOException("Could not find a free port", e);
         }
+    }
+
+    /**
+     * Prevents ambient JVM flags from silently turning a no-cache benchmark row into a cache-enabled row.
+     *
+     * @param builder the child JVM process
+     */
+    static void removeInheritedJvmOptions(ProcessBuilder builder) {
+        INHERITED_JVM_OPTIONS.forEach(builder.environment()::remove);
     }
 
     private static int destroy(Process process, Thread drain) throws InterruptedException {
