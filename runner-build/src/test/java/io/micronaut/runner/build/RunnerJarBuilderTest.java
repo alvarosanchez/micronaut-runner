@@ -206,6 +206,61 @@ class RunnerJarBuilderTest {
                 "and the manifest is written in that order");
     }
 
+    @Test
+    void canonicalManifestAttributesSortArbitraryMaps() {
+        RunnerJarSpec spec = spec(output()).canonicalManifestAttributes(Map.of(
+                "Echo-Attribute", "5",
+                "Bravo-Attribute", "2",
+                "Delta-Attribute", "4",
+                "Alpha-Attribute", "1",
+                "Charlie-Attribute", "3")).build();
+
+        assertEquals(List.of(
+                "Alpha-Attribute",
+                "Bravo-Attribute",
+                "Charlie-Attribute",
+                "Delta-Attribute",
+                "Echo-Attribute"), new ArrayList<>(spec.manifestAttributes().keySet()));
+    }
+
+    @Test
+    void canonicalManifestAttributesRejectCaseInsensitiveCollisionsInAnyLocale() {
+        Map<String, String> attributes = new LinkedHashMap<>();
+        attributes.put("Example-Attribute", "first");
+        attributes.put("example-attribute", "second");
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr"));
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> spec(output()).canonicalManifestAttributes(attributes));
+            assertTrue(failure.getMessage().contains("Example-Attribute"), failure.getMessage());
+            assertTrue(failure.getMessage().contains("example-attribute"), failure.getMessage());
+        } finally {
+            Locale.setDefault(original);
+        }
+    }
+
+    @Test
+    void canonicalManifestAttributesProduceIdenticalArchivesInSeparateJvms()
+            throws IOException, InterruptedException {
+        Path first = output();
+        Path second = output();
+
+        runManifestProbe(first, "forward");
+        runManifestProbe(second, "reverse");
+
+        assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(second),
+                "logical map equality, not source iteration order, is the canonical mode's input");
+        assertEquals(List.of(
+                "Alpha-Attribute",
+                "Bravo-Attribute",
+                "Charlie-Attribute",
+                "Delta-Attribute",
+                "Echo-Attribute"), manifestLines(first).stream()
+                        .filter(name -> name.endsWith("-Attribute"))
+                        .toList());
+    }
+
     @ParameterizedTest(name = "rejects {0}")
     @ValueSource(strings = {
             "mAnIfEsT-vErSiOn",
@@ -638,6 +693,30 @@ class RunnerJarBuilderTest {
         }
         Assumptions.assumeTrue(Files.isExecutable(candidate), "the JDK has no java executable");
         return candidate;
+    }
+
+    private static void runManifestProbe(Path output, String order)
+            throws IOException, InterruptedException {
+        String classpath = System.getProperty("runner.test.runtimeClasspath");
+        assertNotNull(classpath, "the test task supplies the forked JVM class path");
+        Process process = new ProcessBuilder(
+                javaExecutable().toString(),
+                "-cp", classpath,
+                ManifestReproducibilityProbe.class.getName(),
+                output.toString(),
+                applicationClasses.toString(),
+                applicationResources.toString(),
+                plainDependency.toString(),
+                multiReleaseDependency.toString(),
+                signedDependency.toString(),
+                order)
+                .redirectErrorStream(true)
+                .start();
+        String processOutput;
+        try (InputStream in = process.getInputStream()) {
+            processOutput = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        assertEquals(0, process.waitFor(), processOutput);
     }
 
     private static void compile(JavaCompiler compiler, Path sources, Path classes, Map<String, String> files)

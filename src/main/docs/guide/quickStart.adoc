@@ -53,6 +53,12 @@ micronautRunnerJar {
 `Main-Class` and every attribute whose name begins with `Micronaut-Runner-` are reserved for the runner
 format and are rejected case-insensitively.
 
+The low-level `RunnerJarSpec.Builder.manifestAttributes` API preserves the map's iteration order. Pass a
+deterministically ordered map, such as `LinkedHashMap`, when builds in separate JVMs must produce identical
+bytes. Code that wants logical map equality to be the reproducibility input can instead call
+`canonicalManifestAttributes`; it sorts names lexicographically without using the default locale and rejects
+two names that differ only by case, because manifest attribute names are case insensitive.
+
 == Maven
 
 Add the plugin to your build. Bind it to `package`, so it runs after the JAR is built:

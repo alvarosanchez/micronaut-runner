@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.jar.Manifest;
 
 /**
@@ -210,10 +211,12 @@ public final class RunnerJarSpec {
      * {@code Micronaut-Runner-*} namespace are reserved and rejected case-insensitively because the runner
      * jar format and launcher depend on them.</p>
      *
-     * <p>The order the caller configured is preserved, because the manifest is written by iterating this
-     * map and a runner jar has to be byte for byte reproducible.</p>
+     * <p>By default the order the caller configured is preserved, because the manifest is written by
+     * iterating this map. Callers must therefore supply a map with stable iteration order for byte-for-byte
+     * reproducibility, or use {@link Builder#canonicalManifestAttributes(Map)} to make logical map equality
+     * the reproducibility input.</p>
      *
-     * @return the extra attributes, in the order they were configured
+     * @return the extra attributes, in the selected emission order
      */
     public Map<String, String> manifestAttributes() {
         return manifestAttributes;
@@ -411,6 +414,11 @@ public final class RunnerJarSpec {
         /**
          * Sets extra main attributes for the manifest.
          *
+         * <p>This method preserves iteration order. An unordered map such as one returned by
+         * {@link Map#of(Object, Object, Object, Object)} can iterate differently in separate JVMs; use a
+         * deterministically ordered map or {@link #canonicalManifestAttributes(Map)} when archive bytes must
+         * be reproducible across build JVMs.</p>
+         *
          * @param value the attributes, in the order they should be written
          * @return this builder
          * @throws NullPointerException     if the map, a key or a value is {@code null}
@@ -428,6 +436,41 @@ public final class RunnerJarSpec {
                             + "' is reserved by Micronaut Runner");
                 }
                 copy.put(name, attribute.getValue());
+            }
+            this.manifestAttributes = copy;
+            return this;
+        }
+
+        /**
+         * Sets extra main attributes in canonical order.
+         *
+         * <p>Names are written in their natural lexicographic order, which is locale independent, so maps
+         * with equal entries produce the same manifest bytes regardless of their iteration order. Manifest
+         * attribute names are case insensitive; two names that differ only by case are therefore rejected
+         * rather than choosing one value based on source-map order.</p>
+         *
+         * @param value the attributes to write in canonical order
+         * @return this builder
+         * @throws NullPointerException     if the map, a key or a value is {@code null}
+         * @throws IllegalArgumentException if a key is reserved, or two keys differ only by case
+         */
+        public Builder canonicalManifestAttributes(Map<String, String> value) {
+            Objects.requireNonNull(value, "manifestAttributes");
+            Map<String, String> copy = new TreeMap<>();
+            Map<String, String> spellings = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            for (Map.Entry<String, String> attribute : value.entrySet()) {
+                String name = Objects.requireNonNull(attribute.getKey(), "manifest attribute name");
+                String attributeValue = Objects.requireNonNull(attribute.getValue(), "manifest attribute value");
+                if (isReservedManifestAttribute(name)) {
+                    throw new IllegalArgumentException("Manifest attribute '" + name
+                            + "' is reserved by Micronaut Runner");
+                }
+                String previous = spellings.putIfAbsent(name, name);
+                if (previous != null) {
+                    throw new IllegalArgumentException("Manifest attributes '" + previous + "' and '" + name
+                            + "' differ only by case");
+                }
+                copy.put(name, attributeValue);
             }
             this.manifestAttributes = copy;
             return this;
