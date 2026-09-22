@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -83,10 +84,13 @@ class HelloNettySampleTest {
                 () -> "the packaging task did not run:\n" + result.getOutput());
         assertTrue(Files.isRegularFile(archive),
                 () -> "the plugin did not write " + archive + ":\n" + result.getOutput());
-        assertStartsTheApplication(archive);
+        Path unicodeArchive = sample.resolve("build/unicode-é/apps with a space/app.jar");
+        Files.createDirectories(unicodeArchive.getParent());
+        Files.copy(archive, unicodeArchive, StandardCopyOption.REPLACE_EXISTING);
+        assertStartsTheApplication(unicodeArchive);
 
         int port = Samples.freePort();
-        ForkedApplication application = ForkedApplication.start(archive, sample, Map.of(
+        ForkedApplication application = ForkedApplication.start(unicodeArchive, sample, Map.of(
                 "SERVER_PORT", Integer.toString(port)));
         try {
             String body = application.awaitBody(

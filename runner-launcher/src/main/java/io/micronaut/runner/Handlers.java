@@ -536,6 +536,11 @@ public final class Handlers {
      * taking the part of this URL before the archive separator and handing it to
      * {@code new File(URI.create(...))}, so an opaque URL breaks bean discovery, on Windows only.</p>
      *
+     * <p>The canonical form uses {@code '/'} as the URL separator over the complete path, including every
+     * component after non-ASCII text. Other characters are percent-encoded as UTF-8 bytes. A backslash is
+     * normalized only when it is the supplied platform separator; in a POSIX path it remains data and is
+     * encoded as {@code %5C}.</p>
+     *
      * <p>The separator is a parameter rather than {@link File#separatorChar} so that both platforms'
      * shapes can be tested from either platform.</p>
      *
@@ -572,7 +577,11 @@ public final class Handlers {
                 }
                 continue;
             }
-            byte[] utf8 = path.substring(i).getBytes(StandardCharsets.UTF_8);
+            String remainder = path.substring(i);
+            if (separator != '/') {
+                remainder = remainder.replace(separator, '/');
+            }
+            byte[] utf8 = remainder.getBytes(StandardCharsets.UTF_8);
             for (int b = 0; b < utf8.length; b++) {
                 byte value = utf8[b];
                 if (value >= 0 && (unreserved((char) value) || value == '/' || value == ':')) {

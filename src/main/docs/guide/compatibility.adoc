@@ -21,6 +21,23 @@ sealing a package that is already open, raises `SecurityException`.
 * Resources resolve through ordinary `jar:file:` URLs, so `URL.openStream()`, `URLConnection` metadata and
 `JarURLConnection.getJarFile()` all work, which is what libraries that scan the classpath rely on.
 
+== Archive path URLs
+
+The outer archive's `file:` URL has one canonical representation. File-system separators are `/` over the
+complete URL path, including components after Unicode text. Unicode is encoded as UTF-8 bytes, and spaces,
+`%`, `#` and `?` are percent-encoded. A Windows drive path therefore starts with `file:/C:/`; a UNC shape
+starts with `file://server/share/`. On POSIX, a backslash is data rather than a separator and is encoded as
+`%5C`.
+
+Windows CI starts both the synthetic end-to-end fixture and a real Micronaut HTTP application from a path
+shaped like `unicode-é/apps with a space/app.jar`. The former opens resources through `URL`, `JarFile` and
+the same URI-to-`File` conversion that Micronaut uses to list bean metadata; the latter must start and find
+its beans before serving a request. A separate Windows JDK 25 regression probe confirms that the previous
+non-canonical representation, which changed later separators to `%5C`, was still accepted by `File`,
+`URL.openStream()`, `JarFile` and a `jar:` URL. The encoding defect therefore did not reproduce as a startup
+or bean-discovery failure in those supported consumers. Hosted CI has no network share, so UNC behavior is
+limited to deterministic URL-shape coverage rather than opening a real UNC archive.
+
 == Known limitations
 
 Nested `JarFile` reporting:: `JarFile.isMultiRelease()` and `JarFile.getVersion()` are `final` in the JDK
