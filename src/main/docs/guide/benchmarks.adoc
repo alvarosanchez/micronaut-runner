@@ -80,6 +80,20 @@ Run it locally with:
 Reports are written to `benchmarks/build/reports/`. In CI the benchmarks run weekly and on demand rather
 than on every pull request, because shared runners are too noisy to gate a build on.
 
+The startup harness uses a required, fail-closed matrix by default. Every required packaging variant must
+be built and complete every requested measured iteration; otherwise the task exits nonzero _after_ writing
+both `results.json` and `summary.md`. Both reports show requested, attempted, successful, failed and skipped
+counts separately for warm-up and measured phases. `results.json` also records every process attempt with
+its variant, iteration, global schedule order, phase, outcome, failure and exit information, and timing only
+when the attempt produced a valid measurement. A build-unavailable variant is skipped, not mislabeled as a
+failed process attempt. A warm-up failure is visible but does not by itself invalidate a complete measured
+matrix.
+
+For investigation only, `-Pbenchmarks.allowPartial=true` selects the explicit partial policy. An incomplete
+partial run is labelled as such in both reports and exits zero only when at least one measured attempt
+succeeds. Its timing distributions remain explicitly conditional on successful attempts; the harness never
+turns a timeout into a zero duration or retries until a favorable sample appears.
+
 == First measurements
 
 These are the numbers from the prototype gate, taken on one developer machine (Apple silicon, JDK 25) with

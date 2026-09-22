@@ -66,7 +66,21 @@ import java.util.regex.Pattern;
  *       be compared - never so it can be substituted for either of the above.</li>
  * </ol>
  */
-final class StartupHarness implements AutoCloseable {
+final class StartupHarness implements StartupRunner, AutoCloseable {
+
+    /** A failed start with the child exit status when the process supplied one. */
+    static final class RunFailure extends IOException {
+        private final Integer exitCode;
+
+        RunFailure(String message, Integer exitCode) {
+            super(message);
+            this.exitCode = exitCode;
+        }
+
+        Integer exitCode() {
+            return exitCode;
+        }
+    }
 
     /** JVM option environment variables that would make a nominally plain variant use different flags. */
     private static final List<String> INHERITED_JVM_OPTIONS = List.of(
@@ -129,7 +143,8 @@ final class StartupHarness implements AutoCloseable {
      * @throws IOException          if the process cannot be started, dies early or never answers
      * @throws InterruptedException if the wait is interrupted
      */
-    StartupSample run(Variant variant, int iteration, boolean warmup)
+    @Override
+    public StartupSample run(Variant variant, int iteration, boolean warmup)
             throws IOException, InterruptedException {
         return run(variant, iteration, warmup, List.of());
     }
@@ -197,8 +212,9 @@ final class StartupHarness implements AutoCloseable {
             String lastBody = "";
             while (System.nanoTime() < deadline) {
                 if (!process.isAlive()) {
-                    throw new IOException(variant.name() + " exited with status " + process.exitValue()
-                            + " before answering " + readiness + tail(capture));
+                    int exitCode = process.exitValue();
+                    throw new RunFailure(variant.name() + " exited with status " + exitCode
+                            + " before answering " + readiness + tail(capture), exitCode);
                 }
                 try {
                     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -217,18 +233,18 @@ final class StartupHarness implements AutoCloseable {
                     // Both mean the same thing here: not ready, try again.
                 }
                 if (firstResponse > 0 && System.nanoTime() - firstResponse > SERVING_GRACE.toNanos()) {
-                    throw new IOException(variant.name() + " is serving " + readiness + " with HTTP "
+                    throw new RunFailure(variant.name() + " is serving " + readiness + " with HTTP "
                             + lastStatus + " and has been for " + SERVING_GRACE.toSeconds() + "s."
                             + " The application started; it is not serving the readiness endpoint, which"
                             + " points at the packaging rather than at a slow start. Response body: "
-                            + snippet(lastBody) + tail(capture));
+                            + snippet(lastBody) + tail(capture), null);
                 }
                 lastFailureEnd = System.nanoTime();
                 Thread.sleep(POLL_INTERVAL.toMillis());
             }
             if (ready < 0) {
-                throw new IOException(variant.name() + " did not answer " + readiness + " within "
-                        + startupTimeout + tail(capture));
+                throw new RunFailure(variant.name() + " did not answer " + readiness + " within "
+                        + startupTimeout + tail(capture), null);
             }
 
             awaitStartupLine(capture);

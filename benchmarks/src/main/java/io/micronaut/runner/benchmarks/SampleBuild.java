@@ -203,6 +203,23 @@ final class SampleBuild {
         return List.of(EXPLODED_CLASSPATH, THIN_JAR, SHADOW, RUNNER_STORED, RUNNER_PRESERVE, RUNNER_EXTRACTED);
     }
 
+    /** Keeps the complete required matrix visible when the shared sample build fails. */
+    static List<Variant> unavailableVariants(String reason) {
+        return List.of(
+                Variant.unavailable(EXPLODED_CLASSPATH,
+                        "Class files and dependency jars on an explicit, ordered -cp", reason),
+                Variant.unavailable(THIN_JAR,
+                        "Application jar with a Class-Path manifest pointing at lib/", reason),
+                Variant.unavailable(SHADOW,
+                        "Everything flattened into one jar by the Shadow plugin", reason),
+                Variant.unavailable(RUNNER_STORED,
+                        "Runner jar, nested dependencies re-packed uncompressed", reason),
+                Variant.unavailable(RUNNER_PRESERVE,
+                        "Runner jar, nested dependencies copied byte for byte (still deflated)", reason),
+                Variant.unavailable(RUNNER_EXTRACTED,
+                        "Runner jar unpacked and run by the JDK's own loader", reason));
+    }
+
     /**
      * Builds every variant, in report order.
      *
