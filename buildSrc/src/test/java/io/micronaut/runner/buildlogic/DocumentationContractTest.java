@@ -27,6 +27,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DocumentationContractTest {
 
     @Test
+    void publicDocumentationBoundsLookupAndPerformanceClaims() throws IOException {
+        String readme = read("README.md");
+        String introduction = read("src/main/docs/guide/introduction.adoc");
+        String compatibility = read("src/main/docs/guide/compatibility.adoc");
+        String benchmarks = read("src/main/docs/guide/benchmarks.adoc");
+
+        assertFalse(readme.contains("single hash probe"));
+        assertFalse(introduction.contains("single hash probe"));
+        assertTrue(readme.contains("bounded linear-probe sequence"));
+        assertTrue(readme.contains("`META-INF/micronaut/**` metadata is deliberately merged"));
+        assertTrue(compatibility.contains("Deliberate Micronaut metadata exception"));
+        assertTrue(compatibility.contains("returns one merged URL"));
+
+        assertFalse(benchmarks.contains("12% below"));
+        assertFalse(benchmarks.contains("15% below"));
+        assertFalse(benchmarks.contains("worth about 35%"));
+        assertFalse(benchmarks.contains("worth about\n2%"));
+        assertTrue(benchmarks.contains("immutable source revision"));
+        assertTrue(benchmarks.contains("raw `results.json`"));
+        assertTrue(benchmarks.contains("matched ablation"));
+    }
+
+    @Test
     void quickStartPutsJava25ChecksBeforeEitherBuildToolFlow() throws IOException {
         String guide = read("src/main/docs/guide/quickStart.adoc");
         int prerequisites = guide.indexOf("== Prerequisites");

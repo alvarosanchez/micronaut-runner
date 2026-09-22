@@ -43,10 +43,12 @@ moving all of the work to build time.
 
 When the archive is packaged, every entry of every nested JAR is recorded in `MICRONAUT-INF/index.bin`
 together with its absolute byte offset in the outer file. At startup the launcher memory-maps the archive
-once and reads that index directly out of the mapping. Looking up a class is a single hash probe followed
-by a byte comparison; no central directory is parsed, no nested archive is opened, nothing is extracted to
-disk, and no temporary files are written. Dependencies are stored uncompressed by default, so a class is
-defined straight from the mapped bytes with no intermediate array and no decompression.
+once and reads that index directly out of the mapping. Looking up a class starts at its hash slot and uses
+linear probing up to the longest probe sequence recorded by the builder, followed by a byte comparison.
+Same-name records are then resolved in classpath order and per JAR against the effective multi-release
+version. No central directory is parsed, no nested archive is opened, nothing is extracted to disk, and no
+temporary files are written. Dependencies are stored uncompressed by default, so a class is defined straight
+from the mapped bytes with no intermediate array and no decompression.
 
 The launcher itself is written to keep off the JVM's slow paths: no lambdas, no string concatenation
 through `invokedynamic`, no reflection on the entry path, and no `java.util.logging`. It is a handful of
