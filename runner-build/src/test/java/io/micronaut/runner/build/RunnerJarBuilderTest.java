@@ -290,6 +290,35 @@ class RunnerJarBuilderTest {
                 "invalid configuration must leave the existing output alone");
     }
 
+    @ParameterizedTest(name = "canonically rejects {0}")
+    @ValueSource(strings = {
+            "mAnIfEsT-vErSiOn",
+            "mAiN-cLaSs",
+            "mIcRoNaUt-RuNnEr-FoRmAt",
+            "mIcRoNaUt-RuNnEr-vErSiOn",
+            "mIcRoNaUt-RuNnEr-sTaRt-ClAsS",
+            "mIcRoNaUt-RuNnEr-fUtUrE"
+    })
+    void canonicalManifestAttributesRejectReservedKeysWithoutReplacingOutput(String key) throws IOException {
+        Path output = output();
+        Files.createDirectories(output.getParent());
+        byte[] previous = "the existing runner jar".getBytes(StandardCharsets.UTF_8);
+        Files.write(output, previous);
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr"));
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> RunnerJarBuilder.build(spec(output)
+                            .canonicalManifestAttributes(Map.of(key, "missing.Override"))
+                            .build(), BuildLogger.noOp()));
+            assertTrue(failure.getMessage().contains(key), failure.getMessage());
+        } finally {
+            Locale.setDefault(original);
+        }
+        assertArrayEquals(previous, Files.readAllBytes(output),
+                "invalid canonical configuration must leave the existing output alone");
+    }
+
     @Test
     void acceptsLegalManifestAttributesAndBuildsARunnableArtifact()
             throws IOException, InterruptedException {
