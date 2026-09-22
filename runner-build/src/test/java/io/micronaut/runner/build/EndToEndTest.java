@@ -702,8 +702,12 @@ class EndToEndTest {
         byte[] packagedHash = sha256(artifact);
 
         // GnuPG on macOS places agent sockets below the home and is limited by the short sockaddr_un path.
-        // Keep these temporary homes directly below the user's home rather than JUnit's long temporary path.
-        Path gpgRoot = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".mr-gpg-");
+        // Keep those homes directly below the user's home. On Windows, keep them below the test workspace so
+        // MSYS GnuPG can receive every path relative to one drive rather than misreading drive-letter paths.
+        Path gpgParent = System.getProperty("os.name").startsWith("Windows")
+                ? workspace
+                : Path.of(System.getProperty("user.home"));
+        Path gpgRoot = Files.createTempDirectory(gpgParent, ".mr-gpg-");
         try {
             Path signerHome = gpgHome(gpgRoot.resolve("s"));
             String signer = generateSigningKey(gpg, signerHome,
@@ -712,9 +716,9 @@ class EndToEndTest {
             importPublicKey(gpg, signerHome, signer, trustedHome, scenario.resolve("release-key.asc"));
 
             Path signature = scenario.resolve("app.jar.asc");
-            requireSuccess(command(scenario, gpg, "--batch", "--homedir", signerHome.toString(),
+            requireSuccess(command(workspace, gpg, "--batch", "--homedir", gpgPath(signerHome),
                     "--pinentry-mode", "loopback", "--passphrase", "", "--local-user", signer,
-                    "--armor", "--detach-sign", "--output", signature.toString(), artifact.toString()));
+                    "--armor", "--detach-sign", "--output", gpgPath(signature), gpgPath(artifact)));
             assertArrayEquals(packagedHash, sha256(artifact), "detached signing changed the runner JAR");
 
             VerificationRun verified = verifyThenRun(gpg, trustedHome, signature, artifact);
@@ -747,8 +751,8 @@ class EndToEndTest {
 
     private static VerificationRun verifyThenRun(String gpg, Path verifierHome, Path signature, Path artifact)
             throws IOException, InterruptedException {
-        CommandResult verification = command(workspace, gpg, "--batch", "--homedir", verifierHome.toString(),
-                "--verify", signature.toString(), artifact.toString());
+        CommandResult verification = command(workspace, gpg, "--batch", "--homedir", gpgPath(verifierHome),
+                "--verify", gpgPath(signature), gpgPath(artifact));
         if (verification.status() != 0) {
             return new VerificationRun(false, null, verification);
         }
@@ -757,10 +761,10 @@ class EndToEndTest {
 
     private static String generateSigningKey(String gpg, Path home, String identity)
             throws IOException, InterruptedException {
-        requireSuccess(command(workspace, gpg, "--batch", "--homedir", home.toString(),
+        requireSuccess(command(workspace, gpg, "--batch", "--homedir", gpgPath(home),
                 "--pinentry-mode", "loopback", "--passphrase", "", "--quick-generate-key", identity,
                 "ed25519", "sign", "0"));
-        CommandResult listing = command(workspace, gpg, "--batch", "--homedir", home.toString(),
+        CommandResult listing = command(workspace, gpg, "--batch", "--homedir", gpgPath(home),
                 "--with-colons", "--list-secret-keys", identity);
         requireSuccess(listing);
         for (String line : listing.output().split("\\R")) {
@@ -774,10 +778,10 @@ class EndToEndTest {
 
     private static void importPublicKey(String gpg, Path signerHome, String fingerprint, Path verifierHome,
             Path exportedKey) throws IOException, InterruptedException {
-        requireSuccess(command(workspace, gpg, "--batch", "--homedir", signerHome.toString(), "--armor",
-                "--output", exportedKey.toString(), "--export", fingerprint));
-        requireSuccess(command(workspace, gpg, "--batch", "--homedir", verifierHome.toString(),
-                "--import", exportedKey.toString()));
+        requireSuccess(command(workspace, gpg, "--batch", "--homedir", gpgPath(signerHome), "--armor",
+                "--output", gpgPath(exportedKey), "--export", fingerprint));
+        requireSuccess(command(workspace, gpg, "--batch", "--homedir", gpgPath(verifierHome),
+                "--import", gpgPath(exportedKey)));
     }
 
     private static Path gpgHome(Path directory) throws IOException {
@@ -788,6 +792,21 @@ class EndToEndTest {
             // Windows has no POSIX mode bits; GnuPG uses the platform ACLs instead.
         }
         return directory;
+    }
+
+    private static String gpgPath(Path path) throws IOException {
+        // Git for Windows supplies an MSYS GnuPG, which treats drive letters and backslashes as ordinary
+        // filename characters. All GnuPG commands run from the workspace, so portable relative paths avoid
+        // that ambiguity. Other platforms receive canonical absolute paths, keeping macOS agent socket paths
+        // short even though the JUnit workspace is nested deeply below /private/var.
+        Path absolute = path.toAbsolutePath();
+        Path resolved = Files.exists(absolute)
+                ? absolute.toRealPath()
+                : absolute.getParent().toRealPath().resolve(absolute.getFileName());
+        if (System.getProperty("os.name").startsWith("Windows")) {
+            return workspace.toRealPath().relativize(resolved).toString().replace('\\', '/');
+        }
+        return resolved.toString();
     }
 
     private static String gpgExecutable() throws IOException, InterruptedException {
