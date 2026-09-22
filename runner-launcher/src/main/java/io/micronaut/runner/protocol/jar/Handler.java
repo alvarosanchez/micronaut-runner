@@ -147,7 +147,14 @@ public final class Handler extends URLStreamHandler {
     }
 
     /**
-     * Hashes a jar URL consistently with {@link #sameFile}: same protocol and same text, same hash.
+     * Hashes a jar URL consistently with {@link #sameFile} and with the JDK for local {@code jar:file:}
+     * URLs.
+     *
+     * <p>The JDK hashes a jar URL as the jar protocol, the enclosed URL and the entry after the first
+     * {@value Handlers#SEPARATOR}. Runner URLs always enclose a local file URL, whose JDK hash is entirely
+     * textual. Computing that value directly avoids constructing another URL and, unlike the JDK's generic
+     * URL hash implementation, can never resolve a host name. A non-local or non-file enclosed URL keeps
+     * the text hash used by {@link #sameFile}; Runner never produces such a URL.</p>
      *
      * @param url the URL
      * @return the hash
@@ -160,10 +167,40 @@ public final class Handler extends URLStreamHandler {
             hash += protocol.hashCode();
         }
         String file = url.getFile();
-        if (file != null) {
-            hash += file.hashCode();
+        if (file == null) {
+            return hash;
         }
+        int separator = file.indexOf(Handlers.SEPARATOR);
+        if (separator < 0) {
+            return hash + file.hashCode();
+        }
+        String enclosed = file.substring(0, separator);
+        hash += localFileHash(enclosed);
+        hash += file.substring(separator + Handlers.SEPARATOR.length()).hashCode();
         return hash;
+    }
+
+    /**
+     * Computes the JDK URL hash of a local {@code file:} URL without constructing a URL. An authority would
+     * make the JDK consult DNS, so those uncommon foreign jar URLs retain their text hash instead.
+     */
+    private static int localFileHash(String spec) {
+        int schemeLength = 5;
+        if (!spec.regionMatches(true, 0, "file:", 0, schemeLength)) {
+            return spec.hashCode();
+        }
+        int fileStart = schemeLength;
+        if (spec.startsWith("//", fileStart)) {
+            int authorityStart = fileStart + 2;
+            int slash = spec.indexOf('/', authorityStart);
+            int question = spec.indexOf('?', authorityStart);
+            int authorityEnd = slash < 0 ? (question < 0 ? spec.length() : question) : slash;
+            if (authorityEnd != authorityStart) {
+                return spec.hashCode();
+            }
+            fileStart = authorityEnd;
+        }
+        return "file".hashCode() + spec.substring(fileStart).hashCode() - 1;
     }
 
     /**

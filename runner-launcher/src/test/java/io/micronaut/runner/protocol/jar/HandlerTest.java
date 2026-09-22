@@ -32,9 +32,11 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -414,6 +416,28 @@ class HandlerTest {
     }
 
     @Test
+    void interoperatesWithJdkUrlsCreatedBeforeRegistration() throws Exception {
+        Path java = javaExecutable();
+        assertNotNull(java, "no JDK to fork; set runner.test.javaHome");
+        String testClasses = Path.of(HandlerInteroperability.class.getProtectionDomain()
+                .getCodeSource().getLocation().toURI()).toString();
+        String mainClasses = Path.of(Handler.class.getProtectionDomain()
+                .getCodeSource().getLocation().toURI()).toString();
+        Process process = new ProcessBuilder(java.toString(), "-cp",
+                testClasses + File.pathSeparator + mainClasses,
+                HandlerInteroperability.class.getName(), archive.getAbsolutePath())
+                .redirectErrorStream(true)
+                .start();
+        assertTrue(process.waitFor(30, TimeUnit.SECONDS), "forked equality test timed out");
+        String output;
+        try (InputStream in = process.getInputStream()) {
+            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        assertEquals(0, process.exitValue(), output);
+        assertTrue(output.contains("INTEROPERABLE"), output);
+    }
+
+    @Test
     void rejectsMalformedJarUrls() {
         assertThrows(MalformedURLException.class, () -> URI.create("jar:file:/x.jar").toURL());
         assertThrows(MalformedURLException.class, () -> URI.create("jar:!/entry").toURL());
@@ -486,6 +510,19 @@ class HandlerTest {
         StringBuilder unique = new StringBuilder();
         unique.append(files).append('-').append(name);
         return temporary.resolve(unique.toString()).toFile();
+    }
+
+    private static Path javaExecutable() {
+        String home = System.getProperty("runner.test.javaHome", System.getProperty("java.home"));
+        if (home == null || home.isEmpty()) {
+            return null;
+        }
+        Path candidate = Path.of(home, "bin", "java");
+        if (Files.isExecutable(candidate)) {
+            return candidate;
+        }
+        candidate = Path.of(home, "bin", "java.exe");
+        return Files.isExecutable(candidate) ? candidate : null;
     }
 
     private static byte[] bytes(String value) {
