@@ -1,8 +1,11 @@
 == "runner jar was modified after packaging"
 
-The index records the archive's length and the position of every nested JAR. One of those checks failed,
-which means the file changed after it was built: something appended to it, re-zipped it, or signed it in
-place. Rebuild the archive; do not sign or otherwise rewrite it in place. To authenticate a deployment,
+The index records the archive's length and the position of every nested JAR. The length is compared when the
+archive opens and each nested-JAR header is checked on first use. One of those checks failed, which means the
+file changed after it was built: something appended to it, re-zipped it, or signed it in place. These checks
+are not ongoing monitoring and do not make a live rewrite safe. Rebuild the archive; do not sign or otherwise
+rewrite it in place. Stop the JVM before replacing this path, or deploy the replacement under a new versioned
+path as described in <<runtime,archive lifetime and deployment>>. To authenticate a deployment,
 create a detached signature over the final bytes and require successful verification before launch, as
 described in <<authenticating,authenticating a deployment artifact>>.
 
