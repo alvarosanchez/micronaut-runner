@@ -155,6 +155,13 @@ refused, and every name is checked to resolve inside the destination before anyt
 timestamps are fixed, so extracting one archive twice produces the same tree and an AOT training run
 matches the production copy.</p>
 
+<p>The source-containment check resolves the archive's real path and a destination that does not yet
+exist through its nearest existing ancestor, so symbolic-link and case aliases cannot hide the source.
+The check runs again immediately before publication. The standard <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a> API cannot make checking
+and replacement one indivisible operation, so a hostile process that can replace path components
+concurrently can still race it; source and destination directories must be writable only by trusted
+participants.</p>
+
 <p>This class is loaded only when the mode selects it, so it is written in ordinary Java: the rules that
 keep <code>io.micronaut.runner</code> free of lambdas, streams and <code>String.format</code> do not apply to
 <code>io.micronaut.runner.tools</code>.</p></div>
