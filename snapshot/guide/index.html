@@ -858,9 +858,9 @@ limited to deterministic URL-shape coverage rather than opening a real UNC archi
 <dd>
 <p><code>JarFile.isMultiRelease()</code> and <code>JarFile.getVersion()</code> are <code>final</code> in the JDK
 and report the archive passed to the constructor, which is the outer one. A <code>JarFile</code> obtained for a
-nested dependency therefore reports the outer archive&#8217;s state from those two methods. Entry <em>lookup</em> still
-applies the nested JAR&#8217;s own multi-release policy, so resolution is correct; only these two reporting
-methods cannot be corrected.</p>
+nested dependency therefore reports the outer archive&#8217;s state from those two methods. Entry <em>lookup</em> and
+<code>versionedStream()</code> still apply the nested JAR&#8217;s own multi-release policy, so both resolution and effective
+enumeration are correct; only these two reporting methods cannot be corrected.</p>
 </dd>
 <dt class="hdlist1">Classes in <code>io.micronaut.runner</code></dt>
 <dd>
