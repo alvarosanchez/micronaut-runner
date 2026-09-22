@@ -225,6 +225,9 @@ public final class RunnerJarSpec {
     /**
      * The {@code Add-Opens} manifest attribute values.
      *
+     * <p>Each value uses the JAR manifest grammar {@code module/package}; unlike the corresponding Java
+     * command-line option, it has no {@code =ALL-UNNAMED} suffix.</p>
+     *
      * @return the module/package pairs to open, or an empty list
      */
     public List<String> addOpens() {
@@ -233,6 +236,9 @@ public final class RunnerJarSpec {
 
     /**
      * The {@code Add-Exports} manifest attribute values.
+     *
+     * <p>Each value uses the JAR manifest grammar {@code module/package}; unlike the corresponding Java
+     * command-line option, it has no {@code =ALL-UNNAMED} suffix.</p>
      *
      * @return the module/package pairs to export, or an empty list
      */
@@ -486,25 +492,56 @@ public final class RunnerJarSpec {
         /**
          * Sets the {@code Add-Opens} values.
          *
-         * @param value the module/package pairs
+         * <p>Each entry must use JAR manifest syntax, {@code module/package}. Do not append the
+         * command-line-only {@code =ALL-UNNAMED} target.</p>
+         *
+         * @param value the module/package pairs, one pair per list entry
          * @return this builder
          * @throws NullPointerException if the list or an element is {@code null}
+         * @throws IllegalArgumentException if an entry is not a single, whitespace-free
+         *                                  {@code module/package} pair
          */
         public Builder addOpens(List<String> value) {
-            this.addOpens = copyOf(value, "addOpens");
+            this.addOpens = copyModulePackagePairs(value, "addOpens", "--add-opens");
             return this;
         }
 
         /**
          * Sets the {@code Add-Exports} values.
          *
-         * @param value the module/package pairs
+         * <p>Each entry must use JAR manifest syntax, {@code module/package}. Do not append the
+         * command-line-only {@code =ALL-UNNAMED} target.</p>
+         *
+         * @param value the module/package pairs, one pair per list entry
          * @return this builder
          * @throws NullPointerException if the list or an element is {@code null}
+         * @throws IllegalArgumentException if an entry is not a single, whitespace-free
+         *                                  {@code module/package} pair
          */
         public Builder addExports(List<String> value) {
-            this.addExports = copyOf(value, "addExports");
+            this.addExports = copyModulePackagePairs(value, "addExports", "--add-exports");
             return this;
+        }
+
+        private static List<String> copyModulePackagePairs(List<String> value, String what,
+                String commandLineOption) {
+            List<String> copy = copyOf(value, what);
+            for (String entry : copy) {
+                int equals = entry.indexOf('=');
+                if (equals >= 0) {
+                    String pair = entry.substring(0, equals);
+                    throw new IllegalArgumentException(what + " entry '" + entry
+                            + "' uses command-line syntax. Use '" + pair + "' in the JAR manifest; '"
+                            + commandLineOption + " " + entry + "' is the command-line form.");
+                }
+                int slash = entry.indexOf('/');
+                if (slash <= 0 || slash == entry.length() - 1 || slash != entry.lastIndexOf('/')
+                        || entry.chars().anyMatch(Character::isWhitespace)) {
+                    throw new IllegalArgumentException(what + " entry '" + entry
+                            + "' must be one whitespace-free module/package pair in JAR manifest syntax");
+                }
+            }
+            return copy;
         }
 
         /**

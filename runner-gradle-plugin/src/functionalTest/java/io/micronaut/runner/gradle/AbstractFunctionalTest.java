@@ -360,10 +360,13 @@ abstract class AbstractFunctionalTest {
         command.add("-jar");
         command.add(archive.toAbsolutePath().toString());
         command.addAll(List.of(arguments));
-        Process process = new ProcessBuilder(command)
+        ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(archive.toAbsolutePath().getParent().toFile())
-                .redirectErrorStream(true)
-                .start();
+                .redirectErrorStream(true);
+        for (String variable : List.of("JDK_JAVA_OPTIONS", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS")) {
+            builder.environment().remove(variable);
+        }
+        Process process = builder.start();
         OutputCapture capture = new OutputCapture(process.getInputStream());
         Thread drain = new Thread(capture, "forked-application-output-" + process.pid());
         drain.setDaemon(true);
