@@ -195,8 +195,10 @@ class HandlerTest {
         assertEquals(connection.getEntryName(), entry.getName());
         assertTrue(entry.isDirectory());
         assertEquals(0, entry.getSize());
-        assertNull(connection.getJarFile().getEntry(connection.getEntryName()),
-                "the outer archive really does not carry this entry, which is the whole point");
+        try (JarFile jar = connection.getJarFile()) {
+            assertNull(jar.getEntry(connection.getEntryName()),
+                    "the outer archive really does not carry this entry, which is the whole point");
+        }
         try (InputStream in = connection.getInputStream()) {
             assertEquals(0, in.readAllBytes().length);
         }
