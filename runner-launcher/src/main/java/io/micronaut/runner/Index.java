@@ -1118,8 +1118,14 @@ public final class Index {
 
     private int section(int headerOffset, long count, long elementSize, String what) {
         long offset = u64(headerOffset);
-        long total = count * elementSize;
-        if (offset < 0 || total < 0 || offset > length || offset + total > length) {
+        long total;
+        try {
+            total = Math.multiplyExact(count, elementSize);
+        } catch (ArithmeticException e) {
+            throw stale("the " + what + " at offset " + offset + " with " + count
+                    + " elements does not fit in an index of " + length + " bytes");
+        }
+        if (!rangeFits(offset, total, length)) {
             throw stale("the " + what + " at offset " + offset + " with " + count
                     + " elements does not fit in an index of " + length + " bytes");
         }
@@ -1134,23 +1140,27 @@ public final class Index {
             int offset = jarOffset(i);
             long firstEntry = u32(offset + IndexFormat.J_FIRST_ENTRY);
             long count = u32(offset + IndexFormat.J_ENTRY_COUNT);
-            if (firstEntry + count > entryCount) {
-                throw stale("jar " + i + " claims entries " + firstEntry + " to " + (firstEntry + count)
+            if (!rangeFits(firstEntry, count, entryCount)) {
+                throw stale("jar " + i + " claims " + count + " entries starting at " + firstEntry
                         + " but the index holds " + entryCount);
             }
             long firstPackage = u32(offset + IndexFormat.J_FIRST_PACKAGE);
             long packages = u32(offset + IndexFormat.J_PACKAGE_COUNT);
-            if (packages > 0 && firstPackage + packages > packageCount) {
-                throw stale("jar " + i + " claims packages " + firstPackage + " to "
-                        + (firstPackage + packages) + " but the index holds " + packageCount);
+            if (packages > 0 && !rangeFits(firstPackage, packages, packageCount)) {
+                throw stale("jar " + i + " claims " + packages + " packages starting at "
+                        + firstPackage + " but the index holds " + packageCount);
             }
             long dataOffset = u64(offset + IndexFormat.J_DATA_OFFSET);
             long dataLength = u64(offset + IndexFormat.J_DATA_LENGTH);
-            if (dataOffset < 0 || dataLength < 0 || dataOffset + dataLength > outerFileLength) {
-                throw stale("jar " + i + " spans " + dataOffset + " to " + (dataOffset + dataLength)
+            if (!rangeFits(dataOffset, dataLength, outerFileLength)) {
+                throw stale("jar " + i + " spans " + dataLength + " bytes at offset " + dataOffset
                         + " but the archive is " + outerFileLength + " bytes");
             }
         }
+    }
+
+    private static boolean rangeFits(long offset, long count, long limit) {
+        return offset >= 0 && count >= 0 && offset <= limit && count <= limit - offset;
     }
 
     private void checkStringRef(int ref, String what) {

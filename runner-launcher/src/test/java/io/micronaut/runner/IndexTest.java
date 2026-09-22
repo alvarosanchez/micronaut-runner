@@ -429,6 +429,62 @@ class IndexTest {
         assertStale(patchInt(valid(), IndexFormat.H_ENTRY_COUNT, 1 << 20));
     }
 
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void rejectsOverflowingStringTableLengthDuringOpen(boolean mapped) throws IOException {
+        byte[] bytes = validWithoutHeaderStrings();
+        patchLong(bytes, IndexFormat.H_STRING_TABLE_LENGTH, Long.MAX_VALUE);
+
+        assertStale(bytes, mapped);
+    }
+
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void rejectsOverflowingJarSpanDuringOpen(boolean mapped) throws IOException {
+        byte[] bytes = validWithoutHeaderStrings();
+        int jarTable = (int) ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+                .getLong(IndexFormat.H_JAR_TABLE_OFFSET);
+        patchLong(bytes, jarTable + IndexFormat.J_DATA_OFFSET, Long.MAX_VALUE - 16);
+        patchLong(bytes, jarTable + IndexFormat.J_DATA_LENGTH, 64);
+
+        assertStale(bytes, mapped);
+    }
+
+    @Test
+    void validatesSectionArithmeticBoundaries() throws IOException {
+        byte[] template = validWithoutHeaderStrings();
+        long limit = template.length;
+        long[][] validRanges = {
+            {limit, 0},
+            {limit - 1, 1}
+        };
+        for (long[] range : validRanges) {
+            byte[] bytes = template.clone();
+            patchLong(bytes, IndexFormat.H_STRING_TABLE_OFFSET, range[0]);
+            patchLong(bytes, IndexFormat.H_STRING_TABLE_LENGTH, range[1]);
+            assertEquals(1, openBytes(bytes, true).jarCount());
+        }
+
+        long stringTable = ByteBuffer.wrap(template).order(ByteOrder.LITTLE_ENDIAN)
+                .getLong(IndexFormat.H_STRING_TABLE_OFFSET);
+        long[][] invalidRanges = {
+            {-1, 0},
+            {stringTable, -1},
+            {limit + 1, 0},
+            {limit, 1},
+            {stringTable, Long.MAX_VALUE},
+            {Long.MAX_VALUE - 16, 64}
+        };
+        for (long[] range : invalidRanges) {
+            byte[] bytes = template.clone();
+            patchLong(bytes, IndexFormat.H_STRING_TABLE_OFFSET, range[0]);
+            patchLong(bytes, IndexFormat.H_STRING_TABLE_LENGTH, range[1]);
+            assertStale(bytes);
+        }
+
+        assertStale(patchInt(template.clone(), IndexFormat.H_ENTRY_COUNT, -1));
+    }
+
     @Test
     void rejectsAJarThatClaimsEntriesTheIndexDoesNotHave() {
         byte[] bytes = valid();
@@ -553,9 +609,19 @@ class IndexTest {
         return selfContained(builder);
     }
 
+    private byte[] validWithoutHeaderStrings() {
+        TestIndexBuilder builder = new TestIndexBuilder();
+        builder.addJar(IndexFormat.CLASSES_PREFIX);
+        return selfContained(builder);
+    }
+
     private void assertStale(byte[] bytes) {
+        assertStale(bytes, true);
+    }
+
+    private void assertStale(byte[] bytes, boolean mapped) {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> openBytes(bytes, true));
+                () -> openBytes(bytes, mapped));
         assertTrue(failure.getMessage().startsWith(Index.REBUILD_MESSAGE), failure.getMessage());
     }
 
