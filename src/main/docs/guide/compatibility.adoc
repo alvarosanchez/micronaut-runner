@@ -42,9 +42,9 @@ limited to deterministic URL-shape coverage rather than opening a real UNC archi
 
 Nested `JarFile` reporting:: `JarFile.isMultiRelease()` and `JarFile.getVersion()` are `final` in the JDK
 and report the archive passed to the constructor, which is the outer one. A `JarFile` obtained for a
-nested dependency therefore reports the outer archive's state from those two methods. Entry _lookup_ still
-applies the nested JAR's own multi-release policy, so resolution is correct; only these two reporting
-methods cannot be corrected.
+nested dependency therefore reports the outer archive's state from those two methods. Entry _lookup_ and
+`versionedStream()` still apply the nested JAR's own multi-release policy, so both resolution and effective
+enumeration are correct; only these two reporting methods cannot be corrected.
 
 Classes in `io.micronaut.runner`:: The launcher's own classes are loaded from the launcher, so an
 application or dependency class whose binary name is one of theirs - `io.micronaut.runner.Index`, say -

@@ -19,11 +19,13 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
@@ -66,6 +68,13 @@ class NestedJarFileTest {
     private static final byte[] DEFLATED_LAST = bytes("deflated last! ".repeat(20));
     private static final byte[] VERSIONED_FIRST = bytes("versioned first");
     private static final byte[] VERSIONED_LAST = bytes("versioned last!");
+    private static final byte[] BASE_LAYERED_FIRST = bytes("base layered first");
+    private static final byte[] BASE_LAYERED_LAST = bytes("base layered last!");
+    private static final byte[] VERSIONED_LAYERED_FIRST = bytes("versioned layered first");
+    private static final byte[] VERSIONED_LAYERED_LAST = bytes("versioned layered last!");
+    private static final byte[] FUTURE = bytes("future");
+    private static final byte[] HIDDEN_METADATA = bytes("hidden metadata");
+    private static final byte[] MALFORMED_VERSION = bytes("malformed version");
     private static final byte[] MANIFEST = bytes("Manifest-Version: 1.0\r\n"
             + "Implementation-Title: Dependency\r\n"
             + "Implementation-Version: 1.0\r\n"
@@ -79,6 +88,7 @@ class NestedJarFileTest {
     Path temporary;
 
     private File archive;
+    private File dependencyFile;
     private ArchiveSource source;
     private Index index;
     private NestedJarFile jar;
@@ -86,7 +96,7 @@ class NestedJarFileTest {
     @BeforeEach
     void openArchive() throws IOException {
         TestArchiveBuilder dependency = new TestArchiveBuilder();
-        long[] inner = new long[16];
+        long[] inner = new long[25];
         int[] duplicateCompressed = new int[2];
         inner[0] = dependency.stored("META-INF/MANIFEST.MF", MANIFEST);
         inner[1] = dependency.stored("a/", DIRECTORY);
@@ -106,7 +116,18 @@ class NestedJarFileTest {
         inner[13] = dependency.stored("duplicate-directory/", DIRECTORY);
         inner[14] = dependency.stored("META-INF/versions/21/duplicate-versioned.txt", VERSIONED_FIRST);
         inner[15] = dependency.stored("META-INF/versions/21/duplicate-versioned.txt", VERSIONED_LAST);
+        inner[16] = dependency.stored("base-versioned.txt", BASE_LAYERED_FIRST);
+        inner[17] = dependency.stored("base-versioned.txt", BASE_LAYERED_LAST);
+        inner[18] = dependency.stored("META-INF/versions/21/base-versioned.txt", VERSIONED_LAYERED_FIRST);
+        inner[19] = dependency.stored("META-INF/versions/21/base-versioned.txt", VERSIONED_LAYERED_LAST);
+        inner[20] = dependency.stored("META-INF/versions/99/future-only.txt", FUTURE);
+        inner[21] = dependency.stored("META-INF/versions/21/version-only-directory/", DIRECTORY);
+        inner[22] = dependency.stored("META-INF/versions/21/META-INF/hidden.txt", HIDDEN_METADATA);
+        inner[23] = dependency.stored("META-INF/versions/bad/malformed.txt", MALFORMED_VERSION);
+        inner[24] = dependency.stored("META-INF/versions/21/", DIRECTORY);
         byte[] dependencyBytes = dependency.build();
+        dependencyFile = temporary.resolve("dep.jar").toFile();
+        Files.write(dependencyFile.toPath(), dependencyBytes);
         int compressed = dependency.storedSize(TEXT_NAME);
         int corruptCompressed = dependency.storedSize("corrupt-deflated.txt");
 
@@ -131,6 +152,9 @@ class NestedJarFileTest {
     @AfterEach
     void closeArchive() {
         System.clearProperty(RunnerClassLoader.VERIFY_PROPERTY);
+        System.clearProperty(ArchiveSource.MMAP_PROPERTY);
+        System.clearProperty("jdk.util.jar.enableMultiRelease");
+        System.clearProperty("jdk.util.jar.version");
         if (jar != null) {
             jar.closeNested();
             jar = null;
@@ -162,7 +186,12 @@ class NestedJarFileTest {
                 "corrupt-empty.txt", "duplicate-stored.txt", "duplicate-stored.txt",
                 "duplicate-deflated.txt", "duplicate-deflated.txt", "duplicate-directory/",
                 "duplicate-directory/", "META-INF/versions/21/duplicate-versioned.txt",
-                "META-INF/versions/21/duplicate-versioned.txt"), names);
+                "META-INF/versions/21/duplicate-versioned.txt", "base-versioned.txt",
+                "base-versioned.txt", "META-INF/versions/21/base-versioned.txt",
+                "META-INF/versions/21/base-versioned.txt", "META-INF/versions/99/future-only.txt",
+                "META-INF/versions/21/version-only-directory/",
+                "META-INF/versions/21/META-INF/hidden.txt",
+                "META-INF/versions/bad/malformed.txt", "META-INF/versions/21/"), names);
         assertEquals(names.size(), jar.size());
         assertEquals(names, jar.stream().map(JarEntry::getName).toList());
         assertTrue(index.jarEntryCount(1) > names.size(),
@@ -190,6 +219,84 @@ class NestedJarFileTest {
     }
 
     @Test
+    void versionedStreamMatchesTheJdkEffectiveView() throws IOException {
+        try (JarFile oracle = new JarFile(dependencyFile, false, JarFile.OPEN_READ, Runtime.version())) {
+            assertEquals(versionedEntries(oracle), versionedEntries(jar));
+        }
+    }
+
+    @Test
+    void versionedStreamMatchesJdkInIsolatedGlobalConfigurations() throws Exception {
+        String testClasses = Path.of(NestedJarFileVersionedStreamOracle.class.getProtectionDomain()
+                .getCodeSource().getLocation().toURI()).toString();
+        String mainClasses = Path.of(NestedJarFile.class.getProtectionDomain()
+                .getCodeSource().getLocation().toURI()).toString();
+        Path java = Path.of(System.getProperty("runner.test.javaHome", System.getProperty("java.home")),
+                "bin", "java");
+        List<List<String>> configurations = List.of(
+                List.of("-Dmicronaut.runner.mmap=true"),
+                List.of("-Dmicronaut.runner.mmap=false"),
+                List.of("-Djdk.util.jar.version=8"),
+                List.of("-Djdk.util.jar.enableMultiRelease=false"));
+        for (List<String> configuration : configurations) {
+            List<String> command = new ArrayList<>();
+            command.add(java.toString());
+            command.addAll(configuration);
+            command.add("-cp");
+            command.add(testClasses + File.pathSeparator + mainClasses);
+            command.add(NestedJarFileVersionedStreamOracle.class.getName());
+            command.add(archive.getAbsolutePath());
+            command.add(dependencyFile.getAbsolutePath());
+            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+            String output;
+            try (InputStream in = process.getInputStream()) {
+                output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            assertEquals(0, process.waitFor(), () -> configuration + "\n" + output);
+            assertTrue(output.contains("OK"), () -> configuration + "\n" + output);
+        }
+    }
+
+    @Test
+    void versionedStreamKeepsThePhysicalViewWhenTheManifestDoesNotEnableMultiRelease() throws IOException {
+        byte[] ordinaryManifest = bytes("Manifest-Version: 1.0\r\nMulti-Release: false\r\n\r\n");
+        TestArchiveBuilder dependency = new TestArchiveBuilder();
+        long[] inner = {
+            dependency.stored("META-INF/MANIFEST.MF", ordinaryManifest),
+            dependency.stored("value.txt", bytes("base")),
+            dependency.stored("META-INF/versions/21/value.txt", bytes("versioned"))
+        };
+        byte[] dependencyBytes = dependency.build();
+        File ordinaryDependency = temporary.resolve("ordinary-dep.jar").toFile();
+        Files.write(ordinaryDependency.toPath(), dependencyBytes);
+
+        TestArchiveBuilder outer = new TestArchiveBuilder();
+        outer.stored("META-INF/MANIFEST.MF", bytes("Manifest-Version: 1.0\r\n\r\n"));
+        byte[] draft = buildOrdinaryIndex(0, inner, 0, 0, 0, ordinaryManifest);
+        outer.reserve(IndexFormat.INDEX_ENTRY_NAME, draft.length);
+        long application = outer.stored(IndexFormat.CLASSES_PREFIX + "app.txt", bytes("application"));
+        long base = outer.stored(DEPENDENCY, dependencyBytes);
+        byte[] real = buildOrdinaryIndex(application, inner, base, dependencyBytes.length,
+                outer.localHeaderOffset(DEPENDENCY), ordinaryManifest);
+        assertEquals(draft.length, real.length);
+        outer.replace(IndexFormat.INDEX_ENTRY_NAME, real);
+        File ordinaryArchive = outer.writeTo(temporary.resolve("ordinary-app.jar").toFile());
+
+        try (ArchiveSource ordinarySource = ArchiveSource.open(ordinaryArchive);
+             JarFile oracle = new JarFile(ordinaryDependency, false, JarFile.OPEN_READ, Runtime.version())) {
+            Index ordinaryIndex = Index.open(ordinarySource);
+            NestedJarFile ordinary = new NestedJarFile(ordinaryArchive, ordinaryIndex, ordinarySource, 1);
+            try {
+                assertFalse(ordinaryIndex.jarMultiRelease(1));
+                assertEquals(versionedEntries(oracle), versionedEntries(ordinary));
+                assertEquals(3, ordinary.versionedStream().count());
+            } finally {
+                ordinary.closeNested();
+            }
+        }
+    }
+
+    @Test
     void readsStoredAndDeflatedEntries() throws IOException {
         assertArrayEquals(MANIFEST, read(jar.getJarEntry("META-INF/MANIFEST.MF")));
         assertArrayEquals(TEXT, read(jar.getJarEntry(TEXT_NAME)));
@@ -212,6 +319,8 @@ class NestedJarFileTest {
         assertArrayEquals(VERSIONED_LAST,
                 read(jar.getJarEntry("META-INF/versions/21/duplicate-versioned.txt")),
                 "direct physical-name lookup has the same precedence");
+        assertArrayEquals(VERSIONED_LAYERED_LAST, read(jar.getJarEntry("base-versioned.txt")),
+                "the last duplicate in the selected MR version wins over base duplicates");
         assertTrue(jar.getEntry("duplicate-directory").isDirectory());
 
         List<byte[]> stored = new ArrayList<>();
@@ -369,7 +478,7 @@ class NestedJarFileTest {
         for (int i = 0; i < 3; i++) {
             assertArrayEquals(VERSIONED_CLASS, read(entry));
         }
-        assertEquals(16, jar.size());
+        assertEquals(25, jar.size());
     }
 
     @Test
@@ -424,6 +533,45 @@ class NestedJarFileTest {
         dependency.addEntry("META-INF/versions/21/duplicate-versioned.txt")
                 .data(base + inner[15], VERSIONED_LAST.length, VERSIONED_LAST.length)
                 .crc32(crc32(VERSIONED_LAST));
+        dependency.addEntry("base-versioned.txt")
+                .data(base + inner[16], BASE_LAYERED_FIRST.length, BASE_LAYERED_FIRST.length)
+                .crc32(crc32(BASE_LAYERED_FIRST));
+        dependency.addEntry("base-versioned.txt")
+                .data(base + inner[17], BASE_LAYERED_LAST.length, BASE_LAYERED_LAST.length)
+                .crc32(crc32(BASE_LAYERED_LAST));
+        dependency.addEntry("META-INF/versions/21/base-versioned.txt")
+                .data(base + inner[18], VERSIONED_LAYERED_FIRST.length, VERSIONED_LAYERED_FIRST.length)
+                .crc32(crc32(VERSIONED_LAYERED_FIRST));
+        dependency.addEntry("META-INF/versions/21/base-versioned.txt")
+                .data(base + inner[19], VERSIONED_LAYERED_LAST.length, VERSIONED_LAYERED_LAST.length)
+                .crc32(crc32(VERSIONED_LAYERED_LAST));
+        dependency.addEntry("META-INF/versions/99/future-only.txt")
+                .data(base + inner[20], FUTURE.length, FUTURE.length).crc32(crc32(FUTURE));
+        dependency.addEntry("META-INF/versions/21/version-only-directory/")
+                .data(base + inner[21], 0, 0).crc32(0);
+        dependency.addEntry("META-INF/versions/21/META-INF/hidden.txt")
+                .data(base + inner[22], HIDDEN_METADATA.length, HIDDEN_METADATA.length)
+                .crc32(crc32(HIDDEN_METADATA));
+        dependency.addEntry("META-INF/versions/bad/malformed.txt")
+                .data(base + inner[23], MALFORMED_VERSION.length, MALFORMED_VERSION.length)
+                .crc32(crc32(MALFORMED_VERSION));
+        dependency.addEntry("META-INF/versions/21/").data(base + inner[24], 0, 0).crc32(0);
+        return builder.build();
+    }
+
+    private byte[] buildOrdinaryIndex(long application, long[] inner, long base, long length, long header,
+                                      byte[] ordinaryManifest) {
+        TestIndexBuilder builder = new TestIndexBuilder();
+        builder.addJar(IndexFormat.CLASSES_PREFIX).addEntry("app.txt").data(application, 11, 11);
+        TestIndexBuilder.Jar dependency = builder.addJar(DEPENDENCY)
+                .location(base, length, header)
+                .manifest(null, null, null, null, null, null);
+        dependency.addEntry("META-INF/MANIFEST.MF")
+                .data(base + inner[0], ordinaryManifest.length, ordinaryManifest.length)
+                .crc32(crc32(ordinaryManifest));
+        dependency.addEntry("value.txt").data(base + inner[1], 4, 4).crc32(crc32(bytes("base")));
+        dependency.addEntry("META-INF/versions/21/value.txt")
+                .data(base + inner[2], 9, 9).crc32(crc32(bytes("versioned")));
         return builder.build();
     }
 
@@ -431,6 +579,17 @@ class NestedJarFileTest {
         try (InputStream in = jar.getInputStream(entry)) {
             return in.readAllBytes();
         }
+    }
+
+    private static List<String> versionedEntries(JarFile jarFile) {
+        return jarFile.versionedStream().map(entry -> {
+            try (InputStream in = jarFile.getInputStream(entry)) {
+                return entry.getName() + "=>" + entry.getRealName() + "="
+                        + new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            } catch (IOException failure) {
+                throw new IllegalStateException(failure);
+            }
+        }).toList();
     }
 
     private static byte[] bytes(String value) {
