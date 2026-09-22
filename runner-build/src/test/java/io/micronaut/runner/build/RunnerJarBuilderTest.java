@@ -693,6 +693,147 @@ class RunnerJarBuilderTest {
     }
 
     @Test
+    void keepsTheFirstMergedServiceContributorEvenWhenItIsEmpty() throws IOException {
+        String name = "META-INF/micronaut/first-wins.txt";
+        byte[] empty = new byte[0];
+        byte[] second = "SECOND".getBytes(StandardCharsets.UTF_8);
+        Path emptyDependency = fixtures.resolve("libs/first-wins-empty.jar");
+        Path secondDependency = fixtures.resolve("libs/first-wins-second.jar");
+        writeJar(emptyDependency, manifest(attributes -> { }), Map.of(name, empty));
+        writeJar(secondDependency, manifest(attributes -> { }), Map.of(name, second));
+
+        for (Compression compression : Compression.values()) {
+            Path output = output();
+            RunnerJarResult result = RunnerJarBuilder.build(spec(output)
+                    .applicationOutput(List.of(applicationClasses))
+                    .dependencies(List.of(
+                            new Dependency(emptyDependency, null),
+                            new Dependency(secondDependency, null)))
+                    .compression(compression)
+                    .build(), BuildLogger.noOp());
+
+            assertMergedContent(output, name, empty);
+            assertEquals(1, warningsFor(result, name).size(),
+                    compression + ": different later content is reported even when the first value is empty");
+
+            Path reversed = output();
+            RunnerJarResult reversedResult = RunnerJarBuilder.build(spec(reversed)
+                    .applicationOutput(List.of(applicationClasses))
+                    .dependencies(List.of(
+                            new Dependency(secondDependency, null),
+                            new Dependency(emptyDependency, null)))
+                    .compression(compression)
+                    .build(), BuildLogger.noOp());
+
+            assertMergedContent(reversed, name, second);
+            assertEquals(1, warningsFor(reversedResult, name).size(),
+                    compression + ": reversing the contributors reverses the selected content");
+
+            Path equal = output();
+            RunnerJarResult equalResult = RunnerJarBuilder.build(spec(equal)
+                    .applicationOutput(List.of(applicationClasses))
+                    .dependencies(List.of(
+                            new Dependency(emptyDependency, null),
+                            new Dependency(emptyDependency, null)))
+                    .compression(compression)
+                    .build(), BuildLogger.noOp());
+
+            assertMergedContent(equal, name, empty);
+            assertTrue(warningsFor(equalResult, name).isEmpty(),
+                    compression + ": equal empty contributors are not a conflict");
+        }
+    }
+
+    @Test
+    void appliesFirstContributorSemanticsWhenTheApplicationContributesMetadata() throws IOException {
+        String name = "META-INF/micronaut/application-first.txt";
+        byte[] empty = new byte[0];
+        byte[] second = "SECOND".getBytes(StandardCharsets.UTF_8);
+        Path dependency = fixtures.resolve("libs/application-first.jar");
+        writeJar(dependency, manifest(attributes -> { }), Map.of(name, second));
+
+        Path emptyApplication = fixtures.resolve("application-first/empty");
+        Files.createDirectories(emptyApplication.resolve("META-INF/micronaut"));
+        Files.write(emptyApplication.resolve(name), empty);
+        Path nonEmptyApplication = fixtures.resolve("application-first/non-empty");
+        Files.createDirectories(nonEmptyApplication.resolve("META-INF/micronaut"));
+        Files.write(nonEmptyApplication.resolve(name), second);
+
+        for (Compression compression : Compression.values()) {
+            Path different = output();
+            RunnerJarResult differentResult = RunnerJarBuilder.build(spec(different)
+                    .applicationOutput(List.of(applicationClasses, emptyApplication))
+                    .dependencies(List.of(new Dependency(dependency, null)))
+                    .compression(compression)
+                    .build(), BuildLogger.noOp());
+            assertMergedContent(different, name, empty);
+            assertEquals(1, warningsFor(differentResult, name).size(),
+                    compression + ": an empty application value reserves the name");
+
+            Path equal = output();
+            RunnerJarResult equalResult = RunnerJarBuilder.build(spec(equal)
+                    .applicationOutput(List.of(applicationClasses, nonEmptyApplication))
+                    .dependencies(List.of(new Dependency(dependency, null)))
+                    .compression(compression)
+                    .build(), BuildLogger.noOp());
+            assertMergedContent(equal, name, second);
+            assertTrue(warningsFor(equalResult, name).isEmpty(),
+                    compression + ": equal application and dependency values are not a conflict");
+        }
+    }
+
+    @Test
+    void preservesMergedServiceSizeBoundariesAcrossSourceFormsAndCompressionModes() throws IOException {
+        String name = "META-INF/micronaut/large.txt";
+        int oneMiB = 1 << 20;
+        for (int size : new int[] {oneMiB - 1, oneMiB, oneMiB + 1}) {
+            byte[] content = new byte[size];
+            for (int i = 0; i < content.length; i++) {
+                content[i] = (byte) (i * 31 + size);
+            }
+            Path directory = fixtures.resolve("large/directory-" + size);
+            Files.createDirectories(directory.resolve("META-INF/micronaut"));
+            Files.write(directory.resolve(name), content);
+
+            Path applicationJar = fixtures.resolve("large/application-" + size + ".jar");
+            Map<String, byte[]> applicationEntries = new LinkedHashMap<>();
+            applicationEntries.put("com/example/Application.class",
+                    Files.readAllBytes(applicationClasses.resolve("com/example/Application.class")));
+            applicationEntries.put(name, content);
+            writeJar(applicationJar, manifest(attributes -> { }), applicationEntries);
+
+            Path dependency = fixtures.resolve("large/dependency-" + size + ".jar");
+            writeJar(dependency, manifest(attributes -> { }), Map.of(name, content));
+
+            for (Compression compression : Compression.values()) {
+                Path fromDirectory = output();
+                RunnerJarBuilder.build(spec(fromDirectory)
+                        .applicationOutput(List.of(applicationClasses, directory))
+                        .dependencies(List.of())
+                        .compression(compression)
+                        .build(), BuildLogger.noOp());
+                assertMergedContent(fromDirectory, name, content);
+
+                Path fromApplicationJar = output();
+                RunnerJarBuilder.build(spec(fromApplicationJar)
+                        .applicationOutput(List.of(applicationJar))
+                        .dependencies(List.of())
+                        .compression(compression)
+                        .build(), BuildLogger.noOp());
+                assertMergedContent(fromApplicationJar, name, content);
+
+                Path fromDependency = output();
+                RunnerJarBuilder.build(spec(fromDependency)
+                        .applicationOutput(List.of(applicationClasses))
+                        .dependencies(List.of(new Dependency(dependency, null)))
+                        .compression(compression)
+                        .build(), BuildLogger.noOp());
+                assertMergedContent(fromDependency, name, content);
+            }
+        }
+    }
+
+    @Test
     void recordsAManifestAttributeThatIsPresentButEmpty() throws IOException {
         // URLClassLoader reports a present but empty attribute as "", not null, on the Package it defines.
         // Code that null-checks an attribute to decide whether the jar declared it has to agree.
@@ -765,6 +906,23 @@ class RunnerJarBuilderTest {
         int record = index.resolve(index.find(name), Index.effectiveMultiReleaseVersion());
         assertNotEquals(IndexFormat.NO_INDEX, record, name + " should resolve");
         return new String(reader.read(record), StandardCharsets.UTF_8);
+    }
+
+    private static List<String> warningsFor(RunnerJarResult result, String name) {
+        return result.warnings().stream().filter(warning -> warning.contains(name)).toList();
+    }
+
+    private static void assertMergedContent(Path output, String name, byte[] expected) throws IOException {
+        try (ZipReader archive = ZipReader.open(output)) {
+            assertArrayEquals(expected, archive.read(archive.entry(name).orElseThrow()),
+                    "the root merged copy preserves the selected contributor");
+        }
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            int record = reader.index().find(name);
+            assertNotEquals(IndexFormat.NO_INDEX, record, name + " should resolve at runtime");
+            assertArrayEquals(expected, reader.read(record),
+                    "the logical runtime lookup returns the merged bytes");
+        }
     }
 
     private IOException assertPreserveRejectedWithoutReplacingOutput(Path dependency, boolean verifyAll)
