@@ -24,6 +24,7 @@ import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
 import java.lang.constant.MethodTypeDesc;
 import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -81,6 +82,8 @@ class RunnerClassLoaderTest {
     private static final int GENERATED_CLASSES = 24;
 
     private static File archive;
+    private static File alphaClasspathJar;
+    private static File betaClasspathJar;
     private static ArchiveSource source;
     private static Index index;
 
@@ -124,6 +127,13 @@ class RunnerClassLoaderTest {
         alpha.add("duplicate.txt", text("alpha-last!"));
         alpha.add("duplicate-dir/", new byte[0]);
         alpha.add("duplicate-dir/", new byte[0]);
+        alpha.add("slashless-collision/", new byte[0]);
+        alpha.add("reverse-collision", text("alpha-file"));
+        alpha.add("same-jar-collision", text("alpha-exact"));
+        alpha.add("same-jar-collision/", new byte[0]);
+        alpha.add("only-directory/", new byte[0]);
+        alpha.add("mr-slashless-collision/", new byte[0]);
+        alpha.add("META-INF/micronaut", text("dependency-file"));
         alpha.add("corrupt-deflated.txt", text("corrupt deflated resource")).corruptCrc();
         alpha.add(ALPHA_SERVICE, text("alpha-copy"));
 
@@ -144,6 +154,11 @@ class RunnerClassLoaderTest {
         beta.add("duplicate.txt", text("beta-base2"));
         beta.add("META-INF/versions/9/duplicate.txt", text("beta-version1"));
         beta.add("META-INF/versions/9/duplicate.txt", text("beta-version2"));
+        beta.add("slashless-collision", text("beta-file"));
+        beta.add("reverse-collision/", new byte[0]);
+        beta.add("only-file", text("beta-only"));
+        beta.add("mr-slashless-collision", text("beta-base"));
+        beta.add("META-INF/versions/9/mr-slashless-collision", text("beta-version"));
 
         fixture.addJar(SEALED).sealed()
                 .add("org/sealed/First.class", classBytes("org.sealed.First", "sealed-first"));
@@ -155,6 +170,18 @@ class RunnerClassLoaderTest {
         sealer.add("org/unsealed/Second.class", classBytes("org.unsealed.Second", "unsealed-second"));
 
         archive = fixture.writeTo(temporary.resolve("runner-classloader-test.jar").toFile());
+        TestArchiveBuilder alphaClasspath = new TestArchiveBuilder();
+        alphaClasspath.stored("slashless-collision/", new byte[0]);
+        alphaClasspath.stored("reverse-collision", text("alpha-file"));
+        alphaClasspath.stored("same-jar-collision", text("alpha-exact"));
+        alphaClasspath.stored("same-jar-collision/", new byte[0]);
+        alphaClasspath.stored("only-directory/", new byte[0]);
+        alphaClasspathJar = alphaClasspath.writeTo(temporary.resolve("classpath-alpha.jar").toFile());
+        TestArchiveBuilder betaClasspath = new TestArchiveBuilder();
+        betaClasspath.stored("slashless-collision", text("beta-file"));
+        betaClasspath.stored("reverse-collision/", new byte[0]);
+        betaClasspath.stored("only-file", text("beta-only"));
+        betaClasspathJar = betaClasspath.writeTo(temporary.resolve("classpath-beta.jar").toFile());
         source = ArchiveSource.open(archive);
         index = Index.open(source);
         index.validateStringReferences();
@@ -312,6 +339,43 @@ class RunnerClassLoaderTest {
         assertEquals(list(loader.findResources("org/example/")), list(loader.findResources("org/example")),
                 "and every jar that has it is still enumerated");
         assertNull(loader.getResource("org/nowhere"), "a directory that does not exist is still absent");
+    }
+
+    @Test
+    void appliesSlashlessDirectoryFallbackWithinEachJarInClasspathOrder() throws Exception {
+        assumeHandlersRegistered();
+        RunnerClassLoader loader = newLoader();
+        try (URLClassLoader oracle = new URLClassLoader(new URL[] {
+                alphaClasspathJar.toURI().toURL(), betaClasspathJar.toURI().toURL()
+        }, ClassLoader.getPlatformClassLoader())) {
+            assertEquals(resourceContents(oracle.getResources("slashless-collision")),
+                    resourceContents(loader.getResources("slashless-collision")),
+                    "an earlier directory precedes a later exact-name file");
+            assertEquals(resourceContents(oracle.getResources("reverse-collision")),
+                    resourceContents(loader.getResources("reverse-collision")),
+                    "a later directory remains visible after an earlier exact-name file");
+            assertEquals(resourceContents(oracle.getResources("same-jar-collision")),
+                    resourceContents(loader.getResources("same-jar-collision")),
+                    "the exact name wins over the fallback within one jar");
+            assertEquals(resourceContents(oracle.getResources("only-directory")),
+                    resourceContents(loader.getResources("only-directory")));
+            assertEquals(resourceContents(oracle.getResources("only-file")),
+                    resourceContents(loader.getResources("only-file")));
+            assertEquals(resourceContents(oracle.getResources("slashless-collision/")),
+                    resourceContents(loader.getResources("slashless-collision/")),
+                    "a slash-suffixed request does not also select exact-name files");
+            assertEquals(string(oracle.getResourceAsStream("slashless-collision")),
+                    string(loader.getResourceAsStream("slashless-collision")),
+                    "direct streams use the same first resource");
+        }
+
+        List<URL> multiRelease = list(loader.getResources("mr-slashless-collision"));
+        assertEquals(2, multiRelease.size());
+        assertTrue(multiRelease.get(0).toString().contains("alpha.jar"), multiRelease.toString());
+        assertEquals("", string(multiRelease.get(0).openStream()));
+        assertTrue(multiRelease.get(1).toString().endsWith("META-INF/versions/9/mr-slashless-collision"),
+                multiRelease.toString());
+        assertEquals("beta-version", string(multiRelease.get(1).openStream()));
     }
 
     @Test
@@ -529,6 +593,18 @@ class RunnerClassLoaderTest {
     }
 
     @Test
+    void treatsTheSlashlessMicronautServiceDirectoryAsMergedApplicationMetadata() throws Exception {
+        assumeHandlersRegistered();
+        RunnerClassLoader loader = newLoader();
+
+        URL directory = loader.getResource(IndexFormat.MICRONAUT_SERVICES_PREFIX);
+        assertEquals(directory, loader.getResource("META-INF/micronaut"));
+        assertEquals(List.of(directory), list(loader.getResources("META-INF/micronaut")),
+                "a dependency exact-name file must not escape the merged-resource policy");
+        assertEquals("", string(loader.getResourceAsStream("META-INF/micronaut")));
+    }
+
+    @Test
     void servesResourcesAsStreamsWithoutBuildingUrls() throws Exception {
         RunnerClassLoader loader = newLoader();
 
@@ -638,6 +714,14 @@ class RunnerClassLoaderTest {
 
     private static List<URL> list(Enumeration<URL> urls) {
         return Collections.list(urls);
+    }
+
+    private static List<String> resourceContents(Enumeration<URL> urls) throws IOException {
+        List<String> contents = new ArrayList<>();
+        for (URL url : list(urls)) {
+            contents.add(string(url.openStream()));
+        }
+        return contents;
     }
 
     private static byte[] text(String value) {

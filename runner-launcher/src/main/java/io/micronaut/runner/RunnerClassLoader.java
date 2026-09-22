@@ -220,36 +220,27 @@ public final class RunnerClassLoader extends ClassLoader {
             return Collections.emptyEnumeration();
         }
         ArrayList<URL> urls = new ArrayList<URL>(2);
-        if (logical.startsWith(IndexFormat.MICRONAUT_SERVICES_PREFIX)) {
+        if (namesMicronautServices(logical)) {
             int merged = resolveResource(logical);
             if (merged != IndexFormat.NO_INDEX) {
                 addUrl(urls, merged);
             }
             return Collections.enumeration(urls);
         }
-        int head = index.find(logical);
-        if (head == IndexFormat.NO_INDEX && !namesDirectory(logical)) {
-            head = index.find(withTrailingSlash(logical));
-        }
-        if (head == IndexFormat.NO_INDEX) {
-            return Collections.emptyEnumeration();
-        }
-        long[] seen = new long[(index.jarCount() + 63) >>> 6];
-        int record = head;
-        int guard = index.entryCount();
-        while (record != IndexFormat.NO_INDEX && guard >= 0) {
-            int jarId = index.entryJarId(record);
-            int word = jarId >>> 6;
-            long bit = 1L << (jarId & 63);
-            if (word < seen.length && (seen[word] & bit) == 0L) {
-                seen[word] |= bit;
-                int chosen = index.resolveInJar(head, multiReleaseVersion, jarId);
-                if (chosen != IndexFormat.NO_INDEX) {
-                    addUrl(urls, chosen);
-                }
+        int exact = index.resolve(index.find(logical), multiReleaseVersion);
+        int directory = namesDirectory(logical) ? IndexFormat.NO_INDEX
+                : index.resolve(index.find(withTrailingSlash(logical)), multiReleaseVersion);
+        int selected = selectResource(exact, directory);
+        while (selected != IndexFormat.NO_INDEX) {
+            int jarId = index.entryJarId(selected);
+            addUrl(urls, selected);
+            if (exact != IndexFormat.NO_INDEX && index.entryJarId(exact) == jarId) {
+                exact = nextJarResource(exact);
             }
-            record = index.next(record);
-            guard--;
+            if (directory != IndexFormat.NO_INDEX && index.entryJarId(directory) == jarId) {
+                directory = nextJarResource(directory);
+            }
+            selected = selectResource(exact, directory);
         }
         return Collections.enumeration(urls);
     }
@@ -702,15 +693,56 @@ public final class RunnerClassLoader extends ClassLoader {
      * @return the record, or {@link IndexFormat#NO_INDEX} when nothing matches
      */
     private int resolveResource(String logical) {
-        int record = resolveExact(logical);
-        if (record == IndexFormat.NO_INDEX && !namesDirectory(logical)) {
-            // ZipFile.getEntry and NestedJarFile.getEntry both retry a name that missed with a trailing
-            // slash, so that a lookup of "some/package" finds the directory entry. A URLClassLoader over
-            // a jar, or over a directory, answers getResource("some/package") the same way. Without this
-            // the loader would disagree with its own JarFile view of the very same archive.
-            record = resolveExact(withTrailingSlash(logical));
+        int exact = resolveExact(logical);
+        if (namesDirectory(logical)) {
+            return exact;
         }
-        return record;
+        // ZipFile.getEntry and NestedJarFile.getEntry both retry a name within that jar with a trailing
+        // slash, so that a lookup of "some/package" finds its directory entry. Compare the first exact and
+        // fallback candidates by jar rather than trying the alternatives globally: an earlier directory
+        // wins over a later exact-name file, while the exact name wins when one jar has both.
+        int directory = resolveExact(withTrailingSlash(logical));
+        return selectResource(exact, directory);
+    }
+
+    /**
+     * Selects between the next exact-name and directory-fallback candidates in classpath order.
+     *
+     * @param exact     the next exact-name record
+     * @param directory the next trailing-slash record
+     * @return the earlier candidate, preferring {@code exact} when both belong to one jar
+     */
+    private int selectResource(int exact, int directory) {
+        if (exact == IndexFormat.NO_INDEX) {
+            return directory;
+        }
+        if (directory == IndexFormat.NO_INDEX) {
+            return exact;
+        }
+        return index.entryJarId(exact) <= index.entryJarId(directory) ? exact : directory;
+    }
+
+    /**
+     * Selects the first applicable record after the jar that supplied {@code selected}.
+     *
+     * <p>Same-name chains are ordered by jar and then by multi-release precedence, so skipping the rest of
+     * one jar and resolving the remaining suffix advances an enumeration in one pass.</p>
+     *
+     * @param selected the record selected for the current jar
+     * @return the selected record of the next contributing jar, or {@link IndexFormat#NO_INDEX}
+     */
+    private int nextJarResource(int selected) {
+        int jarId = index.entryJarId(selected);
+        int record = index.next(selected);
+        int guard = index.entryCount();
+        while (record != IndexFormat.NO_INDEX && index.entryJarId(record) == jarId && guard >= 0) {
+            record = index.next(record);
+            guard--;
+        }
+        if (guard < 0) {
+            return IndexFormat.NO_INDEX;
+        }
+        return index.resolve(record, multiReleaseVersion);
     }
 
     /**
@@ -721,10 +753,23 @@ public final class RunnerClassLoader extends ClassLoader {
      */
     private int resolveExact(String logical) {
         int head = index.find(logical);
-        if (logical.startsWith(IndexFormat.MICRONAUT_SERVICES_PREFIX)) {
+        if (namesMicronautServices(logical)) {
             return index.resolveInJar(head, multiReleaseVersion, IndexFormat.APPLICATION_JAR_ID);
         }
         return index.resolve(head, multiReleaseVersion);
+    }
+
+    /**
+     * Whether a name belongs to the merged Micronaut service tree, including the root directory requested
+     * without its trailing slash.
+     *
+     * @param logical the normalised resource name
+     * @return {@code true} when only the merged application-layer copy may be visible
+     */
+    private static boolean namesMicronautServices(String logical) {
+        String prefix = IndexFormat.MICRONAUT_SERVICES_PREFIX;
+        return logical.startsWith(prefix)
+                || (logical.length() == prefix.length() - 1 && prefix.startsWith(logical));
     }
 
     /**
