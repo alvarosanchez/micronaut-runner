@@ -303,10 +303,9 @@ public final class RunnerJarBuilder {
                 throw new IOException("The dependency " + dependency.path() + " does not exist");
             }
         }
-        Optional<Path> manifestSource = spec.applicationManifestSource();
-        if (manifestSource.isPresent() && !Files.isRegularFile(manifestSource.get())) {
-            throw new IOException("The application manifest source " + manifestSource.get() + " does not exist");
-        }
+        Optional<Path> manifestSource = spec.applicationManifest().isPresent()
+                ? Optional.empty()
+                : spec.applicationManifestSource();
         Path resolvedOutput = resolveExistingAncestor(output);
         for (Path input : spec.applicationOutput()) {
             Path resolvedInput = input.toRealPath();
@@ -327,7 +326,8 @@ public final class RunnerJarBuilder {
         }
         if (manifestSource.isPresent()) {
             Path manifest = manifestSource.get();
-            if (sameFile(output, manifest, resolvedOutput, manifest.toRealPath())) {
+            if (Files.isRegularFile(manifest)
+                    && sameFile(output, manifest, resolvedOutput, manifest.toRealPath())) {
                 throw new IOException("The output " + output + " is also the application manifest source");
             }
         }

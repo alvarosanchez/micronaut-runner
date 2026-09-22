@@ -372,6 +372,20 @@ class RunnerJarBuilderTest {
     }
 
     @Test
+    void keepsAMissingManifestSourceOptional() throws IOException {
+        Path missing = fixtures.resolve("missing-application-manifest.jar");
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(spec(output)
+                .applicationManifest(missing)
+                .build(), BuildLogger.noOp());
+
+        assertTrue(Files.isRegularFile(output));
+        assertTrue(result.warnings().stream().anyMatch(warning -> warning.contains("does not exist")),
+                "the missing optional source is reported: " + result.warnings());
+    }
+
+    @Test
     void rejectsSymbolicLinksInsideApplicationDirectories() throws IOException {
         Path application = fixtures.resolve("application-with-link");
         Path mainClass = application.resolve("com/example/Application.class");
