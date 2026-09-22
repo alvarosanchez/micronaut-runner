@@ -46,72 +46,81 @@ tasks.named('javadoc', Javadoc) {
     exclude '**/maven/help/**'
 }
 
-// A Maven plugin jar embeds META-INF/maven/plugin.xml, which repeats the plugin's own version. The
-// -DUMMY twin publication that the functional tests resolve republishes the very same jar under a
-// different version, and Maven rejects the mismatch with "Invalid plugin descriptor", so no Maven sample
-// could run. Rewrite the version inside the descriptors of the published copy, in the throwaway test
-// repository only: the real publication is untouched, and there the version always matches by construction.
+// A Maven plugin jar embeds META-INF/maven/plugin.xml, which repeats the plugin's own version. Produce
+// the -DUMMY jar before publishing so Gradle creates checksums from the final bytes. The source jar used by
+// the real publication remains untouched.
+def realVersion = providers.gradleProperty('projectVersion')
+def dummyVersion = realVersion.map { it.replace('-SNAPSHOT', '-DUMMY') }
+def patchedArtifactDirectory = layout.buildDirectory.dir('test-repo-artifacts/maven-plugin')
+def patchedArtifact = dummyVersion.flatMap { version ->
+    patchedArtifactDirectory.map { it.file("${project.name}-${version}.jar") }
+}
 def patchTestRepoDescriptor = tasks.register('patchTestRepoDescriptor') {
-    description = 'Rewrites the plugin descriptor version inside the -DUMMY jar published to the test repository'
-    def testRepoDir = layout.buildDirectory.dir('test-repo')
-    def realVersion = providers.gradleProperty('projectVersion')
-    def dummyVersion = realVersion.map { it.replace('-SNAPSHOT', '-DUMMY') }
-    outputs.upToDateWhen { false }
+    description = 'Produces the Maven plugin jar whose embedded descriptors carry the -DUMMY version'
+    def sourceJar = tasks.named('jar', Jar).flatMap { it.archiveFile }
+    inputs.file(sourceJar)
+            .withPropertyName('sourcePluginJar')
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.property('sourceVersion', realVersion)
+    inputs.property('targetVersion', dummyVersion)
+    inputs.property('descriptorGroup', provider { project.group.toString() })
+    inputs.property('descriptorArtifact', provider { project.name })
+    outputs.dir(patchedArtifactDirectory).withPropertyName('patchedPluginDirectory')
+    outputs.cacheIf('descriptor patch has complete declared inputs and outputs') { true }
     doLast {
         def from = realVersion.get()
         def to = dummyVersion.get()
         def descriptors = ['META-INF/maven/plugin.xml',
                            "META-INF/maven/${project.group}/${project.name}/plugin-help.xml".toString()] as Set
-        testRepoDir.get().asFile.eachFileRecurse { file ->
-            if (!file.name.endsWith("-${to}.jar")) {
-                return
-            }
-            def patched = new File(file.parentFile, file.name + '.patched')
-            def rewritten = []
-            new java.util.zip.ZipInputStream(file.newInputStream()).withCloseable { input ->
-                new java.util.zip.ZipOutputStream(patched.newOutputStream()).withCloseable { output ->
-                    def entry
-                    while ((entry = input.nextEntry) != null) {
-                        byte[] bytes = input.readAllBytes()
-                        if (descriptors.contains(entry.name)) {
-                            def text = new String(bytes, 'UTF-8')
-                            if (text.contains("<version>${from}</version>")) {
-                                bytes = text.replace("<version>${from}</version>", "<version>${to}</version>")
-                                        .getBytes('UTF-8')
-                                rewritten << entry.name
-                            }
+        def outputFile = patchedArtifact.get().asFile
+        def temporary = new File(outputFile.parentFile, outputFile.name + '.tmp')
+        delete patchedArtifactDirectory
+        outputFile.parentFile.mkdirs()
+        def rewritten = [] as Set
+        new java.util.zip.ZipInputStream(sourceJar.get().asFile.newInputStream()).withCloseable { input ->
+            new java.util.zip.ZipOutputStream(temporary.newOutputStream()).withCloseable { output ->
+                def entry
+                while ((entry = input.nextEntry) != null) {
+                    byte[] bytes = input.readAllBytes()
+                    if (descriptors.contains(entry.name)) {
+                        def text = new String(bytes, 'UTF-8')
+                        if (text.contains("<version>${from}</version>")) {
+                            bytes = text.replace("<version>${from}</version>", "<version>${to}</version>")
+                                    .getBytes('UTF-8')
+                            rewritten << entry.name
                         }
-                        // Always STORED-or-DEFLATED as a fresh entry: sizes change when the version does.
-                        def copy = new java.util.zip.ZipEntry(entry.name)
-                        copy.time = entry.time
-                        output.putNextEntry(copy)
-                        output.write(bytes)
-                        output.closeEntry()
                     }
+                    // Always STORED-or-DEFLATED as a fresh entry: sizes change when the version does.
+                    def copy = new java.util.zip.ZipEntry(entry.name)
+                    copy.time = entry.time
+                    output.putNextEntry(copy)
+                    output.write(bytes)
+                    output.closeEntry()
                 }
-            }
-            if (rewritten.isEmpty()) {
-                patched.delete()
-            } else {
-                assert patched.renameTo(file) || (file.delete() && patched.renameTo(file))
-                // Publication wrote these before the descriptor rewrite; expose digests of the final bytes.
-                ['MD5': 'md5', 'SHA-1': 'sha1', 'SHA-256': 'sha256', 'SHA-512': 'sha512'].each {
-                    algorithm, extension ->
-                    def digest = java.security.MessageDigest.getInstance(algorithm)
-                    file.eachByte(8192) { byte[] buffer, int length -> digest.update(buffer, 0, length) }
-                    new File(file.parentFile, "${file.name}.${extension}")
-                            .setText(digest.digest().encodeHex().toString(), 'US-ASCII')
-                }
-                logger.info("Rewrote ${rewritten} to version ${to} in ${file.name}")
             }
         }
+        if (rewritten != descriptors) {
+            temporary.delete()
+            throw new GradleException("Expected to rewrite ${descriptors}, rewrote ${rewritten}")
+        }
+        java.nio.file.Files.move(temporary.toPath(), outputFile.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        logger.info("Rewrote ${rewritten} to version ${to} in ${outputFile.name}")
     }
 }
 
-patchTestRepoDescriptor.configure {
-    dependsOn tasks.named('publishToTestRepo')
-}
-
-tasks.named('finalizeTestRepo') {
-    dependsOn patchTestRepoDescriptor
+publishing.publications.withType(MavenPublication).configureEach { publication ->
+    if (publication.name == 'localMaven') {
+        project.afterEvaluate {
+            def sourceArtifact = publication.artifacts.find {
+                it.extension == 'jar' && !it.classifier
+            }
+            if (sourceArtifact != null) {
+                publication.artifacts.remove(sourceArtifact)
+            }
+            publication.artifact(patchedArtifact) {
+                builtBy patchTestRepoDescriptor
+            }
+        }
+    }
 }

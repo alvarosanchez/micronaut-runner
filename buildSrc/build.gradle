@@ -8,10 +8,26 @@ repositories {
 }
 
 dependencies {
-    // The io.micronaut.build.internal.* plugins are put on this classpath by
-    // io.micronaut.build.shared.settings (same as micronaut-cache/buildSrc), which also generates
-    // buildSrc/gradle.properties with the micronaut-build-version. Only third-party plugins are declared here.
+    // The shared settings plugin puts the io.micronaut.build.internal.* plugins on buildSrc's compile
+    // classpath and generates buildSrc/gradle.properties with the micronaut-build-version. Declare that
+    // artifact explicitly as well so TestKit fixtures can apply convention plugins that compose them.
+    implementation "io.micronaut.build.internal:micronaut-gradle-plugins:${property('micronaut-build-version')}"
     implementation libs.plugin.gradle.publish
     implementation libs.plugin.maven.plugin.development
     implementation libs.plugin.jmh
+
+    testImplementation gradleTestKit()
+    testImplementation platform(libs.junit.bom)
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly libs.junit.platform.launcher
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+}
+
+// buildSrc is built through its jar task, not its check lifecycle, when the main build starts.
+// Keep build-logic regressions in every normal build rather than leaving them opt-in.
+tasks.named('jar') {
+    dependsOn tasks.named('test')
 }
