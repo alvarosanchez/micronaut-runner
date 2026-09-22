@@ -152,6 +152,16 @@
                 <groupId>io.micronaut.runner</groupId>
                 <artifactId>micronaut-runner-maven-plugin</artifactId>
                 <version>${runner.version}</version>
+                <configuration>
+                    <addExports>
+                        <addExport>java.base/sun.nio.ch</addExport>
+                        <addExport>java.base/jdk.internal.misc</addExport>
+                    </addExports>
+                    <addOpens>
+                        <addOpen>java.base/java.lang</addOpen>
+                        <addOpen>java.base/java.util</addOpen>
+                    </addOpens>
+                </configuration>
                 <executions>
                     <execution>
                         <id>package-runner-jar</id>

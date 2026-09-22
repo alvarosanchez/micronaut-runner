@@ -42,7 +42,7 @@ micronautRunnerJar {
 
     // Written into the manifest, so users need not pass the matching command line flags.
     addOpens.add('java.base/java.lang')
-    addExports.add('java.base/sun.nio.ch=ALL-UNNAMED')
+    addExports.add('java.base/sun.nio.ch')
     enableNativeAccess = true
 
     manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
@@ -58,6 +58,13 @@ deterministically ordered map, such as `LinkedHashMap`, when builds in separate 
 bytes. Code that wants logical map equality to be the reproducibility input can instead call
 `canonicalManifestAttributes`; it sorts names lexicographically without using the default locale and rejects
 two names that differ only by case, because manifest attribute names are case insensitive.
+
+`addExports` and `addOpens` use executable-JAR manifest syntax in both plugins and in
+`RunnerJarSpec.Builder`: each list entry is exactly one `module/package` pair. The packager joins multiple
+entries with spaces in `Add-Exports` or `Add-Opens`. Do not append `=ALL-UNNAMED`; that target is implicit in
+the manifest. The suffix belongs only to the equivalent Java command-line options, for example
+`--add-exports java.base/sun.nio.ch=ALL-UNNAMED`. Invalid entries fail packaging rather than being written
+into a manifest the JDK would ignore.
 
 == Maven
 
@@ -90,6 +97,20 @@ JAR produced by `maven-jar-plugin` is kept alongside it as `original-my-app-0.1.
 attach it as an additional artifact instead and leave the main one untouched.
 
 The main class is taken from the `exec.mainClass` property, which the Micronaut parent POM already sets.
+
+The Maven list syntax follows the same manifest grammar:
+
+[source,xml]
+----
+<configuration>
+    <addExports>
+        <addExport>java.base/sun.nio.ch</addExport>
+    </addExports>
+    <addOpens>
+        <addOpen>java.base/java.lang</addOpen>
+    </addOpens>
+</configuration>
+----
 
 == What to check first
 

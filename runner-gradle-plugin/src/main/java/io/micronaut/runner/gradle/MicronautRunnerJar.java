@@ -177,7 +177,9 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract Property<Boolean> getEntryStub();
 
     /**
-     * Packages to open, written into the manifest as {@code Add-Opens} so users need not pass the flag.
+     * Module/package pairs to open, written into the manifest as {@code Add-Opens} so users need not pass
+     * the flag. Each entry uses JAR manifest syntax, for example {@code java.base/java.lang}, without the
+     * command-line-only {@code =ALL-UNNAMED} suffix.
      *
      * @return the packages to open
      */
@@ -185,7 +187,9 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract ListProperty<String> getAddOpens();
 
     /**
-     * Packages to export, written into the manifest as {@code Add-Exports}.
+     * Module/package pairs to export, written into the manifest as {@code Add-Exports}. Each entry uses JAR
+     * manifest syntax, for example {@code java.base/sun.nio.ch}, without the command-line-only
+     * {@code =ALL-UNNAMED} suffix.
      *
      * @return the packages to export
      */

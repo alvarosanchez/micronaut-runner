@@ -41,6 +41,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
 
+    private static final String MODULE_ACCESS_SOURCE = """
+            package com.example;
+
+            import java.nio.ByteBuffer;
+
+            public final class App {
+                public static void main(String[] args) {
+                    long address = ((sun.nio.ch.DirectBuffer) ByteBuffer.allocateDirect(1)).address();
+                    if (address == 0) {
+                        throw new AssertionError("direct buffer has no address");
+                    }
+                    System.out.println("MODULE ACCESS OK");
+                    System.out.println("RESULT OK");
+                }
+            }
+            """;
+
     /**
      * The plugin registers the task, describes it, and puts it in the build group — the three things a user
      * sees before ever running it.
@@ -174,5 +191,42 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
                 () -> "the failure does not name the bad value:\n" + output);
         assertTrue(output.contains("Supported values are STORED and PRESERVE"),
                 () -> "the failure does not name the alternatives:\n" + output);
+    }
+
+    @Test
+    void configuredManifestExportGrantsAccessInAFreshJvm(@TempDir Path directory)
+            throws IOException, InterruptedException {
+        writeFixture(directory, """
+                tasks.withType(JavaCompile).configureEach {
+                    options.compilerArgs.addAll(['--add-exports', 'java.base/sun.nio.ch=ALL-UNNAMED'])
+                }
+                micronautRunnerJar {
+                    addExports.add('java.base/sun.nio.ch')
+                }
+                """, "");
+        write(directory.resolve("src/main/java/com/example/App.java"), MODULE_ACCESS_SOURCE);
+
+        BuildResult result = build(directory, "micronautRunnerJar");
+
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, RUNNER_JAR_TASK));
+        Path archive = directory.resolve(DEFAULT_ARCHIVE);
+        assertEquals("java.base/sun.nio.ch", manifestOf(archive).getValue("Add-Exports"));
+        String output = runJarSuccessfully(archive);
+        assertTrue(output.contains("MODULE ACCESS OK"), output);
+    }
+
+    @Test
+    void commandLineManifestSyntaxFailsPackagingWithACorrection(@TempDir Path directory) throws IOException {
+        writeFixture(directory, """
+                micronautRunnerJar {
+                    addExports.add('java.base/sun.nio.ch=ALL-UNNAMED')
+                }
+                """, "");
+
+        String output = buildAndFail(directory, "micronautRunnerJar").getOutput();
+
+        assertTrue(output.contains("addExports entry 'java.base/sun.nio.ch=ALL-UNNAMED'"), output);
+        assertTrue(output.contains("Use 'java.base/sun.nio.ch' in the JAR manifest"), output);
+        assertTrue(output.contains("--add-exports java.base/sun.nio.ch=ALL-UNNAMED"), output);
     }
 }

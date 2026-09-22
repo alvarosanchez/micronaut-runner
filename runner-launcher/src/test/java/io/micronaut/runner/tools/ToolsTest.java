@@ -162,7 +162,7 @@ class ToolsTest {
             + "Implementation-Title: Demo Application\r\n"
             + "Implementation-Version: 1.2.3\r\n"
             + "Add-Opens: java.base/java.lang\r\n"
-            + "Add-Exports: java.base/jdk.internal.misc=ALL-UNNAMED\r\n"
+            + "Add-Exports: java.base/jdk.internal.misc\r\n"
             + "Enable-Native-Access: ALL-UNNAMED\r\n"
             + "\r\n");
     private static final byte[] APPLICATION_MANIFEST = bytes("Manifest-Version: 1.0\r\n"
@@ -360,7 +360,7 @@ class ToolsTest {
         assertEquals("lib/dep-one.jar lib/dep-two.jar", main.getValue(Attributes.Name.CLASS_PATH));
         // Carried over from the runner jar's manifest.
         assertEquals("java.base/java.lang", main.getValue("Add-Opens"));
-        assertEquals("java.base/jdk.internal.misc=ALL-UNNAMED", main.getValue("Add-Exports"));
+        assertEquals("java.base/jdk.internal.misc", main.getValue("Add-Exports"));
         assertEquals("ALL-UNNAMED", main.getValue("Enable-Native-Access"));
         assertEquals("Demo Application", main.getValue(Attributes.Name.IMPLEMENTATION_TITLE));
         assertEquals("1.2.3", main.getValue(Attributes.Name.IMPLEMENTATION_VERSION));

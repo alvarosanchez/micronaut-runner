@@ -171,6 +171,12 @@ class MavenBasicSampleTest {
                 () -> "the jar plugin's output must be kept as " + original.getFileName() + ":\n" + log);
         assertTrue(isRunnerJar(archive), () -> archive.getFileName() + " is not a runner jar:\n" + log);
         assertFalse(isRunnerJar(original), () -> original.getFileName() + " must be the jar plugin's output:\n" + log);
+        try (JarFile jar = new JarFile(archive.toFile())) {
+            Attributes attributes = jar.getManifest().getMainAttributes();
+            assertEquals("java.base/sun.nio.ch java.base/jdk.internal.misc",
+                    attributes.getValue("Add-Exports"));
+            assertEquals("java.base/java.lang java.base/java.util", attributes.getValue("Add-Opens"));
+        }
 
         ForkedApplication application = ForkedApplication.start(archive, sample, Map.of());
         try {

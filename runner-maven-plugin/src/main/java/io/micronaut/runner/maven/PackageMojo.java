@@ -117,11 +117,17 @@ public class PackageMojo extends AbstractMojo {
     @Parameter
     private Map<String, String> manifestEntries;
 
-    /** Packages to open, written into the manifest as {@code Add-Opens}. */
+    /**
+     * Module/package pairs to open, written into the manifest as {@code Add-Opens}. Entries use JAR manifest
+     * syntax, such as {@code java.base/java.lang}, without {@code =ALL-UNNAMED}.
+     */
     @Parameter
     private List<String> addOpens;
 
-    /** Packages to export, written into the manifest as {@code Add-Exports}. */
+    /**
+     * Module/package pairs to export, written into the manifest as {@code Add-Exports}. Entries use JAR
+     * manifest syntax, such as {@code java.base/sun.nio.ch}, without {@code =ALL-UNNAMED}.
+     */
     @Parameter
     private List<String> addExports;
 

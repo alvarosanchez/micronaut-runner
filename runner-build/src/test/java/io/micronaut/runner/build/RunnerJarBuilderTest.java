@@ -1224,8 +1224,8 @@ class RunnerJarBuilderTest {
         RunnerJarResult result = RunnerJarBuilder.build(
                 spec(output).applicationManifest(application)
                         .manifestAttributes(Map.of("Built-By", "the test"))
-                        .addOpens(List.of("java.base/java.lang=ALL-UNNAMED"))
-                        .addExports(List.of("java.base/jdk.internal.misc=ALL-UNNAMED"))
+                        .addOpens(List.of("java.base/java.lang"))
+                        .addExports(List.of("java.base/jdk.internal.misc"))
                         .enableNativeAccess(true)
                         .build(),
                 BuildLogger.noOp());
@@ -1236,8 +1236,8 @@ class RunnerJarBuilderTest {
             assertEquals("demo", main.getValue(Attributes.Name.IMPLEMENTATION_TITLE));
             assertEquals("3.2.1", main.getValue(Attributes.Name.IMPLEMENTATION_VERSION));
             assertEquals("the test", main.getValue("Built-By"));
-            assertEquals("java.base/java.lang=ALL-UNNAMED", main.getValue("Add-Opens"));
-            assertEquals("java.base/jdk.internal.misc=ALL-UNNAMED", main.getValue("Add-Exports"));
+            assertEquals("java.base/java.lang", main.getValue("Add-Opens"));
+            assertEquals("java.base/jdk.internal.misc", main.getValue("Add-Exports"));
             assertEquals("ALL-UNNAMED", main.getValue("Enable-Native-Access"));
         }
         try (RunnerJarReader reader = RunnerJarReader.open(output)) {

@@ -200,6 +200,41 @@ class PackageMojoTest {
                 () -> "the failure must name what is accepted instead: " + failure.getMessage());
     }
 
+    // -------------------------------------------------- manifest module access
+
+    @Test
+    void writesMultipleExportAndOpenPairsUsingJarManifestSyntax() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        set("addExports", List.of("java.base/sun.nio.ch", "java.base/jdk.internal.misc"));
+        set("addOpens", List.of("java.base/java.lang", "java.base/java.util"));
+
+        mojo.execute();
+
+        Attributes attributes = manifest(buildDirectory.resolve("demo-1.0.jar")).getMainAttributes();
+        assertEquals("java.base/sun.nio.ch java.base/jdk.internal.misc",
+                attributes.getValue("Add-Exports"));
+        assertEquals("java.base/java.lang java.base/java.util", attributes.getValue("Add-Opens"));
+    }
+
+    @Test
+    void rejectsCommandLineSyntaxForExportsAndOpensWithCorrections() {
+        set("addExports", List.of("java.base/sun.nio.ch=ALL-UNNAMED"));
+        IllegalArgumentException badExport = assertThrows(IllegalArgumentException.class, mojo::execute);
+        assertTrue(badExport.getMessage().contains("Use 'java.base/sun.nio.ch' in the JAR manifest"),
+                badExport::getMessage);
+        assertTrue(badExport.getMessage().contains("--add-exports java.base/sun.nio.ch=ALL-UNNAMED"),
+                badExport::getMessage);
+
+        set("addExports", List.of("java.base/sun.nio.ch"));
+        set("addOpens", List.of("java.base/java.lang=ALL-UNNAMED"));
+        IllegalArgumentException badOpen = assertThrows(IllegalArgumentException.class, mojo::execute);
+        assertTrue(badOpen.getMessage().contains("Use 'java.base/java.lang' in the JAR manifest"),
+                badOpen::getMessage);
+        assertTrue(badOpen.getMessage().contains("--add-opens java.base/java.lang=ALL-UNNAMED"),
+                badOpen::getMessage);
+    }
+
     // ---------------------------------------------------- the artifact decision
 
     @Test
