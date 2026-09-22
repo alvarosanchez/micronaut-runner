@@ -33,8 +33,11 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -47,6 +50,7 @@ import java.util.jar.Manifest;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -76,6 +80,13 @@ class MavenBasicSampleTest {
     /** How long the sample is given to start, print and exit. */
     private static final Duration RUN_TIMEOUT = Duration.ofMinutes(2);
 
+    /** Checksum sidecars Gradle publishes for every Maven artifact. */
+    private static final Map<String, String> CHECKSUMS = Map.of(
+            "md5", "MD5",
+            "sha1", "SHA-1",
+            "sha256", "SHA-256",
+            "sha512", "SHA-512");
+
     @TempDir
     Path temporary;
 
@@ -87,25 +98,48 @@ class MavenBasicSampleTest {
     }
 
     /**
-     * The plugin descriptor inside the jar carries its own version, and Maven refuses to load a plugin
-     * whose descriptor disagrees with the artifact it was resolved as. The {@code -DUMMY} twin publication
-     * re-publishes the {@code -SNAPSHOT} jar untouched, so this is the one thing that has to hold before
-     * any Maven sample can run at all - and it is worth its own failure, because the Maven error it
-     * produces otherwise ("Invalid plugin descriptor") names neither the cause nor the fix.
+     * The plugin descriptors inside the jar carry their own version, and Maven refuses to load a plugin
+     * whose descriptors disagree with the artifact it was resolved as. Rewriting those descriptors also
+     * changes the bytes after Gradle has published their checksum sidecars. Check both the module repository
+     * and its aggregated copy, while proving that the source jar for normal publication stayed untouched.
      */
     @Test
-    void theTestPublicationCarriesAPluginDescriptorMavenWillAccept() throws IOException {
-        Path jar = pluginJar();
-        assertTrue(Files.isRegularFile(jar), () -> "the Maven plugin was not published to " + jar);
-        String descriptorVersion = pluginDescriptorVersion(jar);
-        assertNotNull(descriptorVersion, () -> jar + " has no META-INF/maven/plugin.xml");
-        assertEquals(Samples.VERSION, descriptorVersion,
-                () -> "META-INF/maven/plugin.xml inside " + jar.getFileName() + " says " + descriptorVersion
-                        + " but the artifact was published as " + Samples.VERSION + ". Maven refuses such a "
-                        + "plugin with \"Invalid plugin descriptor\", so no Maven sample can run. The "
-                        + "descriptor has to be regenerated for the -DUMMY twin publication (see "
-                        + "buildSrc/src/main/groovy/io.micronaut.build.internal.runner-maven-plugin.gradle "
-                        + "and io.micronaut.build.internal.runner-test-repo.gradle).");
+    void theTestPublicationCarriesDescriptorsAndChecksumsMavenWillAccept() throws Exception {
+        for (Path jar : List.of(modulePluginJar(), pluginJar())) {
+            assertTrue(Files.isRegularFile(jar), () -> "the Maven plugin was not published to " + jar);
+            assertDescriptorVersion(jar, "META-INF/maven/plugin.xml", Samples.VERSION);
+            assertDescriptorVersion(jar,
+                    "META-INF/maven/io.micronaut.runner/micronaut-runner-maven-plugin/plugin-help.xml",
+                    Samples.VERSION);
+            assertChecksumsMatch(jar);
+        }
+
+        Path sourceJar = sourcePluginJar();
+        String sourceVersion = Samples.VERSION.replace("-DUMMY", "-SNAPSHOT");
+        assertDescriptorVersion(sourceJar, "META-INF/maven/plugin.xml", sourceVersion);
+        assertDescriptorVersion(sourceJar,
+                "META-INF/maven/io.micronaut.runner/micronaut-runner-maven-plugin/plugin-help.xml",
+                sourceVersion);
+    }
+
+    @Test
+    void strictMavenAndTheChecksumAssertionRejectStaleSidecars() throws Exception {
+        Samples.assumeTheNetworkIsAvailable();
+        Path repository = temporary.resolve("stale-repository");
+        copyTree(Path.of(URI.create(Samples.REPO)), repository);
+        Path jar = pluginJar(repository);
+        Files.write(jar, new byte[] {0}, StandardOpenOption.APPEND);
+
+        AssertionError mismatch = assertThrows(AssertionError.class, () -> assertChecksumsMatch(jar));
+        assertTrue(mismatch.getMessage().contains("does not describe the staged bytes"), mismatch::getMessage);
+
+        Path sample = copySample(Samples.sample("maven-basic"), temporary.resolve("stale-sample"));
+        StringBuilder log = new StringBuilder();
+        int status = maven(sample, log, repository.toUri().toASCIIString(),
+                temporary.resolve("empty-maven-local"), "package");
+        assertTrue(status != 0, () -> "strict Maven accepted an artifact with stale checksums:\n" + log);
+        assertTrue(log.toString().toLowerCase(Locale.ROOT).contains("checksum"),
+                () -> "Maven failed for a reason other than the stale checksums:\n" + log);
     }
 
     @Test
@@ -208,19 +242,24 @@ class MavenBasicSampleTest {
      */
     private static void assumeMavenCanLoadThePlugin() throws IOException {
         Path jar = pluginJar();
-        Assumptions.assumeTrue(Files.isRegularFile(jar) && Samples.VERSION.equals(pluginDescriptorVersion(jar)),
+        Assumptions.assumeTrue(Files.isRegularFile(jar)
+                        && Samples.VERSION.equals(pluginDescriptorVersion(jar, "META-INF/maven/plugin.xml")),
                 "the published Maven plugin descriptor does not match " + Samples.VERSION
-                        + "; see theTestPublicationCarriesAPluginDescriptorMavenWillAccept");
+                        + "; see theTestPublicationCarriesDescriptorsAndChecksumsMavenWillAccept");
     }
 
     /** Runs Maven against the sample, capturing everything it prints. */
     private static int maven(Path projectDirectory, StringBuilder log, String... goals) throws Exception {
-        Path localRepository = localRepository();
+        return maven(projectDirectory, log, Samples.REPO, localRepository(), goals);
+    }
+
+    private static int maven(Path projectDirectory, StringBuilder log, String repository,
+            Path localRepository, String... goals) throws Exception {
         Files.createDirectories(localRepository);
         Samples.deleteRecursively(localRepository.resolve(RUNNER_GROUP_PATH));
 
         Properties properties = new Properties();
-        properties.setProperty("runner.repo", Samples.REPO);
+        properties.setProperty("runner.repo", repository);
         properties.setProperty("runner.version", Samples.VERSION);
         if (Samples.MICRONAUT_PLATFORM_VERSION != null) {
             properties.setProperty("micronaut.platform.version", Samples.MICRONAUT_PLATFORM_VERSION);
@@ -237,6 +276,7 @@ class MavenBasicSampleTest {
                 .setLocalRepositoryDirectory(localRepository.toFile())
                 .setJavaHome(Samples.javaHome().toFile())
                 .setBatchMode(true)
+                .setGlobalChecksumPolicy(InvocationRequest.CheckSumPolicy.Fail)
                 .setNoTransferProgress(true)
                 .setShowErrors(true)
                 .setInputStream(InputStream.nullInputStream());
@@ -293,17 +333,58 @@ class MavenBasicSampleTest {
     }
 
     private static Path pluginJar() {
-        return Path.of(URI.create(Samples.REPO))
+        return pluginJar(Path.of(URI.create(Samples.REPO)));
+    }
+
+    private static Path modulePluginJar() {
+        Path samples = Path.of(System.getProperty("runner.test.samplesDir"));
+        return pluginJar(samples.getParent().getParent().resolve("runner-maven-plugin/build/test-repo"));
+    }
+
+    private static Path sourcePluginJar() {
+        Path samples = Path.of(System.getProperty("runner.test.samplesDir"));
+        String sourceVersion = Samples.VERSION.replace("-DUMMY", "-SNAPSHOT");
+        return samples.getParent().getParent().resolve("runner-maven-plugin/build/libs")
+                .resolve("micronaut-runner-maven-plugin-" + sourceVersion + ".jar");
+    }
+
+    private static Path pluginJar(Path repository) {
+        return repository
                 .resolve(RUNNER_GROUP_PATH)
                 .resolve("micronaut-runner-maven-plugin")
                 .resolve(Samples.VERSION)
                 .resolve("micronaut-runner-maven-plugin-" + Samples.VERSION + ".jar");
     }
 
-    /** Reads {@code <version>} out of the plugin descriptor, without pulling in an XML parser. */
-    private static String pluginDescriptorVersion(Path jar) throws IOException {
+    private static void assertDescriptorVersion(Path jar, String name, String expectedVersion) throws IOException {
+        assertTrue(Files.isRegularFile(jar), () -> "the Maven plugin was not built at " + jar);
+        String descriptorVersion = pluginDescriptorVersion(jar, name);
+        assertNotNull(descriptorVersion, () -> jar + " has no " + name);
+        assertEquals(expectedVersion, descriptorVersion,
+                () -> name + " inside " + jar.getFileName() + " says " + descriptorVersion
+                        + " but the artifact was published as " + expectedVersion + ". Maven refuses such a "
+                        + "plugin with \"Invalid plugin descriptor\", so no Maven sample can run. The "
+                        + "descriptor has to be regenerated for the -DUMMY twin publication (see "
+                        + "buildSrc/src/main/groovy/io.micronaut.build.internal.runner-maven-plugin.gradle "
+                        + "and io.micronaut.build.internal.runner-test-repo.gradle).");
+    }
+
+    private static void assertChecksumsMatch(Path jar) throws Exception {
+        byte[] bytes = Files.readAllBytes(jar);
+        for (Map.Entry<String, String> checksum : CHECKSUMS.entrySet()) {
+            Path sidecar = jar.resolveSibling(jar.getFileName() + "." + checksum.getKey());
+            assertTrue(Files.isRegularFile(sidecar), () -> "the Maven publication has no " + sidecar);
+            String expected = Files.readString(sidecar, StandardCharsets.US_ASCII).trim();
+            String actual = HexFormat.of().formatHex(MessageDigest.getInstance(checksum.getValue()).digest(bytes));
+            assertEquals(expected, actual,
+                    () -> sidecar + " does not describe the staged bytes of " + jar.getFileName());
+        }
+    }
+
+    /** Reads {@code <version>} out of a plugin descriptor, without pulling in an XML parser. */
+    private static String pluginDescriptorVersion(Path jar, String name) throws IOException {
         try (JarFile file = new JarFile(jar.toFile())) {
-            var entry = file.getEntry("META-INF/maven/plugin.xml");
+            var entry = file.getEntry(name);
             if (entry == null) {
                 return null;
             }
@@ -312,6 +393,19 @@ class MavenBasicSampleTest {
                 int open = descriptor.indexOf("<version>");
                 int close = descriptor.indexOf("</version>", open);
                 return open < 0 || close < 0 ? null : descriptor.substring(open + "<version>".length(), close).trim();
+            }
+        }
+    }
+
+    private static void copyTree(Path source, Path target) throws IOException {
+        try (var files = Files.walk(source)) {
+            for (Path file : files.toList()) {
+                Path destination = target.resolve(source.relativize(file));
+                if (Files.isDirectory(file)) {
+                    Files.createDirectories(destination);
+                } else {
+                    Files.copy(file, destination);
+                }
             }
         }
     }
