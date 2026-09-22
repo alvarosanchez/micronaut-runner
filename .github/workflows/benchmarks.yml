@@ -14,23 +14,38 @@ on:
   schedule:
     - cron: '0 4 * * 1'
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     branches:
       - master
       - '[0-9]+.[0-9]+.x'
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Prefix unrelated labels into a disjoint group so their skipped run cannot cancel a benchmark.
+  # All events that can run the job retain one shared group per ref.
+  group: >-
+    ${{ format('{0}-{1}-{2}', github.workflow, github.ref,
+        github.event.action == 'labeled' &&
+        github.event.label.name != 'relates-to: benchmarks' &&
+        format('ignored-label:{0}', github.event.label.name) || 'benchmark') }}
   cancel-in-progress: true
 jobs:
   benchmark:
-    # Quoted as a whole: the label name contains a colon followed by a space, which YAML would
-    # otherwise read as a nested mapping, making the entire workflow file unparseable.
-    if: "github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'relates-to: benchmarks')"
+    name: Run benchmarks
+    # Only the benchmark label itself may start a labeled-event run. The membership check also
+    # keeps opened, synchronized and reopened pull requests explicitly opted in.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (contains(github.event.pull_request.labels.*.name, 'relates-to: benchmarks') &&
+       (github.event.action != 'labeled' ||
+        github.event.label.name == 'relates-to: benchmarks'))
     runs-on: ubuntu-latest
     steps:
       - name: "📥 Checkout repository"
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: "🔧 Setup JDK 25"
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
@@ -42,7 +57,9 @@ jobs:
         uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
 
       - name: "📈 Run benchmarks"
-        run: ./gradlew :benchmarks:jmh :benchmarks:startupBenchmark -Pbenchmarks.iterations=${{ github.event.inputs.iterations || '20' }} --no-daemon
+        env:
+          BENCHMARK_ITERATIONS: ${{ github.event.inputs.iterations || '20' }}
+        run: ./gradlew :benchmarks:jmh :benchmarks:startupBenchmark "-Pbenchmarks.iterations=$BENCHMARK_ITERATIONS" --no-daemon
 
       - name: "📝 Summarise"
         if: always()
