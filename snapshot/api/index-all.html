@@ -922,10 +922,18 @@ for byte.</div>
 <dd>
 <div class="block">The content type, guessed from the entry name the way the JDK guesses it.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html#getCoordinates()" class="member-name-link">getCoordinates()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar.DependencyInput</a></dt>
+<dd>
+<div class="block">The coordinates written into the runner index.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getCoordinates()" class="member-name-link">getCoordinates()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
 <div class="block">Maven coordinates of the dependencies, keyed by absolute file path, recorded in the index so tooling
 can report what an archive contains.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getDependencyInputs()" class="member-name-link">getDependencyInputs()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
+<dd>
+<div class="block">The ordered, relocatable identity of every dependency used to build the archive.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getEnableNativeAccess()" class="member-name-link">getEnableNativeAccess()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
@@ -944,6 +952,14 @@ name relative to the nested jar rather than the one the super class would have p
 <dd>
 <div class="block">Whether to generate the entry stub that lets the launcher call the application main method through
 an interface rather than by reflection.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html#getFile()" class="member-name-link">getFile()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar.DependencyInput</a></dt>
+<dd>
+<div class="block">The dependency bytes, without their machine-specific path.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html#getFileName()" class="member-name-link">getFileName()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar.DependencyInput</a></dt>
+<dd>
+<div class="block">The file name retained in the runner archive.</div>
 </dd>
 <dt><a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html#getHeaderField(java.lang.String)" class="member-name-link">getHeaderField(String)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html" title="class in io.micronaut.runner.protocol.jar">RunnerJarURLConnection</a></dt>
 <dd>
@@ -1634,6 +1650,10 @@ name, sizes and fills the hash table and builds the string table.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#%3Cinit%3E()" class="member-name-link">MicronautRunnerJar()</a> - Constructor for class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html" class="type-name-link" title="class in io.micronaut.runner.gradle">MicronautRunnerJar.DependencyInput</a> - Class in <a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a></dt>
+<dd>
+<div class="block">One position in the ordered dependency input sequence.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html" class="type-name-link" title="class in io.micronaut.runner.gradle">MicronautRunnerPlugin</a> - Class in <a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a></dt>
 <dd>
 <div class="block">Packages a Micronaut application as a runner jar: one executable archive in which every dependency
