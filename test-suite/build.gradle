@@ -1,5 +1,6 @@
 import groovy.xml.XmlSlurper
 import io.micronaut.runner.buildlogic.IntegrationMode
+import org.gradle.language.base.plugins.LifecycleBasePlugin
 
 plugins {
     id 'io.micronaut.build.internal.runner-testing'
@@ -36,11 +37,10 @@ def requiredScenarios = [
 ]
 def integrationReport = layout.buildDirectory.file('reports/integration-scenarios.txt')
 
-def verifyIntegrationScenarios = tasks.register('verifyIntegrationScenarios') {
-    description = 'Fails unless every integration scenario has the status required by the selected policy'
+def reportIntegrationScenarios = tasks.register('reportIntegrationScenarios') {
+    description = 'Records every required integration scenario outcome for CI evidence'
     group = LifecycleBasePlugin.VERIFICATION_GROUP
-    dependsOn testTask
-    inputs.dir(layout.buildDirectory.dir('test-results/test'))
+    inputs.files(fileTree(layout.buildDirectory.dir('test-results/test')) { include 'TEST-*.xml' })
           .withPathSensitivity(PathSensitivity.RELATIVE)
           .withPropertyName('junitXml')
     inputs.property('integrationMode', integrationMode)
@@ -62,21 +62,49 @@ def verifyIntegrationScenarios = tasks.register('verifyIntegrationScenarios') {
         }
 
         List<String> lines = ["mode=${integrationMode}"]
-        List<String> violations = []
         requiredScenarios.each { scenario ->
             String status = statuses[scenario] ?: 'missing'
             lines.add("${scenario}=${status}".toString())
+        }
+        File report = integrationReport.get().asFile
+        report.parentFile.mkdirs()
+        report.setText(lines.join(System.lineSeparator()) + System.lineSeparator(), 'UTF-8')
+    }
+}
+
+testTask.configure {
+    finalizedBy reportIntegrationScenarios
+}
+reportIntegrationScenarios.configure {
+    mustRunAfter testTask
+}
+
+def verifyIntegrationScenarios = tasks.register('verifyIntegrationScenarios') {
+    description = 'Fails unless every integration scenario has the status required by the selected policy'
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    dependsOn testTask, reportIntegrationScenarios
+    inputs.file(integrationReport)
+    inputs.property('integrationMode', integrationMode)
+    inputs.property('requiredScenarios', requiredScenarios)
+
+    doLast {
+        Map<String, String> statuses = integrationReport.get().asFile.readLines('UTF-8')
+                .findAll { it.contains('=') && !it.startsWith('mode=') }
+                .collectEntries { line ->
+                    int separator = line.lastIndexOf('=')
+                    [(line.substring(0, separator)): line.substring(separator + 1)]
+                }
+        List<String> violations = []
+        requiredScenarios.each { scenario ->
+            String status = statuses[scenario] ?: 'missing'
             String expected = integrationMode == 'required' ? 'passed' : 'skipped'
             if (status != expected) {
                 violations.add("${scenario}: expected ${expected}, was ${status}".toString())
             }
         }
-        File report = integrationReport.get().asFile
-        report.parentFile.mkdirs()
-        report.setText(lines.join(System.lineSeparator()) + System.lineSeparator(), 'UTF-8')
         if (!violations.isEmpty()) {
             throw new GradleException("Integration scenario policy was not satisfied (${integrationMode}):\n  "
-                    + violations.join('\n  ') + "\nEvidence: ${report}")
+                    + violations.join('\n  ') + "\nEvidence: ${integrationReport.get().asFile}")
         }
     }
 }

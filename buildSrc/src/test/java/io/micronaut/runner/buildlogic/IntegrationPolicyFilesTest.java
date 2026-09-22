@@ -77,6 +77,16 @@ class IntegrationPolicyFilesTest {
     }
 
     @Test
+    void integrationEvidenceIsFinalizedEvenWhenTheTestTaskFails() throws IOException {
+        String build = read("test-suite/build.gradle");
+
+        assertTrue(build.contains("import org.gradle.language.base.plugins.LifecycleBasePlugin"));
+        assertTrue(build.contains("tasks.register('reportIntegrationScenarios')"));
+        assertTrue(build.contains("finalizedBy reportIntegrationScenarios"));
+        assertTrue(build.contains("dependsOn testTask, reportIntegrationScenarios"));
+    }
+
+    @Test
     void contributorDocumentationNamesRequiredAndOfflinePolicies() throws IOException {
         String contributing = read("CONTRIBUTING.md");
 
