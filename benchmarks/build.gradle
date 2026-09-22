@@ -27,6 +27,14 @@ jmh {
     duplicateClassesStrategy = DuplicatesStrategy.WARN
 }
 
+def benchmarkGuide = rootProject.layout.projectDirectory.file('src/main/docs/guide/benchmarks.adoc')
+tasks.named('test', Test) {
+    inputs.file(benchmarkGuide)
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+            .withPropertyName('benchmarkGuide')
+    systemProperty 'runner.benchmark.guide', benchmarkGuide.asFile
+}
+
 def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
     group = 'benchmark'
     description = 'Runs the end-to-end startup benchmark harness against the sample application'

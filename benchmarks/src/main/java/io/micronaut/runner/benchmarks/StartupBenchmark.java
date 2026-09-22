@@ -53,11 +53,12 @@ import java.util.Random;
  *   <li><strong>One monotonic clock, spawn to first response.</strong> See {@link StartupHarness}.</li>
  *   <li><strong>Interleaved, not blocked.</strong> Within each iteration the variants are run in a fresh
  *       random order. Running twenty of one and then twenty of the next hands every slow moment of the
- *       machine - a background build, a thermal dip, a page-cache eviction - entirely to whichever variant
- *       happened to be running then, and a block design cannot tell that apart from a real effect.</li>
- *   <li><strong>Warm-up runs are discarded.</strong> The first start of a given artifact pays for reading
- *       it off disk into the page cache. That cost is real, but it is a cold-start cost and mixing a
- *       couple of them into a warm measurement moves the median for no reason anybody can see.</li>
+ *       machine - a background build, a thermal dip, or a change in filesystem-cache state - entirely to
+ *       whichever variant happened to be running then, and a block design cannot tell that apart from a
+ *       real effect.</li>
+ *   <li><strong>Warm-up runs are discarded, but cache state is not controlled.</strong> Every sample uses
+ *       a fresh JVM. The harness neither evicts nor otherwise controls the OS page cache, so a discarded
+ *       process run must not be interpreted as establishing a cold- or warm-filesystem-cache condition.</li>
  *   <li><strong>Every raw sample is kept.</strong> {@code results.json} holds each run, warm-ups flagged,
  *       so the summary can be recomputed or disputed without running anything again.</li>
  *   <li><strong>A variant that cannot be built is reported, not dropped.</strong></li>
