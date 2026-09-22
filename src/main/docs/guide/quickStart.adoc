@@ -1,3 +1,31 @@
+== Prerequisites
+
+Micronaut Runner's published libraries and build plugins target Java 25. Use a JDK 25 installation to run
+the build and Java 25 to launch the packaged application. JDK 25 is the supported baseline. The project's
+non-blocking early-access JDK 26 CI job is a forward-compatibility signal, not a requirement or an unlimited
+compatibility guarantee for later JDKs.
+
+The Java installations selected for the shell, the build tool, application compilation and deployment can
+be different. In particular, a Gradle or Maven Java toolchain controls application compilation; it does not
+change the build-tool JVM that loads the Micronaut Runner plugin. Point `JAVA_HOME` at JDK 25 (and put its
+`bin` directory first on `PATH`) before invoking Gradle or Maven. If the build has an explicit Gradle daemon
+JVM or Maven launcher configuration, update that selection as well. The deployment image or host that runs
+the resulting runner JAR must also provide Java 25; selecting a Java 25 compilation toolchain alone does not
+update that runtime.
+
+Check each relevant JVM before applying the plugin or launching the application:
+
+[source,bash]
+----
+java -version
+./gradlew --version
+mvn -version
+----
+
+`java -version` reports the shell and deployment command's runtime. In `./gradlew --version`, verify the
+launcher and daemon JVM; in `mvn -version`, verify the reported Java version and runtime path. Each must show
+the intended JDK 25 installation for the corresponding quick-start path.
+
 == Gradle
 
 Apply the plugin alongside the Micronaut application plugin:
@@ -39,6 +67,12 @@ micronautRunnerJar {
     // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
     // PRESERVE copies each dependency byte for byte, producing a smaller archive that loads more slowly.
     compression = 'STORED'
+
+    // Both build plugins default to requesting an entry stub. The low-level RunnerJarSpec builder does not.
+    entryStub = true
+
+    // Set this only when the application's own output is a multi-release JAR.
+    multiRelease = false
 
     // Written into the manifest, so users need not pass the matching command line flags.
     addOpens.add('java.base/java.lang')
@@ -97,6 +131,13 @@ JAR produced by `maven-jar-plugin` is kept alongside it as `original-my-app-0.1.
 attach it as an additional artifact instead and leave the main one untouched.
 
 The main class is taken from the `exec.mainClass` property, which the Micronaut parent POM already sets.
+
+Both plugins request a generated entry stub by default; the low-level `RunnerJarSpec.Builder` default is
+`false`. A request produces a stub only when the main class is a public, non-abstract class in a named
+package that declares its own `public static void main(String[])`. For a declared multi-release application,
+every selectable version of the main class must have that shape. Otherwise the packager reports the reason,
+records no stub in the index and the launcher enters the application through its reflective fallback. The
+request is therefore not a promise that a stub will be present or that startup will be faster.
 
 The Maven list syntax follows the same manifest grammar:
 

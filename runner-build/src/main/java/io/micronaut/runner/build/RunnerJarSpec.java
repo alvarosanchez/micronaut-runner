@@ -190,12 +190,17 @@ public final class RunnerJarSpec {
     }
 
     /**
-     * Whether the packager may generate the entry stub that lets the launcher start the application through
-     * an interface call instead of reflection.
+     * Whether the generated entry stub was requested.
      *
-     * <p>Generating the stub is not implemented yet: the flag is carried through the spec so that the
-     * plugins can already expose it, and the launcher's reflective fallback starts the application in the
-     * meantime.</p>
+     * <p>A request does not guarantee a stub. The packager generates one only when the main class is a
+     * public, non-abstract class in a named package that declares its own
+     * {@code public static void main(String[])}. When the application layer is declared multi-release, every
+     * multi-release variant of that class that the runner can select must have the same directly callable
+     * shape. If the request is disabled, a class is ineligible, or the generated class name is already
+     * occupied, the packager reports why and leaves the index without a stub; the launcher then uses its
+     * reflective fallback.</p>
+     *
+     * <p>The raw builder defaults to {@code false}. The Gradle and Maven plugins default to {@code true}.</p>
      *
      * @return whether an entry stub was requested
      */
@@ -407,7 +412,16 @@ public final class RunnerJarSpec {
         }
 
         /**
-         * Requests the generated entry stub, which is not implemented yet and is ignored.
+         * Requests a generated entry stub.
+         *
+         * <p>Setting this to {@code true} asks the packager to generate the stub only when the base main
+         * class, and every selectable multi-release variant when {@link #multiRelease(boolean)} is enabled,
+         * is directly callable: a public, non-abstract class in a named package that declares its own
+         * {@code public static void main(String[])}. An ineligible class or a collision with the generated
+         * class name is reported and uses the launcher's reflective fallback instead. Setting this to
+         * {@code false} always uses that fallback.</p>
+         *
+         * <p>The raw builder defaults to {@code false}. The Gradle and Maven plugins default to {@code true}.</p>
          *
          * @param value whether to generate the stub when the main class is eligible
          * @return this builder
