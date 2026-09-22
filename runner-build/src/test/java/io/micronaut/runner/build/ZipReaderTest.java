@@ -19,6 +19,9 @@ import io.micronaut.runner.IndexFormat;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -36,6 +39,7 @@ import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -117,6 +121,151 @@ class ZipReaderTest {
     }
 
     @Test
+    void rejectsALocalNameThatDisagreesWithTheCentralDirectory() throws IOException {
+        Path jar = temp.resolve("different-local-name.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "safe.txt", "SAFE".getBytes(StandardCharsets.UTF_8));
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        System.arraycopy("../x.txt".getBytes(StandardCharsets.UTF_8), 0, archive, 30, 8);
+        Files.write(jar, archive);
+
+        try (ZipFile centralView = new ZipFile(jar.toFile());
+             ZipInputStream localView = new ZipInputStream(Files.newInputStream(jar))) {
+            assertEquals("safe.txt", centralView.entries().nextElement().getName());
+            assertEquals("../x.txt", localView.getNextEntry().getName());
+        }
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("safe.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("local"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("name"), failure.getMessage());
+    }
+
+    @ParameterizedTest(name = "rejects malformed UTF-8 in the {0} name")
+    @ValueSource(booleans = {false, true})
+    void rejectsMalformedUtf8EntryNames(boolean central) throws IOException {
+        Path jar = temp.resolve("invalid-utf8-" + central + ".jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "safe.txt", new byte[] {'X'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int name = central ? intAt(archive, end + 16) + 46 : 30;
+        archive[name] = (byte) 0xC0;
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("invalid UTF-8"), failure.getMessage());
+        assertTrue(failure.getMessage().contains(central ? "central" : "local"), failure.getMessage());
+    }
+
+    @Test
+    void rejectsAStoredEntryWhoseCompressedAndUncompressedSizesDisagree() throws IOException {
+        Path jar = temp.resolve("different-stored-sizes.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "bad.txt", new byte[] {'X'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        putInt(archive, 14, 0);
+        putInt(archive, 22, 0);
+        putInt(archive, central + 16, 0);
+        putInt(archive, central + 24, 0);
+        Files.write(jar, archive);
+
+        try (ZipInputStream localView = new ZipInputStream(Files.newInputStream(jar))) {
+            ZipEntry local = localView.getNextEntry();
+            assertEquals("bad.txt", local.getName());
+            assertEquals(1, local.getCompressedSize());
+            assertEquals(0, local.getSize());
+        }
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("bad.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("STORED"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("size"), failure.getMessage());
+    }
+
+    @ParameterizedTest(name = "rejects local {2} disagreement")
+    @CsvSource({
+            "6, 0, flags",
+            "8, 8, method",
+            "14, 0, CRC",
+            "18, 2, compressed-size",
+            "22, 2, uncompressed-size"
+    })
+    void rejectsLocalHeaderFieldDisagreements(int offset, long value, String field) throws IOException {
+        Path jar = temp.resolve("different-local-" + field + ".jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "safe.txt", new byte[] {'X'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        if (offset == 6 || offset == 8) {
+            putShort(archive, offset, (int) value);
+        } else {
+            putInt(archive, offset, value);
+        }
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("safe.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("local"), failure.getMessage());
+        assertTrue(failure.getMessage().contains(field), failure.getMessage());
+    }
+
+    @Test
+    void rejectsUnsupportedGeneralPurposeFlags() throws IOException {
+        Path jar = temp.resolve("encrypted.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "secret.txt", new byte[] {'X'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        int flags = shortAt(archive, 6) | 1;
+        putShort(archive, 6, flags);
+        putShort(archive, central + 8, flags);
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("secret.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("flags"), failure.getMessage());
+    }
+
+    @ParameterizedTest(name = "rejects multi-disk end field at {0}")
+    @CsvSource({"4, 1", "6, 1", "8, 0"})
+    void rejectsMultiDiskEndRecords(int offset, int value) throws IOException {
+        Path jar = temp.resolve("multi-disk-end-" + offset + ".jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "one.txt", new byte[] {'1'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        putShort(archive, end + offset, value);
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("single-disk"), failure.getMessage());
+    }
+
+    @Test
+    void rejectsAnEntryThatStartsOnAnotherDisk() throws IOException {
+        Path jar = temp.resolve("multi-disk-entry.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "one.txt", new byte[] {'1'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        putShort(archive, central + 34, 1);
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("one.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("disk"), failure.getMessage());
+    }
+
+    @Test
     void readsEntriesWrittenWithADataDescriptor() throws IOException {
         byte[] content = repeat("descriptor-", 500);
         Path jar = temp.resolve("descriptor.jar");
@@ -140,6 +289,70 @@ class ZipReaderTest {
     }
 
     @Test
+    void readsADataDescriptorEntryWhoseLocalHeaderAlsoCarriesFinalValues() throws IOException {
+        byte[] content = repeat("descriptor-", 500);
+        Path jar = temp.resolve("descriptor-with-local-values.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "data.txt", content);
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        System.arraycopy(archive, central + 16, archive, 14, 12);
+        Files.write(jar, archive);
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            assertArrayEquals(content, reader.read(reader.entry("data.txt").orElseThrow()));
+        }
+    }
+
+    @ParameterizedTest(name = "rejects non-placeholder local descriptor {1}")
+    @CsvSource({
+            "14, CRC",
+            "18, compressed-size",
+            "22, uncompressed-size"
+    })
+    void rejectsNonPlaceholderLocalDataDescriptorFields(int offset, String field) throws IOException {
+        Path jar = temp.resolve("bad-local-descriptor-" + field + ".jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "bad.txt", repeat("descriptor-", 20));
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        assertTrue((shortAt(archive, 6) & (1 << 3)) != 0, "fixture uses a data descriptor");
+        putInt(archive, offset, 1);
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("bad.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("local"), failure.getMessage());
+        assertTrue(failure.getMessage().contains(field), failure.getMessage());
+    }
+
+    @ParameterizedTest(name = "rejects descriptor {1} disagreement")
+    @CsvSource({
+            "4, CRC",
+            "8, compressed-size",
+            "12, uncompressed-size"
+    })
+    void rejectsADataDescriptorThatDisagreesWithTheCentralDirectory(int offset, String field) throws IOException {
+        Path jar = temp.resolve("different-descriptor-" + field + ".jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "bad.txt", repeat("descriptor-", 20));
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        int descriptor = central - 16;
+        assertEquals(0x08074B50, intAt(archive, descriptor), "fixture has a signed data descriptor");
+        putInt(archive, descriptor + offset, (intAt(archive, descriptor + offset) & 0xFFFFFFFFL) + 1);
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("bad.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("descriptor"), failure.getMessage());
+    }
+
+    @Test
     void readsAZip64EndOfCentralDirectoryRecord() throws IOException {
         // More than 65535 entries forces ZipOutputStream to write a ZIP64 end record and locator, and to
         // put the 0xFFFF marker in the 16-bit count of the ordinary end record.
@@ -159,6 +372,24 @@ class ZipReaderTest {
             assertArrayEquals(new byte[] {0x50, 0x4B, 0x03, 0x04}, bytesAt(jar, last.localHeaderOffset(), 4));
             assertEquals(last.localHeaderOffset() + 30 + "e/65599".length(), last.dataOffset());
         }
+    }
+
+    @ParameterizedTest(name = "rejects ZIP64 end record size {0}")
+    @ValueSource(longs = {43, 45})
+    void rejectsAZip64EndRecordWhoseDeclaredSizeDoesNotReachItsLocator(long recordSize) throws IOException {
+        Path plain = temp.resolve("plain-zip64-end-" + recordSize + ".jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(plain))) {
+            stored(zip, "one.txt", new byte[] {'1'});
+        }
+        byte[] archive = withZip64EndRecord(Files.readAllBytes(plain));
+        int zip64End = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE
+                - IndexFormat.ZIP64_LOCATOR_SIZE - 56;
+        putLong(archive, zip64End + 4, recordSize);
+        Files.write(plain, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(plain));
+        assertTrue(failure.getMessage().contains("ZIP64"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("size"), failure.getMessage());
     }
 
     @Test
@@ -192,6 +423,27 @@ class ZipReaderTest {
     }
 
     @Test
+    void readsLocalAndCentralSizesFromZip64ExtraFields() throws IOException {
+        Path plain = temp.resolve("plain-local-zip64.jar");
+        byte[] content = "zip64-content".getBytes(StandardCharsets.UTF_8);
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(plain))) {
+            stored(zip, "safe.txt", content);
+        }
+        Path patched = temp.resolve("local-zip64.jar");
+        Files.write(patched, withLocalAndCentralZip64Extras(Files.readAllBytes(plain)));
+
+        try (ZipFile oracle = new ZipFile(patched.toFile())) {
+            assertArrayEquals(content, readAll(oracle, oracle.getEntry("safe.txt")));
+        }
+        try (ZipReader reader = ZipReader.open(patched)) {
+            ZipEntryInfo entry = reader.entry("safe.txt").orElseThrow();
+            assertEquals(content.length, entry.compressedSize());
+            assertEquals(content.length, entry.uncompressedSize());
+            assertArrayEquals(content, reader.read(entry));
+        }
+    }
+
+    @Test
     void rejectsAMarkedFieldWithNoZip64ExtraField() throws IOException {
         Path plain = temp.resolve("marked.jar");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(plain))) {
@@ -205,6 +457,114 @@ class ZipReaderTest {
         Files.write(broken, archive);
         IOException failure = assertThrows(IOException.class, () -> ZipReader.open(broken));
         assertTrue(failure.getMessage().contains("ZIP64"), failure.getMessage());
+    }
+
+    @Test
+    void rejectsAnImpossibleEntryCountBeforeAllocatingTheEntryList() throws IOException {
+        Path jar = temp.resolve("impossible-count.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "one.txt", new byte[] {'1'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        putShort(archive, end + 8, 0xFFFF);
+        putShort(archive, end + 10, 0xFFFF);
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("entry count"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("central directory"), failure.getMessage());
+    }
+
+    @Test
+    void rejectsAnEntryCountThatLeavesAnUnclaimedCentralRecord() throws IOException {
+        Path jar = temp.resolve("too-small-count.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "one.txt", new byte[] {'1'});
+            stored(zip, "two.txt", new byte[] {'2'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        putShort(archive, end + 8, 1);
+        putShort(archive, end + 10, 1);
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("central directory"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("trailing"), failure.getMessage());
+    }
+
+    @Test
+    void rejectsACentralDirectoryWhoseRecordedSizeReachesTheEndRecord() throws IOException {
+        Path jar = temp.resolve("oversized-central-directory.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "one.txt", new byte[] {'1'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        putInt(archive, end + 12, (intAt(archive, end + 12) & 0xFFFFFFFFL) + 1);
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("central directory"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("end"), failure.getMessage());
+    }
+
+    @Test
+    void rejectsAnEntryWhoseDataOverlapsAnotherLocalHeader() throws IOException {
+        Path jar = temp.resolve("overlapping-entry-data.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "one.txt", new byte[] {'1'});
+            stored(zip, "two.txt", new byte[] {'2'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        int secondCentral = central + 46 + shortAt(archive, central + 28)
+                + shortAt(archive, central + 30) + shortAt(archive, central + 32);
+        long secondLocal = intAt(archive, secondCentral + 42) & 0xFFFFFFFFL;
+        long firstData = 30L + shortAt(archive, 26) + shortAt(archive, 28);
+        long overlappingSize = secondLocal - firstData + 1;
+        putInt(archive, 18, overlappingSize);
+        putInt(archive, 22, overlappingSize);
+        putInt(archive, central + 20, overlappingSize);
+        putInt(archive, central + 24, overlappingSize);
+        Files.write(jar, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("one.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("two.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("overlap"), failure.getMessage());
+    }
+
+    @Test
+    void acceptsRepeatedCentralRecordsThatReferenceTheSameLocalEntry() throws IOException {
+        Path jar = temp.resolve("shared-local-entry.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "shared.txt", "content".getBytes(StandardCharsets.UTF_8));
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        int directorySize = intAt(archive, end + 12);
+        byte[] duplicated = new byte[archive.length + directorySize];
+        System.arraycopy(archive, 0, duplicated, 0, end);
+        System.arraycopy(archive, central, duplicated, end, directorySize);
+        int newEnd = end + directorySize;
+        System.arraycopy(archive, end, duplicated, newEnd, IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE);
+        putShort(duplicated, newEnd + 8, 2);
+        putShort(duplicated, newEnd + 10, 2);
+        putInt(duplicated, newEnd + 12, directorySize * 2L);
+        Files.write(jar, duplicated);
+
+        try (ZipFile oracle = new ZipFile(jar.toFile())) {
+            assertEquals(2, oracle.size(), "the JDK accepts repeated records for one local entry");
+        }
+        try (ZipReader reader = ZipReader.open(jar)) {
+            assertEquals(2, reader.entries().size());
+            assertEquals(reader.entries().get(0), reader.entries().get(1));
+            assertArrayEquals("content".getBytes(StandardCharsets.UTF_8), reader.read(reader.entries().get(1)));
+        }
     }
 
     @Test
@@ -323,6 +683,11 @@ class ZipReaderTest {
         int central = intAt(all, end + 16);
         putInt(all, central + 20, unterminated.length);
         putInt(all, central + 24, 1);
+        int descriptor = (int) original.dataOffset() + unterminated.length;
+        putInt(all, descriptor, 0x08074B50L);
+        putInt(all, descriptor + 4, intAt(all, central + 16) & 0xFFFFFFFFL);
+        putInt(all, descriptor + 8, unterminated.length);
+        putInt(all, descriptor + 12, 1);
         Files.write(jar, all);
 
         try (ZipReader reader = ZipReader.open(jar)) {
@@ -440,6 +805,34 @@ class ZipReaderTest {
         return result;
     }
 
+    /** Adds a minimal ZIP64 end record and locator to an ordinary archive. */
+    static byte[] withZip64EndRecord(byte[] archive) {
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        long count = shortAt(archive, end + 10);
+        long directorySize = intAt(archive, end + 12) & 0xFFFFFFFFL;
+        long directoryOffset = intAt(archive, end + 16) & 0xFFFFFFFFL;
+        byte[] result = new byte[archive.length + 56 + IndexFormat.ZIP64_LOCATOR_SIZE];
+        System.arraycopy(archive, 0, result, 0, end);
+
+        int zip64End = end;
+        putInt(result, zip64End, IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE);
+        putLong(result, zip64End + 4, 44);
+        putShort(result, zip64End + 12, 45);
+        putShort(result, zip64End + 14, 45);
+        putLong(result, zip64End + 24, count);
+        putLong(result, zip64End + 32, count);
+        putLong(result, zip64End + 40, directorySize);
+        putLong(result, zip64End + 48, directoryOffset);
+
+        int locator = zip64End + 56;
+        putInt(result, locator, IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE);
+        putLong(result, locator + 8, zip64End);
+        putInt(result, locator + 16, 1);
+        System.arraycopy(archive, end, result, locator + IndexFormat.ZIP64_LOCATOR_SIZE,
+                IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE);
+        return result;
+    }
+
     /**
      * Rewrites an archive's central directory so that every record's sizes and local header offset carry the
      * ZIP64 marker and their real values sit in a ZIP64 extended information extra field.
@@ -484,6 +877,70 @@ class ZipReaderTest {
         System.arraycopy(archive, 0, result, 0, central);
         System.arraycopy(newDirectory, 0, result, central, newDirectory.length);
         System.arraycopy(newEnd, 0, result, central + newDirectory.length, newEnd.length);
+        return result;
+    }
+
+    /** Adds ZIP64 size fields to both headers of a one-entry, non-descriptor archive. */
+    static byte[] withLocalAndCentralZip64Extras(byte[] archive) {
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        int nameLength = shortAt(archive, 26);
+        int localExtraLength = shortAt(archive, 28);
+        long compressed = intAt(archive, 18) & 0xFFFFFFFFL;
+        long uncompressed = intAt(archive, 22) & 0xFFFFFFFFL;
+        int dataStart = 30 + nameLength + localExtraLength;
+
+        ByteArrayOutputStream local = new ByteArrayOutputStream();
+        byte[] localHeader = new byte[30];
+        System.arraycopy(archive, 0, localHeader, 0, localHeader.length);
+        putShort(localHeader, 4, 45);
+        putInt(localHeader, 18, 0xFFFFFFFFL);
+        putInt(localHeader, 22, 0xFFFFFFFFL);
+        putShort(localHeader, 28, 20);
+        local.write(localHeader, 0, localHeader.length);
+        local.write(archive, 30, nameLength);
+        byte[] localExtra = new byte[20];
+        putShort(localExtra, 0, IndexFormat.ZIP64_EXTRA_FIELD_ID);
+        putShort(localExtra, 2, 16);
+        putLong(localExtra, 4, uncompressed);
+        putLong(localExtra, 12, compressed);
+        local.write(localExtra, 0, localExtra.length);
+        local.write(archive, dataStart, central - dataStart);
+
+        int centralNameLength = shortAt(archive, central + 28);
+        int centralCommentLength = shortAt(archive, central + 32);
+        byte[] centralHeader = new byte[46];
+        System.arraycopy(archive, central, centralHeader, 0, centralHeader.length);
+        putShort(centralHeader, 6, 45);
+        putInt(centralHeader, 20, 0xFFFFFFFFL);
+        putInt(centralHeader, 24, 0xFFFFFFFFL);
+        putShort(centralHeader, 30, 32);
+        putShort(centralHeader, 34, 0xFFFF);
+        putInt(centralHeader, 42, 0xFFFFFFFFL);
+        ByteArrayOutputStream directory = new ByteArrayOutputStream();
+        directory.write(centralHeader, 0, centralHeader.length);
+        directory.write(archive, central + 46, centralNameLength);
+        byte[] centralExtra = new byte[32];
+        putShort(centralExtra, 0, IndexFormat.ZIP64_EXTRA_FIELD_ID);
+        putShort(centralExtra, 2, 28);
+        putLong(centralExtra, 4, uncompressed);
+        putLong(centralExtra, 12, compressed);
+        putLong(centralExtra, 20, 0);
+        putInt(centralExtra, 28, 0);
+        directory.write(centralExtra, 0, centralExtra.length);
+        directory.write(archive, central + 46 + centralNameLength
+                + shortAt(archive, central + 30), centralCommentLength);
+
+        byte[] localBytes = local.toByteArray();
+        byte[] directoryBytes = directory.toByteArray();
+        byte[] newEnd = new byte[IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE];
+        System.arraycopy(archive, end, newEnd, 0, newEnd.length);
+        putInt(newEnd, 12, directoryBytes.length);
+        putInt(newEnd, 16, localBytes.length);
+        byte[] result = new byte[localBytes.length + directoryBytes.length + newEnd.length];
+        System.arraycopy(localBytes, 0, result, 0, localBytes.length);
+        System.arraycopy(directoryBytes, 0, result, localBytes.length, directoryBytes.length);
+        System.arraycopy(newEnd, 0, result, localBytes.length + directoryBytes.length, newEnd.length);
         return result;
     }
 
