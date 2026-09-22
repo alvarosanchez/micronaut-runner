@@ -582,8 +582,7 @@ public final class RunnerJarURLConnection extends JarURLConnection {
      * @throws IOException if the entry cannot be read
      */
     private InputStream openRecord(int entryRecord) throws IOException {
-        return source.stream(index.entryDataOffset(entryRecord), index.entryCompressedSize(entryRecord),
-                index.entryUncompressedSize(entryRecord), index.entryMethod(entryRecord));
+        return index.openEntryStream(entryRecord);
     }
 
     /**

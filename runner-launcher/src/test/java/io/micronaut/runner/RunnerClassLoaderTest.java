@@ -18,6 +18,7 @@ package io.micronaut.runner;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.lang.classfile.ClassFile;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
@@ -106,6 +107,7 @@ class RunnerClassLoaderTest {
                 classBytes("org.example.Corrupt", "corrupt")).corruptCrc();
         application.add("shared.txt", text("jar0-shared"));
         application.add("org/example/only.txt", text("only-in-app"));
+        application.add("corrupt-stored.txt", text("corrupt stored resource")).corruptCrc();
         for (int i = 0; i < GENERATED_CLASSES; i++) {
             application.add("org/example/gen/C" + i + ".class",
                     classBytes("org.example.gen.C" + i, "gen" + i));
@@ -118,6 +120,7 @@ class RunnerClassLoaderTest {
         alpha.add("org/alpha/pkg/Attrs.class", classBytes("org.alpha.pkg.Attrs", "attrs"));
         alpha.add("org/example/Shared.class", classBytes("org.example.Shared", "jar1"));
         alpha.add("shared.txt", text("jar1-shared"));
+        alpha.add("corrupt-deflated.txt", text("corrupt deflated resource")).corruptCrc();
         alpha.add(ALPHA_SERVICE, text("alpha-copy"));
 
         Fixture.Jar beta = fixture.addJar(BETA).multiRelease();
@@ -373,6 +376,70 @@ class RunnerClassLoaderTest {
                 failure.getCause().getMessage());
         assertEquals("app", id(verifying.loadClass("org.example.App")),
                 "an intact entry still loads with verification on");
+    }
+
+    @Test
+    void verifiesStoredAndDeflatedResourceStreamsOnlyWhenAskedTo() throws Exception {
+        RunnerClassLoader unchecked = newLoader();
+        assertEquals("corrupt stored resource", string(unchecked.getResourceAsStream("corrupt-stored.txt")));
+        assertEquals("corrupt deflated resource",
+                string(unchecked.getResourceAsStream("corrupt-deflated.txt")));
+
+        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        RunnerClassLoader verifying = newLoader();
+        IOException stored = assertThrows(IOException.class,
+                () -> string(verifying.getResourceAsStream("corrupt-stored.txt")));
+        assertTrue(stored.getMessage().contains("corrupt-stored.txt"), stored.getMessage());
+        IOException deflated = assertThrows(IOException.class,
+                () -> string(verifying.getResourceAsStream("corrupt-deflated.txt")));
+        assertTrue(deflated.getMessage().contains("corrupt-deflated.txt"), deflated.getMessage());
+        assertEquals("jar0-shared", string(verifying.getResourceAsStream("shared.txt")),
+                "an intact resource still reads with verification on");
+    }
+
+    @Test
+    void verifiesResourceStreamsInMappedAndPositionalModes() throws Exception {
+        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        for (boolean mapped : List.of(true, false)) {
+            if (mapped) {
+                System.clearProperty(ArchiveSource.MMAP_PROPERTY);
+            } else {
+                System.setProperty(ArchiveSource.MMAP_PROPERTY, "false");
+            }
+            try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
+                assertEquals(mapped, modeSource.mapped());
+                RunnerClassLoader loader = new RunnerClassLoader(Index.open(modeSource), modeSource,
+                        ClassLoader.getPlatformClassLoader());
+                assertThrows(IOException.class,
+                        () -> string(loader.getResourceAsStream("corrupt-stored.txt")));
+                assertThrows(IOException.class,
+                        () -> string(loader.getResourceAsStream("corrupt-deflated.txt")));
+            }
+        }
+    }
+
+    @Test
+    void directResourceStreamsPerformLazyNestedHeaderValidation() throws Exception {
+        Fixture fixture = new Fixture();
+        fixture.addJar(IndexFormat.CLASSES_PREFIX);
+        Fixture.Jar dependency = fixture.addJar("MICRONAUT-INF/lib/stale.jar");
+        dependency.add("payload.txt", text("payload"));
+        File stale = fixture.writeTo(temporary.resolve("stale-resource.jar").toFile());
+
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, "false");
+        try (ArchiveSource staleSource = ArchiveSource.open(stale)) {
+            Index staleIndex = Index.open(staleSource);
+            RunnerClassLoader loader = new RunnerClassLoader(staleIndex, staleSource,
+                    ClassLoader.getPlatformClassLoader());
+            try (RandomAccessFile editable = new RandomAccessFile(stale, "rw")) {
+                editable.seek(dependency.localHeaderOffset);
+                editable.write(new byte[4]);
+            }
+
+            IllegalStateException failure = assertThrows(IllegalStateException.class,
+                    () -> loader.getResourceAsStream("payload.txt"));
+            assertTrue(failure.getMessage().contains("no local file header"), failure.getMessage());
+        }
     }
 
     @Test

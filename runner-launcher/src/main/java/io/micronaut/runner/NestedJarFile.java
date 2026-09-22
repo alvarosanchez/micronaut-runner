@@ -338,9 +338,7 @@ public final class NestedJarFile extends JarFile {
      * @throws IOException if the entry cannot be read
      */
     private InputStream openRecord(int record) throws IOException {
-        index.validateJar(jarId);
-        return source.stream(index.entryDataOffset(record), index.entryCompressedSize(record),
-                index.entryUncompressedSize(record), index.entryMethod(record));
+        return index.openEntryStream(record);
     }
 
     /**
