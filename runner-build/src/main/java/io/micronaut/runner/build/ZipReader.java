@@ -23,10 +23,14 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -79,8 +83,20 @@ public final class ZipReader implements Closeable {
     /** Value a 16-bit ZIP field carries when the real value lives in a ZIP64 extra field. */
     private static final int ZIP64_MARKER_16 = 0xFFFF;
 
+    /** General purpose bit 3: CRC and sizes follow the data in a descriptor. */
+    private static final int FLAG_DATA_DESCRIPTOR = 1 << 3;
+
+    /** General purpose bit 11: the entry name is UTF-8. */
+    private static final int FLAG_UTF8 = 1 << 11;
+
+    /** General purpose bits 1 and 2: compression-level hints defined only for DEFLATE. */
+    private static final int FLAG_DEFLATE_OPTIONS = (1 << 1) | (1 << 2);
+
     /** The largest array the JVM reliably allocates; entries above this are rejected rather than truncated. */
     private static final int MAX_ARRAY_LENGTH = Integer.MAX_VALUE - 8;
+
+    /** Practical ceiling that prevents untrusted metadata preallocating an enormous object graph. */
+    private static final int MAX_ENTRY_COUNT = 1_000_000;
 
     /** The manifest entry name, as the jar specification spells it. */
     private static final String MANIFEST_NAME = "META-INF/MANIFEST.MF";
@@ -94,6 +110,7 @@ public final class ZipReader implements Closeable {
     private final Path path;
     private final FileChannel channel;
     private final long fileLength;
+    private final List<LocalSpan> localSpans = new ArrayList<>();
     private final String comment;
     private final List<ZipEntryInfo> entries;
     private final Map<String, ZipEntryInfo> byName;
@@ -113,7 +130,13 @@ public final class ZipReader implements Closeable {
                     ? ""
                     : new String(readFully(endOffset + IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE, commentLength),
                             StandardCharsets.UTF_8);
+            int diskNumber = readUnsignedShort(end, 4);
+            int directoryDisk = readUnsignedShort(end, 6);
+            long entriesOnDisk = readUnsignedShort(end, 8);
             long entryCount = readUnsignedShort(end, 10);
+            if (diskNumber != 0 || directoryDisk != 0 || entriesOnDisk != entryCount) {
+                throw malformed("multi-disk ZIP archives are not supported; a single-disk archive was required");
+            }
             long directorySize = readUnsignedInt(end, 12);
             long directoryOffset = readUnsignedInt(end, 16);
             long recordStart = endOffset;
@@ -122,6 +145,9 @@ public final class ZipReader implements Closeable {
             if (locatorOffset >= 0) {
                 byte[] locator = readFully(locatorOffset, IndexFormat.ZIP64_LOCATOR_SIZE);
                 if (readInt(locator, 0) == IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE) {
+                    if (readUnsignedInt(locator, 4) != 0 || readUnsignedInt(locator, 16) != 1) {
+                        throw malformed("multi-disk ZIP64 archives are not supported; a single-disk archive was required");
+                    }
                     zip64End = readLong(locator, 8);
                 }
             }
@@ -133,12 +159,16 @@ public final class ZipReader implements Closeable {
             boolean marked = directorySize == IndexFormat.ZIP64_MARKER
                     || directoryOffset == IndexFormat.ZIP64_MARKER;
             if (zip64End >= 0 || marked) {
-                if (zip64End < 0 || zip64End + ZIP64_END_SIZE > fileLength) {
+                if (zip64End < 0 || zip64End > fileLength - ZIP64_END_SIZE) {
                     throw malformed("no ZIP64 end of central directory locator before the end record");
                 }
                 byte[] zip64 = readFully(zip64End, ZIP64_END_SIZE);
                 if (readInt(zip64, 0) != IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
                     throw malformed("the ZIP64 locator does not point at a ZIP64 end of central directory record");
+                }
+                if (readUnsignedInt(zip64, 16) != 0 || readUnsignedInt(zip64, 20) != 0
+                        || readLong(zip64, 24) != readLong(zip64, 32)) {
+                    throw malformed("multi-disk ZIP64 archives are not supported; a single-disk archive was required");
                 }
                 entryCount = readLong(zip64, 32);
                 directorySize = readLong(zip64, 40);
@@ -149,7 +179,11 @@ public final class ZipReader implements Closeable {
                 throw malformed("the end of central directory record has a negative count, size or offset");
             }
             long delta = offsetCorrection(recordStart, directorySize, directoryOffset, entryCount);
-            this.entries = readCentralDirectory(directoryOffset + delta, directorySize, entryCount, delta);
+            long directoryStart = checkedAdd(directoryOffset, delta, "central directory offset correction");
+            if (directoryStart > recordStart || directorySize != recordStart - directoryStart) {
+                throw malformed("the central directory does not end at its end record");
+            }
+            this.entries = readCentralDirectory(directoryStart, directorySize, entryCount, delta);
             Map<String, ZipEntryInfo> index = new LinkedHashMap<>(Math.max(16, entries.size() * 2));
             boolean signed = false;
             for (ZipEntryInfo entry : entries) {
@@ -495,7 +529,7 @@ public final class ZipReader implements Closeable {
     }
 
     private byte[] readFully(long position, int length) throws IOException {
-        if (position < 0 || length < 0 || position + length > fileLength) {
+        if (position < 0 || length < 0 || position > fileLength - length) {
             throw malformed("a read of " + length + " bytes at offset " + position + " runs past the end of the file");
         }
         byte[] result = new byte[length];
@@ -542,7 +576,7 @@ public final class ZipReader implements Closeable {
     private long offsetCorrection(long recordStart, long directorySize, long directoryOffset, long entryCount)
             throws IOException {
         if (entryCount == 0) {
-            return 0;
+            return directorySize == 0 ? recordStart - directoryOffset : 0;
         }
         long implied = recordStart - directorySize;
         if (implied == directoryOffset || implied < 0) {
@@ -558,7 +592,7 @@ public final class ZipReader implements Closeable {
     }
 
     private boolean hasSignatureAt(long offset, int signature) throws IOException {
-        if (offset < 0 || offset + 4 > fileLength) {
+        if (offset < 0 || offset > fileLength - 4) {
             return false;
         }
         return readInt(readFully(offset, 4), 0) == signature;
@@ -569,14 +603,18 @@ public final class ZipReader implements Closeable {
         if (directorySize > MAX_ARRAY_LENGTH) {
             throw malformed("the central directory is too large to read: " + directorySize + " bytes");
         }
-        if (entryCount > MAX_ARRAY_LENGTH) {
+        if (entryCount > directorySize / CENTRAL_HEADER_SIZE) {
+            throw malformed("the declared entry count " + entryCount + " cannot fit in the " + directorySize
+                    + "-byte central directory");
+        }
+        if (entryCount > MAX_ENTRY_COUNT) {
             throw malformed("the archive declares too many entries: " + entryCount);
         }
         byte[] directory = readFully(directoryStart, (int) directorySize);
         List<ZipEntryInfo> result = new ArrayList<>((int) entryCount);
         int position = 0;
         for (long i = 0; i < entryCount; i++) {
-            if (position + CENTRAL_HEADER_SIZE > directory.length) {
+            if (position > directory.length - CENTRAL_HEADER_SIZE) {
                 throw malformed("the central directory ends after " + i + " of " + entryCount + " records");
             }
             if (readInt(directory, position) != IndexFormat.CENTRAL_HEADER_SIGNATURE) {
@@ -586,17 +624,30 @@ public final class ZipReader implements Closeable {
             int extraLength = readUnsignedShort(directory, position + 30);
             int commentLength = readUnsignedShort(directory, position + 32);
             int recordSize = CENTRAL_HEADER_SIZE + nameLength + extraLength + commentLength;
-            if (position + recordSize > directory.length) {
+            if (recordSize > directory.length - position) {
                 throw malformed("central directory record " + i + " runs past the end of the directory");
             }
-            result.add(readCentralDirectoryRecord(directory, position, nameLength, extraLength, delta));
+            result.add(readCentralDirectoryRecord(directory, position, nameLength, extraLength, delta,
+                    directoryStart));
             position += recordSize;
         }
+        if (position != directory.length) {
+            int remaining = directory.length - position;
+            boolean digitalSignature = remaining >= 6
+                    && readInt(directory, position) == 0x05054B50
+                    && readUnsignedShort(directory, position + 4) == remaining - 6;
+            if (!digitalSignature) {
+                throw malformed("the central directory has " + remaining
+                        + " trailing bytes not described by its entry count");
+            }
+        }
+        validateLocalSpans(directoryStart);
         return List.copyOf(result);
     }
 
     private ZipEntryInfo readCentralDirectoryRecord(byte[] directory, int position, int nameLength, int extraLength,
-            long delta) throws IOException {
+            long delta, long directoryStart) throws IOException {
+        int flags = readUnsignedShort(directory, position + 8);
         int method = readUnsignedShort(directory, position + 10);
         int time = readUnsignedShort(directory, position + 12);
         int date = readUnsignedShort(directory, position + 14);
@@ -604,8 +655,10 @@ public final class ZipReader implements Closeable {
         long compressedSize = readUnsignedInt(directory, position + 20);
         long uncompressedSize = readUnsignedInt(directory, position + 24);
         int diskStart = readUnsignedShort(directory, position + 34);
+        long effectiveDiskStart = diskStart;
         long localHeaderOffset = readUnsignedInt(directory, position + 42);
-        String name = new String(directory, position + CENTRAL_HEADER_SIZE, nameLength, StandardCharsets.UTF_8);
+        int nameStart = position + CENTRAL_HEADER_SIZE;
+        String name = decodeName(directory, nameStart, nameLength, "central directory");
         requireSafeEntryName(name, path.toString());
 
         boolean needsZip64 = uncompressedSize == IndexFormat.ZIP64_MARKER
@@ -617,13 +670,34 @@ public final class ZipReader implements Closeable {
             long[] zip64 = readZip64Extra(directory, extraStart, extraLength, name,
                     uncompressedSize == IndexFormat.ZIP64_MARKER,
                     compressedSize == IndexFormat.ZIP64_MARKER,
-                    localHeaderOffset == IndexFormat.ZIP64_MARKER);
+                    localHeaderOffset == IndexFormat.ZIP64_MARKER,
+                    diskStart == ZIP64_MARKER_16);
             uncompressedSize = zip64[0] < 0 ? uncompressedSize : zip64[0];
             compressedSize = zip64[1] < 0 ? compressedSize : zip64[1];
             localHeaderOffset = zip64[2] < 0 ? localHeaderOffset : zip64[2];
+            effectiveDiskStart = zip64[3] < 0 ? effectiveDiskStart : zip64[3];
         }
-        localHeaderOffset += delta;
-        long dataOffset = resolveDataOffset(name, localHeaderOffset);
+        if (method != IndexFormat.METHOD_STORED && method != IndexFormat.METHOD_DEFLATED) {
+            throw malformed("entry '" + name + "' uses unsupported compression method " + method);
+        }
+        int supportedFlags = FLAG_DATA_DESCRIPTOR | FLAG_UTF8
+                | (method == IndexFormat.METHOD_DEFLATED ? FLAG_DEFLATE_OPTIONS : 0);
+        if ((flags & ~supportedFlags) != 0) {
+            throw malformed("entry '" + name + "' uses unsupported general purpose flags 0x"
+                    + Integer.toHexString(flags & ~supportedFlags));
+        }
+        if (effectiveDiskStart != 0) {
+            throw malformed("entry '" + name + "' starts on disk " + effectiveDiskStart
+                    + "; only single-disk ZIP archives are supported");
+        }
+        if (method == IndexFormat.METHOD_STORED && compressedSize != uncompressedSize) {
+            throw malformed("STORED entry '" + name + "' has compressed size " + compressedSize
+                    + " but uncompressed size " + uncompressedSize);
+        }
+        localHeaderOffset = checkedAdd(localHeaderOffset, delta,
+                "local header offset of entry '" + name + "'");
+        long dataOffset = resolveDataOffset(name, directory, nameStart, nameLength, localHeaderOffset,
+                flags, method, crc, compressedSize, uncompressedSize, directoryStart);
         boolean directoryEntry = name.charAt(name.length() - 1) == '/';
         return new ZipEntryInfo(name, method, compressedSize, uncompressedSize, crc, (date << 16) | time,
                 localHeaderOffset, dataOffset, directoryEntry);
@@ -636,18 +710,18 @@ public final class ZipReader implements Closeable {
      * number - and only the ones whose 32-bit counterpart carries the marker are present, so the field can
      * only be decoded together with the record it belongs to.</p>
      *
-     * @return the three values, in that order, with {@code -1} where the caller did not ask for one
+     * @return the four values, in that order, with {@code -1} where the caller did not ask for one
      */
     private long[] readZip64Extra(byte[] buffer, int start, int length, String name, boolean wantUncompressed,
-            boolean wantCompressed, boolean wantOffset) throws IOException {
-        long[] values = {-1, -1, -1};
+            boolean wantCompressed, boolean wantOffset, boolean wantDisk) throws IOException {
+        long[] values = {-1, -1, -1, -1};
         int position = start;
         int end = start + length;
         while (position + 4 <= end) {
             int id = readUnsignedShort(buffer, position);
             int size = readUnsignedShort(buffer, position + 2);
             int dataStart = position + 4;
-            if (dataStart + size > end) {
+            if (size > end - dataStart) {
                 throw malformed("extra field of entry '" + name + "' runs past the end of the record");
             }
             if (id == IndexFormat.ZIP64_EXTRA_FIELD_ID) {
@@ -660,7 +734,13 @@ public final class ZipReader implements Closeable {
                     at = requireZip64Field(values, 1, buffer, at, limit, name);
                 }
                 if (wantOffset) {
-                    requireZip64Field(values, 2, buffer, at, limit, name);
+                    at = requireZip64Field(values, 2, buffer, at, limit, name);
+                }
+                if (wantDisk) {
+                    if (at + 4 > limit) {
+                        throw malformed("the ZIP64 extra field of entry '" + name + "' is too short");
+                    }
+                    values[3] = readUnsignedInt(buffer, at);
                 }
                 return values;
             }
@@ -682,18 +762,189 @@ public final class ZipReader implements Closeable {
         return at + 8;
     }
 
-    private long resolveDataOffset(String name, long localHeaderOffset) throws IOException {
+    private long resolveDataOffset(String name, byte[] centralDirectory, int centralNameStart, int centralNameLength,
+            long localHeaderOffset, int flags, int method, long crc, long compressedSize, long uncompressedSize,
+            long directoryStart) throws IOException {
         byte[] header = readFully(localHeaderOffset, LOCAL_HEADER_SIZE);
         if (readInt(header, 0) != IndexFormat.LOCAL_HEADER_SIGNATURE) {
             throw malformed("no local file header for entry '" + name + "' at offset " + localHeaderOffset);
         }
+        int localFlags = readUnsignedShort(header, 6);
+        int localMethod = readUnsignedShort(header, 8);
+        if (localFlags != flags) {
+            throw localDisagreement(name, "flags", flags, localFlags);
+        }
+        if (localMethod != method) {
+            throw localDisagreement(name, "method", method, localMethod);
+        }
+        long localCrc = readUnsignedInt(header, 14);
+        long localCompressedSize = readUnsignedInt(header, 18);
+        long localUncompressedSize = readUnsignedInt(header, 22);
         int nameLength = readUnsignedShort(header, LOCAL_NAME_LENGTH_OFFSET);
         int extraLength = readUnsignedShort(header, LOCAL_NAME_LENGTH_OFFSET + 2);
-        long dataOffset = localHeaderOffset + LOCAL_HEADER_SIZE + nameLength + extraLength;
-        if (dataOffset > fileLength) {
-            throw malformed("the data of entry '" + name + "' starts past the end of the file");
+        long variableLength = (long) nameLength + extraLength;
+        if (localHeaderOffset > directoryStart - LOCAL_HEADER_SIZE
+                || variableLength > directoryStart - localHeaderOffset - LOCAL_HEADER_SIZE) {
+            throw malformed("the local header of entry '" + name + "' runs into the central directory");
         }
+        long dataOffset = localHeaderOffset + LOCAL_HEADER_SIZE + variableLength;
+        byte[] localVariable = readFully(localHeaderOffset + LOCAL_HEADER_SIZE, nameLength + extraLength);
+        String localName = decodeName(localVariable, 0, nameLength, "local header of entry '" + name + "'");
+        if (nameLength != centralNameLength
+                || !Arrays.equals(centralDirectory, centralNameStart, centralNameStart + centralNameLength,
+                        localVariable, 0, nameLength)) {
+            throw malformed("the local header name '" + localName + "' of entry '" + name
+                    + "' disagrees with its central directory name");
+        }
+        if ((flags & FLAG_DATA_DESCRIPTOR) == 0) {
+            if (localCompressedSize == IndexFormat.ZIP64_MARKER
+                    || localUncompressedSize == IndexFormat.ZIP64_MARKER) {
+                long[] localZip64 = readZip64Extra(localVariable, nameLength, extraLength, name,
+                        localUncompressedSize == IndexFormat.ZIP64_MARKER,
+                        localCompressedSize == IndexFormat.ZIP64_MARKER, false, false);
+                localUncompressedSize = localZip64[0] < 0 ? localUncompressedSize : localZip64[0];
+                localCompressedSize = localZip64[1] < 0 ? localCompressedSize : localZip64[1];
+            }
+            if (localCrc != crc) {
+                throw localDisagreement(name, "CRC", crc, localCrc);
+            }
+            if (localCompressedSize != compressedSize) {
+                throw localDisagreement(name, "compressed-size", compressedSize, localCompressedSize);
+            }
+            if (localUncompressedSize != uncompressedSize) {
+                throw localDisagreement(name, "uncompressed-size", uncompressedSize, localUncompressedSize);
+            }
+        } else {
+            if (localCrc != 0 && localCrc != crc) {
+                throw localDisagreement(name, "CRC", crc, localCrc);
+            }
+            if (localCompressedSize != 0 && localCompressedSize != compressedSize
+                    && localCompressedSize != IndexFormat.ZIP64_MARKER) {
+                throw localDisagreement(name, "compressed-size", compressedSize, localCompressedSize);
+            }
+            if (localUncompressedSize != 0 && localUncompressedSize != uncompressedSize
+                    && localUncompressedSize != IndexFormat.ZIP64_MARKER) {
+                throw localDisagreement(name, "uncompressed-size", uncompressedSize, localUncompressedSize);
+            }
+            if (localCompressedSize == IndexFormat.ZIP64_MARKER
+                    || localUncompressedSize == IndexFormat.ZIP64_MARKER) {
+                long[] localZip64 = readZip64Extra(localVariable, nameLength, extraLength, name,
+                        localUncompressedSize == IndexFormat.ZIP64_MARKER,
+                        localCompressedSize == IndexFormat.ZIP64_MARKER, false, false);
+                validateDescriptorZip64Placeholder(name, "uncompressed-size", localZip64[0], uncompressedSize);
+                validateDescriptorZip64Placeholder(name, "compressed-size", localZip64[1], compressedSize);
+            }
+        }
+        if (compressedSize > directoryStart - dataOffset) {
+            throw malformed("the compressed data of entry '" + name + "' runs into the central directory");
+        }
+        long dataEnd = dataOffset + compressedSize;
+        int descriptorLength = 0;
+        if ((flags & FLAG_DATA_DESCRIPTOR) != 0) {
+            descriptorLength = validateDataDescriptor(name, dataEnd, directoryStart,
+                    crc, compressedSize, uncompressedSize);
+        }
+        localSpans.add(new LocalSpan(name, localHeaderOffset,
+                checkedAdd(dataEnd, descriptorLength, "end of entry '" + name + "'")));
         return dataOffset;
+    }
+
+    private int validateDataDescriptor(String name, long offset, long directoryStart, long crc,
+            long compressedSize, long uncompressedSize) throws IOException {
+        int available = (int) Math.min(24, directoryStart - offset);
+        if (available < 12) {
+            throw malformed("the data descriptor of entry '" + name + "' runs into the central directory");
+        }
+        byte[] descriptor = readFully(offset, available);
+        boolean signed = available >= 4 && readInt(descriptor, 0) == 0x08074B50;
+        if (signed && matchesDescriptor(descriptor, 4, false, crc, compressedSize, uncompressedSize)) {
+            return 16;
+        }
+        if (matchesDescriptor(descriptor, 0, false, crc, compressedSize, uncompressedSize)) {
+            return 12;
+        }
+        if (signed && matchesDescriptor(descriptor, 4, true, crc, compressedSize, uncompressedSize)) {
+            return 24;
+        }
+        if (matchesDescriptor(descriptor, 0, true, crc, compressedSize, uncompressedSize)) {
+            return 20;
+        }
+        throw malformed("the data descriptor of entry '" + name
+                + "' disagrees with its central directory CRC or sizes");
+    }
+
+    private void validateLocalSpans(long directoryStart) throws IOException {
+        List<LocalSpan> ordered = new ArrayList<>(localSpans);
+        ordered.sort(Comparator.comparingLong(LocalSpan::start));
+        List<LocalSpan> distinct = new ArrayList<>(ordered.size());
+        for (LocalSpan span : ordered) {
+            if (!distinct.isEmpty()) {
+                LocalSpan previous = distinct.get(distinct.size() - 1);
+                if (span.start() == previous.start()) {
+                    if (span.end() != previous.end()) {
+                        throw malformed("entry '" + previous.name() + "' overlaps entry '" + span.name() + "'");
+                    }
+                    continue;
+                }
+            }
+            distinct.add(span);
+        }
+        for (int i = 0; i < distinct.size(); i++) {
+            LocalSpan current = distinct.get(i);
+            long limit = i + 1 < distinct.size() ? distinct.get(i + 1).start() : directoryStart;
+            if (current.end() > limit) {
+                String next = i + 1 < distinct.size()
+                        ? "entry '" + distinct.get(i + 1).name() + "'"
+                        : "the central directory";
+                throw malformed("entry '" + current.name() + "' overlaps " + next);
+            }
+        }
+    }
+
+    private long checkedAdd(long left, long right, String description) throws IOException {
+        try {
+            return Math.addExact(left, right);
+        } catch (ArithmeticException e) {
+            throw malformed(description + " overflows a 64-bit file offset");
+        }
+    }
+
+    private static boolean matchesDescriptor(byte[] descriptor, int start, boolean zip64, long crc,
+            long compressedSize, long uncompressedSize) {
+        int size = zip64 ? 20 : 12;
+        if (start + size > descriptor.length || readUnsignedInt(descriptor, start) != crc) {
+            return false;
+        }
+        if (zip64) {
+            return readLong(descriptor, start + 4) == compressedSize
+                    && readLong(descriptor, start + 12) == uncompressedSize;
+        }
+        return readUnsignedInt(descriptor, start + 4) == compressedSize
+                && readUnsignedInt(descriptor, start + 8) == uncompressedSize;
+    }
+
+    private IOException localDisagreement(String name, String field, long central, long local) {
+        return malformed("the local " + field + " of entry '" + name + "' is " + local
+                + " but its central directory " + field + " is " + central);
+    }
+
+    private void validateDescriptorZip64Placeholder(String name, String field, long local, long central)
+            throws IOException {
+        if (local >= 0 && local != 0 && local != central) {
+            throw localDisagreement(name, field + " ZIP64 placeholder", central, local);
+        }
+    }
+
+    private String decodeName(byte[] buffer, int offset, int length, String location) throws IOException {
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(buffer, offset, length))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            throw malformed("invalid UTF-8 in the " + location + " entry name");
+        }
     }
 
     private Optional<Manifest> readManifest() throws IOException {
@@ -710,5 +961,8 @@ public final class ZipReader implements Closeable {
             return Optional.empty();
         }
         return Optional.of(new Manifest(new ByteArrayInputStream(read(entry))));
+    }
+
+    private record LocalSpan(String name, long start, long end) {
     }
 }

@@ -45,6 +45,7 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 
@@ -429,6 +430,32 @@ class RunnerJarBuilderTest {
                 "a failed build must not replace what was at the output path");
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rejectsLocalCentralNameDisagreementBeforePreserving(boolean verifyAll) throws IOException {
+        Path dependency = mismatchedLocalNameDependency("libs/mismatched-name-" + verifyAll + ".jar");
+
+        IOException failure = assertPreserveRejectedWithoutReplacingOutput(dependency, verifyAll);
+
+        assertTrue(failure.getMessage().contains(dependency.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("safe.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("local"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("name"), failure.getMessage());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rejectsStoredSizeDisagreementBeforePreserving(boolean verifyAll) throws IOException {
+        Path dependency = mismatchedStoredSizeDependency("libs/mismatched-size-" + verifyAll + ".jar");
+
+        IOException failure = assertPreserveRejectedWithoutReplacingOutput(dependency, verifyAll);
+
+        assertTrue(failure.getMessage().contains(dependency.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("bad.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("STORED"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("size"), failure.getMessage());
+    }
+
     @Test
     void rejectsADependencyReachedThroughAnOutputDirectoryAlias() throws IOException {
         Path source = Files.createDirectories(fixtures.resolve("dependency-alias-source"));
@@ -674,6 +701,88 @@ class RunnerJarBuilderTest {
         int record = index.resolve(index.find(name), Index.effectiveMultiReleaseVersion());
         assertNotEquals(IndexFormat.NO_INDEX, record, name + " should resolve");
         return new String(reader.read(record), StandardCharsets.UTF_8);
+    }
+
+    private IOException assertPreserveRejectedWithoutReplacingOutput(Path dependency, boolean verifyAll)
+            throws IOException {
+        Path output = output();
+        Files.createDirectories(output.getParent());
+        byte[] previous = "previous artifact".getBytes(StandardCharsets.UTF_8);
+        Files.write(output, previous);
+        String oldVerifyAll = System.getProperty(RunnerJarBuilder.VERIFY_ALL_PROPERTY);
+        if (verifyAll) {
+            System.setProperty(RunnerJarBuilder.VERIFY_ALL_PROPERTY, "true");
+        } else {
+            System.clearProperty(RunnerJarBuilder.VERIFY_ALL_PROPERTY);
+        }
+        try {
+            IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                    .dependencies(List.of(new Dependency(dependency, null)))
+                    .compression(Compression.PRESERVE)
+                    .build(), BuildLogger.noOp()));
+            assertArrayEquals(previous, Files.readAllBytes(output),
+                    "a structurally invalid dependency must be rejected before publication");
+            return failure;
+        } finally {
+            if (oldVerifyAll == null) {
+                System.clearProperty(RunnerJarBuilder.VERIFY_ALL_PROPERTY);
+            } else {
+                System.setProperty(RunnerJarBuilder.VERIFY_ALL_PROPERTY, oldVerifyAll);
+            }
+        }
+    }
+
+    private static Path mismatchedLocalNameDependency(String name) throws IOException {
+        Path jar = fixtures.resolve(name);
+        Files.createDirectories(jar.getParent());
+        try (ZipWriter writer = ZipWriter.create(jar, ZipWriter.DEFAULT_TIMESTAMP)) {
+            writer.writeEntry("safe.txt", "SAFE".getBytes(StandardCharsets.UTF_8));
+        }
+        byte[] bytes = Files.readAllBytes(jar);
+        System.arraycopy("../x.txt".getBytes(StandardCharsets.UTF_8), 0, bytes, 30, 8);
+        Files.write(jar, bytes);
+        try (ZipFile centralView = new ZipFile(jar.toFile());
+             ZipInputStream localView = new ZipInputStream(Files.newInputStream(jar))) {
+            assertEquals("safe.txt", centralView.entries().nextElement().getName());
+            assertEquals("../x.txt", localView.getNextEntry().getName());
+        }
+        return jar;
+    }
+
+    private static Path mismatchedStoredSizeDependency(String name) throws IOException {
+        Path jar = fixtures.resolve(name);
+        Files.createDirectories(jar.getParent());
+        try (ZipWriter writer = ZipWriter.create(jar, ZipWriter.DEFAULT_TIMESTAMP)) {
+            writer.writeEntry("bad.txt", new byte[] {'X'});
+        }
+        byte[] bytes = Files.readAllBytes(jar);
+        int end = bytes.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = littleEndianInt(bytes, end + 16);
+        putLittleEndianInt(bytes, 14, 0);
+        putLittleEndianInt(bytes, 22, 0);
+        putLittleEndianInt(bytes, central + 16, 0);
+        putLittleEndianInt(bytes, central + 24, 0);
+        Files.write(jar, bytes);
+        try (ZipInputStream localView = new ZipInputStream(Files.newInputStream(jar))) {
+            ZipEntry local = localView.getNextEntry();
+            assertEquals("bad.txt", local.getName());
+            assertEquals(1, local.getCompressedSize());
+            assertEquals(0, local.getSize());
+        }
+        return jar;
+    }
+
+    private static int littleEndianInt(byte[] bytes, int offset) {
+        return (bytes[offset] & 0xFF)
+                | ((bytes[offset + 1] & 0xFF) << 8)
+                | ((bytes[offset + 2] & 0xFF) << 16)
+                | ((bytes[offset + 3] & 0xFF) << 24);
+    }
+
+    private static void putLittleEndianInt(byte[] bytes, int offset, long value) {
+        for (int i = 0; i < 4; i++) {
+            bytes[offset + i] = (byte) (value >>> (i * 8));
+        }
     }
 
     /**
