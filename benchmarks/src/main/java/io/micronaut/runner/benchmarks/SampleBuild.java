@@ -15,10 +15,12 @@
  */
 package io.micronaut.runner.benchmarks;
 
+import io.micronaut.runner.IndexFormat;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
+import io.micronaut.runner.build.RunnerJarReader;
 import io.micronaut.runner.build.RunnerJarSpec;
 
 import java.io.IOException;
@@ -48,7 +50,7 @@ import java.util.zip.ZipEntry;
  * Turns the sample application into every packaging the benchmark compares.
  *
  * <h2>Identical application bytes</h2>
- * <p>All six variants are built from the same compiled classes and the same resolved dependency jars,
+ * <p>All variants are built from the same compiled classes and the same resolved dependency jars,
  * taken from one Gradle build of the sample. That is the only way the comparison means anything: if the
  * shaded jar were built from one compilation and the runner jar from another, any difference could be a
  * difference in the application rather than in the format.</p>
@@ -77,8 +79,12 @@ final class SampleBuild {
     private static final String THIN_JAR = "thin-jar";
     private static final String SHADOW = "shadow";
     private static final String RUNNER_STORED = "runner-stored";
+    private static final String RUNNER_STORED_REFLECTION = "runner-stored-reflection";
     private static final String RUNNER_PRESERVE = "runner-preserve";
+    private static final String RUNNER_PRESERVE_REFLECTION = "runner-preserve-reflection";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
+
+    private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
     /** The task the init script registers on the sample's build. */
     private static final String METADATA_TASK = "runnerBenchmarkMetadata";
@@ -200,7 +206,10 @@ final class SampleBuild {
      * @return the canonical variant names
      */
     static List<String> variantNames() {
-        return List.of(EXPLODED_CLASSPATH, THIN_JAR, SHADOW, RUNNER_STORED, RUNNER_PRESERVE, RUNNER_EXTRACTED);
+        return List.of(EXPLODED_CLASSPATH, THIN_JAR, SHADOW,
+                RUNNER_STORED, RUNNER_STORED_REFLECTION,
+                RUNNER_PRESERVE, RUNNER_PRESERVE_REFLECTION,
+                RUNNER_EXTRACTED);
     }
 
     /** Keeps the complete required matrix visible when the shared sample build fails. */
@@ -213,9 +222,13 @@ final class SampleBuild {
                 Variant.unavailable(SHADOW,
                         "Everything flattened into one jar by the Shadow plugin", reason),
                 Variant.unavailable(RUNNER_STORED,
-                        "Runner jar, nested dependencies re-packed uncompressed", reason),
+                        "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub", reason),
+                Variant.unavailable(RUNNER_STORED_REFLECTION,
+                        "Runner jar, nested dependencies re-packed uncompressed; reflection ablation", reason),
                 Variant.unavailable(RUNNER_PRESERVE,
-                        "Runner jar, nested dependencies copied byte for byte (still deflated)", reason),
+                        "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub", reason),
+                Variant.unavailable(RUNNER_PRESERVE_REFLECTION,
+                        "Runner jar, nested dependencies copied byte for byte; reflection ablation", reason),
                 Variant.unavailable(RUNNER_EXTRACTED,
                         "Runner jar unpacked and run by the JDK's own loader", reason));
     }
@@ -226,7 +239,7 @@ final class SampleBuild {
      * @return the variants, available and unavailable alike
      */
     List<Variant> variants() {
-        List<Variant> variants = new ArrayList<>(6);
+        List<Variant> variants = new ArrayList<>(variantNames().size());
         variants.add(attempt(EXPLODED_CLASSPATH,
                 "Class files and dependency jars on an explicit, ordered -cp",
                 this::explodedClasspath));
@@ -237,12 +250,18 @@ final class SampleBuild {
                 "Everything flattened into one jar by the Shadow plugin",
                 this::shadowJar));
         Variant stored = attempt(RUNNER_STORED,
-                "Runner jar, nested dependencies re-packed uncompressed",
-                () -> runnerJar(RUNNER_STORED, Compression.STORED));
+                "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub",
+                () -> runnerJar(RUNNER_STORED, Compression.STORED, EntryMode.STUB));
         variants.add(stored);
+        variants.add(attempt(RUNNER_STORED_REFLECTION,
+                "Runner jar, nested dependencies re-packed uncompressed; reflection ablation",
+                () -> runnerJar(RUNNER_STORED_REFLECTION, Compression.STORED, EntryMode.REFLECTION)));
         variants.add(attempt(RUNNER_PRESERVE,
-                "Runner jar, nested dependencies copied byte for byte (still deflated)",
-                () -> runnerJar(RUNNER_PRESERVE, Compression.PRESERVE)));
+                "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
+                () -> runnerJar(RUNNER_PRESERVE, Compression.PRESERVE, EntryMode.STUB)));
+        variants.add(attempt(RUNNER_PRESERVE_REFLECTION,
+                "Runner jar, nested dependencies copied byte for byte; reflection ablation",
+                () -> runnerJar(RUNNER_PRESERVE_REFLECTION, Compression.PRESERVE, EntryMode.REFLECTION)));
         variants.add(attempt(RUNNER_EXTRACTED,
                 "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
                 () -> extracted(stored)));
@@ -328,7 +347,18 @@ final class SampleBuild {
                 command, directory, copy);
     }
 
-    private Variant runnerJar(String name, Compression compression) throws IOException {
+    private Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode) throws IOException {
+        return runnerJar(artifacts, name, mainClass, applicationOutput, dependencies,
+                compression, requestedEntryMode);
+    }
+
+    static Variant runnerJar(Path artifacts,
+                             String name,
+                             String mainClass,
+                             List<Path> applicationOutput,
+                             List<Path> dependencies,
+                             Compression compression,
+                             EntryMode requestedEntryMode) throws IOException {
         Path output = artifacts.resolve(name + ".jar");
         Files.deleteIfExists(output);
         RunnerJarSpec spec = RunnerJarSpec.builder()
@@ -337,15 +367,39 @@ final class SampleBuild {
                 .dependencies(dependencies.stream().map(Dependency::new).toList())
                 .output(output)
                 .compression(compression)
+                .entryStub(requestedEntryMode == EntryMode.STUB)
                 .build();
         RunnerJarBuilder.build(spec, BuildLogger.noOp());
+        EntryMode effectiveEntryMode = inspectEntryMode(output, requestedEntryMode);
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 output.toAbsolutePath().toString());
         return Variant.available(name,
-                compression == Compression.STORED
+                (compression == Compression.STORED
                         ? "Runner jar, nested dependencies re-packed uncompressed"
-                        : "Runner jar, nested dependencies copied byte for byte (still deflated)",
-                command, artifacts, output);
+                        : "Runner jar, nested dependencies copied byte for byte")
+                        + (requestedEntryMode == EntryMode.STUB
+                        ? "; plugin-default entry stub" : "; reflection ablation"),
+                command, artifacts, output, requestedEntryMode, effectiveEntryMode);
+    }
+
+    private static EntryMode inspectEntryMode(Path output, EntryMode requestedEntryMode) throws IOException {
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            String indexedStub = reader.index().entryStubClass();
+            boolean generatedClassPresent = reader.index().findClass(GENERATED_ENTRY_STUB)
+                    != IndexFormat.NO_INDEX;
+            if (requestedEntryMode == EntryMode.STUB) {
+                if (!GENERATED_ENTRY_STUB.equals(indexedStub) || !generatedClassPresent) {
+                    throw new IOException("entry stub was requested, but " + output
+                            + " does not both contain and index the generated class " + GENERATED_ENTRY_STUB);
+                }
+                return EntryMode.STUB;
+            }
+            if (indexedStub != null || generatedClassPresent) {
+                throw new IOException("reflection was requested, but " + output + " contains or indexes "
+                        + GENERATED_ENTRY_STUB);
+            }
+            return EntryMode.REFLECTION;
+        }
     }
 
     private Variant extracted(Variant stored) throws IOException, InterruptedException {

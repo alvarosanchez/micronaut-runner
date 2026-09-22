@@ -7,7 +7,7 @@ Micro-benchmarks:: JMH benchmarks over the class loader's hot path: index lookup
 loading against `URLClassLoader` on the same set of JARs, and defining a class from a mapped buffer versus
 a byte array. These isolate the mechanism.
 
-Startup:: The whole process, from spawn to readiness, for the same application packaged in the six modes
+Startup:: The whole process, from spawn to readiness, for the same application packaged in the eight modes
 that the current harness implements:
 +
 [cols="25,75"]
@@ -24,10 +24,16 @@ that the current harness implements:
 |One JAR flattened by the Shadow plugin
 
 |`runner-stored`
-|Runner JAR with nested dependencies re-packed uncompressed
+|Runner JAR with nested dependencies re-packed uncompressed and the plugin-default entry stub
+
+|`runner-stored-reflection`
+|The same stored Runner JAR inputs with the entry stub disabled, as a reflection ablation
 
 |`runner-preserve`
-|Runner JAR with nested dependencies copied byte for byte
+|Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub
+
+|`runner-preserve-reflection`
+|The same preserved Runner JAR inputs with the entry stub disabled, as a reflection ablation
 
 |`runner-extracted`
 |The stored Runner JAR extracted and launched by the JDK's built-in loader
@@ -37,7 +43,7 @@ Each sample starts a fresh JVM. Readiness is measured externally, from process s
 HTTP response, because that is what a user waits for and it captures class loading on the first request. The
 framework's own "startup completed" line is recorded separately rather than substituted for readiness.
 
-None of these six commands uses a trained application cache. Default JDK class sharing remains enabled when
+None of these eight commands uses a trained application cache. Default JDK class sharing remains enabled when
 the selected JDK enables it, but reuse of platform classes from the JDK's default archive is not evidence of
 trained application-class CDS or AOT reuse.
 

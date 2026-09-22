@@ -22,7 +22,7 @@ import java.util.List;
  * One packaging of the sample application, ready to be started, or a note saying why it is not.
  *
  * <p>A variant that could not be built is kept in the list rather than dropped. A benchmark that quietly
- * measures four of the six formats it names reads as though it measured all six, and the reader has no way
+ * measures only part of the matrix it names reads as though it measured every row, and the reader has no way
  * to tell. {@link #available()} is {@code false} and {@link #unavailableReason()} says what happened; the
  * report prints both.</p>
  *
@@ -31,6 +31,8 @@ import java.util.List;
  * @param command           the full command line, the {@code java} executable included
  * @param workingDirectory  the directory the process is started in
  * @param artifact          the file (or directory) the variant runs from, for the size column
+ * @param requestedEntryMode how the harness asked to enter the application
+ * @param effectiveEntryMode how the built artifact enters the application, or {@code null} when unavailable
  * @param available         whether the variant could be built
  * @param unavailableReason why it could not, or {@code null} when it could
  */
@@ -39,6 +41,8 @@ record Variant(String name,
                List<String> command,
                Path workingDirectory,
                Path artifact,
+               EntryMode requestedEntryMode,
+               EntryMode effectiveEntryMode,
                boolean available,
                String unavailableReason) {
 
@@ -57,7 +61,19 @@ record Variant(String name,
                              List<String> command,
                              Path workingDirectory,
                              Path artifact) {
-        return new Variant(name, description, List.copyOf(command), workingDirectory, artifact, true, null);
+        return available(name, description, command, workingDirectory, artifact,
+                EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER);
+    }
+
+    static Variant available(String name,
+                             String description,
+                             List<String> command,
+                             Path workingDirectory,
+                             Path artifact,
+                             EntryMode requestedEntryMode,
+                             EntryMode effectiveEntryMode) {
+        return new Variant(name, description, List.copyOf(command), workingDirectory, artifact,
+                requestedEntryMode, effectiveEntryMode, true, null);
     }
 
     /**
@@ -69,6 +85,10 @@ record Variant(String name,
      * @return the variant
      */
     static Variant unavailable(String name, String description, String reason) {
-        return new Variant(name, description, List.of(), null, null, false, reason);
+        return unavailable(name, description, EntryMode.requestedBy(name), reason);
+    }
+
+    static Variant unavailable(String name, String description, EntryMode requestedEntryMode, String reason) {
+        return new Variant(name, description, List.of(), null, null, requestedEntryMode, null, false, reason);
     }
 }
