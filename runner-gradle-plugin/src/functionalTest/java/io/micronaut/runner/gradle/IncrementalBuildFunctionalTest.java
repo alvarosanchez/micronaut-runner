@@ -33,7 +33,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarOutputStream;
-import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -311,9 +310,7 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
 
     private static void writeResourceJar(Path file, String value) throws IOException {
         Files.createDirectories(file.getParent());
-        Manifest manifest = new Manifest();
-        manifest.getMainAttributes().putValue("Manifest-Version", "1.0");
-        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(file), manifest)) {
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(file))) {
             ZipEntry entry = new ZipEntry("value.txt");
             entry.setTime(1_000_000_000_000L);
             out.putNextEntry(entry);
