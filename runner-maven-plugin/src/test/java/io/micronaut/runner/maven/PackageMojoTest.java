@@ -279,8 +279,10 @@ class PackageMojoTest {
 
         assertEquals("v2", manifest(original).getMainAttributes().getValue("Implementation-Version"),
                 "a new jar-plugin output must replace the stale original on a non-clean package cycle");
-        assertEquals("package-v2", manifest(original).getAttributes("com/example/")
-                .getValue("Implementation-Version"), "named package metadata must be refreshed too");
+        Attributes applicationPackage = manifest(original).getAttributes("com/example/");
+        assertNotNull(applicationPackage, () -> original + " has no com/example/ manifest section");
+        assertEquals("package-v2", applicationPackage.getValue("Implementation-Version"),
+                "named package metadata must be refreshed too");
         assertFalse(isRunnerJar(original), "the refreshed original must remain the thin jar");
         assertTrue(isRunnerJar(mainArtifact), "the main artifact must remain the runner jar");
     }
