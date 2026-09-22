@@ -28,21 +28,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BenchmarkClaimsTest {
 
-    private static final List<String> IMPLEMENTED_VARIANTS = List.of(
-            "exploded-cp",
-            "thin-jar",
-            "shadow",
-            "runner-stored",
-            "runner-preserve",
-            "runner-extracted");
-
     @Test
     void guideMatchesTheImplementedMatrixAndLabelsPlannedCaches() throws Exception {
         String guide = Files.readString(Path.of(System.getProperty("runner.benchmark.guide")),
                 StandardCharsets.UTF_8);
         String normalizedGuide = guide.replaceAll("\\s+", " ");
 
-        for (String variant : IMPLEMENTED_VARIANTS) {
+        for (String variant : SampleBuild.variantNames()) {
             assertTrue(guide.contains("`" + variant + "`"), () -> "guide does not name " + variant);
         }
         assertTrue(guide.contains("https://github.com/alvarosanchez/micronaut-runner/issues/44[#44]"));
