@@ -1,0 +1,33 @@
+plugins {
+    id 'base'
+}
+
+configurations {
+    runner {
+        canBeConsumed = false
+        canBeResolved = true
+        attributes {
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+            attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
+        }
+    }
+}
+
+dependencies {
+    runner "io.micronaut.runner:micronaut-runner-gradle-plugin:${providers.gradleProperty('runner.version').get()}"
+}
+
+tasks.register('verifyMetadata') {
+    def files = configurations.runner
+    inputs.files(files)
+    doLast {
+        def names = files.collect { it.name }.sort()
+        def version = providers.gradleProperty('runner.version').get()
+        assert names == [
+                "micronaut-runner-build-${version}.jar",
+                "micronaut-runner-gradle-plugin-${version}.jar",
+                "micronaut-runner-launcher-${version}.jar"
+        ]
+    }
+}

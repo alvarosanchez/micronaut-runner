@@ -1,0 +1,10 @@
+dependencyResolutionManagement {
+    repositories {
+        maven {
+            url = uri(providers.gradleProperty('runner.repo').get())
+            metadataSources { gradleMetadata() }
+        }
+    }
+}
+
+rootProject.name = 'published-module-metadata-consumer'
