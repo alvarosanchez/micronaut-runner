@@ -25,6 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.File;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -130,7 +131,9 @@ class HandlersFileUrlTest {
             assertEquals("legacy-path-consumer", new String(
                     jar.getInputStream(jar.getJarEntry("probe.txt")).readAllBytes(), StandardCharsets.UTF_8));
         }
-        try (InputStream in = URI.create("jar:" + previous + "!/probe.txt").toURL().openStream()) {
+        URLConnection entryConnection = URI.create("jar:" + previous + "!/probe.txt").toURL().openConnection();
+        entryConnection.setUseCaches(false);
+        try (InputStream in = entryConnection.getInputStream()) {
             assertEquals("legacy-path-consumer", new String(in.readAllBytes(), StandardCharsets.UTF_8));
         }
     }
