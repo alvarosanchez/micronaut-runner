@@ -25,6 +25,7 @@ import java.lang.constant.ConstantDescs;
 import java.lang.constant.MethodTypeDesc;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -719,7 +720,9 @@ class RunnerClassLoaderTest {
     private static List<String> resourceContents(Enumeration<URL> urls) throws IOException {
         List<String> contents = new ArrayList<>();
         for (URL url : list(urls)) {
-            contents.add(string(url.openStream()));
+            URLConnection connection = url.openConnection();
+            connection.setUseCaches(false);
+            contents.add(string(connection.getInputStream()));
         }
         return contents;
     }
