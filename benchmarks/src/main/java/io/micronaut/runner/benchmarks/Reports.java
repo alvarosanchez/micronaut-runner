@@ -65,6 +65,7 @@ final class Reports {
                                List<VariantResult> results,
                                List<StartupHarness.ClassLoadCount> diagnostics) {
         StringBuilder out = new StringBuilder(64 * 1024);
+        BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
         out.append("{\n");
         out.append("  \"generatedAt\": ").append(quote(context.generatedAt())).append(",\n");
         out.append("  \"sample\": ").append(quote(context.sample().toString())).append(",\n");
@@ -73,6 +74,15 @@ final class Reports {
         out.append("  \"readinessPath\": ").append(quote(context.readinessPath())).append(",\n");
         out.append("  \"measuredIterations\": ").append(context.iterations()).append(",\n");
         out.append("  \"warmupIterations\": ").append(context.warmupIterations()).append(",\n");
+        out.append("  \"completenessPolicy\": ")
+                .append(quote(context.completenessPolicy().externalName())).append(",\n");
+        out.append("  \"complete\": ").append(status.complete()).append(",\n");
+        out.append("  \"exitCode\": ").append(status.exitCode()).append(",\n");
+        out.append("  \"requiredVariants\": [");
+        for (int i = 0; i < context.requiredVariants().size(); i++) {
+            out.append(i == 0 ? "" : ", ").append(quote(context.requiredVariants().get(i)));
+        }
+        out.append("],\n");
         out.append("  \"seed\": ").append(context.seed()).append(",\n");
         out.append("  \"interleaved\": true,\n");
         out.append("  \"timingRunsCarryLoggingFlags\": false,\n");
@@ -91,10 +101,12 @@ final class Reports {
         out.append("  },\n");
         out.append("  \"variants\": [\n");
         for (int i = 0; i < results.size(); i++) {
-            appendVariant(out, results.get(i));
+            appendVariant(out, context, results.get(i));
             out.append(i == results.size() - 1 ? "\n" : ",\n");
         }
         out.append("  ],\n");
+        appendAttempts(out, results);
+        out.append(",\n");
         out.append("  \"diagnostics\": {\n");
         out.append("    \"comment\": \"Separate runs carrying -Xlog:class+load. NOT timing runs and not")
                 .append(" comparable with the readiness numbers above.\",\n");
@@ -113,12 +125,14 @@ final class Reports {
         return out.toString();
     }
 
-    private static void appendVariant(StringBuilder out, VariantResult result) {
+    private static void appendVariant(StringBuilder out, RunContext context, VariantResult result) {
         Variant variant = result.variant();
         out.append("    {\n");
         out.append("      \"name\": ").append(quote(variant.name())).append(",\n");
         out.append("      \"description\": ").append(quote(variant.description())).append(",\n");
         out.append("      \"available\": ").append(variant.available()).append(",\n");
+        out.append("      \"required\": ").append(context.requiredVariants().contains(variant.name()))
+                .append(",\n");
         out.append("      \"unavailableReason\": ").append(quote(variant.unavailableReason())).append(",\n");
         out.append("      \"artifact\": ")
                 .append(quote(variant.artifact() == null ? null : variant.artifact().toString())).append(",\n");
@@ -131,6 +145,12 @@ final class Reports {
         out.append("      \"readiness\": ").append(statistics(result.readiness())).append(",\n");
         out.append("      \"logLine\": ").append(statistics(result.logLine())).append(",\n");
         out.append("      \"framework\": ").append(statistics(result.framework())).append(",\n");
+        out.append("      \"warmup\": ");
+        appendCounts(out, result.warmup());
+        out.append(",\n");
+        out.append("      \"measured\": ");
+        appendCounts(out, result.measured());
+        out.append(",\n");
         out.append("      \"failures\": [");
         for (int i = 0; i < result.failures().size(); i++) {
             out.append(i == 0 ? "" : ", ").append(quote(result.failures().get(i)));
@@ -155,6 +175,50 @@ final class Reports {
         out.append("    }");
     }
 
+    private static void appendCounts(StringBuilder out, PhaseCounts counts) {
+        out.append("{\"requested\": ").append(counts.requested())
+                .append(", \"attempted\": ").append(counts.attempted())
+                .append(", \"successful\": ").append(counts.successful())
+                .append(", \"failed\": ").append(counts.failed())
+                .append(", \"skipped\": ").append(counts.skipped()).append('}');
+    }
+
+    private static void appendAttempts(StringBuilder out, List<VariantResult> results) {
+        List<RunAttempt> attempts = results.stream()
+                .flatMap(result -> result.attempts().stream())
+                .sorted(java.util.Comparator.comparingInt(RunAttempt::globalOrder))
+                .toList();
+        out.append("  \"attempts\": [\n");
+        for (int i = 0; i < attempts.size(); i++) {
+            RunAttempt attempt = attempts.get(i);
+            StartupSample sample = attempt.sample();
+            out.append("    {\"variant\": ").append(quote(attempt.variant()))
+                    .append(", \"iteration\": ").append(attempt.iteration())
+                    .append(", \"phaseIteration\": ").append(attempt.phaseIteration())
+                    .append(", \"globalOrder\": ").append(attempt.globalOrder())
+                    .append(", \"warmup\": ").append(attempt.warmup())
+                    .append(", \"outcome\": ").append(quote(attempt.outcome().externalName()))
+                    .append(", \"failureReason\": ").append(quote(attempt.failureReason()))
+                    .append(", \"exitCode\": ")
+                    .append(attempt.exitCode() == null ? "null" : attempt.exitCode())
+                    .append(", \"timing\": ");
+            if (sample == null) {
+                out.append("null");
+            } else {
+                out.append("{\"port\": ").append(sample.port())
+                        .append(", \"readinessMillis\": ").append(number(sample.readinessMillis()))
+                        .append(", \"logLineMillis\": ")
+                        .append(sample.logLineMillis() < 0 ? "null" : number(sample.logLineMillis()))
+                        .append(", \"frameworkMillis\": ")
+                        .append(sample.frameworkMillis() < 0 ? "null" : number(sample.frameworkMillis()))
+                        .append(", \"pollGapMillis\": ").append(number(sample.pollGapMillis()))
+                        .append('}');
+            }
+            out.append('}').append(i == attempts.size() - 1 ? "\n" : ",\n");
+        }
+        out.append("  ]");
+    }
+
     private static String statistics(Statistics statistics) {
         if (statistics == null) {
             return "null";
@@ -175,7 +239,23 @@ final class Reports {
                                    List<VariantResult> results,
                                    List<StartupHarness.ClassLoadCount> diagnostics) {
         StringBuilder out = new StringBuilder(8 * 1024);
+        BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
         out.append("# Startup benchmark\n\n");
+        if (status.complete()) {
+            out.append("**COMPLETE required comparison** — every required variant completed every requested")
+                    .append(" measured run.\n\n");
+        } else if (context.completenessPolicy() == CompletenessPolicy.REQUIRED) {
+            out.append("**INCOMPLETE required comparison** — this invocation exits nonzero.\n\n");
+        } else {
+            out.append("**INCOMPLETE exploratory comparison** — successful-only timing summaries below are")
+                    .append(" not a complete comparison.\n\n");
+            if (status.anyMeasuredSuccess()) {
+                out.append("Partial policy permits exit 0 because at least one measured run succeeded;")
+                        .append(" missing cells remain failures, not timings.\n\n");
+            } else {
+                out.append("Partial policy still exits nonzero because no measured run succeeded.\n\n");
+            }
+        }
         out.append("Time from process spawn to the first successful HTTP response, for the same Micronaut")
                 .append(" application packaged six ways.\n\n");
         out.append("- **Sample**: `").append(context.sample()).append("`\n");
@@ -189,6 +269,8 @@ final class Reports {
                 .append(" measured iterations per variant after ").append(context.warmupIterations())
                 .append(" discarded warm-up iterations; the variants are **interleaved in a random order")
                 .append(" within each iteration** (seed ").append(context.seed()).append(")\n");
+        out.append("- **Completeness policy**: `")
+                .append(context.completenessPolicy().externalName()).append("`\n");
         out.append("- **JVM process**: fresh for every sample\n");
         out.append("- **OS page cache**: uncontrolled; discarded warm-ups do not establish a controlled")
                 .append(" warm-cache or cold-filesystem-cache state\n");
@@ -200,6 +282,22 @@ final class Reports {
         out.append("- **Timing runs carry no `-Xlog` flags.** Class-load counts, when collected, come from")
                 .append(" separate runs and are labelled as such below\n");
         out.append("- **Generated**: ").append(context.generatedAt()).append("\n\n");
+
+        out.append("## Matrix status\n\n");
+        out.append("Skipped means a scheduled cell was not attempted because the variant was unavailable;")
+                .append(" it is distinct from a failed process attempt. Warm-up failures are reported but")
+                .append(" do not make an otherwise complete measured matrix fail.\n\n");
+        out.append("| Variant | Phase | Requested | Attempted | Successful | Failed | Skipped |\n");
+        out.append("|---|---|---:|---:|---:|---:|---:|\n");
+        for (VariantResult result : results) {
+            appendCountRow(out, result.variant().name(), "warm-up", result.warmup());
+            appendCountRow(out, result.variant().name(), "measured", result.measured());
+        }
+        out.append('\n');
+
+        out.append("## Successful measured runs only\n\n");
+        out.append("Timing distributions condition on successful measured attempts; failed and skipped")
+                .append(" attempts are never replaced with zeroes or invented durations.\n\n");
 
         out.append("| Variant | Runs | Readiness, median | p90 | 95% CI of median | Min | Max |")
                 .append(" To startup line, median | Framework's own figure | Artifact |\n");
@@ -226,7 +324,7 @@ final class Reports {
         }
         out.append('\n');
 
-        appendNotMeasured(out, results);
+        appendIncompleteDetails(out, context, results, status);
 
         out.append("## What each variant is\n\n");
         out.append("| Variant | Packaging |\n|---|---|\n");
@@ -267,9 +365,8 @@ final class Reports {
                 .append(" what a careful measurement by hand produces. The framework's figure is the")
                 .append(" application counting itself, starting well after the JVM did: the smallest of the")
                 .append(" three and the only one that is not an external observation.\n");
-        out.append("- A variant marked **not measured** either could not be built or never answered. Look")
-                .append(" at the sections above before reading the remaining rows as a complete")
-                .append(" comparison.\n");
+        out.append("- A variant marked **not measured** either could not be built or never answered. Matrix")
+                .append(" status and attempt records distinguish skipped cells from failed processes.\n");
         out.append("- Every raw sample, warm-up runs included, is in `").append(RESULTS_FILE).append("`.\n");
         return out.toString();
     }
@@ -286,34 +383,48 @@ final class Reports {
      * @param out     the report being built
      * @param results every variant's result
      */
-    private static void appendNotMeasured(StringBuilder out, List<VariantResult> results) {
-        List<VariantResult> missing = results.stream()
-                .filter(result -> result.readiness() == null)
-                .toList();
-        if (missing.isEmpty()) {
-            out.append("All ").append(results.size()).append(" variants were built and measured.\n\n");
+    private static void appendCountRow(StringBuilder out, String variant, String phase, PhaseCounts counts) {
+        out.append("| `").append(variant).append("` | ").append(phase)
+                .append(" | ").append(counts.requested())
+                .append(" | ").append(counts.attempted())
+                .append(" | ").append(counts.successful())
+                .append(" | ").append(counts.failed())
+                .append(" | ").append(counts.skipped()).append(" |\n");
+    }
+
+    private static void appendIncompleteDetails(StringBuilder out,
+                                                RunContext context,
+                                                List<VariantResult> results,
+                                                BenchmarkStatus status) {
+        if (status.complete()) {
+            out.append("All ").append(context.requiredVariants().size())
+                    .append(" required variants completed all ").append(context.iterations())
+                    .append(" requested measured runs.\n\n");
             return;
         }
-        out.append("## Variants that were NOT measured\n\n");
-        out.append("**").append(missing.size()).append(" of ").append(results.size())
-                .append(" variants produced no measurement**, so the table above is not a complete")
-                .append(" comparison.\n\n");
-        out.append("| Variant | What happened | Detail |\n|---|---|---|\n");
-        for (VariantResult result : missing) {
+        out.append("## Incomplete matrix details\n\n");
+        out.append("| Required variant | What happened | Detail |\n|---|---|---|\n");
+        for (String required : context.requiredVariants()) {
+            VariantResult result = results.stream()
+                    .filter(candidate -> candidate.variant().name().equals(required))
+                    .findFirst().orElse(null);
             String what;
             String detail;
-            if (!result.variant().available()) {
+            if (result == null) {
+                what = "missing from results";
+                detail = "no variant status was recorded";
+            } else if (!result.variant().available()) {
                 what = "could not be built";
                 detail = result.variant().unavailableReason();
-            } else if (!result.failures().isEmpty()) {
-                what = "built, but " + result.failures().size()
-                        + (result.failures().size() == 1 ? " run never answered" : " runs never answered");
-                detail = result.failures().get(0);
+            } else if (result.measured().successful() < context.iterations()) {
+                what = result.measured().successful() + " of " + context.iterations()
+                        + " measured runs succeeded";
+                detail = result.failures().isEmpty() ? "measured cells were skipped"
+                        : result.failures().get(0);
             } else {
-                what = "built, but never started";
-                detail = null;
+                continue;
             }
-            out.append("| `").append(result.variant().name()).append("` | ").append(what).append(" | ")
+            out.append("| `").append(required).append("` | ").append(what).append(" | ")
                     .append(escapeCell(reason(detail))).append(" |\n");
         }
         out.append('\n');

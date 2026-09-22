@@ -43,6 +43,7 @@ import java.util.Random;
  *   [ --readiness  &lt;p&gt;  ]  the HTTP path polled for readiness (default /hello)
  *   [ --timeout    &lt;s&gt;  ]  how long one start may take (default 120)
  *   [ --diagnostics     ]  additionally make one -Xlog:class+load run per variant
+ *   [ --allow-partial   ]  exploratory mode: exit zero if any measured run succeeds
  * </pre>
  *
  * <h2>The methodology, and why each rule is there</h2>
@@ -64,9 +65,9 @@ import java.util.Random;
  *   <li><strong>A variant that cannot be built is reported, not dropped.</strong></li>
  * </ol>
  *
- * <p>Exit status is {@code 0} when at least one variant was measured, {@code 1} otherwise. Both reports
- * are written either way, because "nothing could be built, and here is why" is the most useful thing the
- * harness can say on a bad day.</p>
+ * <p>The default required policy exits {@code 0} only when every required variant produced every requested
+ * measured run. Explicit partial mode exits {@code 0} when at least one measured run succeeded. Both
+ * reports are written before either decision.</p>
  */
 public final class StartupBenchmark {
 
@@ -115,9 +116,8 @@ public final class StartupBenchmark {
         } catch (IOException | InterruptedException e) {
             buildFailure = e.getMessage();
             log.println("[startup-benchmark] the sample could not be built: " + buildFailure);
-            variants = List.of(Variant.unavailable("all",
-                    "every variant of the sample application",
-                    "the sample's Gradle build failed: " + oneLine(buildFailure)));
+            String reason = "the sample's Gradle build failed: " + oneLine(buildFailure);
+            variants = SampleBuild.unavailableVariants(reason);
         }
 
         List<VariantResult> results;
@@ -132,17 +132,28 @@ public final class StartupBenchmark {
         RunContext context = new RunContext(options.sample(), options.repository(),
                 options.runnerVersion(), options.outputDirectory(), options.iterations(),
                 options.warmupIterations(), options.seed(), options.readinessPath(),
-                options.diagnostics(), Instant.now().toString());
-        Reports.write(options.outputDirectory(), context, results, diagnostics);
-        log.println("[startup-benchmark] wrote " + options.outputDirectory().resolve(Reports.RESULTS_FILE));
-        log.println("[startup-benchmark] wrote " + options.outputDirectory().resolve(Reports.SUMMARY_FILE));
-
-        boolean measuredSomething = results.stream().anyMatch(result -> result.readiness() != null);
-        if (!measuredSomething) {
-            System.err.println("[startup-benchmark] no variant produced a single measurement;"
-                    + " see " + options.outputDirectory().resolve(Reports.SUMMARY_FILE));
-            System.exit(1);
+                options.diagnostics(), Instant.now().toString(), SampleBuild.variantNames(),
+                options.completenessPolicy());
+        int exitCode = finish(context, results, diagnostics, log);
+        if (exitCode != 0) {
+            System.exit(exitCode);
         }
+    }
+
+    static int finish(RunContext context,
+                      List<VariantResult> results,
+                      List<StartupHarness.ClassLoadCount> diagnostics,
+                      PrintStream log) throws IOException {
+        Reports.write(context.outputDirectory(), context, results, diagnostics);
+        log.println("[startup-benchmark] wrote " + context.outputDirectory().resolve(Reports.RESULTS_FILE));
+        log.println("[startup-benchmark] wrote " + context.outputDirectory().resolve(Reports.SUMMARY_FILE));
+        BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
+        if (status.exitCode() != 0) {
+            System.err.println("[startup-benchmark] benchmark matrix is incomplete under the "
+                    + context.completenessPolicy().externalName() + " policy; see "
+                    + context.outputDirectory().resolve(Reports.SUMMARY_FILE));
+        }
+        return status.exitCode();
     }
 
     /**
@@ -155,31 +166,33 @@ public final class StartupBenchmark {
      * @return one result per variant, in the order the variants were given
      * @throws InterruptedException if a run is interrupted
      */
-    private static List<VariantResult> measure(StartupHarness harness,
-                                               List<Variant> variants,
-                                               Options options,
-                                               PrintStream log) throws InterruptedException {
+    static List<VariantResult> measure(StartupRunner harness,
+                                       List<Variant> variants,
+                                       Options options,
+                                       PrintStream log) throws InterruptedException {
         List<Variant> runnable = variants.stream().filter(Variant::available).toList();
-        List<List<StartupSample>> samples = new ArrayList<>();
-        List<List<String>> failures = new ArrayList<>();
+        List<List<RunAttempt>> attempts = new ArrayList<>();
         for (int i = 0; i < variants.size(); i++) {
-            samples.add(new ArrayList<>());
-            failures.add(new ArrayList<>());
+            attempts.add(new ArrayList<>());
         }
 
         Random random = new Random(options.seed());
         int total = options.warmupIterations() + options.iterations();
+        int globalOrder = 0;
         for (int iteration = 0; iteration < total; iteration++) {
             boolean warmup = iteration < options.warmupIterations();
+            int phaseIteration = warmup ? iteration : iteration - options.warmupIterations();
             List<Variant> order = new ArrayList<>(runnable);
             // A fresh order every iteration: this is what keeps a transient slowdown of the machine from
             // landing entirely on one variant.
             Collections.shuffle(order, random);
             for (Variant variant : order) {
                 int slot = variants.indexOf(variant);
+                int attemptOrder = globalOrder++;
                 try {
                     StartupSample sample = harness.run(variant, iteration, warmup);
-                    samples.get(slot).add(sample);
+                    attempts.get(slot).add(RunAttempt.success(
+                            variant.name(), phaseIteration, attemptOrder, sample));
                     log.printf(Locale.ROOT,
                             "[startup-benchmark] %s %-18s ready %7.1f ms | log line %7.1f ms |"
                                     + " framework says %s%n",
@@ -190,8 +203,13 @@ public final class StartupBenchmark {
                                     : String.format(Locale.ROOT, "%.0f ms", sample.frameworkMillis()));
                 } catch (IOException e) {
                     String reason = oneLine(e.getMessage());
-                    failures.get(slot).add(reason);
-                    log.println("[startup-benchmark] " + variant.name() + " failed: " + reason);
+                    Integer exitCode = e instanceof StartupHarness.RunFailure failure
+                            ? failure.exitCode() : null;
+                    attempts.get(slot).add(RunAttempt.failure(variant.name(), iteration, phaseIteration,
+                            attemptOrder, warmup, reason, exitCode));
+                    log.println("[startup-benchmark] " + (warmup ? "warmup" : "measured")
+                            + " attempt " + phaseIteration + " (global order " + attemptOrder + ") of "
+                            + variant.name() + " failed: " + reason);
                 }
             }
         }
@@ -199,25 +217,8 @@ public final class StartupBenchmark {
         List<VariantResult> results = new ArrayList<>(variants.size());
         for (int i = 0; i < variants.size(); i++) {
             Variant variant = variants.get(i);
-            List<StartupSample> variantSamples = samples.get(i);
-            double[] readiness = variantSamples.stream()
-                    .filter(sample -> !sample.warmup())
-                    .mapToDouble(StartupSample::readinessMillis)
-                    .toArray();
-            double[] logLine = variantSamples.stream()
-                    .filter(sample -> !sample.warmup() && sample.logLineMillis() >= 0)
-                    .mapToDouble(StartupSample::logLineMillis)
-                    .toArray();
-            double[] framework = variantSamples.stream()
-                    .filter(sample -> !sample.warmup() && sample.frameworkMillis() >= 0)
-                    .mapToDouble(StartupSample::frameworkMillis)
-                    .toArray();
-            results.add(new VariantResult(variant, SampleBuild.sizeOf(variant.artifact()),
-                    List.copyOf(variantSamples),
-                    Statistics.of(readiness, options.seed()),
-                    Statistics.of(logLine, options.seed()),
-                    Statistics.of(framework, options.seed()),
-                    List.copyOf(failures.get(i))));
+            results.add(VariantResult.summarize(variant, SampleBuild.sizeOf(variant.artifact()),
+                    attempts.get(i), options.warmupIterations(), options.iterations(), options.seed()));
         }
         return results;
     }
@@ -262,6 +263,7 @@ public final class StartupBenchmark {
      * @param readinessPath    the HTTP path polled for readiness
      * @param timeout          how long one start may take
      * @param diagnostics      whether to make separate class-load counting runs
+     * @param completenessPolicy whether incomplete measured results fail the invocation
      */
     record Options(Path sample,
                    String repository,
@@ -272,7 +274,8 @@ public final class StartupBenchmark {
                    long seed,
                    String readinessPath,
                    Duration timeout,
-                   boolean diagnostics) {
+                   boolean diagnostics,
+                   CompletenessPolicy completenessPolicy) {
 
         /**
          * Parses the command line.
@@ -292,6 +295,7 @@ public final class StartupBenchmark {
             String readiness = DEFAULT_READINESS_PATH;
             int timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
             boolean diagnostics = false;
+            CompletenessPolicy completenessPolicy = CompletenessPolicy.REQUIRED;
 
             for (int i = 0; i < args.length; i++) {
                 String argument = args[i];
@@ -306,6 +310,7 @@ public final class StartupBenchmark {
                     case "--readiness" -> readiness = value(args, ++i, argument);
                     case "--timeout" -> timeoutSeconds = number(value(args, ++i, argument), argument);
                     case "--diagnostics" -> diagnostics = true;
+                    case "--allow-partial" -> completenessPolicy = CompletenessPolicy.PARTIAL;
                     default -> throw new IllegalArgumentException("unknown option " + argument);
                 }
             }
@@ -330,7 +335,7 @@ public final class StartupBenchmark {
             return new Options(sample.toAbsolutePath().normalize(), repository, version,
                     out.toAbsolutePath().normalize(), iterations, effectiveWarmup, seed,
                     readiness.startsWith("/") ? readiness : "/" + readiness,
-                    Duration.ofSeconds(timeoutSeconds), diagnostics);
+                    Duration.ofSeconds(timeoutSeconds), diagnostics, completenessPolicy);
         }
 
         /**
@@ -343,7 +348,7 @@ public final class StartupBenchmark {
                    Usage: StartupBenchmark --sample <dir> --repo <uri> --version <v> \
                    --iterations <n> --out <dir>
                                           [--warmup <n>] [--seed <n>] [--readiness <path>] \
-                   [--timeout <seconds>] [--diagnostics]""";
+                   [--timeout <seconds>] [--diagnostics] [--allow-partial]""";
         }
 
         private static String value(String[] args, int index, String option) {

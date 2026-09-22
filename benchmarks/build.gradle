@@ -49,11 +49,16 @@ def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
     // place for CI to publish.
     outputs.upToDateWhen { false }
     argumentProviders.add({ ->
-        ['--sample', layout.projectDirectory.dir('../test-suite/samples/hello-netty').asFile.absolutePath,
-         '--repo', layout.buildDirectory.dir('aggregated-repo').get().asFile.toURI().toASCIIString(),
-         '--version', providers.gradleProperty('projectVersion').get().replace('-SNAPSHOT', '-DUMMY'),
-         '--iterations', providers.gradleProperty('benchmarks.iterations').getOrElse('10'),
-         '--out', outDir.get().asFile.absolutePath]
+        def arguments = [
+                '--sample', layout.projectDirectory.dir('../test-suite/samples/hello-netty').asFile.absolutePath,
+                '--repo', layout.buildDirectory.dir('aggregated-repo').get().asFile.toURI().toASCIIString(),
+                '--version', providers.gradleProperty('projectVersion').get().replace('-SNAPSHOT', '-DUMMY'),
+                '--iterations', providers.gradleProperty('benchmarks.iterations').getOrElse('10'),
+                '--out', outDir.get().asFile.absolutePath]
+        if (providers.gradleProperty('benchmarks.allowPartial').map(String::toBoolean).getOrElse(false)) {
+            arguments.add('--allow-partial')
+        }
+        arguments
     } as CommandLineArgumentProvider)
 }
 
