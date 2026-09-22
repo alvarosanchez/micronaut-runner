@@ -83,6 +83,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#jarIdForName(java.lang.String)" tabindex="0">jarIdForName(String)</a></li>
 <li><a href="#nestedJarFile(int)" tabindex="0">nestedJarFile(int)</a></li>
 <li><a href="#outerJarFile()" tabindex="0">outerJarFile()</a></li>
+<li><a href="#outerJarFile(boolean)" tabindex="0">outerJarFile(boolean)</a></li>
 <li><a href="#openDelegate(java.net.URL)" tabindex="0">openDelegate(URL)</a></li>
 <li><a href="#unregister()" tabindex="0">unregister()</a></li>
 <li><a href="#decode(java.lang.String)" tabindex="0">decode(String)</a></li>
@@ -238,45 +239,50 @@ otherwise.</div>
 <div class="block">The outer archive as an ordinary <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link"><code>JarFile</code></a>, for the entries that are not in the index: the
 launcher's own classes, the manifest, the index itself and the nested jars as stored bytes.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#outerUrlFor(java.lang.String)" class="member-name-link">outerUrlFor</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;outerEntryName)</code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link">JarFile</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#outerJarFile(boolean)" class="member-name-link">outerJarFile</a><wbr>(boolean&nbsp;useCaches)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="block">The outer archive as either the shared process-lifetime handle or a handle owned by one connection.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#outerUrlFor(java.lang.String)" class="member-name-link">outerUrlFor</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;outerEntryName)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">A URL for an entry of the outer archive itself, addressed by its real name rather than through a
 jar of the index.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static boolean</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#owns(java.lang.String)" class="member-name-link">owns</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;jarFileSpec)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static boolean</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#owns(java.lang.String)" class="member-name-link">owns</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;jarFileSpec)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Whether the jar part of a <code>jar:</code> URL names the registered archive, which is how the handler
 decides between serving a URL itself and handing it to the JDK.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static void</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#register(java.io.File,io.micronaut.runner.Index,io.micronaut.runner.ArchiveSource)" class="member-name-link">register</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/File.html" title="class or interface in java.io" class="external-link">File</a>&nbsp;archive,
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static void</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#register(java.io.File,io.micronaut.runner.Index,io.micronaut.runner.ArchiveSource)" class="member-name-link">register</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/File.html" title="class or interface in java.io" class="external-link">File</a>&nbsp;archive,
  <a href="Index.html" title="class in io.micronaut.runner">Index</a>&nbsp;index,
  <a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a>&nbsp;source)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Installs the <code>jar:</code> protocol handler for one archive and records everything the handler needs
 to serve it.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static boolean</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#registered()" class="member-name-link">registered</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static boolean</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#registered()" class="member-name-link">registered</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Whether an archive is registered.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#source()" class="member-name-link">source</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#source()" class="member-name-link">source</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">The reader of the registered archive.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static void</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#unregister()" class="member-name-link">unregister</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static void</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#unregister()" class="member-name-link">unregister</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Forgets the registered archive and closes the jar files opened for it.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#urlFor(int,java.lang.String)" class="member-name-link">urlFor</a><wbr>(int&nbsp;jarId,
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#urlFor(int,java.lang.String)" class="member-name-link">urlFor</a><wbr>(int&nbsp;jarId,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;logicalName)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">A URL for one logical entry of one jar of the registered archive.</div>
 </div>
 </div>
@@ -597,6 +603,24 @@ opened on demand, because a normal application start never needs it.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the shared jar file</dd>
+<dt>Throws:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the archive cannot be opened</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="outerJarFile(boolean)">
+<h3>outerJarFile</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link">JarFile</a></span>&nbsp;<span class="element-name">outerJarFile</span><wbr><span class="parameters">(boolean&nbsp;useCaches)</span>
+                            throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
+<div class="block">The outer archive as either the shared process-lifetime handle or a handle owned by one connection.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>useCaches</code> - whether the shared handle may be used</dd>
+<dt>Returns:</dt>
+<dd>the shared jar file, or a new independently closeable jar file when caching is disabled</dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the archive cannot be opened</dd>
 </dl>
