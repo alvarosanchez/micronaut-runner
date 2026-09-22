@@ -1,3 +1,6 @@
+import groovy.xml.XmlSlurper
+import io.micronaut.runner.buildlogic.IntegrationMode
+
 plugins {
     id 'io.micronaut.build.internal.runner-testing'
 }
@@ -14,10 +17,70 @@ dependencies {
     testImplementation libs.maven.invoker
 }
 
-tasks.named('test', Test) {
+def testTask = tasks.named('test', Test) {
     // Sample sources are inputs; their build outputs are not.
     inputs.files(fileTree('samples') { exclude '**/build/**', '**/.gradle/**', '**/target/**' })
           .withPathSensitivity(PathSensitivity.RELATIVE)
           .withPropertyName('samples')
     systemProperty 'runner.test.samplesDir', layout.projectDirectory.dir('samples').asFile.absolutePath
+}
+
+def integrationMode = IntegrationMode.resolve(
+        providers.gradleProperty('runner.integration').orNull,
+        providers.environmentVariable('RUNNER_TEST_OFFLINE').orNull).id()
+def requiredScenarios = [
+        'io.micronaut.runner.suite.HelloNettySampleTest.packagesTheSampleAndServesARequestFromTheRunnerJar',
+        'io.micronaut.runner.suite.MavenBasicSampleTest.strictMavenAndTheChecksumAssertionRejectStaleSidecars',
+        'io.micronaut.runner.suite.MavenBasicSampleTest.packagesTheSampleAndRunsTheRunnerJar',
+        'io.micronaut.runner.suite.MavenBasicSampleTest.refreshesManifestMetadataAcrossNonCleanPackageCycles'
+]
+def integrationReport = layout.buildDirectory.file('reports/integration-scenarios.txt')
+
+def verifyIntegrationScenarios = tasks.register('verifyIntegrationScenarios') {
+    description = 'Fails unless every integration scenario has the status required by the selected policy'
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    dependsOn testTask
+    inputs.dir(layout.buildDirectory.dir('test-results/test'))
+          .withPathSensitivity(PathSensitivity.RELATIVE)
+          .withPropertyName('junitXml')
+    inputs.property('integrationMode', integrationMode)
+    inputs.property('requiredScenarios', requiredScenarios)
+    outputs.file(integrationReport)
+
+    doLast {
+        Map<String, String> statuses = [:]
+        fileTree(layout.buildDirectory.dir('test-results/test')).matching { include 'TEST-*.xml' }
+                .files.sort().each { result ->
+            def suite = new XmlSlurper(false, false).parse(result)
+            suite.testcase.each { testCase ->
+                String name = "${testCase.@classname}.${testCase.@name}".replace('()', '')
+                String status = testCase.failure.isEmpty() && testCase.error.isEmpty()
+                        ? (testCase.skipped.isEmpty() ? 'passed' : 'skipped')
+                        : 'failed'
+                statuses[name] = status
+            }
+        }
+
+        List<String> lines = ["mode=${integrationMode}"]
+        List<String> violations = []
+        requiredScenarios.each { scenario ->
+            String status = statuses[scenario] ?: 'missing'
+            lines.add("${scenario}=${status}".toString())
+            String expected = integrationMode == 'required' ? 'passed' : 'skipped'
+            if (status != expected) {
+                violations.add("${scenario}: expected ${expected}, was ${status}".toString())
+            }
+        }
+        File report = integrationReport.get().asFile
+        report.parentFile.mkdirs()
+        report.setText(lines.join(System.lineSeparator()) + System.lineSeparator(), 'UTF-8')
+        if (!violations.isEmpty()) {
+            throw new GradleException("Integration scenario policy was not satisfied (${integrationMode}):\n  "
+                    + violations.join('\n  ') + "\nEvidence: ${report}")
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn verifyIntegrationScenarios
 }

@@ -19,10 +19,8 @@ import org.junit.jupiter.api.Assumptions;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.ServerSocket;
-import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -45,12 +43,15 @@ import java.util.stream.Stream;
  *       applications are started with.</li>
  *   <li>{@code runner.test.micronautVersion} and {@code runner.test.micronautPlatformVersion} - the
  *       Micronaut versions from the version catalog, handed to the Maven sample, which has no catalog.</li>
+ *   <li>{@code runner.test.mode} - {@code required} in CI and by default, or the explicit developer
+ *       opt-out {@code offline}.</li>
  * </ul>
  *
- * <p>These tests resolve real Micronaut artifacts from Maven Central, so they are skipped rather than
- * failed when there is no network. To skip them outright set the environment variable
- * {@code RUNNER_TEST_OFFLINE=true}, which a forked test JVM inherits; the system property
- * {@code runner.test.offline} does the same when the build is configured to forward it.</p>
+ * <p>Required mode executes against the repositories configured by each sample and fails closed when a
+ * dependency cannot be resolved. It deliberately has no separate hostname reachability probe: a proxy,
+ * mirror or populated cache can make the configured repository usable even when an unrelated host is not.
+ * Offline mode reports every dependency-resolving scenario as skipped while retaining descriptor-only
+ * checks.</p>
  */
 final class Samples {
 
@@ -66,12 +67,8 @@ final class Samples {
     /** The Micronaut platform BOM version, for the Maven sample. */
     static final String MICRONAUT_PLATFORM_VERSION = System.getProperty("runner.test.micronautPlatformVersion");
 
-    /** The host whose reachability stands in for "the artifact repositories are reachable". */
-    private static final String CENTRAL_HOST = "repo1.maven.org";
-
-    private static final int CENTRAL_PORT = 443;
-
-    private static final int NETWORK_PROBE_TIMEOUT_MILLIS = 5_000;
+    /** Whether dependency-resolving scenarios are mandatory or explicitly omitted. */
+    private static final String MODE = System.getProperty("runner.test.mode");
 
     private Samples() {
     }
@@ -81,14 +78,24 @@ final class Samples {
      * outside Gradle, for instance straight from an IDE that did not pick the system properties up.
      */
     static void assumeTheBuildProvidedItsProperties() {
-        Assumptions.assumeTrue(REPO != null && !REPO.isBlank(),
+        requireBuildProperty(REPO != null && !REPO.isBlank(),
                 "runner.test.repo is not set; run this suite through Gradle (:test-suite:test)");
-        Assumptions.assumeTrue(VERSION != null && !VERSION.isBlank(),
+        requireBuildProperty(VERSION != null && !VERSION.isBlank(),
                 "runner.test.version is not set; run this suite through Gradle (:test-suite:test)");
-        Assumptions.assumeTrue(System.getProperty("runner.test.samplesDir") != null,
+        requireBuildProperty(System.getProperty("runner.test.samplesDir") != null,
                 "runner.test.samplesDir is not set; run this suite through Gradle (:test-suite:test)");
-        Assumptions.assumeTrue(javaExecutable() != null,
+        requireBuildProperty(javaExecutable() != null,
                 "no JDK to start the packaged applications with; set runner.test.javaHome");
+    }
+
+    private static void requireBuildProperty(boolean available, String message) {
+        if (available) {
+            return;
+        }
+        if ("required".equals(MODE)) {
+            throw new AssertionError(message);
+        }
+        Assumptions.abort(message);
     }
 
     /**
@@ -136,20 +143,13 @@ final class Samples {
         throw new AssertionError(message.toString());
     }
 
-    /**
-     * Skips when Maven Central cannot be reached. Every sample build resolves real Micronaut artifacts, so
-     * without a network these tests would fail for a reason that has nothing to do with the runner.
-     */
-    static void assumeTheNetworkIsAvailable() {
-        if (Boolean.getBoolean("runner.test.offline")
-                || Boolean.parseBoolean(System.getenv("RUNNER_TEST_OFFLINE"))) {
+    /** Executes a dependency-resolving scenario unless the developer explicitly selected offline mode. */
+    static void requireIntegrationScenario() {
+        if ("offline".equals(MODE)) {
             Assumptions.abort("offline was requested: the sample builds resolve real Micronaut artifacts");
         }
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(CENTRAL_HOST, CENTRAL_PORT), NETWORK_PROBE_TIMEOUT_MILLIS);
-        } catch (IOException e) {
-            Assumptions.abort("no network: " + CENTRAL_HOST + ":" + CENTRAL_PORT + " is unreachable ("
-                    + e + "), and the sample builds resolve real Micronaut artifacts");
+        if (!"required".equals(MODE)) {
+            throw new AssertionError("runner.test.mode must be 'required' or 'offline', not '" + MODE + "'");
         }
     }
 

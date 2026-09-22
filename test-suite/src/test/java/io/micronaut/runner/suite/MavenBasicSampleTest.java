@@ -20,13 +20,11 @@ import org.apache.maven.shared.invoker.DefaultInvoker;
 import org.apache.maven.shared.invoker.InvocationRequest;
 import org.apache.maven.shared.invoker.InvocationResult;
 import org.apache.maven.shared.invoker.Invoker;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -36,7 +34,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -57,10 +54,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Drives the {@code maven-basic} sample with the real Maven plugin, resolved from the same aggregated
  * repository the Gradle sample resolves its plugin from.
  *
- * <p>There is no Maven wrapper in the sample: checking one in means checking in a downloader and pinning a
- * Maven distribution that nothing else in this repository pins. Instead {@code mvn} is resolved from
- * {@code MAVEN_HOME}, {@code M2_HOME} or the {@code PATH}, and these tests are skipped with a clear message
- * when there is none.</p>
+ * <p>The build provisions the Apache Maven version and SHA-512 checksum pinned in
+ * {@code gradle/maven-distribution.properties}. The distribution is a declared input of this test task, so
+ * neither a developer's {@code PATH} nor a cached result from a different Maven can change what is tested.</p>
  *
  * <p>Maven is invoked with a local repository of this suite's own, under the test-suite build directory,
  * rather than the developer's {@code ~/.m2}. Two reasons: a test must not rewrite the developer's
@@ -124,7 +120,7 @@ class MavenBasicSampleTest {
 
     @Test
     void strictMavenAndTheChecksumAssertionRejectStaleSidecars() throws Exception {
-        Samples.assumeTheNetworkIsAvailable();
+        Samples.requireIntegrationScenario();
         Path repository = temporary.resolve("stale-repository");
         copyTree(Path.of(URI.create(Samples.REPO)), repository);
         Path jar = pluginJar(repository);
@@ -157,10 +153,10 @@ class MavenBasicSampleTest {
 
     @Test
     void packagesTheSampleAndRunsTheRunnerJar() throws Exception {
-        Samples.assumeTheNetworkIsAvailable();
+        Samples.requireIntegrationScenario();
         Samples.requirePublishedArtifact("io/micronaut/runner/micronaut-runner-maven-plugin/"
                 + Samples.VERSION + "/micronaut-runner-maven-plugin-" + Samples.VERSION + ".jar");
-        assumeMavenCanLoadThePlugin();
+        requireMavenCanLoadThePlugin();
         Path sample = Samples.sample("maven-basic");
         Path target = sample.resolve("target");
         Path archive = target.resolve("maven-basic-0.1.jar");
@@ -189,10 +185,10 @@ class MavenBasicSampleTest {
 
     @Test
     void refreshesManifestMetadataAcrossNonCleanPackageCycles() throws Exception {
-        Samples.assumeTheNetworkIsAvailable();
+        Samples.requireIntegrationScenario();
         Samples.requirePublishedArtifact("io/micronaut/runner/micronaut-runner-maven-plugin/"
                 + Samples.VERSION + "/micronaut-runner-maven-plugin-" + Samples.VERSION + ".jar");
-        assumeMavenCanLoadThePlugin();
+        requireMavenCanLoadThePlugin();
         Path sample = copySample(Samples.sample("maven-basic"), temporary.resolve("maven-basic"));
         Path archive = sample.resolve("target/maven-basic-0.1.jar");
         Path original = sample.resolve("target/original-maven-basic-0.1.jar");
@@ -236,16 +232,14 @@ class MavenBasicSampleTest {
 
     // ------------------------------------------------------------------ plumbing
 
-    /**
-     * Skips the sample builds, rather than failing them with an opaque Maven error, when the published
-     * descriptor cannot be loaded. The dedicated test above is what reports that as a failure.
-     */
-    private static void assumeMavenCanLoadThePlugin() throws IOException {
+    /** Fails closed when the published descriptor cannot be loaded in required mode. */
+    private static void requireMavenCanLoadThePlugin() throws IOException {
         Path jar = pluginJar();
-        Assumptions.assumeTrue(Files.isRegularFile(jar)
-                        && Samples.VERSION.equals(pluginDescriptorVersion(jar, "META-INF/maven/plugin.xml")),
-                "the published Maven plugin descriptor does not match " + Samples.VERSION
-                        + "; see theTestPublicationCarriesDescriptorsAndChecksumsMavenWillAccept");
+        if (!Files.isRegularFile(jar)
+                || !Samples.VERSION.equals(pluginDescriptorVersion(jar, "META-INF/maven/plugin.xml"))) {
+            throw new AssertionError("the published Maven plugin descriptor does not match " + Samples.VERSION
+                    + "; see theTestPublicationCarriesDescriptorsAndChecksumsMavenWillAccept");
+        }
     }
 
     /** Runs Maven against the sample, capturing everything it prints. */
@@ -297,39 +291,22 @@ class MavenBasicSampleTest {
                 .getParent().resolve("build").resolve("maven-local-repo");
     }
 
-    /**
-     * Finds a Maven installation: {@code MAVEN_HOME}, {@code M2_HOME}, or the first {@code mvn} on the
-     * {@code PATH}. Symbolic links are resolved first, because the usual installs ({@code sdkman},
-     * Homebrew) put a link on the {@code PATH} whose parent is not a Maven home.
-     */
+    /** Returns the checksum-verified Maven home provisioned by the Gradle build. */
     private static Path mavenHome() {
-        for (String variable : List.of("MAVEN_HOME", "M2_HOME")) {
-            String value = System.getenv(variable);
-            if (value != null && Files.isDirectory(Path.of(value, "bin"))) {
-                return Path.of(value);
-            }
+        return mavenHome(System.getProperty("runner.test.mavenHome"), System.getProperty("os.name", ""));
+    }
+
+    static Path mavenHome(String configured, String osName) {
+        if (configured == null || configured.isBlank()) {
+            throw new AssertionError("runner.test.mavenHome is not set; run this suite through Gradle");
         }
-        boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-        List<String> names = windows ? List.of("mvn.cmd", "mvn.bat", "mvn") : List.of("mvn");
-        List<Path> searched = new ArrayList<>();
-        for (String element : System.getenv().getOrDefault("PATH", "").split(File.pathSeparator)) {
-            if (element.isEmpty()) {
-                continue;
-            }
-            for (String name : names) {
-                Path candidate = Path.of(element, name);
-                searched.add(candidate);
-                if (Files.isExecutable(candidate)) {
-                    try {
-                        return candidate.toRealPath().getParent().getParent();
-                    } catch (IOException e) {
-                        return candidate.getParent().getParent();
-                    }
-                }
-            }
+        Path home = Path.of(configured);
+        boolean windows = osName.toLowerCase(Locale.ROOT).contains("win");
+        Path executable = home.resolve("bin").resolve(windows ? "mvn.cmd" : "mvn");
+        if (!Files.isRegularFile(executable) || (!windows && !Files.isExecutable(executable))) {
+            throw new AssertionError("the pinned Maven distribution has no executable at " + executable);
         }
-        return Assumptions.abort("no Maven on MAVEN_HOME, M2_HOME or the PATH; these tests drive the "
-                + "Maven plugin with the mvn the machine already has (" + searched.size() + " paths tried)");
+        return home;
     }
 
     private static Path pluginJar() {
