@@ -24,6 +24,7 @@ import io.micronaut.runner.TestArchiveBuilder;
 import io.micronaut.runner.TestIndexBuilder;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
@@ -36,6 +37,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
@@ -54,7 +59,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -84,7 +91,9 @@ class HandlerTest {
             + "Implementation-Title: Dependency\r\n"
             + "Multi-Release: true\r\n\r\n");
     private static final byte[] OUTER_MANIFEST = bytes("Manifest-Version: 1.0\r\n"
-            + "Main-Class: io.micronaut.runner.Launcher\r\n\r\n");
+            + "Main-Class: io.micronaut.runner.Launcher\r\n\r\n"
+            + "Name: outer.txt\r\n"
+            + "Purpose: lifecycle-test\r\n\r\n");
     private static final byte[] APPLICATION_MANIFEST = bytes("Manifest-Version: 1.0\r\n"
             + "Implementation-Title: Application\r\n\r\n");
 
@@ -109,6 +118,7 @@ class HandlerTest {
 
         TestArchiveBuilder outer = new TestArchiveBuilder();
         outer.stored("META-INF/MANIFEST.MF", OUTER_MANIFEST);
+        outer.stored("outer.txt", bytes("outer resource"));
         byte[] draft = buildIndex(new long[5], inner, 0, 0, 0, 0, nestedCompressed);
         outer.reserve(IndexFormat.INDEX_ENTRY_NAME, draft.length);
         long[] application = new long[5];
@@ -185,8 +195,10 @@ class HandlerTest {
         assertEquals(connection.getEntryName(), entry.getName());
         assertTrue(entry.isDirectory());
         assertEquals(0, entry.getSize());
-        assertNull(connection.getJarFile().getEntry(connection.getEntryName()),
-                "the outer archive really does not carry this entry, which is the whole point");
+        try (JarFile jar = connection.getJarFile()) {
+            assertNull(jar.getEntry(connection.getEntryName()),
+                    "the outer archive really does not carry this entry, which is the whole point");
+        }
         try (InputStream in = connection.getInputStream()) {
             assertEquals(0, in.readAllBytes().length);
         }
@@ -354,6 +366,177 @@ class HandlerTest {
         assertTrue(connection.getUseCaches());
         try (InputStream in = connection.getInputStream()) {
             assertArrayEquals(NESTED_TEXT, in.readAllBytes());
+        }
+    }
+
+    @Test
+    void closingUncachedOuterJarDoesNotPoisonFreshConnection() throws IOException {
+        JarURLConnection first = (JarURLConnection) Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")
+                .openConnection();
+        first.setUseCaches(false);
+        try (JarFile ignored = first.getJarFile()) {
+            assertEquals(archive.getPath(), ignored.getName());
+        }
+
+        assertArrayEquals(OUTER_MANIFEST, read(Handlers.outerUrlFor("META-INF/MANIFEST.MF")));
+    }
+
+    @Test
+    void closingCachedOuterJarDoesNotPoisonAnotherConsumer() throws IOException {
+        JarURLConnection first = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                .openConnection();
+        JarURLConnection second = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                .openConnection();
+        JarFile firstJar = first.getJarFile();
+        JarFile secondJar = second.getJarFile();
+        assertSame(firstJar, secondJar, "cached connections should share the process-lifetime view");
+
+        firstJar.close();
+
+        assertEquals("io.micronaut.runner.Launcher", second.getMainAttributes().getValue("Main-Class"));
+        assertArrayEquals(OUTER_MANIFEST, read(Handlers.outerUrlFor("META-INF/MANIFEST.MF")));
+    }
+
+    @Test
+    void uncachedOuterEntriesRetainManifestAttributes() throws IOException {
+        JarURLConnection connection = (JarURLConnection) Handlers.outerUrlFor("outer.txt").openConnection();
+        connection.setUseCaches(false);
+
+        assertEquals("lifecycle-test", connection.getJarEntry().getAttributes().getValue("Purpose"));
+    }
+
+    @Test
+    void manifestAccessStillValidatesTheNamedOuterEntry() throws IOException {
+        URL missing = Handlers.outerUrlFor("missing.txt");
+        for (boolean caches : List.of(true, false)) {
+            JarURLConnection manifest = (JarURLConnection) missing.openConnection();
+            manifest.setUseCaches(caches);
+            assertThrows(FileNotFoundException.class, manifest::getManifest);
+            JarURLConnection attributes = (JarURLConnection) missing.openConnection();
+            attributes.setUseCaches(caches);
+            assertThrows(FileNotFoundException.class, attributes::getMainAttributes);
+        }
+    }
+
+    @Test
+    void uncachedOuterStreamsReleaseTheirOwnedJarFiles() throws IOException {
+        for (int i = 0; i < 3; i++) {
+            JarURLConnection connection = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                    .openConnection();
+            connection.setUseCaches(false);
+            try (InputStream in = connection.getInputStream()) {
+                assertArrayEquals(OUTER_MANIFEST, in.readAllBytes());
+            }
+        }
+    }
+
+    @Test
+    void uncachedOuterStreamsHaveIndependentLifetimesOnOneConnection() throws IOException {
+        JarURLConnection connection = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                .openConnection();
+        connection.setUseCaches(false);
+
+        InputStream first = connection.getInputStream();
+        try (InputStream second = connection.getInputStream()) {
+            first.close();
+            assertArrayEquals(OUTER_MANIFEST, second.readAllBytes());
+        }
+        try (InputStream third = connection.getInputStream()) {
+            assertArrayEquals(OUTER_MANIFEST, third.readAllBytes());
+        }
+    }
+
+    @Test
+    void anOwnedOuterJarRemainsOwnedAfterTheCacheFlagChanges() throws IOException {
+        JarURLConnection connection = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                .openConnection();
+        connection.setUseCaches(false);
+        JarFile jar = connection.getJarFile();
+        connection.setUseCaches(true);
+
+        try (InputStream in = connection.getInputStream()) {
+            assertArrayEquals(OUTER_MANIFEST, in.readAllBytes());
+        }
+
+        assertTrue(jar.size() > 0, "the explicitly requested handle remains caller-owned");
+        jar.close();
+    }
+
+    @Test
+    void anUncachedIndexedStreamDoesNotCloseTheCallerOwnedOuterJar() throws IOException {
+        JarURLConnection connection = (JarURLConnection) Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")
+                .openConnection();
+        connection.setUseCaches(false);
+        JarFile jar = connection.getJarFile();
+
+        try (InputStream in = connection.getInputStream()) {
+            assertArrayEquals(APP_TEXT, in.readAllBytes());
+        }
+
+        assertTrue(jar.size() > 0, "the explicitly requested handle remains caller-owned");
+        jar.close();
+    }
+
+    @Test
+    void protocolDefaultDisablesOuterJarSharing() throws IOException {
+        boolean previous = URLConnection.getDefaultUseCaches("jar");
+        URLConnection.setDefaultUseCaches("jar", false);
+        try {
+            JarURLConnection first = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                    .openConnection();
+            JarURLConnection second = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                    .openConnection();
+            assertFalse(first.getUseCaches());
+            assertFalse(second.getUseCaches());
+            JarFile firstJar = first.getJarFile();
+            JarFile secondJar = second.getJarFile();
+            assertNotSame(firstJar, secondJar);
+
+            firstJar.close();
+
+            assertEquals("io.micronaut.runner.Launcher", second.getMainAttributes().getValue("Main-Class"));
+            secondJar.close();
+        } finally {
+            URLConnection.setDefaultUseCaches("jar", previous);
+        }
+    }
+
+    @Test
+    void concurrentOuterConsumersCloseIndependentlyWithAndWithoutCaching() throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            for (boolean caches : List.of(true, false)) {
+                for (int i = 0; i < 10; i++) {
+                    JarURLConnection first = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                            .openConnection();
+                    JarURLConnection second = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                            .openConnection();
+                    first.setUseCaches(caches);
+                    second.setUseCaches(caches);
+                    JarFile firstJar = first.getJarFile();
+                    try (firstJar; JarFile secondJar = second.getJarFile()) {
+                        CountDownLatch start = new CountDownLatch(1);
+                        Future<Void> close = pool.submit(() -> {
+                            start.await();
+                            firstJar.close();
+                            return null;
+                        });
+                        Future<byte[]> read = pool.submit(() -> {
+                            start.await();
+                            try (InputStream in = second.getInputStream()) {
+                                return in.readAllBytes();
+                            }
+                        });
+
+                        start.countDown();
+                        close.get(10, TimeUnit.SECONDS);
+                        assertArrayEquals(OUTER_MANIFEST, read.get(10, TimeUnit.SECONDS));
+                    }
+                }
+            }
+        } finally {
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS));
         }
     }
 

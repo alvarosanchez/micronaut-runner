@@ -106,7 +106,7 @@ public final class Handlers {
     private static String[] jarNames;
     private static volatile URL defaultContext;
     private static String canonicalPath;
-    private static JarFile outerJarFile;
+    private static SharedJarFile outerJarFile;
     private static NestedJarFile[] nestedJarFiles;
 
     /**
@@ -400,12 +400,26 @@ public final class Handlers {
      * @throws IOException if the archive cannot be opened
      */
     public static JarFile outerJarFile() throws IOException {
+        return outerJarFile(true);
+    }
+
+    /**
+     * The outer archive as either the shared process-lifetime handle or a handle owned by one connection.
+     *
+     * @param useCaches whether the shared handle may be used
+     * @return the shared jar file, or a new independently closeable jar file when caching is disabled
+     * @throws IOException if the archive cannot be opened
+     */
+    public static JarFile outerJarFile(boolean useCaches) throws IOException {
         if (archiveUrl == null) {
             throw new IOException("No runner archive is registered");
         }
+        if (!useCaches) {
+            return new JarFile(archiveFile, false, JarFile.OPEN_READ, JarFile.runtimeVersion());
+        }
         synchronized (LOCK) {
             if (outerJarFile == null) {
-                outerJarFile = new JarFile(archiveFile, false, JarFile.OPEN_READ, JarFile.runtimeVersion());
+                outerJarFile = new SharedJarFile(archiveFile);
             }
             return outerJarFile;
         }
@@ -460,11 +474,11 @@ public final class Handlers {
                     }
                 }
             }
-            JarFile outer = outerJarFile;
+            SharedJarFile outer = outerJarFile;
             outerJarFile = null;
             if (outer != null) {
                 try {
-                    outer.close();
+                    outer.closeShared();
                 } catch (IOException ignored) {
                     // Nothing can be done about it and nothing depends on it.
                 }
@@ -816,5 +830,24 @@ public final class Handlers {
             return c - 'A' + 10;
         }
         return -1;
+    }
+
+    /**
+     * The process-lifetime outer archive handle. A connection may expose it as a {@link JarFile}, so its
+     * public close operation must not invalidate other connections that share it.
+     */
+    private static final class SharedJarFile extends JarFile {
+
+        private SharedJarFile(File file) throws IOException {
+            super(file, false, OPEN_READ, JarFile.runtimeVersion());
+        }
+
+        @Override
+        public void close() {
+        }
+
+        private void closeShared() throws IOException {
+            super.close();
+        }
     }
 }

@@ -231,8 +231,14 @@ class NestedJarFileTest {
 
     @Test
     void closeIsANoOpBecauseViewsAreShared() throws IOException {
-        jar.close();
-        assertArrayEquals(VERSIONED_CLASS, read(jar.getJarEntry("META-INF/versions/21/a/B.class")));
+        JarEntry entry = jar.getJarEntry("META-INF/versions/21/a/B.class");
+        try (InputStream active = jar.getInputStream(entry)) {
+            jar.close();
+            assertArrayEquals(VERSIONED_CLASS, active.readAllBytes());
+        }
+        for (int i = 0; i < 3; i++) {
+            assertArrayEquals(VERSIONED_CLASS, read(entry));
+        }
         assertEquals(5, jar.size());
     }
 
