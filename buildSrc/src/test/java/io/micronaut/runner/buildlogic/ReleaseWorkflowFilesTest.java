@@ -115,7 +115,7 @@ class ReleaseWorkflowFilesTest {
     }
 
     private static String read(String relative) throws IOException {
-        return Files.readString(repositoryRoot().resolve(relative));
+        return Files.readString(repositoryRoot().resolve(relative)).replace("\r\n", "\n");
     }
 
     private static Path repositoryRoot() {
