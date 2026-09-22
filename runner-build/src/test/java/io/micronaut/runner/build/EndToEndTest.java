@@ -86,8 +86,9 @@ class EndToEndTest {
     /** The line the application prints when every assertion inside it passed. */
     private static final String RESULT_OK = "RESULT OK";
 
-    /** A directory name with a space and a non-ASCII character, where URL encoding bugs surface. */
-    private static final String AWKWARD_DIRECTORY = "a we\u00efrd dir";
+    /** Path components after Unicode, where Windows separator normalization bugs surface. */
+    private static final String UNICODE_DIRECTORY = "unicode-\u00e9";
+    private static final String DIRECTORY_AFTER_UNICODE = "apps with a space";
 
     private static final String GREETER_SOURCE = """
             package com.example.spi;
@@ -293,6 +294,9 @@ class EndToEndTest {
                     check("the application's code source names the application layer",
                             applicationCode != null
                                     && applicationCode.toString().endsWith("!/MICRONAUT-INF/classes/"),
+                            String.valueOf(applicationCode));
+                    check("the archive URL keeps canonical separators after Unicode",
+                            applicationCode != null && !applicationCode.toString().contains("%5C"),
                             String.valueOf(applicationCode));
                     checkApplicationCodeSource(applicationCode);
 
@@ -693,7 +697,7 @@ class EndToEndTest {
         RunnerJarBuilder.build(common.output(preserveArchive).compression(Compression.PRESERVE).build(),
                 BuildLogger.noOp());
 
-        Path awkward = workspace.resolve(AWKWARD_DIRECTORY);
+        Path awkward = workspace.resolve(UNICODE_DIRECTORY).resolve(DIRECTORY_AFTER_UNICODE);
         Files.createDirectories(awkward);
         awkwardArchive = awkward.resolve("app.jar");
         Files.copy(storedArchive, awkwardArchive, StandardCopyOption.REPLACE_EXISTING);
@@ -735,7 +739,7 @@ class EndToEndTest {
     }
 
     @Test
-    void worksFromAnotherDirectoryAndFromAPathWithASpaceAndANonAsciiCharacter() throws Exception {
+    void worksFromAnotherDirectoryAndFromNestedComponentsAfterUnicode() throws Exception {
         // Run from a working directory that is neither the archive's nor an ancestor of it, so nothing can
         // accidentally resolve relative to the current directory, and from a path that only survives if
         // every URL on the way is percent-encoded and decoded again.
