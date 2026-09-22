@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.CopyOption;
 import java.nio.file.DirectoryStream;
@@ -584,7 +585,7 @@ public final class Extract {
                 if (classPath.length() > 0) {
                     classPath.append(' ');
                 }
-                classPath.append(library.path());
+                classPath.append(classPathUrl(library.path()));
             }
             // java.util.jar.Manifest wraps the value at 72 bytes and continues it with a leading space.
             main.put(Attributes.Name.CLASS_PATH, classPath.toString());
@@ -593,6 +594,32 @@ public final class Extract {
             main.putValue(MULTI_RELEASE, "true");
         }
         return result;
+    }
+
+    /**
+     * Encodes a relative path as one URL token of a manifest {@code Class-Path} value.
+     *
+     * <p>Only RFC 3986 unreserved characters and the slash between path segments are left as-is. Encoding
+     * the UTF-8 bytes also means a literal percent sign is escaped exactly once instead of being mistaken
+     * for an existing escape.</p>
+     *
+     * @param path a safe relative path using {@code /} as its separator
+     * @return the ASCII URL token
+     */
+    private static String classPathUrl(String path) {
+        byte[] bytes = path.getBytes(StandardCharsets.UTF_8);
+        StringBuilder encoded = new StringBuilder(bytes.length);
+        char[] hex = "0123456789ABCDEF".toCharArray();
+        for (byte value : bytes) {
+            int c = value & 0xff;
+            if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+                    || c == '-' || c == '.' || c == '_' || c == '~' || c == '/') {
+                encoded.append((char) c);
+            } else {
+                encoded.append('%').append(hex[c >>> 4]).append(hex[c & 0x0f]);
+            }
+        }
+        return encoded.toString();
     }
 
     /**

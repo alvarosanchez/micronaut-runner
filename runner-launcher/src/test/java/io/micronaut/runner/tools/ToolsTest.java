@@ -26,6 +26,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.CopyOption;
@@ -135,6 +137,10 @@ class ToolsTest {
     private static final String LAUNCHER_VERSION = "1.0.0-TEST";
     private static final String DEPENDENCY_ONE = IndexFormat.LIB_PREFIX + "dep-one.jar";
     private static final String DEPENDENCY_TWO = IndexFormat.LIB_PREFIX + "dep-two.jar";
+    private static final String ENCODED_DEPENDENCY_ONE =
+            IndexFormat.LIB_PREFIX + "dep space#?.jar";
+    private static final String ENCODED_DEPENDENCY_TWO =
+            IndexFormat.LIB_PREFIX + "dep%20name-雪-with-a-very-long-dependency-name.jar";
     private static final String APPLICATION_SERVICE =
             "META-INF/micronaut/com.example.Svc/com.example.App";
     private static final String DEPENDENCY_SERVICE =
@@ -370,6 +376,49 @@ class ToolsTest {
         assertNotNull(section);
         assertEquals("9.9", section.getValue(Attributes.Name.IMPLEMENTATION_VERSION));
         assertEquals("Demo Package", section.getValue(Attributes.Name.IMPLEMENTATION_TITLE));
+    }
+
+    @Test
+    void extractedClassPathEncodesDependencyUrlsAndTheJdkLoadsThemInIndexOrder() throws Throwable {
+        assumeFileNamesSupported("dep space#?.jar", "dep%20name-雪-with-a-very-long-dependency-name.jar");
+        File encoded = writeArchive(workspace.resolve("encoded/app.jar"), Flavour.ENCODED_DEPENDENCIES);
+        Path destination = workspace.resolve("extract/encoded");
+        try (ArchiveSource other = ArchiveSource.open(encoded)) {
+            Index otherIndex = Index.open(other);
+            capture(() -> Extract.run(new String[] {Extract.OPTION_DESTINATION, destination.toString()},
+                    encoded, otherIndex, other));
+        }
+
+        Path application = destination.resolve("app.jar");
+        String expected = "lib/dep%20space%23%3F.jar "
+                + "lib/dep%2520name-%E9%9B%AA-with-a-very-long-dependency-name.jar";
+        assertEquals(expected,
+                manifestOf(application).getMainAttributes().getValue(Attributes.Name.CLASS_PATH));
+        assertTrue(Files.isRegularFile(destination.resolve("lib/dep space#?.jar")));
+        assertTrue(Files.isRegularFile(
+                destination.resolve("lib/dep%20name-雪-with-a-very-long-dependency-name.jar")));
+        try (JarFile jar = new JarFile(application.toFile())) {
+            String raw = new String(read(jar, "META-INF/MANIFEST.MF"), StandardCharsets.UTF_8);
+            assertTrue(raw.contains("\r\n "), "the long encoded Class-Path should be wrapped:\n" + raw);
+        }
+
+        // Give the JDK only the application jar. It must consume Class-Path itself: the class is in the
+        // first specially named dependency and data.txt is only in the second, preserving index order.
+        try (URLClassLoader loader = new URLClassLoader(new URL[] {application.toUri().toURL()},
+                ClassLoader.getPlatformClassLoader())) {
+            assertEquals("org.depone.DepOne", loader.loadClass("org.depone.DepOne").getName());
+            try (InputStream in = loader.getResourceAsStream("data.txt")) {
+                assertNotNull(in, "the JDK did not resolve the second encoded Class-Path URL");
+                assertArrayEquals(VERSIONED_DATA, in.readAllBytes());
+            }
+        }
+
+        Assumptions.assumeTrue(javaExecutable() != null, "no JDK to fork; set runner.test.javaHome");
+        Forked run = fork(application, List.of());
+        assertEquals(0, run.status(), run.output());
+        assertTrue(run.output().contains("DEP dep-one"), run.output());
+        assertTrue(run.output().contains("DEPENDENCY-SERVICE true"), run.output());
+        assertTrue(run.output().contains("RESULT OK"), run.output());
     }
 
     @Test
@@ -828,6 +877,24 @@ class ToolsTest {
     }
 
     @Test
+    void extractStillRefusesAPlatformSeparatorInADependencyFileName() throws IOException {
+        File separated = writeArchive(workspace.resolve("separated-lib/app.jar"),
+                Flavour.BACKSLASH_LIBRARY);
+        Path destination = workspace.resolve("extract/separated-lib");
+        try (ArchiveSource other = ArchiveSource.open(separated)) {
+            Index otherIndex = Index.open(other);
+
+            IOException failure = assertThrows(IOException.class, () -> Extract.run(
+                    new String[] {Extract.OPTION_DESTINATION, destination.toString()}, separated,
+                    otherIndex, other));
+
+            assertTrue(failure.getMessage().contains("cannot be extracted safely"), failure.getMessage());
+        }
+        assertFalse(Files.exists(destination));
+        assertNoLeftovers(destination.getParent());
+    }
+
+    @Test
     void extractRefusesASourceReachedThroughADirectoryAliasWithAndWithoutForce() throws IOException {
         for (boolean force : List.of(false, true)) {
             Path real = Files.createDirectories(workspace.resolve("source-alias-" + force + "/real"));
@@ -1009,8 +1076,10 @@ class ToolsTest {
             outer.stored(IndexFormat.CLASSES_PREFIX + "../evil.txt", bytes("gotcha"));
         }
         if (flavour != Flavour.NO_DEPENDENCIES) {
-            outer.stored(DEPENDENCY_ONE, dependencyOneJar);
-            outer.stored(DEPENDENCY_TWO, dependencyTwoJar);
+            outer.stored(flavour == Flavour.ENCODED_DEPENDENCIES
+                    ? ENCODED_DEPENDENCY_ONE : DEPENDENCY_ONE, dependencyOneJar);
+            outer.stored(flavour == Flavour.ENCODED_DEPENDENCIES
+                    ? ENCODED_DEPENDENCY_TWO : DEPENDENCY_TWO, dependencyTwoJar);
         }
         byte[] real = buildIndex(outer, one, two, flavour);
         assertEquals(draft.length, real.length, "the index size must not depend on the offsets");
@@ -1071,11 +1140,17 @@ class ToolsTest {
         if (flavour == Flavour.NO_DEPENDENCIES) {
             return builder.build();
         }
-        String firstName = flavour == Flavour.ESCAPING_LIBRARY ? IndexFormat.LIB_PREFIX + ".."
-                : DEPENDENCY_ONE;
-        long firstBase = offset(outer, DEPENDENCY_ONE);
+        String firstName = switch (flavour) {
+            case ESCAPING_LIBRARY -> IndexFormat.LIB_PREFIX + "..";
+            case BACKSLASH_LIBRARY -> IndexFormat.LIB_PREFIX + "folder\\dep.jar";
+            case ENCODED_DEPENDENCIES -> ENCODED_DEPENDENCY_ONE;
+            default -> DEPENDENCY_ONE;
+        };
+        String firstPhysical = flavour == Flavour.ENCODED_DEPENDENCIES
+                ? ENCODED_DEPENDENCY_ONE : DEPENDENCY_ONE;
+        long firstBase = offset(outer, firstPhysical);
         TestIndexBuilder.Jar dependencyOne = builder.addJar(firstName)
-                .location(firstBase, dependencyOneJar.length, header(outer, DEPENDENCY_ONE))
+                .location(firstBase, dependencyOneJar.length, header(outer, firstPhysical))
                 .coordinates("org.example:dep-one:1.0.0")
                 .flags(IndexFormat.JAR_FLAG_HAS_MANIFEST | IndexFormat.JAR_FLAG_SEALED_BY_DEFAULT)
                 .manifest(null, null, null, "Dependency One", "1.0.0", null);
@@ -1084,9 +1159,11 @@ class ToolsTest {
         nested(dependencyOne, firstBase + one[1], dependencyClass.length, "org/depone/DepOne.class");
         nested(dependencyOne, firstBase + one[2], 0, DEPENDENCY_SERVICE);
 
-        long secondBase = offset(outer, DEPENDENCY_TWO);
-        TestIndexBuilder.Jar dependencyTwo = builder.addJar(DEPENDENCY_TWO)
-                .location(secondBase, dependencyTwoJar.length, header(outer, DEPENDENCY_TWO))
+        String secondName = flavour == Flavour.ENCODED_DEPENDENCIES
+                ? ENCODED_DEPENDENCY_TWO : DEPENDENCY_TWO;
+        long secondBase = offset(outer, secondName);
+        TestIndexBuilder.Jar dependencyTwo = builder.addJar(secondName)
+                .location(secondBase, dependencyTwoJar.length, header(outer, secondName))
                 .coordinates("org.example:dep-two:2.0.0")
                 .flags(IndexFormat.JAR_FLAG_HAS_MANIFEST | IndexFormat.JAR_FLAG_SIGNED_ORIGINAL)
                 .multiRelease()
@@ -1205,6 +1282,21 @@ class ToolsTest {
         }
     }
 
+    /** Skips filename cases the current file system cannot represent, such as {@code ?} on Windows. */
+    private static void assumeFileNamesSupported(String... names) throws IOException {
+        Path probe = Files.createDirectories(workspace.resolve("filename-probe"));
+        for (String name : names) {
+            try {
+                Path file = probe.resolve(name);
+                Files.write(file, EMPTY);
+                Files.delete(file);
+            } catch (RuntimeException | IOException e) {
+                Assumptions.assumeTrue(false,
+                        "the file system cannot represent dependency name '" + name + "': " + e.getMessage());
+            }
+        }
+    }
+
     /** Creates a symbolic link, or reports that this platform cannot exercise the fixture. */
     private static Path createSymbolicLink(Path link, Path target) throws IOException {
         try {
@@ -1290,6 +1382,12 @@ class ToolsTest {
 
         /** A dependency whose name in the index climbs out of the destination. */
         ESCAPING_LIBRARY,
+
+        /** A dependency whose name contains the Windows path separator. */
+        BACKSLASH_LIBRARY,
+
+        /** Dependencies whose names require URL encoding in a manifest Class-Path. */
+        ENCODED_DEPENDENCIES,
 
         /** An application with no dependencies at all, so the index holds only jar 0. */
         NO_DEPENDENCIES
