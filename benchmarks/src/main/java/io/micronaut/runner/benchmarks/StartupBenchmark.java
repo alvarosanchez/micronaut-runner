@@ -217,7 +217,9 @@ public final class StartupBenchmark {
         List<VariantResult> results = new ArrayList<>(variants.size());
         for (int i = 0; i < variants.size(); i++) {
             Variant variant = variants.get(i);
-            results.add(VariantResult.summarize(variant, SampleBuild.sizeOf(variant.artifact()),
+            DeploymentSize deploymentSize = variant.deploymentSize();
+            long deploymentBytes = deploymentSize == null ? -1 : deploymentSize.totalBytes();
+            results.add(VariantResult.summarize(variant, deploymentBytes,
                     attempts.get(i), options.warmupIterations(), options.iterations(), options.seed()));
         }
         return results;

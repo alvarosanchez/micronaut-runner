@@ -6,6 +6,7 @@
  * You may obtain a copy of the License at
  *
  * https://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,7 +21,7 @@ import java.util.List;
  * Everything the report knows about one variant, including every successful and failed process attempt.
  *
  * @param variant     the variant, including its command line and why it may be unavailable
- * @param sizeBytes   the size of its artifact, or {@code -1} when there is none
+ * @param deploymentBytes the complete deployment size, or {@code -1} when it is unavailable
  * @param samples     successful runs, retained for machine-readable compatibility
  * @param readiness   the successful measured readiness distribution, or {@code null}
  * @param logLine     the successful measured startup-line distribution, or {@code null}
@@ -31,7 +32,7 @@ import java.util.List;
  * @param measured    measured requested/attempted/successful/failed/skipped counts
  */
 record VariantResult(Variant variant,
-                     long sizeBytes,
+                     long deploymentBytes,
                      List<StartupSample> samples,
                      Statistics readiness,
                      Statistics logLine,
@@ -41,19 +42,27 @@ record VariantResult(Variant variant,
                      PhaseCounts warmup,
                      PhaseCounts measured) {
 
+    VariantResult {
+        DeploymentSize deploymentSize = variant.deploymentSize();
+        if (deploymentSize != null && deploymentBytes != deploymentSize.totalBytes()) {
+            throw new IllegalArgumentException("reported deployment bytes " + deploymentBytes
+                    + " do not reconcile with measured total " + deploymentSize.totalBytes());
+        }
+    }
+
     VariantResult(Variant variant,
-                  long sizeBytes,
+                  long deploymentBytes,
                   List<StartupSample> samples,
                   Statistics readiness,
                   Statistics logLine,
                   Statistics framework,
                   List<String> failures) {
-        this(variant, sizeBytes, samples, readiness, logLine, framework, failures, List.of(),
+        this(variant, deploymentBytes, samples, readiness, logLine, framework, failures, List.of(),
                 new PhaseCounts(0, 0, 0, 0, 0), new PhaseCounts(0, 0, 0, 0, 0));
     }
 
     static VariantResult summarize(Variant variant,
-                                   long sizeBytes,
+                                   long deploymentBytes,
                                    List<RunAttempt> attempts,
                                    int warmupRequested,
                                    int measuredRequested,
@@ -78,7 +87,7 @@ record VariantResult(Variant variant,
                 .filter(sample -> !sample.warmup() && sample.frameworkMillis() >= 0)
                 .mapToDouble(StartupSample::frameworkMillis)
                 .toArray();
-        return new VariantResult(variant, sizeBytes, List.copyOf(samples),
+        return new VariantResult(variant, deploymentBytes, List.copyOf(samples),
                 Statistics.of(readiness, seed), Statistics.of(logLine, seed), Statistics.of(framework, seed),
                 List.copyOf(failures), List.copyOf(attempts),
                 PhaseCounts.of(warmupRequested, true, attempts),

@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -282,13 +281,16 @@ final class SampleBuild {
 
     private Variant explodedClasspath() throws IOException {
         Path directory = recreate(artifacts.resolve("exploded"));
+        List<Path> application = new ArrayList<>(applicationOutput.size());
         List<String> classPath = new ArrayList<>(applicationOutput.size() + dependencies.size());
         for (int i = 0; i < applicationOutput.size(); i++) {
             Path target = directory.resolve("app-" + i);
             copyDirectory(applicationOutput.get(i), target);
+            application.add(target);
             classPath.add(target.toAbsolutePath().toString());
         }
-        for (Path dependency : copyDependenciesTo(directory.resolve("lib"))) {
+        List<Path> dependencyCopies = copyDependenciesTo(directory.resolve("lib"));
+        for (Path dependency : dependencyCopies) {
             classPath.add(dependency.toAbsolutePath().toString());
         }
         List<String> command = new ArrayList<>();
@@ -296,15 +298,19 @@ final class SampleBuild {
         command.add("-cp");
         command.add(String.join(java.io.File.pathSeparator, classPath));
         command.add(mainClass);
+        DeploymentSize deploymentSize = DeploymentSize.measure(
+                DeploymentSize.input("application", application),
+                DeploymentSize.input("dependencies", dependencyCopies));
         return Variant.available(EXPLODED_CLASSPATH,
                 "Class files and dependency jars on an explicit, ordered -cp",
-                command, directory, directory);
+                command, directory, directory, deploymentSize);
     }
 
     private Variant thinJar() throws IOException {
         Path directory = recreate(artifacts.resolve("thin"));
         List<String> classPath = new ArrayList<>(dependencies.size());
-        for (Path copy : copyDependenciesTo(directory.resolve("lib"))) {
+        List<Path> dependencyCopies = copyDependenciesTo(directory.resolve("lib"));
+        for (Path copy : dependencyCopies) {
             classPath.add("lib/" + encodeClassPathEntry(copy.getFileName().toString()));
         }
 
@@ -325,9 +331,12 @@ final class SampleBuild {
         }
 
         List<String> command = List.of(javaExecutable().toString(), "-jar", jar.toAbsolutePath().toString());
+        DeploymentSize deploymentSize = DeploymentSize.measure(
+                DeploymentSize.input("application", jar),
+                DeploymentSize.input("dependencies", dependencyCopies));
         return Variant.available(THIN_JAR,
                 "Application jar with a Class-Path manifest pointing at lib/",
-                command, directory, jar);
+                command, directory, jar, deploymentSize);
     }
 
     private Variant shadowJar() throws IOException {
@@ -342,9 +351,10 @@ final class SampleBuild {
         Files.copy(shadowJar, copy, StandardCopyOption.REPLACE_EXISTING);
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 copy.toAbsolutePath().toString());
+        DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", copy));
         return Variant.available(SHADOW,
                 "Everything flattened into one jar by the Shadow plugin",
-                command, directory, copy);
+                command, directory, copy, deploymentSize);
     }
 
     private Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode) throws IOException {
@@ -373,13 +383,14 @@ final class SampleBuild {
         EntryMode effectiveEntryMode = inspectEntryMode(output, requestedEntryMode);
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 output.toAbsolutePath().toString());
+        DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", output));
         return Variant.available(name,
                 (compression == Compression.STORED
                         ? "Runner jar, nested dependencies re-packed uncompressed"
                         : "Runner jar, nested dependencies copied byte for byte")
                         + (requestedEntryMode == EntryMode.STUB
                         ? "; plugin-default entry stub" : "; reflection ablation"),
-                command, artifacts, output, requestedEntryMode, effectiveEntryMode);
+                command, artifacts, output, deploymentSize, requestedEntryMode, effectiveEntryMode);
     }
 
     private static EntryMode inspectEntryMode(Path output, EntryMode requestedEntryMode) throws IOException {
@@ -431,9 +442,11 @@ final class SampleBuild {
         Path applicationJar = singleJarIn(destination);
         List<String> run = List.of(javaExecutable().toString(), "-jar",
                 applicationJar.toAbsolutePath().toString());
+        DeploymentSize deploymentSize = DeploymentSize.measure(
+                DeploymentSize.input("extracted-layout", destination));
         return Variant.available(RUNNER_EXTRACTED,
                 "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
-                run, destination, destination);
+                run, destination, destination, deploymentSize);
     }
 
     /**
@@ -636,32 +649,6 @@ final class SampleBuild {
                 return FileVisitResult.CONTINUE;
             }
         });
-    }
-
-    /** How much disk a variant's artifact takes, summed over a tree when the artifact is a directory. */
-    static long sizeOf(Path artifact) {
-        if (artifact == null) {
-            return -1;
-        }
-        try {
-            if (Files.isRegularFile(artifact)) {
-                return Files.size(artifact);
-            }
-            if (!Files.isDirectory(artifact)) {
-                return -1;
-            }
-            try (var stream = Files.walk(artifact)) {
-                return stream.filter(Files::isRegularFile).mapToLong(path -> {
-                    try {
-                        return Files.size(path);
-                    } catch (IOException e) {
-                        throw new UncheckedIOException(e);
-                    }
-                }).sum();
-            }
-        } catch (IOException | UncheckedIOException e) {
-            return -1;
-        }
     }
 
     /** Builds one variant, or explains why it cannot. */

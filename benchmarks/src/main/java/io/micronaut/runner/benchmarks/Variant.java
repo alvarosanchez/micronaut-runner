@@ -30,7 +30,8 @@ import java.util.List;
  * @param description       one line explaining what the format is
  * @param command           the full command line, the {@code java} executable included
  * @param workingDirectory  the directory the process is started in
- * @param artifact          the file (or directory) the variant runs from, for the size column
+ * @param artifact          the file (or directory) the variant launches from
+ * @param deploymentSize    the measured complete deployment, or {@code null} for test fixtures/unavailable variants
  * @param requestedEntryMode how the harness asked to enter the application
  * @param effectiveEntryMode how the built artifact enters the application, or {@code null} when unavailable
  * @param available         whether the variant could be built
@@ -41,6 +42,7 @@ record Variant(String name,
                List<String> command,
                Path workingDirectory,
                Path artifact,
+               DeploymentSize deploymentSize,
                EntryMode requestedEntryMode,
                EntryMode effectiveEntryMode,
                boolean available,
@@ -61,7 +63,17 @@ record Variant(String name,
                              List<String> command,
                              Path workingDirectory,
                              Path artifact) {
-        return available(name, description, command, workingDirectory, artifact,
+        return available(name, description, command, workingDirectory, artifact, null,
+                EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER);
+    }
+
+    static Variant available(String name,
+                             String description,
+                             List<String> command,
+                             Path workingDirectory,
+                             Path artifact,
+                             DeploymentSize deploymentSize) {
+        return available(name, description, command, workingDirectory, artifact, deploymentSize,
                 EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER);
     }
 
@@ -72,7 +84,19 @@ record Variant(String name,
                              Path artifact,
                              EntryMode requestedEntryMode,
                              EntryMode effectiveEntryMode) {
-        return new Variant(name, description, List.copyOf(command), workingDirectory, artifact,
+        return available(name, description, command, workingDirectory, artifact, null,
+                requestedEntryMode, effectiveEntryMode);
+    }
+
+    static Variant available(String name,
+                             String description,
+                             List<String> command,
+                             Path workingDirectory,
+                             Path artifact,
+                             DeploymentSize deploymentSize,
+                             EntryMode requestedEntryMode,
+                             EntryMode effectiveEntryMode) {
+        return new Variant(name, description, List.copyOf(command), workingDirectory, artifact, deploymentSize,
                 requestedEntryMode, effectiveEntryMode, true, null);
     }
 
@@ -89,6 +113,7 @@ record Variant(String name,
     }
 
     static Variant unavailable(String name, String description, EntryMode requestedEntryMode, String reason) {
-        return new Variant(name, description, List.of(), null, null, requestedEntryMode, null, false, reason);
+        return new Variant(name, description, List.of(), null, null, null,
+                requestedEntryMode, null, false, reason);
     }
 }
