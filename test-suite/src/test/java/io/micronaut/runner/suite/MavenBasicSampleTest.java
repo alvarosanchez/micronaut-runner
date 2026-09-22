@@ -320,6 +320,7 @@ class MavenBasicSampleTest {
     private static void assertManifestVersion(Path jar, String section, String expected) throws IOException {
         try (JarFile file = new JarFile(jar.toFile())) {
             Manifest manifest = file.getManifest();
+            assertNotNull(manifest, () -> jar + " has no manifest");
             Attributes attributes = section == null ? manifest.getMainAttributes() : manifest.getAttributes(section);
             assertNotNull(attributes, () -> jar + " has no manifest section " + section);
             assertEquals(expected, attributes.getValue(Attributes.Name.IMPLEMENTATION_VERSION),

@@ -49,6 +49,7 @@ import java.util.zip.ZipEntry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -425,7 +426,9 @@ class PackageMojoTest {
 
     private static Manifest manifest(Path file) throws IOException {
         try (JarFile jar = new JarFile(file.toFile())) {
-            return jar.getManifest();
+            Manifest manifest = jar.getManifest();
+            assertNotNull(manifest, () -> file + " has no manifest");
+            return manifest;
         }
     }
 
