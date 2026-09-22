@@ -308,9 +308,30 @@ abstract class AbstractFunctionalTest {
      * @throws InterruptedException if the wait is interrupted
      */
     static Forked runJar(Path archive, String... arguments) throws IOException, InterruptedException {
+        return runJar(archive, List.of(), arguments);
+    }
+
+    /**
+     * Runs an archive in one of the launcher's tool modes.
+     *
+     * @param archive   the archive to run
+     * @param mode      the launcher mode
+     * @param arguments the tool arguments
+     * @return the exit status and the combined output
+     * @throws IOException          if the process cannot be started
+     * @throws InterruptedException if the wait is interrupted
+     */
+    static Forked runJarInMode(Path archive, String mode, String... arguments)
+            throws IOException, InterruptedException {
+        return runJar(archive, List.of("-Dmicronaut.runner.mode=" + mode), arguments);
+    }
+
+    private static Forked runJar(Path archive, List<String> jvmArguments, String... arguments)
+            throws IOException, InterruptedException {
         assertTrue(Files.isRegularFile(archive), () -> archive + " was never written");
         List<String> command = new ArrayList<>();
         command.add(javaExecutable().toString());
+        command.addAll(jvmArguments);
         command.add("-jar");
         command.add(archive.toAbsolutePath().toString());
         command.addAll(List.of(arguments));
