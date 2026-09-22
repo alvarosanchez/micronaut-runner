@@ -54,6 +54,9 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
     /** The name of the task this plugin registers. */
     public static final String TASK_NAME = "micronautRunnerJar";
 
+    /** The task that checks Runner and Shadow output locations before either producer executes. */
+    public static final String SHADOW_COLLISION_TASK_NAME = "validateMicronautRunnerShadowOutputs";
+
     /**
      * The default archive classifier. It matches the one the Shadow plugin uses, so build scripts,
      * Dockerfiles and CI jobs that already refer to the shaded artifact keep working unchanged.
@@ -110,16 +113,27 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
         project.getTasks().named(LifecycleBasePlugin.ASSEMBLE_TASK_NAME, task -> task.dependsOn(runnerJar));
 
         // A runner jar and a shaded jar are different archives. Writing both to one path silently produces
-        // whichever task ran last, so refuse it, lazily and without realising the shadow task at
-        // configuration time.
-        forbidCollisionWithShadow(project, runnerJar, SHADOW_PLUGIN);
-        forbidCollisionWithShadow(project, runnerJar, LEGACY_SHADOW_PLUGIN);
+        // whichever task ran last. A separate task performs the check even when either producer is skipped.
+        TaskProvider<ValidateShadowArchiveCollision> collisionCheck = project.getTasks().register(
+                SHADOW_COLLISION_TASK_NAME, ValidateShadowArchiveCollision.class, task -> {
+                    task.setGroup(LifecycleBasePlugin.VERIFICATION_GROUP);
+                    task.setDescription("Validates that Runner and Shadow archives have distinct outputs");
+                    task.getRunnerArchive().set(runnerJar.flatMap(MicronautRunnerJar::getArchiveFile));
+                });
+        forbidCollisionWithShadow(project, runnerJar, collisionCheck, SHADOW_PLUGIN);
+        forbidCollisionWithShadow(project, runnerJar, collisionCheck, LEGACY_SHADOW_PLUGIN);
     }
 
-    private void forbidCollisionWithShadow(Project project, TaskProvider<MicronautRunnerJar> runnerJar, String pluginId) {
-        project.getPluginManager().withPlugin(pluginId, unused ->
-                runnerJar.configure(task -> task.getConflictingArchive().set(
-                        project.getTasks().named("shadowJar", Jar.class).flatMap(Jar::getArchiveFile))));
+    private void forbidCollisionWithShadow(Project project,
+                                           TaskProvider<MicronautRunnerJar> runnerJar,
+                                           TaskProvider<ValidateShadowArchiveCollision> collisionCheck,
+                                           String pluginId) {
+        project.getPluginManager().withPlugin(pluginId, unused -> {
+            TaskProvider<Jar> shadowJar = project.getTasks().named("shadowJar", Jar.class);
+            collisionCheck.configure(task -> task.getShadowArchive().set(shadowJar.flatMap(Jar::getArchiveFile)));
+            runnerJar.configure(task -> task.dependsOn(collisionCheck));
+            shadowJar.configure(task -> task.dependsOn(collisionCheck));
+        });
     }
 
     private Provider<RegularFile> defaultArchiveFile(Project project, MicronautRunnerJar task) {
