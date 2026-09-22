@@ -27,7 +27,7 @@ import java.util.Locale;
  * {@code summary.md}, which is what a human reads and what the CI workflow appends to the job summary.
  *
  * <p>The JSON is written by hand. This module has exactly two dependencies, the launcher and the packaging
- * library, and adding a JSON library to a benchmark harness so that it can emit an object with six fields
+ * library, and adding a JSON library to a benchmark harness for this fixed report schema
  * would be a poor trade.</p>
  */
 final class Reports {
@@ -130,6 +130,11 @@ final class Reports {
         out.append("    {\n");
         out.append("      \"name\": ").append(quote(variant.name())).append(",\n");
         out.append("      \"description\": ").append(quote(variant.description())).append(",\n");
+        out.append("      \"requestedEntryMode\": ")
+                .append(quote(variant.requestedEntryMode().externalName())).append(",\n");
+        out.append("      \"effectiveEntryMode\": ")
+                .append(quote(variant.effectiveEntryMode() == null
+                        ? null : variant.effectiveEntryMode().externalName())).append(",\n");
         out.append("      \"available\": ").append(variant.available()).append(",\n");
         out.append("      \"required\": ").append(context.requiredVariants().contains(variant.name()))
                 .append(",\n");
@@ -257,7 +262,7 @@ final class Reports {
             }
         }
         out.append("Time from process spawn to the first successful HTTP response, for the same Micronaut")
-                .append(" application packaged six ways.\n\n");
+                .append(" application across the required packaging and entry-path matrix.\n\n");
         out.append("- **Sample**: `").append(context.sample()).append("`\n");
         out.append("- **Machine**: ").append(System.getProperty("os.name")).append(' ')
                 .append(System.getProperty("os.version")).append(" · ")
@@ -327,10 +332,14 @@ final class Reports {
         appendIncompleteDetails(out, context, results, status);
 
         out.append("## What each variant is\n\n");
-        out.append("| Variant | Packaging |\n|---|---|\n");
+        out.append("| Variant | Requested entry | Effective entry | Packaging |\n|---|---|---|---|\n");
         for (VariantResult result : results) {
-            out.append("| `").append(result.variant().name()).append("` | ")
-                    .append(result.variant().description()).append(" |\n");
+            Variant variant = result.variant();
+            out.append("| `").append(variant.name()).append("` | ")
+                    .append(variant.requestedEntryMode().externalName()).append(" | ")
+                    .append(variant.effectiveEntryMode() == null
+                            ? "unavailable" : variant.effectiveEntryMode().externalName()).append(" | ")
+                    .append(variant.description()).append(" |\n");
         }
         out.append('\n');
 
@@ -350,7 +359,7 @@ final class Reports {
         }
 
         out.append("## How to read this\n\n");
-        out.append("- All six variants are built from **one** compilation of the sample and **one**")
+        out.append("- All variants are built from **one** compilation of the sample and **one**")
                 .append(" dependency resolution, so any difference is a difference in packaging.\n");
         out.append("- The median and the 90th percentile are reported instead of a mean and a standard")
                 .append(" deviation because process start times have a hard floor and a long right tail.\n");

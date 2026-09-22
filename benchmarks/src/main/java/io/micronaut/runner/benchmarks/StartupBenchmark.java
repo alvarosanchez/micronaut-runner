@@ -49,7 +49,7 @@ import java.util.Random;
  * <h2>The methodology, and why each rule is there</h2>
  * <ol>
  *   <li><strong>Identical application bytes across variants.</strong> One Gradle build of the sample
- *       produces the classes and the resolved dependency jars; all six packagings are made from those.
+ *       produces the classes and the resolved dependency jars; every packaging is made from those.
  *       Otherwise a difference between two formats could be a difference between two compilations.</li>
  *   <li><strong>One monotonic clock, spawn to first response.</strong> See {@link StartupHarness}.</li>
  *   <li><strong>Interleaved, not blocked.</strong> Within each iteration the variants are run in a fresh
