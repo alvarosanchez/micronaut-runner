@@ -45,6 +45,9 @@ class BenchmarkClaimsTest {
         assertTrue(normalizedGuide.contains("default JDK class sharing"));
         assertTrue(normalizedGuide.contains("trained application cache"));
         assertTrue(normalizedGuide.contains("cold-storage performance has not been measured"));
+        assertTrue(normalizedGuide.contains("descriptive-only"));
+        assertTrue(normalizedGuide.contains("complete measured iteration pairs"));
+        assertTrue(normalizedGuide.contains("reporting threshold, not a universal guarantee"));
 
         assertFalse(guide.contains("each also with a CDS archive"));
         assertFalse(guide.contains("Both a warm and a cold page cache are measured"));
