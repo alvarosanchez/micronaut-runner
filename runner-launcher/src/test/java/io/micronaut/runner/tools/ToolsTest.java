@@ -31,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.jar.Attributes;
@@ -499,6 +500,102 @@ class ToolsTest {
     }
 
     @Test
+    void extractRefusesASourceReachedThroughADirectoryAliasWithAndWithoutForce() throws IOException {
+        for (boolean force : List.of(false, true)) {
+            Path real = Files.createDirectories(workspace.resolve("source-alias-" + force + "/real"));
+            Path sourceArchive = real.resolve("original.jar");
+            Files.copy(archive.toPath(), sourceArchive);
+            byte[] original = Files.readAllBytes(sourceArchive);
+            Path sentinel = real.resolve("precious.txt");
+            Files.writeString(sentinel, "keep me");
+            Path alias = createSymbolicLink(real.resolveSibling("alias"), real);
+            File aliasedArchive = alias.resolve("original.jar").toFile();
+
+            try (ArchiveSource aliasedSource = ArchiveSource.open(aliasedArchive)) {
+                Index aliasedIndex = Index.open(aliasedSource);
+                List<String> arguments = new ArrayList<>(List.of(
+                        Extract.OPTION_DESTINATION, real.toString()));
+                if (force) {
+                    arguments.add(Extract.OPTION_FORCE);
+                }
+
+                IOException failure = assertThrows(IOException.class, () -> Extract.run(
+                        arguments.toArray(new String[0]), aliasedArchive, aliasedIndex, aliasedSource));
+
+                assertTrue(failure.getMessage().contains("holds the runner jar itself"), failure.getMessage());
+            }
+            assertArrayEquals(original, Files.readAllBytes(sourceArchive),
+                    "rejecting an aliased destination must leave the runner archive byte-identical");
+            try (JarFile jar = new JarFile(sourceArchive.toFile())) {
+                assertNotNull(jar.getEntry(IndexFormat.INDEX_ENTRY_NAME));
+            }
+            assertEquals("keep me", Files.readString(sentinel));
+            assertNoLeftovers(real.getParent());
+        }
+    }
+
+    @Test
+    void extractRefusesADestinationDirectoryAlias() throws IOException {
+        Path real = Files.createDirectories(workspace.resolve("destination-alias/real"));
+        Path sourceArchive = real.resolve("original.jar");
+        Files.copy(archive.toPath(), sourceArchive);
+        byte[] original = Files.readAllBytes(sourceArchive);
+        Path sentinel = real.resolve("precious.txt");
+        Files.writeString(sentinel, "keep me");
+        Path destination = createSymbolicLink(real.resolveSibling("alias"), real);
+
+        try (ArchiveSource other = ArchiveSource.open(sourceArchive.toFile())) {
+            Index otherIndex = Index.open(other);
+            IOException failure = assertThrows(IOException.class, () -> Extract.run(new String[] {
+                Extract.OPTION_DESTINATION, destination.toString(), Extract.OPTION_FORCE
+            }, sourceArchive.toFile(), otherIndex, other));
+
+            assertTrue(failure.getMessage().contains("holds the runner jar itself"), failure.getMessage());
+        }
+        assertArrayEquals(original, Files.readAllBytes(sourceArchive));
+        assertEquals("keep me", Files.readString(sentinel));
+        assertNoLeftovers(real.getParent());
+    }
+
+    @Test
+    void extractRefusesACaseAliasOnCaseInsensitiveFileSystems() throws IOException {
+        Path real = Files.createDirectories(workspace.resolve("case-alias/Destination"));
+        Path destination = real.resolveSibling(real.getFileName().toString().toUpperCase(Locale.ROOT));
+        Assumptions.assumeTrue(Files.exists(destination), "the test file system is case-sensitive");
+        Path sourceArchive = real.resolve("original.jar");
+        Files.copy(archive.toPath(), sourceArchive);
+        byte[] original = Files.readAllBytes(sourceArchive);
+        Path sentinel = real.resolve("precious.txt");
+        Files.writeString(sentinel, "keep me");
+
+        try (ArchiveSource other = ArchiveSource.open(sourceArchive.toFile())) {
+            Index otherIndex = Index.open(other);
+            IOException failure = assertThrows(IOException.class, () -> Extract.run(new String[] {
+                Extract.OPTION_DESTINATION, destination.toString(), Extract.OPTION_FORCE
+            }, sourceArchive.toFile(), otherIndex, other));
+
+            assertTrue(failure.getMessage().contains("holds the runner jar itself"), failure.getMessage());
+        }
+        assertArrayEquals(original, Files.readAllBytes(sourceArchive));
+        assertEquals("keep me", Files.readString(sentinel));
+        assertNoLeftovers(real.getParent());
+    }
+
+    @Test
+    void extractAllowsANonexistentDestinationBelowAnAliasedAncestor() throws Throwable {
+        Path real = Files.createDirectories(workspace.resolve("missing-tail/real"));
+        Path alias = createSymbolicLink(real.resolveSibling("alias"), real);
+        Path destination = alias.resolve("new/missing");
+
+        capture(() -> Extract.run(new String[] {
+            Extract.OPTION_DESTINATION, destination.toString()
+        }, archive, index, source));
+
+        assertTrue(Files.isRegularFile(real.resolve("new/missing/app.jar")));
+        assertNoLeftovers(real.resolve("new"));
+    }
+
+    @Test
     void extractRefusesADestinationThatHoldsTheArchiveItself() {
         IOException failure = assertThrows(IOException.class, () -> Extract.run(
                 new String[] {Extract.OPTION_DESTINATION, archive.getParent()}, archive, index, source));
@@ -777,6 +874,16 @@ class ToolsTest {
         assertNotNull(entry, name);
         try (InputStream in = jar.getInputStream(entry)) {
             return in.readAllBytes();
+        }
+    }
+
+    /** Creates a symbolic link, or reports that this platform cannot exercise the fixture. */
+    private static Path createSymbolicLink(Path link, Path target) throws IOException {
+        try {
+            return Files.createSymbolicLink(link, target);
+        } catch (UnsupportedOperationException | IOException e) {
+            Assumptions.assumeTrue(false, "symbolic links are not supported: " + e.getMessage());
+            throw e;
         }
     }
 

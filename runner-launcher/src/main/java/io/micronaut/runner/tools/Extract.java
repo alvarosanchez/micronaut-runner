@@ -29,6 +29,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
@@ -116,6 +117,13 @@ import java.util.zip.ZipEntry;
  * timestamps are fixed, so extracting one archive twice produces the same tree and an AOT training run
  * matches the production copy.</p>
  *
+ * <p>The source-containment check resolves the archive's real path and a destination that does not yet
+ * exist through its nearest existing ancestor, so symbolic-link and case aliases cannot hide the source.
+ * The check runs again immediately before publication. The standard {@link Path} API cannot make checking
+ * and replacement one indivisible operation, so a hostile process that can replace path components
+ * concurrently can still race it; source and destination directories must be writable only by trusted
+ * participants.</p>
+ *
  * <p>This class is loaded only when the mode selects it, so it is written in ordinary Java: the rules that
  * keep {@code io.micronaut.runner} free of lambdas, streams and {@code String.format} do not apply to
  * {@code io.micronaut.runner.tools}.</p>
@@ -189,14 +197,11 @@ public final class Extract {
         Path archivePath = archive.getAbsoluteFile().toPath().normalize();
         Options options = parse(args, archivePath);
         Path destination = options.destination();
-        if (archivePath.startsWith(destination)) {
-            throw new IOException("The destination " + destination + " holds the runner jar itself;"
-                    + " extract into a directory that does not contain " + archivePath + ". " + USAGE);
-        }
         Path parent = destination.getParent();
         if (parent == null) {
             throw new IOException("The destination " + destination + " has no parent directory. " + USAGE);
         }
+        requireDestinationOutsideArchive(archivePath, destination);
         checkDestination(destination, options.force());
         Files.createDirectories(parent);
         Path work = Files.createTempDirectory(parent, ".micronaut-runner-extract-");
@@ -210,7 +215,7 @@ public final class Extract {
                 entries = writeApplicationJar(resolveWithin(work, applicationJar), outer, manifest);
             }
             stamp(work);
-            moveIntoPlace(work, destination);
+            moveIntoPlace(work, destination, archivePath);
             complete = true;
             report(archivePath, destination, applicationJar, entries, index, libraries);
         } finally {
@@ -340,6 +345,48 @@ public final class Extract {
                         + " to extract somewhere else.");
             }
         }
+    }
+
+    /**
+     * Refuses a destination whose real filesystem location contains the source archive.
+     *
+     * @param archive     the runner jar
+     * @param destination the requested extraction directory
+     * @throws IOException if the destination contains the archive through any path alias
+     */
+    private static void requireDestinationOutsideArchive(Path archive, Path destination) throws IOException {
+        Path resolvedArchive = archive.toRealPath();
+        Path resolvedDestination = resolveExistingAncestor(destination);
+        if (resolvedArchive.startsWith(resolvedDestination)) {
+            throw new IOException("The destination " + destination + " holds the runner jar itself at "
+                    + resolvedArchive + "; extract into a directory that does not contain the source archive. "
+                    + USAGE);
+        }
+    }
+
+    /**
+     * Resolves the real path of the nearest existing ancestor and restores a missing suffix below it.
+     *
+     * @param path the existing or planned path
+     * @return the path with every existing component resolved
+     * @throws IOException if no ancestor can be resolved
+     */
+    private static Path resolveExistingAncestor(Path path) throws IOException {
+        Path existing = path.toAbsolutePath().normalize();
+        List<Path> suffix = new ArrayList<>();
+        while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
+            Path name = existing.getFileName();
+            if (name == null || existing.getParent() == null) {
+                throw new IOException("No existing ancestor of " + path);
+            }
+            suffix.add(name);
+            existing = existing.getParent();
+        }
+        Path resolved = existing.toRealPath();
+        for (int i = suffix.size() - 1; i >= 0; i--) {
+            resolved = resolved.resolve(suffix.get(i));
+        }
+        return resolved.normalize();
     }
 
     /**
@@ -730,9 +777,13 @@ public final class Extract {
      *
      * @param work        the finished tree
      * @param destination where it belongs
+     * @param archive     the runner jar, rechecked before anything is replaced
      * @throws IOException if the destination cannot be replaced
      */
-    private static void moveIntoPlace(Path work, Path destination) throws IOException {
+    private static void moveIntoPlace(Path work, Path destination, Path archive) throws IOException {
+        // Path components may have changed while the extracted tree was assembled. This narrows the
+        // accidental race window; see the class documentation for the remaining hostile-race boundary.
+        requireDestinationOutsideArchive(archive, destination);
         if (Files.exists(destination)) {
             deleteRecursively(destination);
         }
