@@ -828,6 +828,28 @@ sealing a package that is already open, raises <code>SecurityException</code>.</
 </div>
 </div>
 <div class="sect1">
+<h2 id="_archive_path_urls">Archive path URLs</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The outer archive&#8217;s <code>file:</code> URL has one canonical representation. File-system separators are <code>/</code> over the
+complete URL path, including components after Unicode text. Unicode is encoded as UTF-8 bytes, and spaces,
+<code>%</code>, <code>#</code> and <code>?</code> are percent-encoded. A Windows drive path therefore starts with <code>file:/C:/</code>; a UNC shape
+starts with <code><a href="file://server/share/" class="bare">file://server/share/</a></code>. On POSIX, a backslash is data rather than a separator and is encoded as
+<code>%5C</code>.</p>
+</div>
+<div class="paragraph">
+<p>Windows CI starts both the synthetic end-to-end fixture and a real Micronaut HTTP application from a path
+shaped like <code>unicode-é/apps with a space/app.jar</code>. The former opens resources through <code>URL</code>, <code>JarFile</code> and
+the same URI-to-<code>File</code> conversion that Micronaut uses to list bean metadata; the latter must start and find
+its beans before serving a request. A separate Windows JDK 25 regression probe confirms that the previous
+non-canonical representation, which changed later separators to <code>%5C</code>, was still accepted by <code>File</code>,
+<code>URL.openStream()</code>, <code>JarFile</code> and a <code>jar:</code> URL. The encoding defect therefore did not reproduce as a startup
+or bean-discovery failure in those supported consumers. Hosted CI has no network share, so UNC behavior is
+limited to deterministic URL-shape coverage rather than opening a real UNC archive.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
 <h2 id="_known_limitations">Known limitations</h2>
 <div class="sectionbody">
 <div class="dlist">
