@@ -29,6 +29,7 @@ loadScripts(document, 'script');</script>
 <ul id="navbar-top-firstrow" class="nav-list" title="Navigation">
 <li><a href="index.html">Overview</a></li>
 <li><a href="overview-tree.html">Tree</a></li>
+<li><a href="deprecated-list.html">Deprecated</a></li>
 <li><a href="index-all.html">Index</a></li>
 <li><a href="search.html">Search</a></li>
 <li><a href="help-doc.html#all-classes">Help</a></li>
@@ -207,26 +208,30 @@ remains an intact nested jar.</div>
 <div class="block">The end-to-end startup benchmark: builds the sample application in every packaging the runner competes
 with, starts each of them many times, and reports how long each takes to answer its first request.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab4"><a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab4">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="block">Rejects a Shadow archive that shares the runner archive's output before either producer executes.</div>
+</div>
+<div class="col-first even-row-color all-classes-table all-classes-table-tab4"><a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab4">
 <div class="block">An immutable description of one entry of a ZIP archive, as the packaging library needs it.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">A read-only view of an existing <code>.jar</code> or <code>.zip</code> file, parsed by hand rather than through
 <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/zip/ZipFile.html" title="class or interface in java.util.zip" class="external-link"><code>ZipFile</code></a>.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/ZipRepacker.html" title="class in io.micronaut.runner.build">ZipRepacker</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/ZipRepacker.html" title="class in io.micronaut.runner.build">ZipRepacker</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Rewrites a dependency jar so that every entry is <code>STORED</code>, or copies it byte for byte, and reports
 where each entry's data ended up.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab4"><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab4">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab4"><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab4">
 <div class="block">What a repack or a verbatim copy produced.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">A minimal ZIP writer that only ever writes <code>STORED</code> entries and reports the absolute offset of
 every entry's data as it goes.</div>
 </div>

@@ -29,6 +29,7 @@ loadScripts(document, 'script');</script>
 <ul id="navbar-top-firstrow" class="nav-list" title="Navigation">
 <li><a href="index.html">Overview</a></li>
 <li><a href="overview-tree.html">Tree</a></li>
+<li><a href="deprecated-list.html">Deprecated</a></li>
 <li class="nav-bar-cell1-rev">Index</li>
 <li><a href="search.html">Search</a></li>
 <li><a href="help-doc.html#index">Help</a></li>
@@ -912,7 +913,10 @@ for byte.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getConflictingArchive()" class="member-name-link">getConflictingArchive()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
-<div class="block">The archive of a shading task writing to the same location, if one is configured.</div>
+<div class="deprecation-block"><span class="deprecated-label">Deprecated.</span>
+<div class="deprecation-comment">collision validation is now performed before both archive producers by
+            <a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle"><code>ValidateShadowArchiveCollision</code></a>; this compatibility property is ignored</div>
+</div>
 </dd>
 <dt><a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html#getContentLengthLong()" class="member-name-link">getContentLengthLong()</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html" title="class in io.micronaut.runner.protocol.jar">RunnerJarURLConnection</a></dt>
 <dd>
@@ -1043,6 +1047,14 @@ ordinary entry, and the <code>META-INF/versions/&lt;n&gt;/...</code> name for a 
 <dt><a href="io/micronaut/runner/RunnerClassLoader.html#getResourceAsStream(java.lang.String)" class="member-name-link">getResourceAsStream(String)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/RunnerClassLoader.html" title="class in io.micronaut.runner">RunnerClassLoader</a></dt>
 <dd>
 <div class="block">A stream over a resource, served straight from the archive.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html#getRunnerArchive()" class="member-name-link">getRunnerArchive()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></dt>
+<dd>
+<div class="block">The runner archive location.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html#getShadowArchive()" class="member-name-link">getShadowArchive()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></dt>
+<dd>
+<div class="block">The Shadow archive location.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:H">H</h2>
@@ -2113,6 +2125,10 @@ archive and the offending entry.</div>
 <div class="block">Records the caching preference without the <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalStateException.html" title="class or interface in java.lang" class="external-link"><code>IllegalStateException</code></a> the super class throws
 after a connection is connected.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#SHADOW_COLLISION_TASK_NAME" class="member-name-link">SHADOW_COLLISION_TASK_NAME</a> - Static variable in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html" title="class in io.micronaut.runner.gradle">MicronautRunnerPlugin</a></dt>
+<dd>
+<div class="block">The task that checks Runner and Shadow output locations before either producer executes.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#shift(long)" class="member-name-link">shift(long)</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
 <dd>
 <div class="block">Returns a copy of this entry with both offsets moved by <code>delta</code> bytes.</div>
@@ -2284,10 +2300,20 @@ bits and the time in the low 16 bits.</div>
 </dl>
 <h2 class="title" id="I:V">V</h2>
 <dl class="index">
+<dt><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html#validate()" class="member-name-link">validate()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></dt>
+<dd>
+<div class="block">Rejects equal output locations before either archive producer executes.</div>
+</dd>
 <dt><a href="io/micronaut/runner/Index.html#validateJar(int)" class="member-name-link">validateJar(int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">Checks, once per jar, that the nested jar still starts where the index says it does.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" class="type-name-link" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a> - Class in <a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a></dt>
+<dd>
+<div class="block">Rejects a Shadow archive that shares the runner archive's output before either producer executes.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html#%3Cinit%3E()" class="member-name-link">ValidateShadowArchiveCollision()</a> - Constructor for class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/Index.html#validateStringReferences()" class="member-name-link">validateStringReferences()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">Walks every string reference in the index and checks that it lies inside the string table.</div>
