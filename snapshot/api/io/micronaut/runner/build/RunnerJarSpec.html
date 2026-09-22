@@ -421,7 +421,10 @@ the reproducibility input.</p></div>
 <h3>addOpens</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">addOpens</span>()</div>
-<div class="block">The <code>Add-Opens</code> manifest attribute values.</div>
+<div class="block">The <code>Add-Opens</code> manifest attribute values.
+
+<p>Each value uses the JAR manifest grammar <code>module/package</code>; unlike the corresponding Java
+command-line option, it has no <code>=ALL-UNNAMED</code> suffix.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the module/package pairs to open, or an empty list</dd>
@@ -434,7 +437,10 @@ the reproducibility input.</p></div>
 <h3>addExports</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">addExports</span>()</div>
-<div class="block">The <code>Add-Exports</code> manifest attribute values.</div>
+<div class="block">The <code>Add-Exports</code> manifest attribute values.
+
+<p>Each value uses the JAR manifest grammar <code>module/package</code>; unlike the corresponding Java
+command-line option, it has no <code>=ALL-UNNAMED</code> suffix.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the module/package pairs to export, or an empty list</dd>

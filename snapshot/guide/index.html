@@ -290,7 +290,7 @@ archives under one name. The plugin fails the build if it detects that.
 
     // Written into the manifest, so users need not pass the matching command line flags.
     addOpens.add('java.base/java.lang')
-    addExports.add('java.base/sun.nio.ch=ALL-UNNAMED')
+    addExports.add('java.base/sun.nio.ch')
     enableNativeAccess = true
 
     manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
@@ -308,6 +308,14 @@ deterministically ordered map, such as <code>LinkedHashMap</code>, when builds i
 bytes. Code that wants logical map equality to be the reproducibility input can instead call
 <code>canonicalManifestAttributes</code>; it sorts names lexicographically without using the default locale and rejects
 two names that differ only by case, because manifest attribute names are case insensitive.</p>
+</div>
+<div class="paragraph">
+<p><code>addExports</code> and <code>addOpens</code> use executable-JAR manifest syntax in both plugins and in
+<code>RunnerJarSpec.Builder</code>: each list entry is exactly one <code>module/package</code> pair. The packager joins multiple
+entries with spaces in <code>Add-Exports</code> or <code>Add-Opens</code>. Do not append <code>=ALL-UNNAMED</code>; that target is implicit in
+the manifest. The suffix belongs only to the equivalent Java command-line options, for example
+<code>--add-exports java.base/sun.nio.ch=ALL-UNNAMED</code>. Invalid entries fail packaging rather than being written
+into a manifest the JDK would ignore.</p>
 </div>
 </div>
 </div>
@@ -347,6 +355,21 @@ attach it as an additional artifact instead and leave the main one untouched.</p
 </div>
 <div class="paragraph">
 <p>The main class is taken from the <code>exec.mainClass</code> property, which the Micronaut parent POM already sets.</p>
+</div>
+<div class="paragraph">
+<p>The Maven list syntax follows the same manifest grammar:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;configuration&gt;
+    &lt;addExports&gt;
+        &lt;addExport&gt;java.base/sun.nio.ch&lt;/addExport&gt;
+    &lt;/addExports&gt;
+    &lt;addOpens&gt;
+        &lt;addOpen&gt;java.base/java.lang&lt;/addOpen&gt;
+    &lt;/addOpens&gt;
+&lt;/configuration&gt;</code></pre>
+</div>
 </div>
 </div>
 </div>

@@ -454,14 +454,19 @@ rather than choosing one value based on source-map order.</p></div>
 <h3>addOpens</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></span>&nbsp;<span class="element-name">addOpens</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</span></div>
-<div class="block">Sets the <code>Add-Opens</code> values.</div>
+<div class="block">Sets the <code>Add-Opens</code> values.
+
+<p>Each entry must use JAR manifest syntax, <code>module/package</code>. Do not append the
+command-line-only <code>=ALL-UNNAMED</code> target.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
-<dd><code>value</code> - the module/package pairs</dd>
+<dd><code>value</code> - the module/package pairs, one pair per list entry</dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/NullPointerException.html" title="class or interface in java.lang" class="external-link">NullPointerException</a></code> - if the list or an element is <code>null</code></dd>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link">IllegalArgumentException</a></code> - if an entry is not a single, whitespace-free
+                                 <code>module/package</code> pair</dd>
 </dl>
 </div>
 </section>
@@ -471,14 +476,19 @@ rather than choosing one value based on source-map order.</p></div>
 <h3>addExports</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></span>&nbsp;<span class="element-name">addExports</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</span></div>
-<div class="block">Sets the <code>Add-Exports</code> values.</div>
+<div class="block">Sets the <code>Add-Exports</code> values.
+
+<p>Each entry must use JAR manifest syntax, <code>module/package</code>. Do not append the
+command-line-only <code>=ALL-UNNAMED</code> target.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
-<dd><code>value</code> - the module/package pairs</dd>
+<dd><code>value</code> - the module/package pairs, one pair per list entry</dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/NullPointerException.html" title="class or interface in java.lang" class="external-link">NullPointerException</a></code> - if the list or an element is <code>null</code></dd>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link">IllegalArgumentException</a></code> - if an entry is not a single, whitespace-free
+                                 <code>module/package</code> pair</dd>
 </dl>
 </div>
 </section>

@@ -177,12 +177,13 @@ at all. See the plugin documentation for the properties worth overriding.</p></d
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.ListProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getAddExports()" class="member-name-link">getAddExports</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">Packages to export, written into the manifest as <code>Add-Exports</code>.</div>
+<div class="block">Module/package pairs to export, written into the manifest as <code>Add-Exports</code>.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.ListProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getAddOpens()" class="member-name-link">getAddOpens</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">Packages to open, written into the manifest as <code>Add-Opens</code> so users need not pass the flag.</div>
+<div class="block">Module/package pairs to open, written into the manifest as <code>Add-Opens</code> so users need not pass
+the flag.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getApplicationJar()" class="member-name-link">getApplicationJar</a>()</code></div>
@@ -493,7 +494,9 @@ an interface rather than by reflection.</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Input
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.ListProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getAddOpens</span>()</div>
-<div class="block">Packages to open, written into the manifest as <code>Add-Opens</code> so users need not pass the flag.</div>
+<div class="block">Module/package pairs to open, written into the manifest as <code>Add-Opens</code> so users need not pass
+the flag. Each entry uses JAR manifest syntax, for example <code>java.base/java.lang</code>, without the
+command-line-only <code>=ALL-UNNAMED</code> suffix.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the packages to open</dd>
@@ -507,7 +510,9 @@ an interface rather than by reflection.</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Input
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.ListProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getAddExports</span>()</div>
-<div class="block">Packages to export, written into the manifest as <code>Add-Exports</code>.</div>
+<div class="block">Module/package pairs to export, written into the manifest as <code>Add-Exports</code>. Each entry uses JAR
+manifest syntax, for example <code>java.base/sun.nio.ch</code>, without the command-line-only
+<code>=ALL-UNNAMED</code> suffix.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the packages to export</dd>
