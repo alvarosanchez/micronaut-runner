@@ -1,5 +1,6 @@
 package com.example;
 
+import com.example.metadata.MainManifestMetadata;
 import io.micronaut.context.ApplicationContext;
 
 /**
@@ -26,6 +27,9 @@ public final class Application {
     public static void main(String[] args) {
         try (ApplicationContext context = ApplicationContext.run()) {
             System.out.println(MARKER + context.getBean(Greeter.class).greet());
+            System.out.println("RUNNER MANIFEST: main="
+                    + MainManifestMetadata.class.getPackage().getImplementationVersion()
+                    + ", package=" + Application.class.getPackage().getImplementationVersion());
         }
     }
 }

@@ -20,6 +20,7 @@ import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.RunnerJarBuilder;
 import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.artifact.handler.DefaultArtifactHandler;
+import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.SystemStreamLog;
 import org.apache.maven.project.MavenProject;
@@ -48,6 +49,7 @@ import java.util.zip.ZipEntry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -264,6 +266,74 @@ class PackageMojoTest {
     }
 
     @Test
+    void refreshesTheOriginalFromANewJarPluginOutput() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        Path mainArtifact = buildDirectory.resolve("demo-1.0.jar");
+        Path original = buildDirectory.resolve("original-demo-1.0.jar");
+        writeJarPluginOutput(mainArtifact, "v1");
+
+        mojo.execute();
+        writeJarPluginOutput(mainArtifact, "v2");
+        mojo.execute();
+
+        assertEquals("v2", manifest(original).getMainAttributes().getValue("Implementation-Version"),
+                "a new jar-plugin output must replace the stale original on a non-clean package cycle");
+        Attributes applicationPackage = manifest(original).getAttributes("com/example/");
+        assertNotNull(applicationPackage, () -> original + " has no com/example/ manifest section");
+        assertEquals("package-v2", applicationPackage.getValue("Implementation-Version"),
+                "named package metadata must be refreshed too");
+        assertFalse(isRunnerJar(original), "the refreshed original must remain the thin jar");
+        assertTrue(isRunnerJar(mainArtifact), "the main artifact must remain the runner jar");
+    }
+
+    @Test
+    void preservesBothThinJarsWhenPackagingTheNewOutputFails() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        Path mainArtifact = buildDirectory.resolve("demo-1.0.jar");
+        Path original = buildDirectory.resolve("original-demo-1.0.jar");
+        writeJarPluginOutput(mainArtifact, "v1");
+        mojo.execute();
+
+        writeJarPluginOutput(mainArtifact, "v2");
+        Files.delete(classes.resolve(MAIN_CLASS.replace('.', '/') + ".class"));
+
+        assertThrows(MojoExecutionException.class, mojo::execute);
+        assertEquals("v2", manifest(mainArtifact).getMainAttributes().getValue("Implementation-Version"),
+                "a failed package must leave the newly generated thin jar under the main artifact name");
+        assertEquals("v1", manifest(original).getMainAttributes().getValue("Implementation-Version"),
+                "a failed package must not replace the last successfully saved original");
+        assertFalse(isRunnerJar(mainArtifact));
+        assertFalse(isRunnerJar(original));
+    }
+
+    @Test
+    void preservesTheThinJarWhenUpdatingTheOriginalFailsAfterPackaging() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        Path mainArtifact = buildDirectory.resolve("demo-1.0.jar");
+        Path original = buildDirectory.resolve("original-demo-1.0.jar");
+        writeJarPluginOutput(mainArtifact, "v2");
+        Files.createDirectories(original.resolve("replacement-blocker"));
+
+        assertThrows(MojoExecutionException.class, mojo::execute);
+
+        assertTrue(isRunnerJar(mainArtifact), "runner packaging succeeded before the original update failed");
+        List<Path> preserved;
+        try (var files = Files.list(buildDirectory)) {
+            preserved = files.filter(path -> path.getFileName().toString().startsWith(".micronaut-runner-original-"))
+                    .toList();
+        }
+        assertEquals(1, preserved.size(),
+                () -> "the only thin-jar copy must survive under its temporary name: " + preserved);
+        assertEquals("v2", manifest(preserved.get(0)).getMainAttributes().getValue("Implementation-Version"));
+        assertEquals(1, log.warnings.size(), () -> "expected the preserved location in one warning: " + log.warnings);
+        assertTrue(log.warnings.get(0).contains(preserved.get(0).toString()),
+                () -> "the warning must identify the preserved thin jar: " + log.warnings);
+    }
+
+    @Test
     void packagesWithoutAJarPluginOutput() throws Exception {
         // Nothing requires maven-jar-plugin to have run: the manifest source is optional.
         assumePackagingIsPossible();
@@ -360,11 +430,18 @@ class PackageMojoTest {
 
     /** Writes a stand-in for the jar {@code maven-jar-plugin} produces, with a manifest and one marker entry. */
     private Path writeJarPluginOutput(Path file) throws IOException {
+        return writeJarPluginOutput(file, "1.0");
+    }
+
+    private Path writeJarPluginOutput(Path file, String version) throws IOException {
         Manifest manifest = new Manifest();
         Attributes main = manifest.getMainAttributes();
         main.put(Attributes.Name.MANIFEST_VERSION, "1.0");
         main.putValue("Implementation-Title", "demo");
-        main.putValue("Implementation-Version", "1.0");
+        main.putValue("Implementation-Version", version);
+        Attributes applicationPackage = new Attributes();
+        applicationPackage.putValue("Implementation-Version", "package-" + version);
+        manifest.getEntries().put("com/example/", applicationPackage);
         Files.createDirectories(file.getParent());
         try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(file), manifest)) {
             out.putNextEntry(new ZipEntry(JAR_PLUGIN_MARKER));
@@ -372,6 +449,14 @@ class PackageMojoTest {
             out.closeEntry();
         }
         return file;
+    }
+
+    private static Manifest manifest(Path file) throws IOException {
+        try (JarFile jar = new JarFile(file.toFile())) {
+            Manifest manifest = jar.getManifest();
+            assertNotNull(manifest, () -> file + " has no manifest");
+            return manifest;
+        }
     }
 
     /** A runner jar is recognised the way the launcher recognises one: by its manifest. */

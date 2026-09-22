@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.maven;
 
+import io.micronaut.runner.IndexFormat;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
@@ -37,6 +38,7 @@ import org.apache.maven.project.MavenProjectHelper;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -45,6 +47,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.zip.ZipFile;
 
 /**
  * Packages a Micronaut application as a runner jar: one executable archive in which every dependency
@@ -154,16 +157,21 @@ public class PackageMojo extends AbstractMojo {
         File mainArtifact = new File(outputDirectory, finalName + ".jar");
         File original = new File(outputDirectory, "original-" + finalName + ".jar");
 
+        Path savedThinArtifact = null;
+        boolean mainArtifactReplaced = false;
         try {
             // Keep the jar plugin's output, both as the source of the application manifest and as the
             // artifact users expect beside a replaced main artifact. Running the goal twice must not turn
             // a previously written runner jar into the "original".
             File manifestSource = null;
             if (replaceMainArtifact) {
-                if (original.isFile()) {
-                    manifestSource = original;
-                } else if (mainArtifact.isFile()) {
-                    Files.move(mainArtifact.toPath(), original.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                if (mainArtifact.isFile() && !isRunnerJar(mainArtifact)) {
+                    Files.createDirectories(outputDirectory.toPath());
+                    savedThinArtifact = Files.createTempFile(outputDirectory.toPath(),
+                            ".micronaut-runner-original-", ".jar");
+                    Files.copy(mainArtifact.toPath(), savedThinArtifact, StandardCopyOption.REPLACE_EXISTING);
+                    manifestSource = savedThinArtifact.toFile();
+                } else if (original.isFile()) {
                     manifestSource = original;
                 }
             } else if (mainArtifact.isFile()) {
@@ -172,8 +180,13 @@ public class PackageMojo extends AbstractMojo {
 
             RunnerJarResult result = RunnerJarBuilder.build(
                     buildSpec(classes, target, manifestSource), new MavenBuildLogger(getLog()));
+            mainArtifactReplaced = replaceMainArtifact;
 
             if (replaceMainArtifact) {
+                if (savedThinArtifact != null) {
+                    replace(savedThinArtifact, original.toPath());
+                    savedThinArtifact = null;
+                }
                 project.getArtifact().setFile(target);
             } else {
                 projectHelper.attachArtifact(project, "jar", classifier, target);
@@ -181,7 +194,33 @@ public class PackageMojo extends AbstractMojo {
             getLog().info("Runner jar written to " + target + " (" + (result.dependencyCount())
                     + " dependencies, " + result.entryCount() + " entries)");
         } catch (IOException e) {
+            if (mainArtifactReplaced && savedThinArtifact != null && Files.isRegularFile(savedThinArtifact)) {
+                getLog().warn("Could not update " + original + "; the thin jar is preserved at "
+                        + savedThinArtifact, e);
+            }
             throw new MojoExecutionException("Failed to package " + target, e);
+        } finally {
+            if (savedThinArtifact != null && !mainArtifactReplaced) {
+                try {
+                    Files.deleteIfExists(savedThinArtifact);
+                } catch (IOException e) {
+                    getLog().warn("Could not delete temporary thin artifact " + savedThinArtifact, e);
+                }
+            }
+        }
+    }
+
+    private static boolean isRunnerJar(File file) throws IOException {
+        try (ZipFile jar = new ZipFile(file)) {
+            return jar.getEntry(IndexFormat.INDEX_ENTRY_NAME) != null;
+        }
+    }
+
+    private static void replace(Path source, Path target) throws IOException {
+        try {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException | UnsupportedOperationException e) {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
