@@ -407,16 +407,35 @@ public final class ZipReader implements Closeable {
         try {
             inflater.setInput(compressed);
             int total = 0;
-            while (total < result.length) {
-                int read = inflater.inflate(result, total, result.length - total);
-                if (read == 0 && (inflater.finished() || inflater.needsInput() || inflater.needsDictionary())) {
-                    break;
+            byte[] probe = new byte[1];
+            while (!inflater.finished()) {
+                int read;
+                if (total < result.length) {
+                    read = inflater.inflate(result, total, result.length - total);
+                } else {
+                    read = inflater.inflate(probe, 0, 1);
                 }
-                total += read;
+                if (read > 0) {
+                    if (total == result.length) {
+                        throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
+                                + " produces more than the recorded " + result.length + " bytes");
+                    }
+                    total += read;
+                } else if (inflater.finished()) {
+                    // The terminal block may produce no plaintext, including for an empty entry.
+                    continue;
+                } else if (inflater.needsDictionary()) {
+                    throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
+                            + " requires a dictionary");
+                } else if (inflater.needsInput()) {
+                    throw truncatedDeflate(entry, result.length, total);
+                } else {
+                    throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
+                            + " made no progress after " + total + " bytes");
+                }
             }
             if (total != result.length) {
-                throw new IOException("Truncated deflate stream for entry '" + entry.name() + "' of " + path
-                        + ": expected " + result.length + " bytes, inflated " + total);
+                throw truncatedDeflate(entry, result.length, total);
             }
         } catch (DataFormatException e) {
             throw new IOException("Corrupt deflate stream for entry '" + entry.name() + "' of " + path, e);
@@ -424,6 +443,11 @@ public final class ZipReader implements Closeable {
             inflater.end();
         }
         return result;
+    }
+
+    private IOException truncatedDeflate(ZipEntryInfo entry, int expected, int actual) {
+        return new IOException("Truncated deflate stream for entry '" + entry.name() + "' of " + path
+                + ": expected " + expected + " bytes, inflated " + actual);
     }
 
     @Override

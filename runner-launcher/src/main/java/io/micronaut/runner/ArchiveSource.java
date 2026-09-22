@@ -415,21 +415,36 @@ public final class ArchiveSource implements AutoCloseable {
                 inflater.setInput(readFully(dataOffset, compressedSize));
             }
             int done = 0;
-            while (done < uncompressedSize) {
-                int n = inflater.inflate(result, done, uncompressedSize - done);
+            byte[] probe = new byte[1];
+            while (!inflater.finished()) {
+                int n;
+                if (done < uncompressedSize) {
+                    n = inflater.inflate(result, done, uncompressedSize - done);
+                } else {
+                    n = inflater.inflate(probe, 0, 1);
+                }
                 if (n > 0) {
+                    if (done == uncompressedSize) {
+                        throw new IOException("Deflate stream at offset " + dataOffset
+                                + " produces more than the recorded " + uncompressedSize + " bytes");
+                    }
                     done += n;
-                } else if (inflater.finished() || inflater.needsInput() || inflater.needsDictionary()) {
+                } else if (inflater.finished()) {
+                    // The terminal block may produce no plaintext, including for an empty entry.
+                    continue;
+                } else if (inflater.needsDictionary()) {
+                    throw new IOException("Deflate stream at offset " + dataOffset + " requires a dictionary");
+                } else if (inflater.needsInput()) {
                     throw new IOException("Deflate stream at offset " + dataOffset + " ended after " + done
                             + " bytes but the index records " + uncompressedSize);
+                } else {
+                    throw new IOException("Deflate stream at offset " + dataOffset + " made no progress after "
+                            + done + " bytes");
                 }
             }
-            if (!inflater.finished()) {
-                byte[] probe = new byte[1];
-                if (inflater.inflate(probe, 0, 1) > 0) {
-                    throw new IOException("Deflate stream at offset " + dataOffset
-                            + " produces more than the recorded " + uncompressedSize + " bytes");
-                }
+            if (done != uncompressedSize) {
+                throw new IOException("Deflate stream at offset " + dataOffset + " ended after " + done
+                        + " bytes but the index records " + uncompressedSize);
             }
             return result;
         } catch (DataFormatException e) {
