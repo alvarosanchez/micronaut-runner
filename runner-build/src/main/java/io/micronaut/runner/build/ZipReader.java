@@ -430,7 +430,8 @@ public final class ZipReader implements Closeable {
      * @param entry an entry of this archive
      * @return the uncompressed content, of length {@link ZipEntryInfo#uncompressedSize()}
      * @throws IOException if the data cannot be read, the compression method is neither stored nor deflated,
-     *                     or the deflate stream is truncated or corrupt
+     *                     or the deflate stream is truncated, corrupt, overproduces, or does not consume its
+     *                     complete recorded compressed region
      */
     public byte[] read(ZipEntryInfo entry) throws IOException {
         Objects.requireNonNull(entry, "entry");
@@ -481,6 +482,11 @@ public final class ZipReader implements Closeable {
             }
             if (total != result.length) {
                 throw truncatedDeflate(entry, result.length, total);
+            }
+            int remaining = inflater.getRemaining();
+            if (remaining != 0) {
+                throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
+                        + " ended with " + remaining + " unused compressed bytes");
             }
         } catch (DataFormatException e) {
             throw new IOException("Corrupt deflate stream for entry '" + entry.name() + "' of " + path, e);

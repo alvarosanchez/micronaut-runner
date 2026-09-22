@@ -696,6 +696,45 @@ class ZipReaderTest {
         }
     }
 
+    @Test
+    void readingADeflatedEntryRejectsUnusedBytesInItsCompressedRegion() throws IOException {
+        Path jar = deflatedWithTrailingByte(temp.resolve("trailing-compressed-byte.jar"),
+                "data.txt", "ABCDEF".getBytes(StandardCharsets.UTF_8));
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            ZipEntryInfo entry = reader.entry("data.txt").orElseThrow();
+            IOException failure = assertThrows(IOException.class, () -> reader.read(entry));
+            assertTrue(failure.getMessage().contains("data.txt"), failure.getMessage());
+            assertTrue(failure.getMessage().contains("compressed"), failure.getMessage());
+        }
+    }
+
+    @ParameterizedTest(name = "rejects ABCDEF when the recorded content is ''{0}''")
+    @ValueSource(strings = {"", "AB"})
+    void readingADeflatedEntryRejectsOutputBeyondItsRecordedSize(String recorded) throws IOException {
+        Path jar = deflatedWithRecordedContent(temp.resolve("overproduction-" + recorded.length() + ".jar"),
+                "data.txt", "ABCDEF".getBytes(StandardCharsets.UTF_8), recorded.getBytes(StandardCharsets.UTF_8));
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            ZipEntryInfo entry = reader.entry("data.txt").orElseThrow();
+            IOException failure = assertThrows(IOException.class, () -> reader.read(entry));
+            assertTrue(failure.getMessage().contains("data.txt"), failure.getMessage());
+            assertTrue(failure.getMessage().contains("produces more"), failure.getMessage());
+        }
+    }
+
+    @Test
+    void readingAValidEmptyDeflateStreamSucceeds() throws IOException {
+        Path jar = temp.resolve("empty-deflate.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "empty.txt", new byte[0]);
+        }
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            assertArrayEquals(new byte[0], reader.read(reader.entry("empty.txt").orElseThrow()));
+        }
+    }
+
     private void assertUnsafe(String name) throws IOException {
         assertFalse(ZipReader.isSafeEntryName(name), name);
         Path jar = temp.resolve("unsafe-" + Integer.toHexString(name.hashCode()) + ".jar");
@@ -743,6 +782,63 @@ class ZipReaderTest {
         zip.putNextEntry(entry);
         zip.write(data);
         zip.closeEntry();
+    }
+
+    /** Makes an internally consistent archive whose DEFLATE stream expands beyond its recorded content. */
+    static Path deflatedWithRecordedContent(Path jar, String name, byte[] actual, byte[] recorded) throws IOException {
+        Files.createDirectories(jar.getParent());
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, name, actual);
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        int descriptor = central - 16;
+        if (intAt(archive, descriptor) != 0x08074B50) {
+            throw new IOException("Fixture entry has no signed data descriptor");
+        }
+        CRC32 crc = new CRC32();
+        crc.update(recorded);
+        putInt(archive, descriptor + 4, crc.getValue());
+        putInt(archive, descriptor + 12, recorded.length);
+        putInt(archive, central + 16, crc.getValue());
+        putInt(archive, central + 24, recorded.length);
+        Files.write(jar, archive);
+        return jar;
+    }
+
+    /**
+     * Makes a structurally consistent one-entry archive whose recorded compressed region contains one byte
+     * after a complete raw DEFLATE stream. The data descriptor, central directory and end record all agree
+     * about the enlarged region, so only the inflater can detect that the byte is not part of the stream.
+     */
+    static Path deflatedWithTrailingByte(Path jar, String name, byte[] data) throws IOException {
+        Files.createDirectories(jar.getParent());
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, name, data);
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        int descriptor = central - 16;
+        if (intAt(archive, descriptor) != 0x08074B50) {
+            throw new IOException("Fixture entry has no signed data descriptor");
+        }
+
+        byte[] patched = new byte[archive.length + 1];
+        System.arraycopy(archive, 0, patched, 0, descriptor);
+        patched[descriptor] = 0;
+        System.arraycopy(archive, descriptor, patched, descriptor + 1, archive.length - descriptor);
+
+        int patchedDescriptor = descriptor + 1;
+        int patchedCentral = central + 1;
+        int patchedEnd = end + 1;
+        long compressedSize = intAt(archive, central + 20) & 0xFFFFFFFFL;
+        putInt(patched, patchedDescriptor + 8, compressedSize + 1);
+        putInt(patched, patchedCentral + 20, compressedSize + 1);
+        putInt(patched, patchedEnd + 16, patchedCentral);
+        Files.write(jar, patched);
+        return jar;
     }
 
     static void directory(ZipOutputStream zip, String name) throws IOException {

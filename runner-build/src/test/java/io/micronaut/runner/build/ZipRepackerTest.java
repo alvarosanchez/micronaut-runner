@@ -33,6 +33,8 @@ import java.util.zip.ZipOutputStream;
 
 import static io.micronaut.runner.build.ZipReaderTest.bytesAt;
 import static io.micronaut.runner.build.ZipReaderTest.deflated;
+import static io.micronaut.runner.build.ZipReaderTest.deflatedWithRecordedContent;
+import static io.micronaut.runner.build.ZipReaderTest.deflatedWithTrailingByte;
 import static io.micronaut.runner.build.ZipReaderTest.directory;
 import static io.micronaut.runner.build.ZipReaderTest.intAt;
 import static io.micronaut.runner.build.ZipReaderTest.manifestBytes;
@@ -44,6 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -130,6 +133,32 @@ class ZipRepackerTest {
             assertEquals(0, entry.localHeaderOffset(), "the manifest stays the first entry");
             assertArrayEquals(expected, reader.read(entry));
             assertEquals("true", reader.manifest().orElseThrow().getMainAttributes().getValue("Multi-Release"));
+        }
+    }
+
+    @Test
+    void refusesToRepackAnEntryWithUnusedBytesInItsCompressedRegion() throws IOException {
+        Path source = deflatedWithTrailingByte(temp.resolve("trailing-compressed-byte.jar"),
+                "data.txt", "ABCDEF".getBytes(StandardCharsets.UTF_8));
+
+        try (ZipReader reader = ZipReader.open(source)) {
+            IOException failure = assertThrows(IOException.class,
+                    () -> ZipRepacker.repack(reader, new ByteArrayOutputStream()));
+            assertTrue(failure.getMessage().contains("data.txt"), failure.getMessage());
+            assertTrue(failure.getMessage().contains("compressed"), failure.getMessage());
+        }
+    }
+
+    @Test
+    void refusesToRepackABCDEFRecordedAsAB() throws IOException {
+        Path source = deflatedWithRecordedContent(temp.resolve("overproduction.jar"), "data.txt",
+                "ABCDEF".getBytes(StandardCharsets.UTF_8), "AB".getBytes(StandardCharsets.UTF_8));
+
+        try (ZipReader reader = ZipReader.open(source)) {
+            IOException failure = assertThrows(IOException.class,
+                    () -> ZipRepacker.repack(reader, new ByteArrayOutputStream()));
+            assertTrue(failure.getMessage().contains("data.txt"), failure.getMessage());
+            assertTrue(failure.getMessage().contains("produces more"), failure.getMessage());
         }
     }
 
