@@ -218,6 +218,19 @@ class ArchiveSourceTest {
 
     @ParameterizedTest(name = "mapped={0}")
     @ValueSource(booleans = {true, false})
+    void rejectsUnusedBytesAfterACompleteDeflateStream(boolean mapped) throws IOException {
+        byte[] completeWithTrailingByte = new byte[] {
+            1, 1, 0, (byte) 0xFE, (byte) 0xFF, 'x', 0
+        };
+        ArchiveSource source = open(completeWithTrailingByte, mapped);
+
+        IOException failure = assertThrows(IOException.class,
+                () -> source.inflate(0, completeWithTrailingByte.length, 1));
+        assertTrue(failure.getMessage().contains("unused compressed bytes"), failure.getMessage());
+    }
+
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
     void validatesEmptyDeflateStreamsAndReusesInflatersAfterFailures(boolean mapped) throws IOException {
         byte[] completeEmpty = new byte[] {1, 0, 0, (byte) 0xFF, (byte) 0xFF};
         ArchiveSource source = open(completeEmpty, mapped);

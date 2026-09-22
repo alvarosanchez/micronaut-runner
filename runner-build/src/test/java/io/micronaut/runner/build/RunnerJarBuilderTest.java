@@ -49,6 +49,7 @@ import java.util.zip.ZipInputStream;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 
+import static io.micronaut.runner.build.ZipReaderTest.deflatedWithTrailingByte;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -428,6 +429,57 @@ class RunnerJarBuilderTest {
 
         assertArrayEquals(previous, Files.readAllBytes(output),
                 "a failed build must not replace what was at the output path");
+    }
+
+    @Test
+    void rejectsUnusedCompressedBytesInAnApplicationJarWithoutReplacingOutput() throws IOException {
+        Path applicationJar = deflatedWithTrailingByte(fixtures.resolve("application-trailing-byte.jar"),
+                "com/example/Application.class",
+                Files.readAllBytes(applicationClasses.resolve("com/example/Application.class")));
+        Path output = output();
+        Files.createDirectories(output.getParent());
+        byte[] previous = "previous application artifact".getBytes(StandardCharsets.UTF_8);
+        Files.write(output, previous);
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .applicationOutput(List.of(applicationJar))
+                .dependencies(List.of())
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains("Application.class"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("compressed"), failure.getMessage());
+        assertArrayEquals(previous, Files.readAllBytes(output),
+                "a malformed application jar must not replace the previous output");
+    }
+
+    @Test
+    void rejectsUnusedCompressedBytesInADependencyWithoutReplacingOutput() throws IOException {
+        Path dependency = deflatedWithTrailingByte(fixtures.resolve("libs/dependency-trailing-byte.jar"),
+                "data.txt", "ABCDEF".getBytes(StandardCharsets.UTF_8));
+        Path output = output();
+        Files.createDirectories(output.getParent());
+        byte[] previous = "previous dependency artifact".getBytes(StandardCharsets.UTF_8);
+        Files.write(output, previous);
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .dependencies(List.of(new Dependency(dependency, null)))
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains(dependency.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("data.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("compressed"), failure.getMessage());
+        assertArrayEquals(previous, Files.readAllBytes(output),
+                "a malformed dependency must not replace the previous output");
+    }
+
+    @Test
+    void fullPreserveVerificationRejectsUnusedCompressedBytesWithoutReplacingOutput() throws IOException {
+        Path dependency = deflatedWithTrailingByte(fixtures.resolve("libs/preserved-trailing-byte.jar"),
+                "data.txt", "ABCDEF".getBytes(StandardCharsets.UTF_8));
+
+        IOException failure = assertPreserveRejectedWithoutReplacingOutput(dependency, true);
+
+        assertTrue(failure.getMessage().contains("unused compressed bytes"), failure.getMessage());
     }
 
     @ParameterizedTest

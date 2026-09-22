@@ -397,8 +397,8 @@ public final class ArchiveSource implements AutoCloseable {
      * @param compressedSize   number of stored bytes
      * @param uncompressedSize number of bytes the entry expands to
      * @return the decompressed content
-     * @throws IOException if the deflate stream is corrupt, ends early, or produces more than
-     *                     {@code uncompressedSize} bytes
+     * @throws IOException if the deflate stream is corrupt, ends early, produces more than
+     *                     {@code uncompressedSize} bytes, or does not consume all {@code compressedSize} bytes
      */
     public byte[] inflate(long dataOffset, int compressedSize, int uncompressedSize) throws IOException {
         if (compressedSize < 0 || uncompressedSize < 0) {
@@ -445,6 +445,11 @@ public final class ArchiveSource implements AutoCloseable {
             if (done != uncompressedSize) {
                 throw new IOException("Deflate stream at offset " + dataOffset + " ended after " + done
                         + " bytes but the index records " + uncompressedSize);
+            }
+            int remaining = inflater.getRemaining();
+            if (remaining != 0) {
+                throw new IOException("Deflate stream at offset " + dataOffset + " ended with " + remaining
+                        + " unused compressed bytes");
             }
             return result;
         } catch (DataFormatException e) {
