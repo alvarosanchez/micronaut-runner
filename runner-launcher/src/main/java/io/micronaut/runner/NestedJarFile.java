@@ -21,7 +21,9 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -47,8 +49,9 @@ import java.util.zip.ZipEntry;
  * <p>{@link JarFile#isMultiRelease()} and {@link JarFile#getVersion()} are {@code final}. They keep
  * reporting the state of the outer archive, which is not multi-release and is opened at the base version,
  * even when this view is of a multi-release dependency. This is a genuine, documented limitation, and it
- * is only a reporting one: {@link #getEntry(String)} applies the nested jar's own multi-release policy, so
- * lookups still return the versioned entry a real {@code JarFile} would return, and
+ * is only a reporting one: {@link #getEntry(String)} and {@link #versionedStream()} apply the nested jar's
+ * own multi-release policy, so lookups and effective enumeration still return the versioned entries a
+ * real {@code JarFile} would return, and
  * {@link NestedJarEntry#getRealName()} still reports the {@code META-INF/versions/<n>/...} name it came
  * from. Code that branches on {@code isMultiRelease()} rather than on the entry it gets back will take the
  * base branch and still be handed versioned entries.</p>
@@ -57,9 +60,11 @@ import java.util.zip.ZipEntry;
  * <p>{@link #entries()}, {@link #stream()} and {@link #size()} report the <em>physical</em> records of the
  * jar in central directory order: the versioned aliases and the synthesised directory records the index
  * adds are left out, so a scan sees the same entries, in the same order and in the same number, as it
- * would see in the original dependency. {@link #getEntry(String)} does include a synthesised directory,
- * because a lookup of {@code some/package/} is a question about the jar's content and the answer "yes,
- * that directory exists" is the useful one.</p>
+ * would see in the original dependency. {@link #versionedStream()} is the separate effective view: it
+ * collapses each logical name to the highest applicable version without changing those physical APIs.
+ * {@link #getEntry(String)} does include a synthesised directory, because a lookup of
+ * {@code some/package/} is a question about the jar's content and the answer "yes, that directory exists"
+ * is the useful one.</p>
  *
  * @since 1.0
  */
@@ -68,11 +73,15 @@ public final class NestedJarFile extends JarFile {
     /** The manifest of a jar, which is not versioned even in a multi-release jar. */
     private static final String MANIFEST_NAME = "META-INF/MANIFEST.MF";
 
+    /** The physical prefix whose entries may contribute logical names to the effective view. */
+    private static final String VERSIONS_PREFIX = "META-INF/versions/";
+
     private final Index index;
     private final ArchiveSource source;
     private final int jarId;
     private final int firstEntry;
     private final int entryCount;
+    private final boolean multiRelease;
     private final int version;
     private final String name;
     private final Object lock = new Object();
@@ -101,7 +110,9 @@ public final class NestedJarFile extends JarFile {
         this.jarId = jarId;
         this.firstEntry = index.jarFirstEntry(jarId);
         this.entryCount = index.jarEntryCount(jarId);
-        this.version = index.jarMultiRelease(jarId)
+        this.multiRelease = index.jarMultiRelease(jarId)
+                && !"false".equals(System.getProperty("jdk.util.jar.enableMultiRelease"));
+        this.version = multiRelease
                 ? Index.effectiveMultiReleaseVersion() : Index.BASE_VERSION;
         StringBuilder jarName = new StringBuilder(64);
         jarName.append(outerFile.getPath()).append(Handlers.SEPARATOR).append(index.jarName(jarId));
@@ -203,6 +214,38 @@ public final class NestedJarFile extends JarFile {
     @Override
     public Stream<JarEntry> stream() {
         return physicalEntries().stream();
+    }
+
+    /**
+     * The effective entries of this jar, after applying its multi-release policy.
+     *
+     * <p>The physical central-directory order determines where each distinct logical name first appears;
+     * lookup then selects the highest applicable version and the last duplicate in that version. This is
+     * the same two-stage view as {@link JarFile#versionedStream()}.</p>
+     *
+     * @return a stream of effective entries
+     */
+    @Override
+    public Stream<JarEntry> versionedStream() {
+        if (!multiRelease) {
+            return stream();
+        }
+        List<JarEntry> entries = new ArrayList<>(size());
+        Set<String> seen = new HashSet<>();
+        for (JarEntry physical : physicalEntries()) {
+            String entryName = versionedBaseName(physical.getName());
+            if (entryName != null && seen.add(entryName)) {
+                int record = findRecord(entryName);
+                if (record != IndexFormat.NO_INDEX && index.entryDirectory(record)
+                        && index.entryVersionedAlias(record)) {
+                    record = index.resolveInJar(index.find(entryName), Index.BASE_VERSION, jarId);
+                }
+                if (record != IndexFormat.NO_INDEX) {
+                    entries.add(new NestedJarEntry(this, index, record));
+                }
+            }
+        }
+        return entries.stream();
     }
 
     /**
@@ -328,6 +371,30 @@ public final class NestedJarFile extends JarFile {
      */
     private int findRecord(String entryName) {
         return index.resolveInJar(index.find(entryName), version, jarId);
+    }
+
+    /**
+     * Maps a physical entry name to the logical name used by the effective view.
+     *
+     * @param entryName a physical entry name
+     * @return its logical name, or {@code null} when the physical version is not visible
+     */
+    private String versionedBaseName(String entryName) {
+        if (!entryName.startsWith(VERSIONS_PREFIX)) {
+            return entryName;
+        }
+        int slash = entryName.indexOf('/', VERSIONS_PREFIX.length());
+        if (slash < 0 || slash == entryName.length() - 1) {
+            return null;
+        }
+        try {
+            if (Integer.parseInt(entryName, VERSIONS_PREFIX.length(), slash, 10) > version) {
+                return null;
+            }
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+        return entryName.substring(slash + 1);
     }
 
     /**

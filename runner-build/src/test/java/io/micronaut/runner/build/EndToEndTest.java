@@ -313,6 +313,7 @@ class EndToEndTest {
                                 "!/MICRONAUT-INF/lib/dep-two.jar!"
                                 + "/META-INF/versions/21/org/deptwo/Versioned.class"),
                             String.valueOf(versionedResource));
+                    checkVersionedStream(versionedResource);
 
                     // Neither jar carries an explicit directory entry for these, so both answers come
                     // from the directory records the packager synthesised.
@@ -423,6 +424,36 @@ class EndToEndTest {
                                     && "Dependency One Jar".equals(nested.getManifest()
                                             .getMainAttributes().getValue("Implementation-Title")),
                             String.valueOf(nested.getManifest()));
+                }
+
+                private static void checkVersionedStream(URL resource) throws Exception {
+                    if (resource == null) {
+                        return;
+                    }
+                    JarURLConnection connection = (JarURLConnection) resource.openConnection();
+                    connection.setUseCaches(false);
+                    JarFile nested = connection.getJarFile();
+                    List<JarEntry> effective = nested.versionedStream().toList();
+                    List<JarEntry> values = effective.stream()
+                            .filter(entry -> entry.getName().equals("value.txt")).toList();
+                    String content = values.size() == 1
+                            ? drain(nested.getInputStream(values.get(0))) : values.toString();
+                    check("versionedStream exposes one effective logical resource",
+                            values.size() == 1, values.toString());
+                    check("versionedStream maps the logical resource to its selected physical entry",
+                            values.size() == 1
+                                    && values.get(0).getRealName()
+                                        .equals("META-INF/versions/21/value.txt")
+                                    && "v21".equals(content),
+                            values + " / " + content);
+                    check("versionedStream hides future physical versions",
+                            effective.stream().noneMatch(entry -> entry.getRealName()
+                                    .equals("META-INF/versions/99/value.txt")), effective.toString());
+
+                    long physical = nested.stream().filter(entry -> entry.getName().equals("value.txt")
+                            || entry.getName().endsWith("/value.txt")).count();
+                    check("ordinary stream keeps every physical multi-release resource",
+                            physical == 4, Long.toString(physical));
                 }
 
                 private static void checkDuplicates(ClassLoader loader) throws Exception {
@@ -674,6 +705,10 @@ class EndToEndTest {
                 Files.readAllBytes(secondClasses17.resolve("org/deptwo/Versioned.class")));
         secondEntries.put("META-INF/versions/21/org/deptwo/Versioned.class",
                 Files.readAllBytes(secondClasses21.resolve("org/deptwo/Versioned.class")));
+        secondEntries.put("value.txt", bytes("base"));
+        secondEntries.put("META-INF/versions/17/value.txt", bytes("v17"));
+        secondEntries.put("META-INF/versions/21/value.txt", bytes("v21"));
+        secondEntries.put("META-INF/versions/99/value.txt", bytes("future"));
         secondEntries.put("org/deptwo/dep-resource.txt", bytes("dep-two-resource"));
         secondEntries.put("shared.txt", bytes("shared-dep-two"));
         secondEntries.put("META-INF/micronaut/io.example.Other/org.deptwo.Thing", new byte[0]);
@@ -715,7 +750,9 @@ class EndToEndTest {
             "PASS and the code source location can be opened",
             "PASS its connection describes the same entry it streams",
             "PASS a directory resolves without a trailing slash too",
-            "PASS a merged service file keeps a dependency's content"}) {
+            "PASS a merged service file keeps a dependency's content",
+            "PASS versionedStream maps the logical resource to its selected physical entry",
+            "PASS ordinary stream keeps every physical multi-release resource"}) {
             assertTrue(run.output().contains(reached),
                     () -> "the application never reported: " + reached + "\n" + run.output());
         }
