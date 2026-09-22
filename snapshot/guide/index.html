@@ -1020,7 +1020,7 @@ a byte array. These isolate the mechanism.</p>
 </dd>
 <dt class="hdlist1">Startup</dt>
 <dd>
-<p>The whole process, from spawn to readiness, for the same application packaged in the six modes
+<p>The whole process, from spawn to readiness, for the same application packaged in the eight modes
 that the current harness implements:</p>
 <table class="tableblock frame-all grid-all stretch">
 <colgroup>
@@ -1048,11 +1048,19 @@ that the current harness implements:</p>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with nested dependencies re-packed uncompressed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with nested dependencies re-packed uncompressed and the plugin-default entry stub</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-reflection</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The same stored Runner JAR inputs with the entry stub disabled, as a reflection ablation</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with nested dependencies copied byte for byte</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve-reflection</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The same preserved Runner JAR inputs with the entry stub disabled, as a reflection ablation</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted</code></p></td>
@@ -1069,7 +1077,7 @@ HTTP response, because that is what a user waits for and it captures class loadi
 framework&#8217;s own "startup completed" line is recorded separately rather than substituted for readiness.</p>
 </div>
 <div class="paragraph">
-<p>None of these six commands uses a trained application cache. Default JDK class sharing remains enabled when
+<p>None of these eight commands uses a trained application cache. Default JDK class sharing remains enabled when
 the selected JDK enables it, but reuse of platform classes from the JDK&#8217;s default archive is not evidence of
 trained application-class CDS or AOT reuse.</p>
 </div>
