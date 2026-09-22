@@ -166,6 +166,17 @@ public final class ZipReader implements Closeable {
                 if (readInt(zip64, 0) != IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
                     throw malformed("the ZIP64 locator does not point at a ZIP64 end of central directory record");
                 }
+                long zip64RecordSize = readLong(zip64, 4);
+                if (zip64RecordSize < ZIP64_END_SIZE - 12L) {
+                    throw malformed("the ZIP64 end of central directory record size is too small: "
+                            + zip64RecordSize);
+                }
+                long zip64RecordEnd = checkedAdd(zip64End,
+                        checkedAdd(12, zip64RecordSize, "ZIP64 end of central directory record size"),
+                        "ZIP64 end of central directory record size");
+                if (zip64RecordEnd != locatorOffset) {
+                    throw malformed("the ZIP64 end of central directory record size does not end at its locator");
+                }
                 if (readUnsignedInt(zip64, 16) != 0 || readUnsignedInt(zip64, 20) != 0
                         || readLong(zip64, 24) != readLong(zip64, 32)) {
                     throw malformed("multi-disk ZIP64 archives are not supported; a single-disk archive was required");

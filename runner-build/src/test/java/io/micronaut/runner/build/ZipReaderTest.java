@@ -374,6 +374,24 @@ class ZipReaderTest {
         }
     }
 
+    @ParameterizedTest(name = "rejects ZIP64 end record size {0}")
+    @ValueSource(longs = {43, 45})
+    void rejectsAZip64EndRecordWhoseDeclaredSizeDoesNotReachItsLocator(long recordSize) throws IOException {
+        Path plain = temp.resolve("plain-zip64-end-" + recordSize + ".jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(plain))) {
+            stored(zip, "one.txt", new byte[] {'1'});
+        }
+        byte[] archive = withZip64EndRecord(Files.readAllBytes(plain));
+        int zip64End = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE
+                - IndexFormat.ZIP64_LOCATOR_SIZE - 56;
+        putLong(archive, zip64End + 4, recordSize);
+        Files.write(plain, archive);
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(plain));
+        assertTrue(failure.getMessage().contains("ZIP64"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("size"), failure.getMessage());
+    }
+
     @Test
     void readsSizesAndOffsetsFromTheZip64ExtraField() throws IOException {
         Path plain = temp.resolve("plain.jar");
@@ -784,6 +802,34 @@ class ZipReaderTest {
         } finally {
             inflater.end();
         }
+        return result;
+    }
+
+    /** Adds a minimal ZIP64 end record and locator to an ordinary archive. */
+    static byte[] withZip64EndRecord(byte[] archive) {
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        long count = shortAt(archive, end + 10);
+        long directorySize = intAt(archive, end + 12) & 0xFFFFFFFFL;
+        long directoryOffset = intAt(archive, end + 16) & 0xFFFFFFFFL;
+        byte[] result = new byte[archive.length + 56 + IndexFormat.ZIP64_LOCATOR_SIZE];
+        System.arraycopy(archive, 0, result, 0, end);
+
+        int zip64End = end;
+        putInt(result, zip64End, IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE);
+        putLong(result, zip64End + 4, 44);
+        putShort(result, zip64End + 12, 45);
+        putShort(result, zip64End + 14, 45);
+        putLong(result, zip64End + 24, count);
+        putLong(result, zip64End + 32, count);
+        putLong(result, zip64End + 40, directorySize);
+        putLong(result, zip64End + 48, directoryOffset);
+
+        int locator = zip64End + 56;
+        putInt(result, locator, IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE);
+        putLong(result, locator + 8, zip64End);
+        putInt(result, locator + 16, 1);
+        System.arraycopy(archive, end, result, locator + IndexFormat.ZIP64_LOCATOR_SIZE,
+                IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE);
         return result;
     }
 
