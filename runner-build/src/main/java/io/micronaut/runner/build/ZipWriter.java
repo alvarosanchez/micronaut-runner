@@ -54,9 +54,10 @@ import java.util.zip.CRC32;
  * <p>ZIP64 records are written when the archive needs them: a ZIP64 end of central directory record and
  * locator from 65535 entries upwards, or once the central directory reaches 4 GiB in size or in offset,
  * and a ZIP64
- * extended information extra field on the records of entries whose size or local header offset does not fit
- * in 32 bits. Every field that is replaced by a 64-bit value in an extra field carries the
- * {@link IndexFormat#ZIP64_MARKER} value in its 32-bit slot, as the specification requires.</p>
+ * extended information extra field on the records of entries whose size or local header offset cannot be
+ * stored literally in its reserved 32-bit slot. Every field that is replaced by a 64-bit value in an extra
+ * field carries the {@link IndexFormat#ZIP64_MARKER} value in its 32-bit slot, as the specification
+ * requires.</p>
  *
  * <p>Instances are not thread-safe. {@link #close()} finishes the archive if {@link #finish()} was not
  * called and closes the underlying stream.</p>
@@ -81,6 +82,15 @@ public final class ZipWriter implements Closeable {
 
     /** Size of a ZIP64 end of central directory record; it is written without extensible data. */
     private static final int ZIP64_END_SIZE = 56;
+
+    /** Header id and payload-length fields at the start of a ZIP extra field. */
+    private static final int ZIP64_EXTRA_HEADER_SIZE = 4;
+
+    /** Two 64-bit values: uncompressed size followed by compressed size. */
+    private static final int ZIP64_SIZE_EXTRA_DATA_SIZE = 16;
+
+    /** One 64-bit local-header offset. */
+    private static final int ZIP64_OFFSET_EXTRA_DATA_SIZE = 8;
 
     /** Value a 16-bit ZIP field carries when the real value lives elsewhere. */
     private static final int ZIP64_MARKER_16 = 0xFFFF;
@@ -438,6 +448,16 @@ public final class ZipWriter implements Closeable {
         putInt(buffer, offset + 4, value >>> 32);
     }
 
+    private static boolean needsZip64(long value) {
+        return value >= IndexFormat.ZIP64_MARKER;
+    }
+
+    private static int zip64ExtraLength(boolean includeSize, boolean includeOffset) {
+        int dataLength = (includeSize ? ZIP64_SIZE_EXTRA_DATA_SIZE : 0)
+                + (includeOffset ? ZIP64_OFFSET_EXTRA_DATA_SIZE : 0);
+        return dataLength == 0 ? 0 : ZIP64_EXTRA_HEADER_SIZE + dataLength;
+    }
+
     private void writeBytes(byte[] data, int offset, int length) throws IOException {
         out.write(data, offset, length);
         written += length;
@@ -488,7 +508,8 @@ public final class ZipWriter implements Closeable {
             }
         }
         long localHeaderOffset = written;
-        boolean sizeNeedsZip64 = size > IndexFormat.ZIP64_MARKER;
+        boolean sizeNeedsZip64 = needsZip64(size);
+        int extraLength = zip64ExtraLength(sizeNeedsZip64, false);
         boolean utf8 = !isAscii(name);
         byte[] header = scratch;
         putInt(header, 0, IndexFormat.LOCAL_HEADER_SIGNATURE);
@@ -501,25 +522,18 @@ public final class ZipWriter implements Closeable {
         putInt(header, 18, sizeNeedsZip64 ? IndexFormat.ZIP64_MARKER : size);
         putInt(header, 22, sizeNeedsZip64 ? IndexFormat.ZIP64_MARKER : size);
         putShort(header, 26, nameBytes.length);
-        putShort(header, 28, sizeNeedsZip64 ? 20 : 0);
+        putShort(header, 28, extraLength);
         writeBytes(header, 0, LOCAL_HEADER_SIZE);
         writeBytes(nameBytes, 0, nameBytes.length);
-        if (sizeNeedsZip64) {
-            byte[] extra = new byte[20];
-            putShort(extra, 0, IndexFormat.ZIP64_EXTRA_FIELD_ID);
-            putShort(extra, 2, 16);
-            putLong(extra, 4, size);
-            putLong(extra, 12, size);
-            writeBytes(extra, 0, extra.length);
-        }
+        writeZip64Extra(size, localHeaderOffset, sizeNeedsZip64, false);
         records.add(new CentralRecord(nameBytes, utf8, dosTime, crc32, size, localHeaderOffset, directory));
         return written;
     }
 
     private void writeCentralRecord(CentralRecord record) throws IOException {
-        boolean sizeNeedsZip64 = record.size() > IndexFormat.ZIP64_MARKER;
-        boolean offsetNeedsZip64 = record.localHeaderOffset() > IndexFormat.ZIP64_MARKER;
-        int extraLength = (sizeNeedsZip64 ? 16 : 0) + (offsetNeedsZip64 ? 8 : 0);
+        boolean sizeNeedsZip64 = needsZip64(record.size());
+        boolean offsetNeedsZip64 = needsZip64(record.localHeaderOffset());
+        int extraLength = zip64ExtraLength(sizeNeedsZip64, offsetNeedsZip64);
         byte[] header = scratch;
         putInt(header, 0, IndexFormat.CENTRAL_HEADER_SIGNATURE);
         putShort(header, 4, extraLength == 0 ? VERSION_STORED : VERSION_ZIP64);
@@ -532,7 +546,7 @@ public final class ZipWriter implements Closeable {
         putInt(header, 20, sizeNeedsZip64 ? IndexFormat.ZIP64_MARKER : record.size());
         putInt(header, 24, sizeNeedsZip64 ? IndexFormat.ZIP64_MARKER : record.size());
         putShort(header, 28, record.name().length);
-        putShort(header, 30, extraLength == 0 ? 0 : extraLength + 4);
+        putShort(header, 30, extraLength);
         putShort(header, 32, 0);
         putShort(header, 34, 0);
         putShort(header, 36, 0);
@@ -540,21 +554,28 @@ public final class ZipWriter implements Closeable {
         putInt(header, 42, offsetNeedsZip64 ? IndexFormat.ZIP64_MARKER : record.localHeaderOffset());
         writeBytes(header, 0, CENTRAL_HEADER_SIZE);
         writeBytes(record.name(), 0, record.name().length);
-        if (extraLength > 0) {
-            byte[] extra = new byte[extraLength + 4];
-            putShort(extra, 0, IndexFormat.ZIP64_EXTRA_FIELD_ID);
-            putShort(extra, 2, extraLength);
-            int at = 4;
-            if (sizeNeedsZip64) {
-                putLong(extra, at, record.size());
-                putLong(extra, at + 8, record.size());
-                at += 16;
-            }
-            if (offsetNeedsZip64) {
-                putLong(extra, at, record.localHeaderOffset());
-            }
-            writeBytes(extra, 0, extra.length);
+        writeZip64Extra(record.size(), record.localHeaderOffset(), sizeNeedsZip64, offsetNeedsZip64);
+    }
+
+    private void writeZip64Extra(long size, long localHeaderOffset, boolean includeSize, boolean includeOffset)
+            throws IOException {
+        int length = zip64ExtraLength(includeSize, includeOffset);
+        if (length == 0) {
+            return;
         }
+        byte[] extra = new byte[length];
+        putShort(extra, 0, IndexFormat.ZIP64_EXTRA_FIELD_ID);
+        putShort(extra, 2, length - ZIP64_EXTRA_HEADER_SIZE);
+        int at = ZIP64_EXTRA_HEADER_SIZE;
+        if (includeSize) {
+            putLong(extra, at, size);
+            putLong(extra, at + 8, size);
+            at += ZIP64_SIZE_EXTRA_DATA_SIZE;
+        }
+        if (includeOffset) {
+            putLong(extra, at, localHeaderOffset);
+        }
+        writeBytes(extra, 0, extra.length);
     }
 
     private void writeZip64End(long count, long directoryOffset, long directorySize) throws IOException {

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,6 +53,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Tests for {@link ZipWriter}: the archive it produces has to be an ordinary ZIP file to every other tool,
  * while the offsets it reports have to be exact, because the launcher reads entry data by absolute offset
  * and never parses the archive.
+ *
+ * <p>The ZIP64 size and offset boundary probes below deliberately capture headers only and simulate large
+ * offsets. They prove header geometry without creating multi-gigabyte artifacts; they are not large-artifact
+ * integration tests.</p>
  */
 class ZipWriterTest {
 
@@ -220,6 +225,103 @@ class ZipWriterTest {
     }
 
     @Test
+    void headerOnlySizeBoundariesUseExactZip64LocalAndCentralGeometry() throws Exception {
+        long[] sizes = {
+                IndexFormat.ZIP64_MARKER - 1,
+                IndexFormat.ZIP64_MARKER,
+                IndexFormat.ZIP64_MARKER + 1
+        };
+        int[] expectedExtraLengths = {0, 20, 20};
+        for (int i = 0; i < sizes.length; i++) {
+            long size = sizes[i];
+            HeaderCapture capture = simulateHeaderOnlyEntry(size, 0);
+            byte[] archive = capture.bytes();
+            int localExtraLength = unsignedShortAt(archive, 28);
+            assertEquals(expectedExtraLengths[i], localExtraLength, "local extra length at size " + size);
+            assertEquals(size < IndexFormat.ZIP64_MARKER ? 10 : 45, unsignedShortAt(archive, 4),
+                    "version needed at size " + size);
+            assertEquals(size < IndexFormat.ZIP64_MARKER ? size : IndexFormat.ZIP64_MARKER,
+                    unsignedIntAt(archive, 18), "local compressed size at size " + size);
+            assertEquals(size < IndexFormat.ZIP64_MARKER ? size : IndexFormat.ZIP64_MARKER,
+                    unsignedIntAt(archive, 22), "local uncompressed size at size " + size);
+            assertEquals(30L + capture.nameLength() + localExtraLength, capture.afterLocalHeader(),
+                    "the simulated dry-run offset must include the emitted local extra at size " + size);
+
+            int central = capture.centralHeader();
+            int centralExtraLength = unsignedShortAt(archive, central + 30);
+            assertEquals(expectedExtraLengths[i], centralExtraLength, "central extra length at size " + size);
+            assertEquals(size < IndexFormat.ZIP64_MARKER ? 10 : 45, unsignedShortAt(archive, central + 4),
+                    "central version made by at size " + size);
+            assertEquals(size < IndexFormat.ZIP64_MARKER ? 10 : 45, unsignedShortAt(archive, central + 6),
+                    "central version needed at size " + size);
+            assertEquals(size < IndexFormat.ZIP64_MARKER ? size : IndexFormat.ZIP64_MARKER,
+                    unsignedIntAt(archive, central + 20), "central compressed size at size " + size);
+            assertEquals(size < IndexFormat.ZIP64_MARKER ? size : IndexFormat.ZIP64_MARKER,
+                    unsignedIntAt(archive, central + 24), "central uncompressed size at size " + size);
+            if (localExtraLength != 0) {
+                int localExtra = 30 + capture.nameLength();
+                assertZip64SizeExtra(archive, localExtra, size);
+                int centralExtra = central + 46 + capture.nameLength();
+                assertZip64SizeExtra(archive, centralExtra, size);
+            }
+        }
+    }
+
+    @Test
+    void simulatedLocalHeaderOffsetBoundariesUseExactZip64CentralGeometry() throws Exception {
+        long[] offsets = {
+                IndexFormat.ZIP64_MARKER - 1,
+                IndexFormat.ZIP64_MARKER,
+                IndexFormat.ZIP64_MARKER + 1
+        };
+        int[] expectedExtraLengths = {0, 12, 12};
+        for (int i = 0; i < offsets.length; i++) {
+            long offset = offsets[i];
+            HeaderCapture capture = simulateHeaderOnlyEntry(0, offset);
+            byte[] archive = capture.bytes();
+            assertEquals(0, unsignedShortAt(archive, 28), "offset alone never changes the local header");
+            assertEquals(offset + 30 + capture.nameLength(), capture.dataOffset(),
+                    "the returned data offset must agree with the simulated layout");
+
+            int central = capture.centralHeader();
+            int centralExtraLength = unsignedShortAt(archive, central + 30);
+            assertEquals(expectedExtraLengths[i], centralExtraLength, "central extra length at offset " + offset);
+            assertEquals(offset < IndexFormat.ZIP64_MARKER ? 10 : 45, unsignedShortAt(archive, central + 4),
+                    "central version made by at offset " + offset);
+            assertEquals(offset < IndexFormat.ZIP64_MARKER ? 10 : 45, unsignedShortAt(archive, central + 6),
+                    "central version needed at offset " + offset);
+            assertEquals(offset < IndexFormat.ZIP64_MARKER ? offset : IndexFormat.ZIP64_MARKER,
+                    unsignedIntAt(archive, central + 42), "central local-header offset at " + offset);
+            if (centralExtraLength != 0) {
+                int extra = central + 46 + capture.nameLength();
+                assertEquals(IndexFormat.ZIP64_EXTRA_FIELD_ID, unsignedShortAt(archive, extra));
+                assertEquals(8, unsignedShortAt(archive, extra + 2));
+                assertEquals(offset, longAt(archive, extra + 4));
+            }
+        }
+    }
+
+    @Test
+    void simulatedCombinedSizeAndOffsetKeepRequiredZip64FieldOrder() throws Exception {
+        long size = IndexFormat.ZIP64_MARKER;
+        long offset = IndexFormat.ZIP64_MARKER;
+        HeaderCapture capture = simulateHeaderOnlyEntry(size, offset);
+        byte[] archive = capture.bytes();
+
+        assertEquals(20, unsignedShortAt(archive, 28));
+        assertZip64SizeExtra(archive, 30 + capture.nameLength(), size);
+
+        int central = capture.centralHeader();
+        assertEquals(28, unsignedShortAt(archive, central + 30));
+        int extra = central + 46 + capture.nameLength();
+        assertEquals(IndexFormat.ZIP64_EXTRA_FIELD_ID, unsignedShortAt(archive, extra));
+        assertEquals(24, unsignedShortAt(archive, extra + 2));
+        assertEquals(size, longAt(archive, extra + 4), "uncompressed size is first");
+        assertEquals(size, longAt(archive, extra + 12), "compressed size is second");
+        assertEquals(offset, longAt(archive, extra + 20), "local-header offset is last");
+    }
+
+    @Test
     void writesZip64RecordsAtExactlyTheMarkerEntryCount() throws IOException {
         // 65535 is the value the 16-bit entry count field uses to say "the real count is in the ZIP64
         // record", so an archive of exactly that many entries has to carry those records. Deciding with
@@ -308,5 +410,78 @@ class ZipWriterTest {
         CRC32 crc = new CRC32();
         crc.update(data);
         return crc.getValue();
+    }
+
+    private static HeaderCapture simulateHeaderOnlyEntry(long size, long initialOffset) throws Exception {
+        String name = "boundary.bin";
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        ZipWriter writer = new ZipWriter(bytes);
+        if (initialOffset != 0) {
+            var written = ZipWriter.class.getDeclaredField("written");
+            written.setAccessible(true);
+            written.setLong(writer, initialOffset);
+        }
+        long dataOffset = -1;
+        if (size == 0) {
+            dataOffset = writer.writeEntry(name, InputStream.nullInputStream(), 0, 0, writer.dosTime());
+        } else {
+            InputStream stopAfterHeader = new InputStream() {
+                @Override
+                public int read() throws IOException {
+                    throw new IOException("stop after header");
+                }
+
+                @Override
+                public int read(byte[] target, int offset, int length) throws IOException {
+                    throw new IOException("stop after header");
+                }
+            };
+            IOException failure = assertThrows(IOException.class,
+                    () -> writer.writeEntry(name, stopAfterHeader, size, 0, writer.dosTime()));
+            assertEquals("stop after header", failure.getMessage());
+        }
+        long afterLocalHeader = writer.offset();
+        writer.finish();
+        byte[] archive = bytes.toByteArray();
+        int centralHeader = indexOfSignature(archive, IndexFormat.CENTRAL_HEADER_SIGNATURE);
+        assertTrue(centralHeader >= 0, "the simulated archive must contain a central header");
+        return new HeaderCapture(archive, name.getBytes(StandardCharsets.UTF_8).length,
+                afterLocalHeader, dataOffset, centralHeader);
+    }
+
+    private static void assertZip64SizeExtra(byte[] archive, int extra, long size) {
+        assertEquals(IndexFormat.ZIP64_EXTRA_FIELD_ID, unsignedShortAt(archive, extra));
+        assertEquals(16, unsignedShortAt(archive, extra + 2));
+        assertEquals(size, longAt(archive, extra + 4), "uncompressed size is first");
+        assertEquals(size, longAt(archive, extra + 12), "compressed size is second");
+    }
+
+    private static int indexOfSignature(byte[] bytes, int signature) {
+        for (int i = 0; i <= bytes.length - 4; i++) {
+            if (intAt(bytes, i) == signature) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int unsignedShortAt(byte[] bytes, int offset) {
+        return (bytes[offset] & 0xFF) | ((bytes[offset + 1] & 0xFF) << 8);
+    }
+
+    private static long unsignedIntAt(byte[] bytes, int offset) {
+        return intAt(bytes, offset) & IndexFormat.ZIP64_MARKER;
+    }
+
+    private static long longAt(byte[] bytes, int offset) {
+        return unsignedIntAt(bytes, offset) | (unsignedIntAt(bytes, offset + 4) << 32);
+    }
+
+    private record HeaderCapture(
+            byte[] bytes,
+            int nameLength,
+            long afterLocalHeader,
+            long dataOffset,
+            int centralHeader) {
     }
 }
