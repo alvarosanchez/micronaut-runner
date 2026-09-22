@@ -443,15 +443,16 @@ final class SampleBuild {
     }
 
     private static String encodeClassPathEntry(String fileName) {
-        StringBuilder encoded = new StringBuilder(fileName.length());
-        for (int i = 0; i < fileName.length(); i++) {
-            char c = fileName.charAt(i);
-            if (c == ' ') {
-                encoded.append("%20");
-            } else if (c == '%') {
-                encoded.append("%25");
+        byte[] bytes = fileName.getBytes(StandardCharsets.UTF_8);
+        StringBuilder encoded = new StringBuilder(bytes.length);
+        char[] hex = "0123456789ABCDEF".toCharArray();
+        for (byte value : bytes) {
+            int c = value & 0xff;
+            if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+                    || c == '-' || c == '.' || c == '_' || c == '~') {
+                encoded.append((char) c);
             } else {
-                encoded.append(c);
+                encoded.append('%').append(hex[c >>> 4]).append(hex[c & 0x0f]);
             }
         }
         return encoded.toString();
