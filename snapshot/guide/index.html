@@ -1227,6 +1227,15 @@ partial run is labelled as such in both reports and exits zero only when at leas
 succeeds. Its timing distributions remain explicitly conditional on successful attempts; the harness never
 turns a timeout into a zero duration or retries until a favorable sample appears.</p>
 </div>
+<div class="paragraph">
+<p>The size column is the complete deployment boundary, not just the process&#8217;s launch artifact. It sums the
+logical lengths of every required regular file: the application and dependency components for thin and
+exploded layouts, the whole extracted layout, or the single complete archive for Shadow and Runner variants.
+Both reports expose component bytes and the reconciled total in bytes. Repeated normalized paths are counted
+once and attributed to the first component that names them. Symbolic links are not followed or counted;
+distinct hard-linked paths are counted separately. Build workspaces, logs, reports and neighboring variants
+are outside the explicitly declared inputs and are never included.</p>
+</div>
 </div>
 </div>
 </div>
