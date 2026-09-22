@@ -283,6 +283,42 @@ class IndexTest {
 
     @ParameterizedTest(name = "mapped={0}")
     @ValueSource(booleans = {true, false})
+    void resolvesDuplicateEntriesLikeJarFileWithoutChangingClasspathOrVersionPrecedence(boolean mapped)
+            throws IOException {
+        TestIndexBuilder builder = new TestIndexBuilder();
+        TestIndexBuilder.Jar first = builder.addJar(IndexFormat.CLASSES_PREFIX);
+        first.addEntry("shared.txt").data(10, 1, 1);
+        TestIndexBuilder.Jar dependency = builder.addJar(DEP).multiRelease();
+        dependency.addEntry("shared.txt").data(20, 1, 1);
+        dependency.addEntry("shared.txt").data(21, 1, 1);
+        dependency.addEntry("META-INF/versions/17/shared.txt").data(170, 1, 1);
+        dependency.addEntry("META-INF/versions/17/shared.txt").data(171, 1, 1);
+        dependency.addEntry("META-INF/versions/21/shared.txt").data(210, 1, 1);
+        dependency.addEntry("META-INF/versions/21/shared.txt").data(211, 1, 1);
+        TestIndexBuilder.Jar second = builder.addJar("MICRONAUT-INF/lib/second.jar");
+        second.addEntry("shared.txt").data(30, 1, 1);
+        second.addEntry("shared.txt").data(31, 1, 1);
+
+        Index index = open(builder, mapped);
+        int head = index.find("shared.txt");
+
+        assertEquals(10, index.entryDataOffset(index.resolve(head, 25)),
+                "the first jar on the classpath still wins");
+        assertEquals(211, index.entryDataOffset(index.resolveInJar(head, 25, 1)),
+                "the last duplicate of the highest applicable version wins");
+        assertEquals(171, index.entryDataOffset(index.resolveInJar(head, 20, 1)));
+        assertEquals(21, index.entryDataOffset(index.resolveInJar(head, Index.BASE_VERSION, 1)));
+        assertEquals(31, index.entryDataOffset(index.resolveInJar(head, 25, 2)));
+
+        List<Long> chain = new ArrayList<>();
+        for (int record = head; record != IndexFormat.NO_INDEX; record = index.next(record)) {
+            chain.add(index.entryDataOffset(record));
+        }
+        assertEquals(List.of(10L, 211L, 210L, 171L, 170L, 21L, 20L, 31L, 30L), chain);
+    }
+
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
     void resolvesMultiReleaseEntries(boolean mapped) throws IOException {
         TestIndexBuilder builder = new TestIndexBuilder();
         builder.addJar(IndexFormat.CLASSES_PREFIX).addEntry("org/example/A.class").data(50, 1, 1);

@@ -224,6 +224,46 @@ class IndexWriterTest {
     }
 
     @Test
+    void duplicateEntriesPreferTheLastRecordWithinEachJarAndVersion() {
+        IndexWriter writer = new IndexWriter();
+        writer.addJar(IndexFormat.CLASSES_PREFIX)
+                .addEntry("shared.txt").sizes(1, 1).dataOffset(10);
+        IndexWriter.JarSpec first = writer.addJar("MICRONAUT-INF/lib/a.jar")
+                .addFlags(IndexFormat.JAR_FLAG_MULTI_RELEASE);
+        first.addEntry("shared.txt").sizes(1, 1).dataOffset(20);
+        first.addEntry("shared.txt").sizes(1, 1).dataOffset(21);
+        first.addEntry("META-INF/versions/17/shared.txt").sizes(1, 1).dataOffset(170);
+        first.addEntry("META-INF/versions/17/shared.txt").sizes(1, 1).dataOffset(171);
+        first.addEntry("META-INF/versions/21/shared.txt").sizes(1, 1).dataOffset(210);
+        first.addEntry("META-INF/versions/21/shared.txt").sizes(1, 1).dataOffset(211);
+        IndexWriter.JarSpec second = writer.addJar("MICRONAUT-INF/lib/b.jar");
+        second.addEntry("shared.txt").sizes(1, 1).dataOffset(30);
+        second.addEntry("shared.txt").sizes(1, 1).dataOffset(31);
+
+        Decoded index = new Decoded(writer.write(writer.layout(), 1024));
+
+        List<Long> chain = new ArrayList<>();
+        for (int record = index.find("shared.txt"); record != IndexFormat.NO_INDEX;
+                record = index.entryNext(record)) {
+            chain.add(index.entryDataOffset(record));
+        }
+        assertEquals(List.of(10L, 211L, 210L, 171L, 170L, 21L, 20L, 31L, 30L), chain,
+                "classpath and MR-version precedence stay unchanged, but the last duplicate wins");
+        assertEquals(List.of(10L, 20L, 21L, 170L, 171L, 210L, 211L, 30L, 31L),
+                physicalOffsets(index), "physical records keep central-directory order");
+    }
+
+    private static List<Long> physicalOffsets(Decoded index) {
+        List<Long> offsets = new ArrayList<>();
+        for (int record = 0; record < index.entryCount(); record++) {
+            if ((index.entryFlags(record) & IndexFormat.ENTRY_FLAG_PHYSICAL) != 0) {
+                offsets.add(index.entryDataOffset(record));
+            }
+        }
+        return offsets;
+    }
+
+    @Test
     void everyNameIsReachableThroughTheHashTable() {
         IndexWriter writer = new IndexWriter();
         IndexWriter.JarSpec jar = writer.addJar(IndexFormat.CLASSES_PREFIX);

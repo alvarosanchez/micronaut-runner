@@ -22,6 +22,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,6 +32,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,7 +41,9 @@ import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
+import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
@@ -125,6 +130,16 @@ class EndToEndTest {
             }
             """;
 
+    private static final String DUPLICATE_SOURCE = """
+            package org.depone;
+
+            public final class Duplicate {
+                public static String which() {
+                    return "%s";
+                }
+            }
+            """;
+
     private static final String DEP_GREETER_SOURCE = """
             package org.depone;
 
@@ -166,6 +181,7 @@ class EndToEndTest {
             import java.net.URL;
             import java.nio.charset.StandardCharsets;
             import java.security.ProtectionDomain;
+            import java.util.ArrayList;
             import java.util.Collections;
             import java.util.Enumeration;
             import java.util.List;
@@ -197,6 +213,7 @@ class EndToEndTest {
                     String oneSays = (String) depOne.getMethod("hello")
                             .invoke(depOne.getDeclaredConstructor().newInstance());
                     check("a class loads from the first dependency", "dep-one".equals(oneSays), oneSays);
+                    checkDuplicates(loader);
 
                     Class<?> versioned = Class.forName("org.deptwo.Versioned", true, loader);
                     String which = (String) versioned.getMethod("which").invoke(null);
@@ -404,6 +421,56 @@ class EndToEndTest {
                             String.valueOf(nested.getManifest()));
                 }
 
+                private static void checkDuplicates(ClassLoader loader) throws Exception {
+                    Class<?> duplicate = Class.forName("org.depone.Duplicate", true, loader);
+                    String implementation = (String) duplicate.getMethod("which").invoke(null);
+                    check("a duplicate class entry selects the JDK-compatible last record",
+                            "last".equals(implementation), implementation);
+                    check("a duplicate resource stream selects the last record",
+                            "resource-last".equals(read(loader, "duplicate.txt")),
+                            read(loader, "duplicate.txt"));
+
+                    List<URL> urls = Collections.list(loader.getResources("duplicate.txt"));
+                    check("resource enumeration returns one selected URL for the duplicate-bearing jar",
+                            urls.size() == 1, urls.toString());
+                    URL resource = loader.getResource("duplicate.txt");
+                    String throughUrl = null;
+                    if (resource != null) {
+                        try (InputStream in = resource.openStream()) {
+                            throughUrl = drain(in);
+                        }
+                    }
+                    check("the duplicate resource URL opens the last record",
+                            "resource-last".equals(throughUrl), String.valueOf(throughUrl));
+                    if (resource == null) {
+                        return;
+                    }
+
+                    JarURLConnection connection = (JarURLConnection) resource.openConnection();
+                    connection.setUseCaches(false);
+                    JarFile nested = connection.getJarFile();
+                    JarEntry selected = nested.getJarEntry("duplicate.txt");
+                    String throughJar = selected == null ? null : drain(nested.getInputStream(selected));
+                    check("NestedJarFile lookup selects the last record",
+                            "resource-last".equals(throughJar), String.valueOf(throughJar));
+
+                    List<String> physical = new ArrayList<>();
+                    int duplicateDirectories = 0;
+                    Enumeration<JarEntry> entries = nested.entries();
+                    while (entries.hasMoreElements()) {
+                        JarEntry entry = entries.nextElement();
+                        if (entry.getName().equals("duplicate.txt")) {
+                            physical.add(drain(nested.getInputStream(entry)));
+                        } else if (entry.getName().equals("dupe-dirs/")) {
+                            duplicateDirectories++;
+                        }
+                    }
+                    check("physical enumeration retains duplicate resources in order",
+                            physical.equals(List.of("resource-first", "resource-last")), physical.toString());
+                    check("physical enumeration retains duplicate directories",
+                            duplicateDirectories == 2, Integer.toString(duplicateDirectories));
+                }
+
                 private static void collect(String name, TreeSet<String> into) {
                     if (name.startsWith("META-INF/micronaut/") && !name.endsWith("/")) {
                         into.add(name);
@@ -506,7 +573,7 @@ class EndToEndTest {
     private static Path awkwardArchive;
 
     @BeforeAll
-    static void packageTheApplication() throws IOException {
+    static void packageTheApplication() throws Exception {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         Assumptions.assumeTrue(compiler != null, "this JDK has no java compiler");
         Assumptions.assumeTrue(
@@ -518,6 +585,8 @@ class EndToEndTest {
         Path applicationClasses = workspace.resolve("app/classes");
         Path applicationResources = workspace.resolve("app/resources");
         Path firstClasses = workspace.resolve("dep-one/classes");
+        Path duplicateFirstClasses = workspace.resolve("dep-one/duplicate-first");
+        Path duplicateLastClasses = workspace.resolve("dep-one/duplicate-last");
         Path secondClasses = workspace.resolve("dep-two/classes");
         Path secondClasses17 = workspace.resolve("dep-two/classes-17");
         Path secondClasses21 = workspace.resolve("dep-two/classes-21");
@@ -530,6 +599,10 @@ class EndToEndTest {
         compile(compiler, sources.resolve("dep-one"), firstClasses, applicationClasses, Map.of(
                 "org/depone/DepOne.java", DEP_ONE_SOURCE,
                 "org/depone/DepGreeter.java", DEP_GREETER_SOURCE));
+        compile(compiler, sources.resolve("duplicate-first"), duplicateFirstClasses, null, Map.of(
+                "org/depone/Duplicate.java", DUPLICATE_SOURCE.formatted("first")));
+        compile(compiler, sources.resolve("duplicate-last"), duplicateLastClasses, null, Map.of(
+                "org/depone/Duplicate.java", DUPLICATE_SOURCE.formatted("last")));
         compile(compiler, sources.resolve("dep-two"), secondClasses, null, Map.of(
                 "org/deptwo/Plain.java", PLAIN_SOURCE,
                 "org/deptwo/Versioned.java", versionedSource("base")));
@@ -576,7 +649,10 @@ class EndToEndTest {
         firstEntries.put("META-INF/micronaut/com.example.spi.Greeter/org.depone.DepGreeter", new byte[0]);
         firstEntries.put("META-INF/micronaut/dep-notes.txt", bytes("DEP-MERGED-CONTENT"));
         Path first = workspace.resolve("libs/dep-one.jar");
-        writeJar(first, firstManifest, firstEntries);
+        writeJarWithDuplicates(first, firstManifest, firstEntries,
+                Files.readAllBytes(duplicateFirstClasses.resolve("org/depone/Duplicate.class")),
+                Files.readAllBytes(duplicateLastClasses.resolve("org/depone/Duplicate.class")));
+        assertJdkDuplicateOracle(first);
 
         // The multi-release dependency: two versioned copies of one class, and Micronaut metadata for a
         // service the application knows nothing about, which the merge has to pick up all the same.
@@ -950,6 +1026,95 @@ class EndToEndTest {
 
     private static byte[] bytes(String content) {
         return content.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static void writeJarWithDuplicates(Path file, Manifest manifest, Map<String, byte[]> entries,
+                                               byte[] firstClass, byte[] lastClass) throws IOException {
+        Files.createDirectories(file.getParent());
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(file), manifest)) {
+            for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+                writeJarEntry(out, entry.getKey(), entry.getValue(), false);
+            }
+            writeJarEntry(out, "org/depone/Duplicat1.class", firstClass, true);
+            writeJarEntry(out, "org/depone/Duplicat2.class", lastClass, false);
+            writeJarEntry(out, "duplicate.one", bytes("resource-first"), true);
+            writeJarEntry(out, "duplicate.two", bytes("resource-last"), false);
+            writeJarEntry(out, "duplicat1/", new byte[0], true);
+            writeJarEntry(out, "duplicat2/", new byte[0], true);
+        }
+
+        byte[] archive = Files.readAllBytes(file);
+        renameEntries(archive, "org/depone/Duplicat1.class", "org/depone/Duplicate.class");
+        renameEntries(archive, "org/depone/Duplicat2.class", "org/depone/Duplicate.class");
+        renameEntries(archive, "duplicate.one", "duplicate.txt");
+        renameEntries(archive, "duplicate.two", "duplicate.txt");
+        renameEntries(archive, "duplicat1/", "dupe-dirs/");
+        renameEntries(archive, "duplicat2/", "dupe-dirs/");
+        Files.write(file, archive);
+    }
+
+    private static void writeJarEntry(JarOutputStream out, String name, byte[] data, boolean stored)
+            throws IOException {
+        ZipEntry record = new ZipEntry(name);
+        record.setTime(FIXTURE_TIME);
+        if (stored) {
+            CRC32 crc = new CRC32();
+            crc.update(data);
+            record.setMethod(ZipEntry.STORED);
+            record.setSize(data.length);
+            record.setCompressedSize(data.length);
+            record.setCrc(crc.getValue());
+        }
+        out.putNextEntry(record);
+        out.write(data);
+        out.closeEntry();
+    }
+
+    private static void renameEntries(byte[] archive, String from, String to) {
+        byte[] oldName = bytes(from);
+        byte[] newName = bytes(to);
+        assertEquals(oldName.length, newName.length, "fixture names must have equal encoded lengths");
+        int replacements = 0;
+        for (int at = 0; at <= archive.length - oldName.length; at++) {
+            boolean equal = true;
+            for (int i = 0; i < oldName.length; i++) {
+                if (archive[at + i] != oldName[i]) {
+                    equal = false;
+                    break;
+                }
+            }
+            if (equal) {
+                System.arraycopy(newName, 0, archive, at, newName.length);
+                replacements++;
+                at += oldName.length - 1;
+            }
+        }
+        assertEquals(2, replacements, "one local and one central name for " + from);
+    }
+
+    private static void assertJdkDuplicateOracle(Path file) throws Exception {
+        try (JarFile jar = new JarFile(file.toFile())) {
+            assertEquals("resource-last", new String(
+                    jar.getInputStream(jar.getJarEntry("duplicate.txt")).readAllBytes(), StandardCharsets.UTF_8));
+            List<String> physical = new ArrayList<>();
+            int directories = 0;
+            var records = jar.entries();
+            while (records.hasMoreElements()) {
+                var record = records.nextElement();
+                if (record.getName().equals("duplicate.txt")) {
+                    physical.add(new String(jar.getInputStream(record).readAllBytes(), StandardCharsets.UTF_8));
+                } else if (record.getName().equals("dupe-dirs/")) {
+                    directories++;
+                }
+            }
+            assertEquals(List.of("resource-first", "resource-last"), physical);
+            assertEquals(2, directories);
+        }
+        try (URLClassLoader loader = new URLClassLoader(new URL[] {file.toUri().toURL()},
+                ClassLoader.getPlatformClassLoader())) {
+            Class<?> duplicate = Class.forName("org.depone.Duplicate", true, loader);
+            assertEquals("last", duplicate.getMethod("which").invoke(null));
+        }
     }
 
     private static void writeJar(Path file, Manifest manifest, Map<String, byte[]> entries)
