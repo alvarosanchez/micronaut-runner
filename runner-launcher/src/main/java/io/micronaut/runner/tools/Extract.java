@@ -804,13 +804,16 @@ public final class Extract {
     }
 
     /**
-     * Renames the finished tree onto the destination, replacing whatever was there.
+     * Publishes the finished tree according to the requested replacement policy.
+     *
+     * <p>Unforced publication preserves concurrent occupants. Forced publication retains an existing
+     * destination until the new tree commits so that failures can be rolled back.</p>
      *
      * @param work        the finished tree
      * @param destination where it belongs
      * @param archive     the runner jar, rechecked before anything is replaced
      * @param force       whether replacement was authorized
-     * @throws IOException if the destination cannot be replaced
+     * @throws IOException if the destination cannot be published or restored safely
      */
     private static void moveIntoPlace(Path work, Path destination, Path archive, boolean force,
             PublicationOperations operations) throws IOException {
