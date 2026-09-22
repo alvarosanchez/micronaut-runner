@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.runner.ArchiveSource;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
 
@@ -22,9 +23,11 @@ import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -101,18 +104,6 @@ public final class RunnerJarBuilder {
     /** Buffer size for the streaming copies. */
     private static final int BUFFER_SIZE = 64 * 1024;
 
-    /**
-     * Largest {@code META-INF/micronaut/} entry whose content is duplicated into the merged copy at the
-     * root of the archive.
-     *
-     * <p>Those entries are service markers, almost always empty and never more than a few hundred bytes.
-     * The limit exists so that a pathological input cannot make the packager hold a large file in memory
-     * and store it twice; a build that hits it says so.</p>
-     */
-    private static final long MAX_MERGED_SERVICE_SIZE = 1L << 20;
-
-    /** The content of an entry that has none. */
-    private static final byte[] EMPTY_CONTENT = new byte[0];
 
     private final RunnerJarSpec spec;
     private final BuildLogger logger;
@@ -687,14 +678,14 @@ public final class RunnerJarBuilder {
      * @throws IOException if a contributed entry cannot be read back out of the jar that holds it
      */
     private void planMergedServices() throws IOException {
-        Map<String, byte[]> contents = new LinkedHashMap<>();
+        Map<String, ContentSource> contents = new LinkedHashMap<>();
         for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
             String name = item.getKey();
             if (!isMergedServiceName(name)) {
                 continue;
             }
             serviceNames.add(name);
-            contents.put(name, applicationContent(name, item.getValue()));
+            contents.put(name, item.getValue());
         }
         for (NestedJar jar : nested) {
             collectMergedServices(jar, contents);
@@ -714,13 +705,9 @@ public final class RunnerJarBuilder {
         // Sorted, so a directory always precedes what it contains.
         for (String name : merged) {
             boolean directory = name.endsWith("/");
-            PlannedEntry entry;
-            if (directory) {
-                entry = PlannedEntry.ofDirectory(name);
-            } else {
-                byte[] content = contents.get(name);
-                entry = PlannedEntry.ofBytes(name, content == null ? EMPTY_CONTENT : content);
-            }
+            PlannedEntry entry = directory
+                    ? PlannedEntry.ofDirectory(name)
+                    : PlannedEntry.ofSource(name, contents.get(name));
             entry.indexEntry = applicationJar.addEntry(name)
                     .sizes(entry.size, entry.size)
                     .crc32(entry.crc32)
@@ -747,81 +734,75 @@ public final class RunnerJarBuilder {
     }
 
     /**
-     * The content of an application entry that is merged into the archive root.
-     *
-     * @param name   the logical name, for the warning
-     * @param source the entry
-     * @return the content, empty when there is none or when it is too large to duplicate
-     * @throws IOException if the file cannot be read
-     */
-    private byte[] applicationContent(String name, ApplicationEntry source) throws IOException {
-        if (source.bytes != null) {
-            return source.bytes;
-        }
-        if (source.size <= 0) {
-            return EMPTY_CONTENT;
-        }
-        if (source.size > MAX_MERGED_SERVICE_SIZE) {
-            warn(oversizedMergedService(name, source.size));
-            return EMPTY_CONTENT;
-        }
-        return Files.readAllBytes(source.file);
-    }
-
-    /**
-     * Adds one dependency's {@code META-INF/micronaut/} entries to the merged set, reading back the content
-     * of those that have any.
+     * Adds one dependency's {@code META-INF/micronaut/} entries to the merged set. A zero-length entry is a
+     * contributor in its own right: it reserves the name just as an empty class-path resource does.
      *
      * @param jar      the dependency, already written as a nested jar
      * @param contents the merged content so far, keyed by logical name, in class path order
-     * @throws IOException if the nested jar cannot be read
+     * @throws IOException if a candidate cannot be compared with the selected contributor
      */
-    private void collectMergedServices(NestedJar jar, Map<String, byte[]> contents) throws IOException {
-        List<String> withContent = null;
-        for (ZipEntryInfo entry : jar.result.entries()) {
-            String name = entry.name();
-            if (entry.directory() || !isMergedServiceName(name)) {
-                continue;
-            }
-            serviceNames.add(name);
-            if (entry.uncompressedSize() <= 0) {
-                continue;
-            }
-            if (entry.uncompressedSize() > MAX_MERGED_SERVICE_SIZE) {
-                warn(oversizedMergedService(name, entry.uncompressedSize()));
-                continue;
-            }
-            if (withContent == null) {
-                withContent = new ArrayList<>();
-            }
-            withContent.add(name);
-        }
-        if (withContent == null) {
-            return;
-        }
+    private void collectMergedServices(NestedJar jar, Map<String, ContentSource> contents) throws IOException {
+        Set<String> contributed = new HashSet<>();
         try (ZipReader reader = ZipReader.open(jar.file)) {
-            for (String name : withContent) {
-                Optional<ZipEntryInfo> found = reader.entry(name);
-                if (found.isEmpty()) {
+            for (ZipEntryInfo entry : reader.entries()) {
+                String name = entry.name();
+                if (entry.directory() || !isMergedServiceName(name) || !contributed.add(name)) {
                     continue;
                 }
-                byte[] content = reader.read(found.get());
-                byte[] existing = contents.get(name);
-                if (existing == null) {
-                    contents.put(name, content);
-                } else if (!Arrays.equals(existing, content)) {
-                    warn("Two jars contribute a different '" + name + "'. The copy merged into the root of"
-                            + " the archive is the first on the class path; the one in "
-                            + jar.dependency.path() + " is reachable only through that jar");
+                serviceNames.add(name);
+                ContentSource candidate = new ArchiveEntrySource(jar.file, entry);
+                ContentSource existing = contents.putIfAbsent(name, candidate);
+                if (existing != null && !sameContent(existing, candidate)) {
+                    warn("Two class path entries contribute a different '" + name
+                            + "'. The copy merged into the root of the archive is the first on the class path;"
+                            + " the one in " + jar.dependency.path()
+                            + " is reachable only through that jar");
                 }
             }
         }
     }
 
-    private static String oversizedMergedService(String name, long size) {
-        return "The entry '" + name + "' is " + size + " bytes, too large to duplicate into the merged"
-                + " Micronaut service directory at the root of the archive; the merged copy is empty and"
-                + " the content is reachable only through the jar that carries it";
+    private static boolean sameContent(ContentSource first, ContentSource second) throws IOException {
+        if (first.size() != second.size() || first.crc32() != second.crc32()) {
+            return false;
+        }
+        try (InputStream left = first.open(); InputStream right = second.open()) {
+            byte[] leftBuffer = new byte[BUFFER_SIZE];
+            byte[] rightBuffer = new byte[BUFFER_SIZE];
+            while (true) {
+                int leftRead = readChunk(left, leftBuffer);
+                int rightRead = readChunk(right, rightBuffer);
+                if (leftRead != rightRead) {
+                    return false;
+                }
+                if (leftRead < 0) {
+                    return true;
+                }
+                if (!Arrays.equals(leftBuffer, 0, leftRead, rightBuffer, 0, rightRead)) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    private static int readChunk(InputStream input, byte[] buffer) throws IOException {
+        int total = 0;
+        while (total < buffer.length) {
+            int read = input.read(buffer, total, buffer.length - total);
+            if (read < 0) {
+                return total == 0 ? -1 : total;
+            }
+            if (read == 0) {
+                int value = input.read();
+                if (value < 0) {
+                    return total == 0 ? -1 : total;
+                }
+                buffer[total++] = (byte) value;
+            } else {
+                total += read;
+            }
+        }
+        return total;
     }
 
     private void planApplicationEntries() {
@@ -1009,6 +990,10 @@ public final class RunnerJarBuilder {
                     }
                 } else if (entry.bytes != null) {
                     dataOffset = zip.writeEntry(entry.name, entry.bytes, 0, entry.bytes.length, dosTime);
+                } else if (entry.source != null) {
+                    try (InputStream in = entry.source.open()) {
+                        dataOffset = zip.writeEntry(entry.name, in, entry.size, entry.crc32, dosTime);
+                    }
                 } else {
                     try (InputStream in = Files.newInputStream(entry.file)) {
                         dataOffset = zip.writeEntry(entry.name, in, entry.size, entry.crc32, dosTime);
@@ -1147,6 +1132,7 @@ public final class RunnerJarBuilder {
         private final boolean directory;
         private byte[] bytes;
         private Path file;
+        private ContentSource source;
         private long size;
         private long crc32;
         private long dataOffset;
@@ -1174,6 +1160,14 @@ public final class RunnerJarBuilder {
             return entry;
         }
 
+        private static PlannedEntry ofSource(String name, ContentSource source) {
+            PlannedEntry entry = new PlannedEntry(name, false);
+            entry.source = Objects.requireNonNull(source, "source");
+            entry.size = source.size();
+            entry.crc32 = source.crc32();
+            return entry;
+        }
+
         private static PlannedEntry ofDirectory(String name) {
             return new PlannedEntry(name, true);
         }
@@ -1187,7 +1181,7 @@ public final class RunnerJarBuilder {
      * One entry of the application layer, held either in memory (it came out of a jar) or as the file it
      * still is on disk.
      */
-    private static final class ApplicationEntry {
+    private static final class ApplicationEntry implements ContentSource {
 
         private byte[] bytes;
         private Path file;
@@ -1198,7 +1192,7 @@ public final class RunnerJarBuilder {
             ApplicationEntry entry = new ApplicationEntry();
             entry.bytes = content;
             entry.size = content.length;
-            entry.crc32 = crc32(content);
+            entry.crc32 = RunnerJarBuilder.crc32(content);
             return entry;
         }
 
@@ -1208,6 +1202,92 @@ public final class RunnerJarBuilder {
             entry.size = size;
             entry.crc32 = crc32;
             return entry;
+        }
+
+        @Override
+        public long size() {
+            return size;
+        }
+
+        @Override
+        public long crc32() {
+            return crc32;
+        }
+
+        @Override
+        public InputStream open() throws IOException {
+            return bytes == null ? Files.newInputStream(file) : new ByteArrayInputStream(bytes);
+        }
+    }
+
+    /** Content selected for the root Micronaut metadata union. */
+    private interface ContentSource {
+
+        long size();
+
+        long crc32();
+
+        InputStream open() throws IOException;
+    }
+
+    /** A range in a prepared nested jar, inflated lazily when its original entry was compressed. */
+    private static final class ArchiveEntrySource implements ContentSource {
+
+        private final Path archive;
+        private final ZipEntryInfo entry;
+
+        private ArchiveEntrySource(Path archive, ZipEntryInfo entry) {
+            this.archive = archive;
+            this.entry = entry;
+        }
+
+        @Override
+        public long size() {
+            return entry.uncompressedSize();
+        }
+
+        @Override
+        public long crc32() {
+            return entry.crc32();
+        }
+
+        @Override
+        public InputStream open() throws IOException {
+            ArchiveSource source = ArchiveSource.open(archive.toFile());
+            try {
+                InputStream stream = source.stream(entry.dataOffset(), entry.compressedSize(),
+                        entry.uncompressedSize(), entry.method());
+                return new FilterInputStream(stream) {
+                    @Override
+                    public void close() throws IOException {
+                        IOException failure = null;
+                        try {
+                            super.close();
+                        } catch (IOException e) {
+                            failure = e;
+                        }
+                        try {
+                            source.close();
+                        } catch (UncheckedIOException e) {
+                            if (failure == null) {
+                                failure = e.getCause();
+                            } else {
+                                failure.addSuppressed(e.getCause());
+                            }
+                        }
+                        if (failure != null) {
+                            throw failure;
+                        }
+                    }
+                };
+            } catch (IOException | RuntimeException | Error e) {
+                try {
+                    source.close();
+                } catch (UncheckedIOException closeFailure) {
+                    e.addSuppressed(closeFailure.getCause());
+                }
+                throw e;
+            }
         }
     }
 
