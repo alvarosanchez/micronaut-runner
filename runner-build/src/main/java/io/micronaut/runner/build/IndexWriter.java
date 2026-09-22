@@ -409,7 +409,7 @@ public final class IndexWriter {
      * @param name the entry name
      * @return {@code N}, or {@code 0} when the name is not a versioned entry of a usable version
      */
-    private static int versionOf(String name) {
+    static int versionOf(String name) {
         if (!name.startsWith(VERSIONS_PREFIX)) {
             return 0;
         }
@@ -446,7 +446,7 @@ public final class IndexWriter {
      * @param name the entry name
      * @return everything after the version directory
      */
-    private static String pathOf(String name) {
+    static String pathOf(String name) {
         return name.substring(name.indexOf('/', VERSIONS_PREFIX.length()) + 1);
     }
 

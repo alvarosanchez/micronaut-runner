@@ -40,9 +40,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 
@@ -194,6 +198,9 @@ class EntryStubGeneratorTest {
                     """);
 
     private static Path classes;
+    private static Path noArgumentVariant;
+    private static Path protectedVariant;
+    private static Path compatibleVariant;
     private static Path stubArchive;
     private static Path reflectiveArchive;
     private static int counter;
@@ -210,6 +217,62 @@ class EntryStubGeneratorTest {
         Map<String, String> sources = new TreeMap<>(FIXTURE_SOURCES);
         sources.putAll(MORE_FIXTURE_SOURCES);
         compile(compiler, fixtures.resolve("sources"), classes, sources);
+
+        noArgumentVariant = fixtures.resolve("variants/no-argument");
+        compile(compiler, fixtures.resolve("variant-sources/no-argument"), noArgumentVariant, Map.of(
+                "com/example/Application.java", """
+                        package com.example;
+
+                        public class Application {
+                            public static void main() {
+                                printTrace("MR NO ARGUMENT");
+                            }
+
+                            private static void printTrace(String result) {
+                                StringBuilder trace = new StringBuilder();
+                                for (StackTraceElement frame : new Throwable().getStackTrace()) {
+                                    trace.append(frame.getClassName()).append('#')
+                                            .append(frame.getMethodName()).append(' ');
+                                }
+                                System.out.println("STACK " + trace);
+                                System.out.println(result);
+                            }
+                        }
+                        """));
+        protectedVariant = fixtures.resolve("variants/protected");
+        compile(compiler, fixtures.resolve("variant-sources/protected"), protectedVariant, Map.of(
+                "com/example/Application.java", """
+                        package com.example;
+
+                        public class Application {
+                            protected static void main(String[] args) {
+                                StringBuilder trace = new StringBuilder();
+                                for (StackTraceElement frame : new Throwable().getStackTrace()) {
+                                    trace.append(frame.getClassName()).append('#')
+                                            .append(frame.getMethodName()).append(' ');
+                                }
+                                System.out.println("STACK " + trace);
+                                System.out.println("MR PROTECTED " + String.join("|", args));
+                            }
+                        }
+                        """));
+        compatibleVariant = fixtures.resolve("variants/compatible");
+        compile(compiler, fixtures.resolve("variant-sources/compatible"), compatibleVariant, Map.of(
+                "com/example/Application.java", """
+                        package com.example;
+
+                        public class Application {
+                            public static void main(String[] args) {
+                                StringBuilder trace = new StringBuilder();
+                                for (StackTraceElement frame : new Throwable().getStackTrace()) {
+                                    trace.append(frame.getClassName()).append('#')
+                                            .append(frame.getMethodName()).append(' ');
+                                }
+                                System.out.println("STACK " + trace);
+                                System.out.println("MR COMPATIBLE " + String.join("|", args));
+                            }
+                        }
+                        """));
 
         stubArchive = output();
         RunnerJarBuilder.build(spec(stubArchive).entryStub(true).build(), BuildLogger.noOp());
@@ -409,11 +472,146 @@ class EntryStubGeneratorTest {
                 .applicationOutput(List.of(classes, collision)).entryStub(true).build(), logger);
 
         try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
-            assertNull(reader.index().entryStubClass(),
+            Index index = reader.index();
+            assertNull(index.entryStubClass(),
                     "the packager must not claim a class it did not write");
+            assertTrue(index.findClass(EntryStubGenerator.STUB_CLASS) != IndexFormat.NO_INDEX,
+                    "the application's colliding class remains packaged and proves the lookup can find it");
         }
         assertTrue(logger.warnings.stream().anyMatch(line -> line.contains("already carries")),
                 "taking the name over silently would be worse: " + logger.warnings);
+    }
+
+    @Test
+    void fallsBackForANoArgumentMultiReleaseMainFromADirectory() throws Exception {
+        Assumptions.assumeTrue(javaExecutable() != null, "no JDK to fork; set runner.test.javaHome");
+        Path application = multiReleaseDirectory("no-argument-main", "25", noArgumentVariant);
+        Path archive = output();
+        Recording logger = new Recording();
+
+        RunnerJarBuilder.build(spec(archive)
+                .applicationOutput(List.of(application))
+                .multiRelease(true)
+                .entryStub(true)
+                .build(), logger);
+
+        assertNoStub(archive);
+        assertTrue(logger.infos.stream().anyMatch(line -> line.contains("META-INF/versions/25")
+                        && line.contains("does not declare its own public static void main(String[])")),
+                "the selected variant and its reason are reported: " + logger.infos);
+        Forked run = fork(archive, List.of("ignored"));
+        assertEquals(0, run.status(), () -> "the JVM exited with " + run.status() + "\n" + run.output());
+        assertTrue(run.output().contains("MR NO ARGUMENT"), run::output);
+        assertTrue(run.output().contains("io.micronaut.runner.Launcher#invokeMain"), run::output);
+        assertFalse(run.output().contains("io.micronaut.runner.generated.AppEntry"), run::output);
+    }
+
+    @Test
+    void fallsBackForAProtectedMultiReleaseMain() throws Exception {
+        Assumptions.assumeTrue(javaExecutable() != null, "no JDK to fork; set runner.test.javaHome");
+        Path application = multiReleaseDirectory("protected-main", "25", protectedVariant);
+        Path archive = output();
+
+        RunnerJarBuilder.build(spec(archive)
+                .applicationOutput(List.of(application))
+                .multiRelease(true)
+                .entryStub(true)
+                .build(), BuildLogger.noOp());
+
+        assertNoStub(archive);
+        Forked run = fork(archive, List.of("alpha", "beta"));
+        assertEquals(0, run.status(), () -> "the JVM exited with " + run.status() + "\n" + run.output());
+        assertTrue(run.output().contains("MR PROTECTED alpha|beta"), run::output);
+        assertTrue(run.output().contains("io.micronaut.runner.Launcher#invokeMain"), run::output);
+    }
+
+    @Test
+    void checksFutureVariantsOfTheConfiguredMainInAnApplicationJar() throws Exception {
+        Assumptions.assumeTrue(javaExecutable() != null, "no JDK to fork; set runner.test.javaHome");
+        String futureVersion = Integer.toString(Runtime.version().feature() + 1);
+        Path application = multiReleaseJar("future-main.jar", futureVersion, protectedVariant, "probe.Probe");
+        Path archive = output();
+
+        RunnerJarBuilder.build(spec(archive)
+                .applicationOutput(List.of(application))
+                .multiRelease(true)
+                .entryStub(true)
+                .build(), BuildLogger.noOp());
+
+        assertNoStub(archive);
+        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+            assertEquals(APPLICATION_CLASS, reader.index().startClass(),
+                    "the configured main, not the application JAR manifest main, is launched");
+        }
+        Forked run = fork(archive, List.of("alpha"));
+        assertEquals(0, run.status(), () -> "the JVM exited with " + run.status() + "\n" + run.output());
+        assertTrue(run.output().contains(RESULT_OK), run::output);
+        assertTrue(run.output().contains("io.micronaut.runner.Launcher#invokeMain"), run::output);
+    }
+
+    @Test
+    void keepsTheStubWhenEveryMultiReleaseMainVariantIsCompatible() throws Exception {
+        Assumptions.assumeTrue(javaExecutable() != null, "no JDK to fork; set runner.test.javaHome");
+        Path application = multiReleaseDirectory("compatible-main", "25", compatibleVariant);
+        Path first = output();
+        Path second = output();
+
+        RunnerJarBuilder.build(spec(first)
+                .applicationOutput(List.of(application))
+                .multiRelease(true)
+                .entryStub(true)
+                .build(), BuildLogger.noOp());
+        RunnerJarBuilder.build(spec(second)
+                .applicationOutput(List.of(application))
+                .multiRelease(true)
+                .entryStub(true)
+                .build(), BuildLogger.noOp());
+
+        assertHasStub(first);
+        assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(second),
+                "checking multi-release variants must not make the archive irreproducible");
+        Forked run = fork(first, List.of("alpha", "beta"));
+        assertEquals(0, run.status(), () -> "the JVM exited with " + run.status() + "\n" + run.output());
+        assertTrue(run.output().contains("MR COMPATIBLE alpha|beta"), run::output);
+        assertTrue(run.output().contains("io.micronaut.runner.generated.AppEntry#run"), run::output);
+    }
+
+    @Test
+    void versionDirectoriesDoNotAffectAStubWhenMultiReleaseIsDisabled() throws Exception {
+        Assumptions.assumeTrue(javaExecutable() != null, "no JDK to fork; set runner.test.javaHome");
+        Path application = multiReleaseDirectory("disabled-main", "25", noArgumentVariant);
+        Path archive = output();
+
+        RunnerJarBuilder.build(spec(archive)
+                .applicationOutput(List.of(application))
+                .multiRelease(false)
+                .entryStub(true)
+                .build(), BuildLogger.noOp());
+
+        assertHasStub(archive);
+        Forked run = fork(archive, List.of("alpha"));
+        assertEquals(0, run.status(), () -> "the JVM exited with " + run.status() + "\n" + run.output());
+        assertTrue(run.output().contains(RESULT_OK), run::output);
+        assertTrue(run.output().contains("io.micronaut.runner.generated.AppEntry#run"), run::output);
+        assertFalse(run.output().contains("MR NO ARGUMENT"), run::output);
+    }
+
+    @Test
+    void invalidVersionDirectoriesDoNotAffectAStub() throws IOException {
+        Path application = baseApplication("invalid-version-main");
+        for (String version : List.of("7", "09", "25x", "256")) {
+            copyVariant(noArgumentVariant,
+                    application.resolve("META-INF/versions/" + version + "/" + mainClassEntryName()));
+        }
+        Path archive = output();
+
+        RunnerJarBuilder.build(spec(archive)
+                .applicationOutput(List.of(application))
+                .multiRelease(true)
+                .entryStub(true)
+                .build(), BuildLogger.noOp());
+
+        assertHasStub(archive);
     }
 
     /**
@@ -457,8 +655,17 @@ class EntryStubGeneratorTest {
         try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
             Index index = reader.index();
             assertNull(index.entryStubClass(), "the header field stays empty, so the launcher reflects");
-            assertEquals(IndexFormat.NO_INDEX, index.find(EntryStubGenerator.STUB_RESOURCE_NAME),
+            assertEquals(IndexFormat.NO_INDEX, index.findClass(EntryStubGenerator.STUB_CLASS),
                     "and nothing was packaged under the generated name");
+        }
+    }
+
+    private static void assertHasStub(Path archive) throws IOException {
+        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+            Index index = reader.index();
+            assertEquals(EntryStubGenerator.STUB_CLASS, index.entryStubClass());
+            assertTrue(index.findClass(EntryStubGenerator.STUB_CLASS) != IndexFormat.NO_INDEX,
+                    "the generated stub must be indexed");
         }
     }
 
@@ -475,6 +682,55 @@ class EntryStubGeneratorTest {
 
     private static byte[] classFile(String binaryName) throws IOException {
         return Files.readAllBytes(classes.resolve(binaryName.replace('.', '/') + ".class"));
+    }
+
+    private static String mainClassEntryName() {
+        return APPLICATION_CLASS.replace('.', '/') + ".class";
+    }
+
+    private static Path baseApplication(String name) throws IOException {
+        Path application = fixtures.resolve("mr-applications/" + name);
+        Path main = application.resolve(mainClassEntryName());
+        Files.createDirectories(main.getParent());
+        Files.copy(classes.resolve(mainClassEntryName()), main);
+        return application;
+    }
+
+    private static Path multiReleaseDirectory(String name, String version, Path variant) throws IOException {
+        Path application = baseApplication(name);
+        copyVariant(variant,
+                application.resolve("META-INF/versions/" + version + "/" + mainClassEntryName()));
+        return application;
+    }
+
+    private static void copyVariant(Path variant, Path destination) throws IOException {
+        Files.createDirectories(destination.getParent());
+        Files.copy(variant.resolve(mainClassEntryName()), destination);
+    }
+
+    private static Path multiReleaseJar(String name, String version, Path variant, String manifestMain)
+            throws IOException {
+        Path jar = fixtures.resolve("mr-applications/" + name);
+        Files.createDirectories(jar.getParent());
+        Manifest manifest = new Manifest();
+        manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MAIN_CLASS, manifestMain);
+        manifest.getMainAttributes().putValue("Multi-Release", "true");
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put(mainClassEntryName(), classFile(APPLICATION_CLASS));
+        entries.put("probe/Probe.class", classFile("probe.Probe"));
+        entries.put("META-INF/versions/" + version + "/" + mainClassEntryName(),
+                Files.readAllBytes(variant.resolve(mainClassEntryName())));
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar), manifest)) {
+            for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+                ZipEntry record = new ZipEntry(entry.getKey());
+                record.setTime(0L);
+                out.putNextEntry(record);
+                out.write(entry.getValue());
+                out.closeEntry();
+            }
+        }
+        return jar;
     }
 
     private static MethodModel method(ClassModel model, String name) {
