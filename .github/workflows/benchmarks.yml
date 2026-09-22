@@ -21,7 +21,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  # Unrelated label events get a separate group so their skipped run cannot cancel a benchmark.
+  # Prefix unrelated labels into a disjoint group so their skipped run cannot cancel a benchmark.
   # All events that can run the job retain one shared group per ref.
   group: >-
     ${{ format('{0}-{1}-{2}', github.workflow, github.ref,
