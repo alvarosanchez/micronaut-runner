@@ -105,6 +105,8 @@ final class Reports {
             out.append(i == results.size() - 1 ? "\n" : ",\n");
         }
         out.append("  ],\n");
+        appendComparisons(out, context, results);
+        out.append(",\n");
         appendAttempts(out, results);
         out.append(",\n");
         out.append("  \"diagnostics\": {\n");
@@ -224,6 +226,70 @@ final class Reports {
         out.append("  ]");
     }
 
+    private static void appendComparisons(StringBuilder out,
+                                          RunContext context,
+                                          List<VariantResult> results) {
+        List<PairedComparison> comparisons = comparisons(context, results);
+        out.append("  \"comparisons\": [\n");
+        for (int i = 0; i < comparisons.size(); i++) {
+            PairedComparison comparison = comparisons.get(i);
+            out.append("    {\"leftVariant\": ").append(quote(comparison.leftVariant()))
+                    .append(", \"rightVariant\": ").append(quote(comparison.rightVariant()))
+                    .append(", \"estimator\": ").append(quote(PairedComparison.ESTIMATOR))
+                    .append(", \"resamplingUnit\": ").append(quote(PairedComparison.RESAMPLING_UNIT))
+                    .append(", \"requestedPairs\": ").append(comparison.requestedPairs())
+                    .append(", \"pairedCount\": ").append(comparison.pairedCount())
+                    .append(", \"excludedCount\": ").append(comparison.excludedCount())
+                    .append(", \"descriptiveOnly\": ").append(comparison.descriptiveOnly())
+                    .append(", \"medianDifferenceMillis\": ")
+                    .append(nullableNumber(comparison.medianDifferenceMillis()))
+                    .append(", \"ci95Low\": ").append(nullableNumber(comparison.ciLow()))
+                    .append(", \"ci95High\": ").append(nullableNumber(comparison.ciHigh()))
+                    .append(", \"ciConfidence\": ").append(number(Statistics.CONFIDENCE))
+                    .append(", \"ciMethod\": \"percentile bootstrap of paired median differences\"")
+                    .append(", \"ciResamples\": ").append(Statistics.RESAMPLES)
+                    .append(", \"ciMinimumPairs\": ").append(Statistics.MIN_CONFIDENCE_SAMPLES)
+                    .append(", \"ciReason\": ").append(quote(comparison.ciReason()))
+                    .append(", \"seed\": ").append(comparison.seed())
+                    .append(", \"includedIterations\": [");
+            for (int pair = 0; pair < comparison.pairs().size(); pair++) {
+                out.append(pair == 0 ? "" : ", ").append(comparison.pairs().get(pair).iteration());
+            }
+            out.append("], \"pairs\": [");
+            for (int pair = 0; pair < comparison.pairs().size(); pair++) {
+                PairedComparison.Pair value = comparison.pairs().get(pair);
+                out.append(pair == 0 ? "" : ", ")
+                        .append("{\"iteration\": ").append(value.iteration())
+                        .append(", \"leftMillis\": ").append(number(value.leftMillis()))
+                        .append(", \"rightMillis\": ").append(number(value.rightMillis()))
+                        .append(", \"differenceMillis\": ").append(number(value.differenceMillis()))
+                        .append('}');
+            }
+            out.append("], \"exclusions\": [");
+            for (int exclusion = 0; exclusion < comparison.exclusions().size(); exclusion++) {
+                PairedComparison.Exclusion value = comparison.exclusions().get(exclusion);
+                out.append(exclusion == 0 ? "" : ", ")
+                        .append("{\"iteration\": ").append(value.iteration())
+                        .append(", \"leftOutcome\": ").append(quote(value.leftOutcome()))
+                        .append(", \"rightOutcome\": ").append(quote(value.rightOutcome()))
+                        .append('}');
+            }
+            out.append("]}").append(i == comparisons.size() - 1 ? "\n" : ",\n");
+        }
+        out.append("  ]");
+    }
+
+    private static List<PairedComparison> comparisons(RunContext context, List<VariantResult> results) {
+        java.util.ArrayList<PairedComparison> comparisons = new java.util.ArrayList<>();
+        for (int left = 0; left < results.size(); left++) {
+            for (int right = left + 1; right < results.size(); right++) {
+                comparisons.add(PairedComparison.of(results.get(left), results.get(right),
+                        context.iterations(), context.seed()));
+            }
+        }
+        return comparisons;
+    }
+
     private static String statistics(Statistics statistics) {
         if (statistics == null) {
             return "null";
@@ -234,10 +300,14 @@ final class Reports {
                 + ", \"p90\": " + number(statistics.p90())
                 + ", \"mean\": " + number(statistics.mean())
                 + ", \"max\": " + number(statistics.max())
-                + ", \"ci95Low\": " + number(statistics.ciLow())
-                + ", \"ci95High\": " + number(statistics.ciHigh())
-                + ", \"ciMethod\": \"percentile bootstrap of the median, "
-                + Statistics.RESAMPLES + " resamples\"}";
+                + ", \"descriptiveOnly\": " + !statistics.hasConfidenceInterval()
+                + ", \"ci95Low\": " + nullableNumber(statistics.ciLow())
+                + ", \"ci95High\": " + nullableNumber(statistics.ciHigh())
+                + ", \"ciConfidence\": " + number(Statistics.CONFIDENCE)
+                + ", \"ciMethod\": \"percentile bootstrap of the median\""
+                + ", \"ciResamples\": " + Statistics.RESAMPLES
+                + ", \"ciMinimumSamples\": " + Statistics.MIN_CONFIDENCE_SAMPLES
+                + ", \"ciReason\": " + quote(statistics.ciReason()) + "}";
     }
 
     private static String markdown(RunContext context,
@@ -318,7 +388,7 @@ final class Reports {
             out.append("| `").append(variant.name()).append("` | ").append(readiness.count())
                     .append(" | **").append(millis(readiness.median())).append("** | ")
                     .append(millis(readiness.p90())).append(" | ")
-                    .append(millis(readiness.ciLow())).append(" – ").append(millis(readiness.ciHigh()))
+                    .append(confidenceInterval(readiness))
                     .append(" | ").append(millis(readiness.min()))
                     .append(" | ").append(millis(readiness.max()))
                     .append(" | ")
@@ -329,6 +399,7 @@ final class Reports {
         }
         out.append('\n');
 
+        appendPairedComparisons(out, context, results);
         appendIncompleteDetails(out, context, results, status);
 
         out.append("## What each variant is\n\n");
@@ -363,10 +434,13 @@ final class Reports {
                 .append(" dependency resolution, so any difference is a difference in packaging.\n");
         out.append("- The median and the 90th percentile are reported instead of a mean and a standard")
                 .append(" deviation because process start times have a hard floor and a long right tail.\n");
-        out.append("- The interval is a percentile bootstrap of the median (")
-                .append(Statistics.RESAMPLES)
-                .append(" resamples). With few iterations it comes out wide, which is the honest answer:")
-                .append(" two overlapping intervals are not a result.\n");
+        out.append("- Runs with fewer than ").append(Statistics.MIN_CONFIDENCE_SAMPLES)
+                .append(" successful measured samples are **descriptive only**: medians and percentiles")
+                .append(" remain visible, but no confidence interval is emitted. This reporting threshold")
+                .append(" is not a universal guarantee of precision.\n");
+        out.append("- When the threshold is met, the interval is a percentile bootstrap of the median (")
+                .append(Statistics.RESAMPLES).append(" resamples). Per-variant intervals are not a test of")
+                .append(" a difference and do not by themselves establish a startup speedup.\n");
         out.append("- **Readiness**, **to startup line** and **the framework's own figure** are three")
                 .append(" different quantities and the gaps between them are informative. Readiness")
                 .append(" includes serving the first request, which on a cold JVM is not free. The startup")
@@ -378,6 +452,58 @@ final class Reports {
                 .append(" status and attempt records distinguish skipped cells from failed processes.\n");
         out.append("- Every raw sample, warm-up runs included, is in `").append(RESULTS_FILE).append("`.\n");
         return out.toString();
+    }
+
+    private static void appendPairedComparisons(StringBuilder out,
+                                                RunContext context,
+                                                List<VariantResult> results) {
+        List<PairedComparison> comparisons = comparisons(context, results);
+        if (comparisons.isEmpty()) {
+            return;
+        }
+        out.append("## Paired readiness comparisons\n\n");
+        out.append("The predeclared estimator is the median iteration-level readiness difference")
+                .append(" (**left − right**). Only attempts from the same measured iteration form a pair;")
+                .append(" incomplete iterations are excluded and listed rather than silently re-paired.\n\n");
+        out.append("| Comparison | Pairs | Median difference | 95% paired interval | Excluded |\n")
+                .append("|---|---:|---:|---|---:|\n");
+        for (PairedComparison comparison : comparisons) {
+            out.append("| `").append(comparison.leftVariant()).append("` − `")
+                    .append(comparison.rightVariant()).append("` | ")
+                    .append(comparison.pairedCount()).append(" complete / ")
+                    .append(comparison.requestedPairs()).append(" requested | ")
+                    .append(comparison.medianDifferenceMillis() == null
+                            ? "—" : millis(comparison.medianDifferenceMillis()))
+                    .append(" | ");
+            if (comparison.descriptiveOnly()) {
+                out.append("descriptive only (").append(comparison.pairedCount()).append('/')
+                        .append(Statistics.MIN_CONFIDENCE_SAMPLES).append(" pairs)");
+            } else {
+                out.append(millis(comparison.ciLow())).append(" – ").append(millis(comparison.ciHigh()));
+            }
+            out.append(" | ").append(comparison.excludedCount()).append(" |\n");
+        }
+        out.append('\n');
+        for (PairedComparison comparison : comparisons) {
+            if (comparison.exclusions().isEmpty()) {
+                continue;
+            }
+            out.append("- Excluded from `").append(comparison.leftVariant()).append("` − `")
+                    .append(comparison.rightVariant()).append("`: ");
+            for (int i = 0; i < comparison.exclusions().size(); i++) {
+                PairedComparison.Exclusion exclusion = comparison.exclusions().get(i);
+                out.append(i == 0 ? "" : "; ").append("iteration ").append(exclusion.iteration())
+                        .append(" (").append(comparison.leftVariant()).append(": ")
+                        .append(exclusion.leftOutcome()).append("; ").append(comparison.rightVariant())
+                        .append(": ").append(exclusion.rightOutcome()).append(')');
+            }
+            out.append(".\n");
+        }
+        out.append("\nIntervals use ").append(Statistics.RESAMPLES)
+                .append(" bootstrap resamples of complete iteration pairs and are emitted only with at")
+                .append(" least ").append(Statistics.MIN_CONFIDENCE_SAMPLES)
+                .append(" complete pairs. The threshold is a reporting policy, not a universal guarantee;")
+                .append(" an interval does not by itself establish a startup speedup.\n\n");
     }
 
     /**
@@ -458,6 +584,15 @@ final class Reports {
         return String.format(Locale.ROOT, "%.1f ms", value);
     }
 
+    private static String confidenceInterval(Statistics statistics) {
+        if (!statistics.hasConfidenceInterval()) {
+            return "descriptive only (" + statistics.count() + "/" + Statistics.MIN_CONFIDENCE_SAMPLES
+                    + " samples; at least " + Statistics.MIN_CONFIDENCE_SAMPLES
+                    + " successful measured samples required)";
+        }
+        return millis(statistics.ciLow()) + " – " + millis(statistics.ciHigh());
+    }
+
     private static String size(long bytes) {
         if (bytes < 0) {
             return "—";
@@ -473,6 +608,10 @@ final class Reports {
 
     private static String number(double value) {
         return String.format(Locale.ROOT, "%.3f", value);
+    }
+
+    private static String nullableNumber(Double value) {
+        return value == null ? "null" : number(value);
     }
 
     private static String escapeCell(String value) {

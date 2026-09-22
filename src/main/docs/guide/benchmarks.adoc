@@ -50,11 +50,21 @@ trained application-class CDS or AOT reuse.
 == Methodology
 
 The harness interleaves the variants in random order rather than running each in a block, discards designated
-warm-up runs, keeps every raw sample, and reports the median, the 90th percentile and a confidence interval.
+warm-up runs, keeps every raw sample, and always reports descriptive counts, medians and 90th percentiles.
+Confidence intervals are omitted and the summary is labelled descriptive-only until there are at least ten
+successful measured samples. Ten is a reporting threshold, not a universal guarantee of precision; a
+zero-width interval over repeated observations cannot recover variability that was never observed.
 Discarding a process run does not evict or warm the OS page cache in a controlled way. The OS page cache is
 uncontrolled and is typically affected by the build and earlier starts; the harness has no page-cache eviction
 protocol on Linux, macOS or Windows and therefore reports neither a warm-cache nor a cold-filesystem-cache
 measurement.
+
+Pairwise readiness comparisons predeclare the median iteration-level difference (left minus right) as their
+estimator. Bootstrap resampling uses complete measured iteration pairs as its unit, preserving the shared
+iteration conditions. A failed, missing or unavailable attempt excludes that iteration and remains visible in
+the pair and exclusion counts; successful values from later iterations are never shifted into the gap. Paired
+intervals use the same minimum of ten complete pairs, retain the seed and method in `results.json`, and do not
+by themselves establish a startup speedup or statistical significance.
 
 Timing runs carry no diagnostic flags: `-Xlog` changes what is being measured, so class-load counts are
 collected in separate runs. Those diagnostics may show default JDK class sharing, but the current variants do
@@ -127,9 +137,11 @@ startup completed. Treat them as a direction, not a specification; the CI harnes
 |n/a
 |===
 
-The runner JAR started 12% faster than the shaded JAR and 15% faster than an exploded classpath. The
-framework-reported figure moves with it, which matters: it means the saving comes from class loading and
-from bean discovery reading one merged service directory, not merely from a cheap launcher.
+The descriptive medians put the runner JAR 12% below the shaded JAR and 15% below an exploded classpath in
+that prototype run. With only nine observations per variant, the current harness would label those values
+descriptive-only and emit no interval, so they are not evidence of a general startup speedup. The accompanying
+framework-reported figures moved in the same direction, a hypothesis for follow-up rather than a significance
+claim.
 
 The measured cost was size: storing dependencies uncompressed made the archive 2.5 times larger than the
 shaded JAR. That observation motivated `PRESERVE`; the prototype did not control the OS page cache, so it

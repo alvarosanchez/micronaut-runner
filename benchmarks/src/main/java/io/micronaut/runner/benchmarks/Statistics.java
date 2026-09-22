@@ -25,11 +25,11 @@ import java.util.Random;
  * not normally distributed: they have a hard floor and a long right tail made of page faults, scheduler
  * decisions and whatever else the machine was doing. A mean chases the tail; a median does not.</p>
  *
- * <p>The interval around the median is a <em>percentile bootstrap</em>: resample the observations with
- * replacement {@value #RESAMPLES} times, take the median of each resample, and report the 2.5th and 97.5th
- * percentiles of those medians. It assumes nothing about the distribution, which is exactly why it is used
- * here, and it is honest about small samples - run the harness with three iterations and the interval comes
- * out wide enough to tell you so.</p>
+ * <p>When there are at least {@value #MIN_CONFIDENCE_SAMPLES} observations, the interval around the median
+ * is a <em>percentile bootstrap</em>: resample the observations with replacement {@value #RESAMPLES} times,
+ * take the median of each resample, and report the 2.5th and 97.5th percentiles of those medians. Below that
+ * reporting threshold the descriptive values remain available but the interval is absent. The threshold is
+ * a benchmark reporting policy, not a universal guarantee that ten observations establish precision.</p>
  *
  * @param count  how many samples went in
  * @param min    the smallest sample
@@ -37,8 +37,9 @@ import java.util.Random;
  * @param p90    the 90th percentile
  * @param mean   the arithmetic mean, for readers who want to see the tail's pull
  * @param max    the largest sample
- * @param ciLow  the lower end of the 95% bootstrap interval of the median
- * @param ciHigh the upper end of the 95% bootstrap interval of the median
+ * @param ciLow  the lower end of the 95% bootstrap interval of the median, or {@code null}
+ * @param ciHigh the upper end of the 95% bootstrap interval of the median, or {@code null}
+ * @param ciReason why the interval is absent, or {@code null}
  */
 record Statistics(int count,
                   double min,
@@ -46,14 +47,18 @@ record Statistics(int count,
                   double p90,
                   double mean,
                   double max,
-                  double ciLow,
-                  double ciHigh) {
+                  Double ciLow,
+                  Double ciHigh,
+                  String ciReason) {
 
     /** How many bootstrap resamples the interval is built from. */
     static final int RESAMPLES = 2_000;
 
     /** The confidence level of the reported interval. */
     static final double CONFIDENCE = 0.95;
+
+    /** Minimum observations required before this harness emits an inferential interval. */
+    static final int MIN_CONFIDENCE_SAMPLES = 10;
 
     /**
      * Summarises a set of samples.
@@ -73,9 +78,18 @@ record Statistics(int count,
             total += value;
         }
         double median = percentile(sorted, 0.5);
-        double[] interval = bootstrapMedianInterval(sorted, seed);
+        double[] interval = sorted.length < MIN_CONFIDENCE_SAMPLES
+                ? null : bootstrapMedianInterval(sorted, seed);
+        String reason = interval == null
+                ? "requires at least " + MIN_CONFIDENCE_SAMPLES + " observations; observed " + sorted.length
+                : null;
         return new Statistics(sorted.length, sorted[0], median, percentile(sorted, 0.9),
-                total / sorted.length, sorted[sorted.length - 1], interval[0], interval[1]);
+                total / sorted.length, sorted[sorted.length - 1],
+                interval == null ? null : interval[0], interval == null ? null : interval[1], reason);
+    }
+
+    boolean hasConfidenceInterval() {
+        return ciLow != null && ciHigh != null;
     }
 
     /**
@@ -100,9 +114,6 @@ record Statistics(int count,
     }
 
     private static double[] bootstrapMedianInterval(double[] sorted, long seed) {
-        if (sorted.length < 2) {
-            return new double[] {sorted[0], sorted[0]};
-        }
         Random random = new Random(seed);
         double[] medians = new double[RESAMPLES];
         double[] resample = new double[sorted.length];
