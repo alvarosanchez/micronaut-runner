@@ -373,27 +373,41 @@ abstract class AbstractFunctionalTest {
         try {
             finished = process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS);
         } catch (InterruptedException e) {
-            cleanup(process, drain);
+            IOException cleanupFailure = cleanup(process, drain);
+            if (cleanupFailure != null) {
+                e.addSuppressed(cleanupFailure);
+            }
             Thread.currentThread().interrupt();
             throw e;
         }
         if (!finished) {
-            cleanup(process, drain);
-            throw new IOException("The forked application did not finish within " + timeout
+            IOException cleanupFailure = cleanup(process, drain);
+            IOException failure = new IOException("The forked application did not finish within " + timeout
                     + describe(command, capture.output()));
+            if (cleanupFailure != null) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
         }
 
         try {
             drain.join(FORK_CLEANUP_GRACE.toMillis());
         } catch (InterruptedException e) {
-            cleanup(process, drain);
+            IOException cleanupFailure = cleanup(process, drain);
+            if (cleanupFailure != null) {
+                e.addSuppressed(cleanupFailure);
+            }
             Thread.currentThread().interrupt();
             throw e;
         }
         if (drain.isAlive()) {
-            cleanup(process, drain);
-            throw new IOException("The forked application's output did not finish within "
+            IOException cleanupFailure = cleanup(process, drain);
+            IOException failure = new IOException("The forked application's output did not finish within "
                     + FORK_CLEANUP_GRACE + describe(command, capture.output()));
+            if (cleanupFailure != null) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
         }
         if (capture.failure() != null) {
             throw new IOException("Could not capture the forked application's output"
@@ -402,28 +416,35 @@ abstract class AbstractFunctionalTest {
         return new Forked(process.exitValue(), capture.output());
     }
 
-    private static void cleanup(Process process, Thread drain) {
+    private static IOException cleanup(Process process, Thread drain) {
         boolean interrupted = false;
+        List<String> failures = new ArrayList<>();
         process.destroy();
         try {
             if (!process.waitFor(FORK_CLEANUP_GRACE.toMillis(), TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly();
-                process.waitFor(FORK_CLEANUP_GRACE.toMillis(), TimeUnit.MILLISECONDS);
             }
         } catch (InterruptedException e) {
             interrupted = true;
             process.destroyForcibly();
+        }
+        if (process.isAlive()) {
             try {
-                process.waitFor(FORK_CLEANUP_GRACE.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (InterruptedException again) {
+                if (!process.waitFor(FORK_CLEANUP_GRACE.toMillis(), TimeUnit.MILLISECONDS)
+                        && process.isAlive()) {
+                    failures.add("child " + process.pid() + " survived forcible termination");
+                }
+            } catch (InterruptedException e) {
                 interrupted = true;
+                if (process.isAlive()) {
+                    failures.add("child " + process.pid() + " was not reaped before cleanup was interrupted");
+                }
             }
-        } finally {
-            try {
-                process.getInputStream().close();
-            } catch (IOException ignored) {
-                // Closing the process stream is best-effort after the child has been terminated.
-            }
+        }
+        try {
+            process.getInputStream().close();
+        } catch (IOException e) {
+            failures.add("could not close the child output stream: " + e);
         }
         try {
             drain.join(FORK_CLEANUP_GRACE.toMillis());
@@ -432,10 +453,19 @@ abstract class AbstractFunctionalTest {
         }
         if (drain.isAlive()) {
             drain.interrupt();
+            try {
+                drain.join(FORK_CLEANUP_GRACE.toMillis());
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+            if (drain.isAlive()) {
+                failures.add("output drain " + drain.getName() + " did not stop");
+            }
         }
         if (interrupted) {
             Thread.currentThread().interrupt();
         }
+        return failures.isEmpty() ? null : new IOException("Cleanup incomplete: " + String.join("; ", failures));
     }
 
     private static String describe(List<String> command, String output) {
