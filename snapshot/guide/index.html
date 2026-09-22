@@ -785,9 +785,11 @@ loader from the thread context class loader, so the framework is unaffected.</p>
 </dd>
 <dt class="hdlist1">Signatures are not verified</dt>
 <dd>
-<p>Re-packing removes signature files, and nothing is verified at run time.
-Sign the outer archive if you need a signature. Code that depends on <code>CodeSource.getCodeSigners()</code> being
-populated, such as a JCE provider requiring a signed JAR, is not supported.</p>
+<p>The default re-packing mode removes nested signature files. <code>PRESERVE</code> keeps
+the nested JAR bytes, including signature files, but the runner still does not verify them. Application and
+dependency <code>CodeSource</code> objects have a null <code>CodeSigner[]</code>. External authentication of the outer artifact
+does not change that, so code that requires signed-JAR semantics, such as a signed JCE provider, is not
+supported. See <a href="#authenticating">Authenticating a deployment artifact</a> for deployment-artifact authentication.</p>
 </dd>
 <dt class="hdlist1">The Java Platform Module System</dt>
 <dd>
@@ -807,6 +809,57 @@ directory themselves, exactly as they do from any JAR. Micronaut Runner does not
 not prevent a library from doing so.</p>
 </dd>
 </dl>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="authenticating">Authenticating a deployment artifact</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Authenticate the final runner JAR as an immutable deployment artifact. Do not run <code>jarsigner</code>, update the
+manifest, re-zip the file or otherwise mutate it after packaging: those operations change the bytes and can
+invalidate both the precomputed runner index and any signature or checksum made over the previous bytes.</p>
+</div>
+<div class="paragraph">
+<p>The publisher can create an armored detached signature after the runner JAR is final. The sidecar remains
+outside the JAR, so signing does not alter the indexed artifact:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">artifact=my-app-0.1-all.jar
+gpg --batch --local-user "$RELEASE_KEY_FINGERPRINT" \
+    --armor --detach-sign --output "$artifact.asc" "$artifact"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Provision the verifier&#8217;s GnuPG home separately with only public keys whose complete fingerprints were
+checked against the release policy. Merely accepting any cryptographically valid signature, or importing a
+key delivered beside an untrusted artifact, does not establish the publisher&#8217;s identity. Then make successful
+verification a precondition of launch:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">artifact=/opt/my-app/my-app-0.1-all.jar
+signature="$artifact.asc"
+verifier_home=/etc/my-app/gnupg
+gpg --batch --homedir "$verifier_home" --verify "$signature" "$artifact" &amp;&amp;
+exec java -jar "$artifact"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The verifier must authenticate the same bytes that are executed. Keep the artifact, signature, verifier
+keyring and their parent directories read-only to untrusted principals, or use a deployment system that
+binds verification to an immutable, content-addressed object. Otherwise another process can replace the
+path between verification and launch. Any mutation requires producing and distributing a new detached
+signature.</p>
+</div>
+<div class="paragraph">
+<p>CRC-32 checks, including <code>-Dmicronaut.runner.verify=true</code>, detect accidental corruption; they do not
+authenticate a publisher. A SHA-256 checksum has the same trust boundary when it is delivered unsigned from
+the same source as the artifact. When enabled for the <code>micronaut-projects</code> organization, the repository&#8217;s
+<a href="https://github.com/micronaut-projects/micronaut-runner/blob/master/.github/workflows/release.yml">release workflow</a> computes SHA-256
+subjects for its published library JAR and POM files and binds them into SLSA provenance. That release
+behavior does not authenticate an application runner JAR and does not make the runner verify nested JARs.</p>
 </div>
 </div>
 </div>
@@ -1246,8 +1299,9 @@ the clearest example of why this module measures the whole process rather than t
 <div class="paragraph">
 <p>The index records the archive&#8217;s length and the position of every nested JAR. One of those checks failed,
 which means the file changed after it was built: something appended to it, re-zipped it, or signed it in
-place. Rebuild the archive. If you need a signature, sign the finished archive with a tool that does not
-rewrite existing entries, or use the extracted layout.</p>
+place. Rebuild the archive; do not sign or otherwise rewrite it in place. To authenticate a deployment,
+create a detached signature over the final bytes and require successful verification before launch, as
+described in <a href="#authenticating">authenticating a deployment artifact</a>.</p>
 </div>
 </div>
 </div>
