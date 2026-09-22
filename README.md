@@ -34,9 +34,10 @@ See the documentation in the [Micronaut Docs](https://docs.micronaut.io/latest/g
 
 Releases are published to Maven Central via [GitHub Actions](https://github.com/micronaut-projects/micronaut-runner/actions).
 
-Releases are completely automated. To perform a release use the following steps:
+Releases are completely automated. The release workflow finalizes the version, verifies that exact source
+tree, stages and signs the Maven publications locally, and automatically publishes the already verified bundle
+to Maven Central. The upload does not rebuild the publications. To perform a release use the following steps:
 
 * [Publish the draft release](https://github.com/micronaut-projects/micronaut-runner/releases). There should be already a draft release created, edit and publish it. The Git Tag should start with `v`. For example `v1.0.0`.
 * [Monitor the Workflow](https://github.com/micronaut-projects/micronaut-runner/actions?query=workflow%3ARelease) to check it passed successfully.
-* If everything went fine, [publish to Maven Central](https://github.com/micronaut-projects/micronaut-runner/actions?query=workflow%3A"Maven+Central+Sync").
 * Celebrate!
