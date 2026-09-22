@@ -124,9 +124,10 @@ earlier. <a href="ZipRepacker.html" title="class in io.micronaut.runner.build"><
 <p>ZIP64 records are written when the archive needs them: a ZIP64 end of central directory record and
 locator from 65535 entries upwards, or once the central directory reaches 4 GiB in size or in offset,
 and a ZIP64
-extended information extra field on the records of entries whose size or local header offset does not fit
-in 32 bits. Every field that is replaced by a 64-bit value in an extra field carries the
-<a href="../IndexFormat.html#ZIP64_MARKER"><code>IndexFormat.ZIP64_MARKER</code></a> value in its 32-bit slot, as the specification requires.</p>
+extended information extra field on the records of entries whose size or local header offset cannot be
+stored literally in its reserved 32-bit slot. Every field that is replaced by a 64-bit value in an extra
+field carries the <a href="../IndexFormat.html#ZIP64_MARKER"><code>IndexFormat.ZIP64_MARKER</code></a> value in its 32-bit slot, as the specification
+requires.</p>
 
 <p>Instances are not thread-safe. <a href="#close()"><code>close()</code></a> finishes the archive if <a href="#finish()"><code>finish()</code></a> was not
 called and closes the underlying stream.</p></div>
