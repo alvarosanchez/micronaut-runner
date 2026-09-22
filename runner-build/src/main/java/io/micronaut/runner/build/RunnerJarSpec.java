@@ -206,8 +206,9 @@ public final class RunnerJarSpec {
      * Extra main attributes for the runner jar's manifest.
      *
      * <p>They are written after the attributes the format requires and can override the ones taken from the
-     * application manifest, but not {@code Main-Class} or the {@code Micronaut-Runner-*} attributes, which
-     * the launcher depends on.</p>
+     * application manifest. {@code Manifest-Version}, {@code Main-Class} and the entire
+     * {@code Micronaut-Runner-*} namespace are reserved and rejected case-insensitively because the runner
+     * jar format and launcher depend on them.</p>
      *
      * <p>The order the caller configured is preserved, because the manifest is written by iterating this
      * map and a runner jar has to be byte for byte reproducible.</p>
@@ -412,18 +413,31 @@ public final class RunnerJarSpec {
          *
          * @param value the attributes, in the order they should be written
          * @return this builder
-         * @throws NullPointerException if the map, a key or a value is {@code null}
+         * @throws NullPointerException     if the map, a key or a value is {@code null}
+         * @throws IllegalArgumentException if a key is {@code Manifest-Version}, {@code Main-Class} or in
+         *                                  the {@code Micronaut-Runner-*} namespace, ignoring case
          */
         public Builder manifestAttributes(Map<String, String> value) {
             Objects.requireNonNull(value, "manifestAttributes");
             Map<String, String> copy = new LinkedHashMap<>();
             for (Map.Entry<String, String> attribute : value.entrySet()) {
-                Objects.requireNonNull(attribute.getKey(), "manifest attribute name");
+                String name = Objects.requireNonNull(attribute.getKey(), "manifest attribute name");
                 Objects.requireNonNull(attribute.getValue(), "manifest attribute value");
-                copy.put(attribute.getKey(), attribute.getValue());
+                if (isReservedManifestAttribute(name)) {
+                    throw new IllegalArgumentException("Manifest attribute '" + name
+                            + "' is reserved by Micronaut Runner");
+                }
+                copy.put(name, attribute.getValue());
             }
             this.manifestAttributes = copy;
             return this;
+        }
+
+        private static boolean isReservedManifestAttribute(String name) {
+            String runnerPrefix = "Micronaut-Runner-";
+            return "Manifest-Version".equalsIgnoreCase(name)
+                    || "Main-Class".equalsIgnoreCase(name)
+                    || name.regionMatches(true, 0, runnerPrefix, 0, runnerPrefix.length());
         }
 
         /**

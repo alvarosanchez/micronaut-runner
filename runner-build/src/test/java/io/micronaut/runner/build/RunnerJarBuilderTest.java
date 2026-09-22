@@ -22,8 +22,11 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,6 +34,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.TreeMap;
@@ -200,6 +204,74 @@ class RunnerJarBuilderTest {
         }
         assertEquals(new ArrayList<>(attributes.keySet()), written,
                 "and the manifest is written in that order");
+    }
+
+    @ParameterizedTest(name = "rejects {0}")
+    @ValueSource(strings = {
+            "mAnIfEsT-vErSiOn",
+            "mAiN-cLaSs",
+            "mIcRoNaUt-RuNnEr-FoRmAt",
+            "mIcRoNaUt-RuNnEr-vErSiOn",
+            "mIcRoNaUt-RuNnEr-sTaRt-ClAsS",
+            "mIcRoNaUt-RuNnEr-fUtUrE"
+    })
+    void rejectsReservedManifestAttributesCaseInsensitivelyInAnyLocale(String key) throws IOException {
+        Path output = output();
+        Files.createDirectories(output.getParent());
+        byte[] previous = "the existing runner jar".getBytes(StandardCharsets.UTF_8);
+        Files.write(output, previous);
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr"));
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> RunnerJarBuilder.build(spec(output)
+                            .manifestAttributes(Map.of(key, "missing.Override"))
+                            .build(), BuildLogger.noOp()));
+            assertTrue(failure.getMessage().contains(key), failure.getMessage());
+        } finally {
+            Locale.setDefault(original);
+        }
+        assertArrayEquals(previous, Files.readAllBytes(output),
+                "invalid configuration must leave the existing output alone");
+    }
+
+    @Test
+    void acceptsLegalManifestAttributesAndBuildsARunnableArtifact()
+            throws IOException, InterruptedException {
+        Manifest application = manifest(attributes ->
+                attributes.put(Attributes.Name.IMPLEMENTATION_TITLE, "from application"));
+        Map<String, String> attributes = new LinkedHashMap<>();
+        attributes.put("Implementation-Title", "configured");
+        attributes.put("First-Legal-Attribute", "one");
+        attributes.put("Second-Legal-Attribute", "two");
+        Path output = output();
+
+        RunnerJarBuilder.build(spec(output)
+                .applicationManifest(application)
+                .manifestAttributes(attributes)
+                .build(), BuildLogger.noOp());
+
+        try (ZipReader archive = ZipReader.open(output)) {
+            Attributes written = archive.manifest().orElseThrow().getMainAttributes();
+            assertEquals("configured", written.getValue(Attributes.Name.IMPLEMENTATION_TITLE),
+                    "a legal configured attribute may override the application manifest");
+            assertEquals("one", written.getValue("First-Legal-Attribute"));
+            assertEquals("two", written.getValue("Second-Legal-Attribute"));
+        }
+        List<String> names = manifestLines(output);
+        assertTrue(names.indexOf("First-Legal-Attribute") < names.indexOf("Second-Legal-Attribute"),
+                "legal configured attributes keep their order");
+
+        Process process = new ProcessBuilder(javaExecutable().toString(), "-jar", output.toString())
+                .redirectErrorStream(true)
+                .start();
+        String forkedOutput;
+        try (InputStream in = process.getInputStream()) {
+            forkedOutput = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        int status = process.waitFor();
+        assertEquals(0, status, forkedOutput);
+        assertTrue(forkedOutput.contains("hello"), forkedOutput);
     }
 
     @Test
@@ -556,6 +628,16 @@ class RunnerJarBuilderTest {
             }
             return names;
         }
+    }
+
+    private static Path javaExecutable() {
+        String home = System.getProperty("runner.test.javaHome", System.getProperty("java.home"));
+        Path candidate = Path.of(home, "bin", "java");
+        if (!Files.isExecutable(candidate)) {
+            candidate = Path.of(home, "bin", "java.exe");
+        }
+        Assumptions.assumeTrue(Files.isExecutable(candidate), "the JDK has no java executable");
+        return candidate;
     }
 
     private static void compile(JavaCompiler compiler, Path sources, Path classes, Map<String, String> files)
