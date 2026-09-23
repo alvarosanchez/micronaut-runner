@@ -45,11 +45,10 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * The fixture every micro-benchmark in this package measures against: a synthetic application whose shape
- * is that of a small Micronaut service - roughly thirty dependency jars holding a few thousand small
- * classes - packaged into runner jars with both compression modes.
+ * The fixtures every micro-benchmark in this package measures against: deterministic synthetic applications
+ * whose named shapes independently vary dependency count, class-entry count, class payload and resource size.
  *
- * <h2>Why it is synthetic</h2>
+ * <h2>Why they are synthetic</h2>
  * <p>Nothing is downloaded. The class files are generated with {@link java.lang.classfile}, which makes
  * the fixture reproducible, offline, and quick enough to build inside a JMH trial setup. What matters for
  * the index and the class loader is the number of entries, the length and shape of their names and the
@@ -63,14 +62,17 @@ import java.util.zip.ZipOutputStream;
  */
 final class SyntheticArchive {
 
-    /** Number of synthetic dependency jars. */
-    static final int LIBRARY_COUNT = 30;
+    /** Ordinary service descriptor contributed by every dependency. */
+    static final String SERVICE_RESOURCE = "META-INF/services/org.synthetic.Service";
 
-    /** Packages per dependency jar. */
-    static final int PACKAGES_PER_LIBRARY = 4;
+    /** Same-name resource contributed by every dependency in class-path order. */
+    static final String DUPLICATE_RESOURCE = "org/synthetic/shared/duplicate.txt";
 
-    /** Classes per package, so {@code 30 * 4 * 30 = 3600} library classes in total. */
-    static final int CLASSES_PER_PACKAGE = 30;
+    /** Resource large enough to exercise streaming rather than lookup overhead. */
+    static final String STREAM_RESOURCE = "org/synthetic/shared/payload.bin";
+
+    /** Logical multi-release resource with base and Java 25 physical entries. */
+    static final String VERSIONED_RESOURCE = "org/synthetic/shared/version.txt";
 
     /** The main class of the synthetic application layer. */
     static final String MAIN_CLASS = "org.synthetic.app.Main";
@@ -88,8 +90,9 @@ final class SyntheticArchive {
         "WidgetService", "BeanDefinition", "HttpMessageHandler", "ConfigurationReader"
     };
 
-    private static volatile SyntheticArchive shared;
+    private static final Map<String, SyntheticArchive> SHARED = new LinkedHashMap<>();
 
+    private final WorkloadShape shape;
     private final Path root;
     private final Path applicationClasses;
     private final List<Path> libraryJars;
@@ -97,12 +100,14 @@ final class SyntheticArchive {
     private final Path storedRunnerJar;
     private final Path preserveRunnerJar;
 
-    private SyntheticArchive(Path root,
+    private SyntheticArchive(WorkloadShape shape,
+                             Path root,
                              Path applicationClasses,
                              List<Path> libraryJars,
                              List<String> classNames,
                              Path storedRunnerJar,
                              Path preserveRunnerJar) {
+        this.shape = shape;
         this.root = root;
         this.applicationClasses = applicationClasses;
         this.libraryJars = List.copyOf(libraryJars);
@@ -117,18 +122,33 @@ final class SyntheticArchive {
      * @return the shared fixture
      */
     static synchronized SyntheticArchive shared() {
-        SyntheticArchive existing = shared;
+        return forWorkload("representative");
+    }
+
+    /**
+     * Builds or reuses one deterministic fixture for the named workload in this forked JVM.
+     *
+     * @param name one of {@link WorkloadShape#standard()}
+     * @return the fixture
+     */
+    static synchronized SyntheticArchive forWorkload(String name) {
+        SyntheticArchive existing = SHARED.get(name);
         if (existing != null) {
             return existing;
         }
         try {
-            SyntheticArchive built = build();
+            SyntheticArchive built = build(WorkloadShape.named(name));
             Runtime.getRuntime().addShutdownHook(new Thread(built::delete, "synthetic-archive-cleanup"));
-            shared = built;
+            SHARED.put(name, built);
             return built;
         } catch (IOException e) {
             throw new UncheckedIOException("Could not build the synthetic benchmark fixture", e);
         }
+    }
+
+    /** @return the declared fixture shape. */
+    WorkloadShape shape() {
+        return shape;
     }
 
     /**
@@ -156,6 +176,11 @@ final class SyntheticArchive {
      */
     List<Path> libraryJars() {
         return libraryJars;
+    }
+
+    /** @return exploded application input for packaging profiles. */
+    Path applicationClasses() {
+        return applicationClasses;
     }
 
     /**
@@ -207,6 +232,20 @@ final class SyntheticArchive {
     }
 
     /**
+     * A locality-heavy sample from the first dependency, in archive order.
+     *
+     * @param count number of names, no more than one dependency contains
+     * @return local names
+     */
+    String[] localSample(int count) {
+        if (count > shape.entriesPerJar()) {
+            throw new IllegalArgumentException("local sample " + count + " exceeds entries per jar "
+                    + shape.entriesPerJar());
+        }
+        return classNames.subList(0, count).toArray(String[]::new);
+    }
+
+    /**
      * Names shaped exactly like the ones in the archive but absent from it, so a miss costs what a miss
      * really costs: the full hash, the probe and, on a collision, a byte comparison that fails late.
      *
@@ -227,20 +266,20 @@ final class SyntheticArchive {
         deleteRecursively(root);
     }
 
-    private static SyntheticArchive build() throws IOException {
-        Path root = Files.createTempDirectory("micronaut-runner-bench");
+    private static SyntheticArchive build(WorkloadShape shape) throws IOException {
+        Path root = Files.createTempDirectory("micronaut-runner-bench-" + shape.name());
         Path libraries = Files.createDirectories(root.resolve("lib"));
         Path applicationClasses = Files.createDirectories(root.resolve("app").resolve("classes"));
 
-        List<String> classNames = new ArrayList<>(LIBRARY_COUNT * PACKAGES_PER_LIBRARY * CLASSES_PER_PACKAGE);
-        List<Path> libraryJars = new ArrayList<>(LIBRARY_COUNT);
-        for (int library = 0; library < LIBRARY_COUNT; library++) {
-            Path jar = libraries.resolve(String.format("synthetic-lib-%02d-1.0.0.jar", library));
+        List<String> classNames = new ArrayList<>(shape.jarCount() * shape.entriesPerJar());
+        List<Path> libraryJars = new ArrayList<>(shape.jarCount());
+        for (int library = 0; library < shape.jarCount(); library++) {
+            Path jar = libraries.resolve(String.format("synthetic-lib-%03d-1.0.0.jar", library));
             libraryJars.add(jar);
             // Deflated, the way a jar downloaded from a repository is. The STORED runner jar re-packs
             // these; the PRESERVE one copies them as they are, which is what makes the two archives a
             // fair STORED-versus-DEFLATE comparison over identical class bytes.
-            writeLibrary(jar, library, classNames);
+            writeLibrary(jar, library, shape, classNames);
         }
         writeApplication(applicationClasses);
 
@@ -248,7 +287,7 @@ final class SyntheticArchive {
         Path preserve = root.resolve("runner-preserve.jar");
         pack(applicationClasses, libraryJars, stored, Compression.STORED);
         pack(applicationClasses, libraryJars, preserve, Compression.PRESERVE);
-        return new SyntheticArchive(root, applicationClasses, libraryJars, classNames, stored, preserve);
+        return new SyntheticArchive(shape, root, applicationClasses, libraryJars, classNames, stored, preserve);
     }
 
     private static void pack(Path applicationClasses,
@@ -265,16 +304,37 @@ final class SyntheticArchive {
         RunnerJarBuilder.build(spec, BuildLogger.noOp());
     }
 
-    private static void writeLibrary(Path jar, int library, List<String> classNames) throws IOException {
+    private static void writeLibrary(Path jar,
+                                     int library,
+                                     WorkloadShape shape,
+                                     List<String> classNames) throws IOException {
         Map<String, byte[]> entries = new LinkedHashMap<>();
-        String name = String.format("synthetic-lib-%02d", library);
-        entries.put("META-INF/MANIFEST.MF", ("Manifest-Version: 1.0\r\n"
-                + "Implementation-Title: " + name + "\r\n"
-                + "Implementation-Version: 1.0.0\r\n"
-                + "Implementation-Vendor: Synthetic\r\n\r\n").getBytes(StandardCharsets.UTF_8));
-        for (int pkg = 0; pkg < PACKAGES_PER_LIBRARY; pkg++) {
-            String packageName = String.format("org.synthetic.lib%02d.%s", library, SEGMENTS[pkg % SEGMENTS.length]);
-            for (int clazz = 0; clazz < CLASSES_PER_PACKAGE; clazz++) {
+        String name = String.format("synthetic-lib-%03d", library);
+        StringBuilder manifest = new StringBuilder("Manifest-Version: 1.0\r\n")
+                .append("Implementation-Title: ").append(name).append("\r\n")
+                .append("Implementation-Version: 1.0.0\r\n")
+                .append("Implementation-Vendor: Synthetic\r\n");
+        if (shape.multiReleaseEntries()) {
+            manifest.append("Multi-Release: true\r\n");
+        }
+        manifest.append("\r\n");
+        for (int pkg = 0; pkg < shape.manifestPackageSections(); pkg++) {
+            manifest.append("Name: ")
+                    .append(String.format("org/synthetic/lib%03d/pkg%02d/%s/", library, pkg,
+                            SEGMENTS[pkg % SEGMENTS.length]))
+                    .append("\r\nImplementation-Version: 1.0.0-").append(pkg)
+                    .append("\r\n\r\n");
+        }
+        entries.put("META-INF/MANIFEST.MF", manifest.toString().getBytes(StandardCharsets.UTF_8));
+
+        int packageCount = Math.max(1, shape.manifestPackageSections());
+        int remaining = shape.entriesPerJar();
+        for (int pkg = 0; pkg < packageCount && remaining > 0; pkg++) {
+            String packageName = String.format("org.synthetic.lib%03d.pkg%02d.%s", library, pkg,
+                    SEGMENTS[pkg % SEGMENTS.length]);
+            int packagesLeft = packageCount - pkg;
+            int classesInPackage = (remaining + packagesLeft - 1) / packagesLeft;
+            for (int clazz = 0; clazz < classesInPackage; clazz++) {
                 int ordinal = classNames.size();
                 String simple = PREFIXES[clazz % PREFIXES.length]
                         + STEMS[(clazz / PREFIXES.length) % STEMS.length]
@@ -286,20 +346,41 @@ final class SyntheticArchive {
                 }
                 String binaryName = packageName + "." + simple;
                 classNames.add(binaryName);
-                entries.put(binaryName.replace('.', '/') + ".class", classBytes(binaryName, ordinal));
+                entries.put(binaryName.replace('.', '/') + ".class",
+                        classBytes(binaryName, ordinal, shape.classPayloadBytes()));
+                remaining--;
             }
             entries.put(packageName.replace('.', '/') + "/package-info.class",
-                    classBytes(packageName + ".package-info", -1));
+                    classBytes(packageName + ".package-info", -1, 0));
         }
-        entries.put("META-INF/services/org.synthetic.Service",
-                (String.format("org.synthetic.lib%02d.core.util.DefaultWidgetService000", library) + "\n")
-                        .getBytes(StandardCharsets.UTF_8));
+
+        for (int service = 0; service < shape.serviceDescriptorsPerJar(); service++) {
+            String resource = service == 0 ? SERVICE_RESOURCE : SERVICE_RESOURCE + service;
+            entries.put(resource,
+                    String.format("org.synthetic.lib%03d.Provider%02d%n", library, service)
+                            .getBytes(StandardCharsets.UTF_8));
+        }
+        if (shape.duplicateNames()) {
+            entries.put(DUPLICATE_RESOURCE, ("library-" + library).getBytes(StandardCharsets.UTF_8));
+        }
+        if (library == 0) {
+            byte[] payload = new byte[shape.streamResourceBytes()];
+            for (int i = 0; i < payload.length; i++) {
+                payload[i] = (byte) (i * 31 + 17);
+            }
+            entries.put(STREAM_RESOURCE, payload);
+        }
+        if (shape.multiReleaseEntries()) {
+            entries.put(VERSIONED_RESOURCE, "base".getBytes(StandardCharsets.UTF_8));
+            entries.put("META-INF/versions/25/" + VERSIONED_RESOURCE,
+                    "version-25".getBytes(StandardCharsets.UTF_8));
+        }
         for (int i = 0; i < 3; i++) {
             entries.put("META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/"
-                    + String.format("org.synthetic.lib%02d.core.util.$Bean%d$Definition", library, i),
+                    + String.format("org.synthetic.lib%03d.core.util.$Bean%d$Definition", library, i),
                     new byte[0]);
         }
-        entries.put(String.format("org/synthetic/lib%02d/messages.properties", library),
+        entries.put(String.format("org/synthetic/lib%03d/messages.properties", library),
                 ("greeting=hello from " + name + "\n").getBytes(StandardCharsets.UTF_8));
         writeJar(jar, entries);
     }
@@ -334,8 +415,9 @@ final class SyntheticArchive {
         }
     }
 
-    private static byte[] classBytes(String binaryName, int ordinal) {
+    private static byte[] classBytes(String binaryName, int ordinal, int payloadBytes) {
         ClassDesc self = ClassDesc.of(binaryName);
+        String payload = "x".repeat(payloadBytes);
         return ClassFile.of().build(self, builder -> {
             builder.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER);
             builder.withField("name", ConstantDescs.CD_String,
@@ -361,6 +443,10 @@ final class SyntheticArchive {
             builder.withMethodBody("describe", MethodTypeDesc.of(ConstantDescs.CD_String),
                     ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, code -> code
                             .loadConstant(binaryName + " #" + ordinal)
+                            .areturn());
+            builder.withMethodBody("payload", MethodTypeDesc.of(ConstantDescs.CD_String),
+                    ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, code -> code
+                            .loadConstant(payload)
                             .areturn());
         });
     }

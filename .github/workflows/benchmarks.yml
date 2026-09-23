@@ -59,7 +59,7 @@ jobs:
       - name: "📈 Run benchmarks"
         env:
           BENCHMARK_ITERATIONS: ${{ github.event.inputs.iterations || '20' }}
-        run: ./gradlew :benchmarks:jmh :benchmarks:startupBenchmark "-Pbenchmarks.iterations=$BENCHMARK_ITERATIONS" --no-daemon
+        run: ./gradlew :benchmarks:jmh :benchmarks:packagingProfile :benchmarks:startupBenchmark "-Pbenchmarks.iterations=$BENCHMARK_ITERATIONS" --no-daemon
 
       - name: "📝 Summarise"
         if: always()
@@ -68,6 +68,11 @@ jobs:
             cat benchmarks/build/reports/startup/summary.md >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'No startup benchmark summary was produced.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f benchmarks/build/reports/packaging/packaging-summary.md ]; then
+            cat benchmarks/build/reports/packaging/packaging-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No packaging profile summary was produced.' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: "📜 Upload results"

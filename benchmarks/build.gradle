@@ -28,13 +28,19 @@ jmh {
 }
 
 def benchmarkGuide = rootProject.layout.projectDirectory.file('src/main/docs/guide/benchmarks.adoc')
+def largeSample = rootProject.layout.projectDirectory.dir('test-suite/samples/benchmark-large')
 tasks.named('test', Test) {
     inputs.file(benchmarkGuide)
             .withPathSensitivity(PathSensitivity.RELATIVE)
             .withPropertyName('benchmarkGuide')
     systemProperty 'runner.benchmark.guide', benchmarkGuide.asFile
+    inputs.dir(largeSample)
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+            .withPropertyName('representativeBenchmarkSample')
+    systemProperty 'runner.benchmark.largeSample', largeSample.asFile
 }
 
+def benchmarkSample = providers.gradleProperty('benchmarks.sample').getOrElse('benchmark-large')
 def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
     group = 'benchmark'
     description = 'Runs the end-to-end startup benchmark harness against the sample application'
@@ -52,7 +58,7 @@ def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
     systemProperty 'runner.benchmark.sourceRoot', rootProject.layout.projectDirectory.asFile.absolutePath
     argumentProviders.add({ ->
         def arguments = [
-                '--sample', layout.projectDirectory.dir('../test-suite/samples/hello-netty').asFile.absolutePath,
+                '--sample', rootProject.layout.projectDirectory.dir("test-suite/samples/${benchmarkSample}").asFile.absolutePath,
                 '--repo', layout.buildDirectory.dir('aggregated-repo').get().asFile.toURI().toASCIIString(),
                 '--version', providers.gradleProperty('projectVersion').get().replace('-SNAPSHOT', '-DUMMY'),
                 '--iterations', providers.gradleProperty('benchmarks.iterations').getOrElse('10'),
@@ -65,6 +71,22 @@ def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
         }
         arguments
     } as CommandLineArgumentProvider)
+}
+
+tasks.register('packagingProfile', JavaExec) {
+    group = 'benchmark'
+    description = 'Profiles deterministic clean and edit-cycle packaging workloads'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.micronaut.runner.benchmarks.PackagingProfile'
+    def outDir = layout.buildDirectory.dir('reports/packaging')
+    outputs.dir(outDir)
+    outputs.upToDateWhen { false }
+    systemProperty 'runner.benchmark.sourceRoot', rootProject.layout.projectDirectory.asFile.absolutePath
+    argumentProviders.add({ -> [
+            '--workloads', providers.gradleProperty('benchmarks.workloads').getOrElse('small,representative,wide'),
+            '--iterations', providers.gradleProperty('benchmarks.packagingIterations').getOrElse('3'),
+            '--out', outDir.get().asFile.absolutePath
+    ] } as CommandLineArgumentProvider)
 }
 
 // Same exclusions as micronaut-core/benchmarks

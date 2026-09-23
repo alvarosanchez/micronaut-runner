@@ -1,0 +1,28 @@
+/*
+ * A standalone benchmark build. The harness passes runner.repo and runner.version so the plugin resolves
+ * from the aggregated repository built from the exact revision under test.
+ */
+pluginManagement {
+    repositories {
+        maven { url = uri(providers.gradleProperty('runner.repo').get()) }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+    plugins {
+        id 'io.micronaut.runner' version providers.gradleProperty('runner.version').get()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        maven { url = uri(providers.gradleProperty('runner.repo').get()) }
+        mavenCentral()
+    }
+    versionCatalogs {
+        libs {
+            from(files('../../../gradle/libs.versions.toml'))
+        }
+    }
+}
+
+rootProject.name = 'benchmark-large'
