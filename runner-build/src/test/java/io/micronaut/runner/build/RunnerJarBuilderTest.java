@@ -32,13 +32,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.TreeMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -1002,6 +1005,215 @@ class RunnerJarBuilderTest {
                 System.clearProperty("jdk.util.jar.enableMultiRelease");
             }
         }
+    }
+
+    @Test
+    void reusesContentAddressedDependencyStagesAndInvalidatesOnlyChangedInputs() throws IOException {
+        Path root = Files.createDirectories(fixtures.resolve("dependency-stage-cache"));
+        Path cache = root.resolve("cache");
+        List<String> firstLog = new ArrayList<>();
+
+        Path firstOutput = output();
+        RunnerJarBuilder.build(spec(firstOutput)
+                .dependencies(List.of(new Dependency(plainDependency, "old:first:1"),
+                        new Dependency(multiReleaseDependency, "old:second:1")))
+                .dependencyCache(cache)
+                .build(), logger(firstLog));
+        assertEquals(2, firstLog.stream().filter(line -> line.contains("Dependency stage cache miss")).count());
+        byte[] expected = Files.readAllBytes(firstOutput);
+
+        List<String> reorderedLog = new ArrayList<>();
+        Path reorderedOutput = output();
+        RunnerJarBuilder.build(spec(reorderedOutput)
+                .dependencies(List.of(new Dependency(multiReleaseDependency, "new:second:2"),
+                        new Dependency(plainDependency, "new:first:2")))
+                .dependencyCache(cache)
+                .build(), logger(reorderedLog));
+        assertEquals(2, reorderedLog.stream().filter(line -> line.contains("Dependency stage cache hit")).count(),
+                "order, coordinates and destination names are final-assembly concerns");
+        try (RunnerJarReader reader = RunnerJarReader.open(reorderedOutput)) {
+            assertEquals("new:second:2", reader.index().jarCoordinates(1));
+            assertEquals("new:first:2", reader.index().jarCoordinates(2));
+        }
+
+        Path changedDependency = root.resolve("changed.jar");
+        writeJar(changedDependency, manifest(attributes -> { }),
+                Map.of("changed.txt", "changed".getBytes(StandardCharsets.UTF_8)));
+        List<String> changedLog = new ArrayList<>();
+        RunnerJarBuilder.build(spec(output())
+                .dependencies(List.of(new Dependency(changedDependency, null),
+                        new Dependency(multiReleaseDependency, null)))
+                .dependencyCache(cache)
+                .build(), logger(changedLog));
+        assertEquals(1, changedLog.stream().filter(line -> line.contains("Dependency stage cache miss")).count());
+        assertEquals(1, changedLog.stream().filter(line -> line.contains("Dependency stage cache hit")).count());
+
+        List<String> compressionLog = new ArrayList<>();
+        Path preserveOutput = output();
+        RunnerJarBuilder.build(spec(preserveOutput)
+                .dependencies(List.of(new Dependency(multiReleaseDependency, null)))
+                .compression(Compression.PRESERVE)
+                .dependencyCache(cache)
+                .build(), logger(compressionLog));
+        assertEquals(1, compressionLog.stream().filter(line -> line.contains("Dependency stage cache miss")).count(),
+                "compression is part of the stage key");
+
+        List<String> finalLog = new ArrayList<>();
+        Path repeat = output();
+        RunnerJarBuilder.build(spec(repeat)
+                .dependencies(List.of(new Dependency(plainDependency, "old:first:1"),
+                        new Dependency(multiReleaseDependency, "old:second:1")))
+                .dependencyCache(cache)
+                .build(), logger(finalLog));
+        assertArrayEquals(expected, Files.readAllBytes(repeat), "cache reuse must preserve reproducible bytes");
+    }
+
+    @Test
+    void rejectsSameLengthDependencyStageTamperingAndCleansTemporaryFiles() throws IOException {
+        Path cache = Files.createDirectories(fixtures.resolve("damaged-dependency-stage-cache"));
+        RunnerJarSpec cached = spec(output()).dependencyCache(cache).build();
+        RunnerJarBuilder.build(cached, BuildLogger.noOp());
+        Path stage;
+        try (var paths = Files.walk(cache)) {
+            stage = paths.filter(path -> path.getFileName().toString().endsWith(".jar")).findFirst().orElseThrow();
+        }
+        byte[] damaged = Files.readAllBytes(stage);
+        damaged[10] ^= 1; // Change only the first local header's timestamp; the ZIP stays valid and the same size.
+        Files.write(stage, damaged);
+        try (ZipReader ignored = ZipReader.open(stage)) {
+            assertEquals(damaged.length, ignored.fileLength(), "the damaged stage remains structurally valid");
+        }
+
+        List<String> log = new ArrayList<>();
+        RunnerJarBuilder.build(spec(output()).dependencyCache(cache).build(), logger(log));
+
+        assertTrue(log.stream().anyMatch(line -> line.contains("Dependency stage cache miss")),
+                "a same-length cache entry with the wrong SHA-256 must be rebuilt, never trusted");
+        try (var paths = Files.walk(cache)) {
+            assertTrue(paths.noneMatch(path -> path.getFileName().toString().contains(".tmp-")),
+                    "failed or completed writes leave no temporary cache entries");
+        }
+    }
+
+    @Test
+    void dependencyStageFailureCleansTemporaryFiles() throws IOException {
+        Path cache = Files.createDirectories(fixtures.resolve("failed-dependency-stage-cache"));
+        Path dependency = corruptedDependency("failed-dependency-stage-cache/corrupt.jar");
+
+        assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output())
+                .dependencies(List.of(new Dependency(dependency)))
+                .dependencyCache(cache)
+                .build(), BuildLogger.noOp()));
+
+        try (var paths = Files.walk(cache)) {
+            assertTrue(paths.noneMatch(path -> path.getFileName().toString().contains(".tmp-")),
+                    "a failed repack must remove every temporary cache entry");
+        }
+    }
+
+    @Test
+    void dependencyCachePruningPreservesFilesItDoesNotOwn() throws IOException {
+        Path cache = Files.createDirectories(fixtures.resolve("dependency-stage-cache-with-notes"));
+        Path note = cache.resolve("notes.txt");
+        Path bucketNote = cache.resolve("aa/notes.txt");
+        write(note, "keep");
+        write(bucketNote, "keep this too");
+
+        RunnerJarBuilder.build(spec(output()).dependencyCache(cache).build(), BuildLogger.noOp());
+
+        assertEquals("keep", Files.readString(note));
+        assertEquals("keep this too", Files.readString(bucketNote));
+    }
+
+    @Test
+    void rejectsDependencyCacheOverlappingApplicationInputs() throws IOException {
+        Path cache = applicationResources.resolve("dependency-stages");
+        Files.createDirectories(cache);
+        try {
+            IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output())
+                    .dependencyCache(cache)
+                    .build(), BuildLogger.noOp()));
+            assertTrue(failure.getMessage().contains("dependency cache"));
+        } finally {
+            try (var paths = Files.walk(cache)) {
+                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(path);
+                }
+            }
+        }
+    }
+
+    @Test
+    void serializesBuildersThatShareADependencyCache() throws Exception {
+        Path cache = Files.createDirectories(fixtures.resolve("shared-dependency-stage-cache"));
+        CountDownLatch staged = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicReference<Throwable> firstFailure = new AtomicReference<>();
+        AtomicReference<Throwable> secondFailure = new AtomicReference<>();
+        Thread first = Thread.ofPlatform().start(() -> {
+            try {
+                RunnerJarBuilder.build(spec(output())
+                        .dependencies(List.of(new Dependency(multiReleaseDependency)))
+                        .dependencyCache(cache)
+                        .build(), new BuildLogger() {
+                            @Override
+                            public void info(String message) {
+                                if (message.startsWith("Dependency stage cache wrote ")) {
+                                    staged.countDown();
+                                    try {
+                                        if (!release.await(10, TimeUnit.SECONDS)) {
+                                            throw new AssertionError("the competing build never completed");
+                                        }
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                        throw new AssertionError(e);
+                                    }
+                                }
+                            }
+
+                            @Override
+                            public void warn(String message) {
+                            }
+                        });
+            } catch (Throwable failure) {
+                firstFailure.set(failure);
+            }
+        });
+        assertTrue(staged.await(10, TimeUnit.SECONDS), "the first build never staged its dependency");
+        Thread second = Thread.ofPlatform().start(() -> {
+            try {
+                RunnerJarBuilder.build(spec(output())
+                        .dependencies(List.of(new Dependency(plainDependency)))
+                        .dependencyCache(cache)
+                        .build(), BuildLogger.noOp());
+            } catch (Throwable failure) {
+                secondFailure.set(failure);
+            }
+        });
+
+        second.join(2_000);
+        boolean serialized = second.isAlive();
+        release.countDown();
+        first.join(10_000);
+        second.join(10_000);
+
+        assertTrue(serialized, "a competing build must wait while the shared cache is in use");
+        assertNull(firstFailure.get(), () -> "first build failed: " + firstFailure.get());
+        assertNull(secondFailure.get(), () -> "second build failed: " + secondFailure.get());
+    }
+
+    private static BuildLogger logger(List<String> messages) {
+        return new BuildLogger() {
+            @Override
+            public void info(String message) {
+                messages.add(message);
+            }
+
+            @Override
+            public void warn(String message) {
+                messages.add(message);
+            }
+        };
     }
 
     private static String resolved(RunnerJarReader reader, Index index, String name) throws IOException {
