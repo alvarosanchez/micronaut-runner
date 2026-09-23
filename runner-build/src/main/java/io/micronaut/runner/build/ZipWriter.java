@@ -333,6 +333,32 @@ public final class ZipWriter implements Closeable {
     }
 
     /**
+     * Writes and verifies an entry from another ZIP without materialising either compressed or expanded data.
+     * The source's recorded size and CRC are used for the local header, but become trusted only when
+     * {@link ZipReader#transfer(ZipEntryInfo, OutputStream)} has checked the complete payload.
+     *
+     * @param name        the target entry name
+     * @param source      the source ZIP reader
+     * @param sourceEntry the source ZIP entry
+     * @param dosTime     the MS-DOS date and time to store
+     * @return the absolute offset of the entry's first data byte
+     * @throws IOException if the source payload is invalid or cannot be read or written
+     */
+    public long writeEntry(String name, ZipReader source, ZipEntryInfo sourceEntry, int dosTime)
+            throws IOException {
+        Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(sourceEntry, "sourceEntry");
+        long length = sourceEntry.uncompressedSize();
+        long dataOffset = writeHeader(name, length, sourceEntry.crc32(), dosTime, false);
+        long transferred = source.transfer(sourceEntry, out);
+        if (transferred != length) {
+            throw new IOException("Entry '" + name + "' produced " + transferred + " of " + length + " bytes");
+        }
+        written += transferred;
+        return dataOffset;
+    }
+
+    /**
      * Registers an entry and advances over its declared payload without reading or writing that payload.
      * Available only on a writer created by {@link #layout(OutputStream, Instant)}.
      */

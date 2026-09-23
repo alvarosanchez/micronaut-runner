@@ -38,6 +38,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -61,6 +62,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * End to end tests for {@link RunnerJarBuilder}: real class files compiled by the JDK, real dependency jars
@@ -1153,6 +1155,35 @@ class RunnerJarBuilderTest {
         }
         Assumptions.assumeTrue(Files.isExecutable(candidate), "the JDK has no java executable");
         return candidate;
+    }
+
+    @Test
+    void packagesAndFullyVerifiesLargeJarResourcesInAConstrainedHeap() throws Exception {
+        String classpath = System.getProperty("runner.test.runtimeClasspath");
+        assertNotNull(classpath, "the test task supplies the forked JVM class path");
+        Path workspace = Files.createDirectories(fixtures.resolve("bounded-memory-worker"));
+        Path workerLog = workspace.resolve("worker.log");
+        Process process = new ProcessBuilder(
+                javaExecutable().toString(),
+                "-Xms16m", "-Xmx32m",
+                "-cp", classpath,
+                BoundedMemoryPackagingProbe.class.getName(),
+                workspace.toString(),
+                applicationClasses.resolve("com/example/Application.class").toString())
+                .redirectErrorStream(true)
+                .redirectOutput(workerLog.toFile())
+                .start();
+        if (!process.waitFor(3, TimeUnit.MINUTES)) {
+            process.destroyForcibly();
+            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "constrained packaging worker could not be stopped");
+            fail("constrained packaging worker timed out");
+        }
+        String processOutput = Files.readString(workerLog);
+        assertEquals(0, process.exitValue(), processOutput);
+        try (var children = Files.list(workspace)) {
+            assertTrue(children.noneMatch(path -> path.getFileName().toString().startsWith(".micronaut-runner-")),
+                    "the build must clean every spool/work directory");
+        }
     }
 
     private static void runManifestProbe(Path output, String order)

@@ -227,6 +227,12 @@ class ArchiveSourceTest {
         IOException failure = assertThrows(IOException.class,
                 () -> source.inflate(0, completeWithTrailingByte.length, 1));
         assertTrue(failure.getMessage().contains("unused compressed bytes"), failure.getMessage());
+        try (InputStream input = source.stream(0, completeWithTrailingByte.length, 1,
+                IndexFormat.METHOD_DEFLATED)) {
+            IOException streamFailure = assertThrows(IOException.class, input::readAllBytes);
+            assertTrue(streamFailure.getMessage().contains("unused compressed bytes"),
+                    streamFailure.getMessage());
+        }
     }
 
     @ParameterizedTest(name = "mapped={0}")

@@ -22,6 +22,7 @@ import io.micronaut.runner.IndexFormat;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -128,6 +129,19 @@ public final class RunnerJarReader implements Closeable {
             return source.readFully(offset, (int) uncompressed);
         }
         return source.inflate(offset, (int) compressed, (int) uncompressed);
+    }
+
+    /**
+     * Streams an entry without the Java-array size limit, enforcing the sizes and DEFLATE completion in the
+     * same way as the launcher's archive source.
+     *
+     * @param record an entry record index
+     * @return the entry stream, which the caller closes
+     * @throws IOException if the indexed region or compression metadata is invalid
+     */
+    public InputStream stream(int record) throws IOException {
+        return source.stream(index.entryDataOffset(record), index.entryCompressedSize(record),
+                index.entryUncompressedSize(record), index.entryMethod(record));
     }
 
     /**

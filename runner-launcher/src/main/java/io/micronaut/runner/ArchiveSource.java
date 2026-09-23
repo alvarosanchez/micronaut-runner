@@ -382,15 +382,15 @@ public final class ArchiveSource implements AutoCloseable {
                 throw new IOException("Stored entry at offset " + dataOffset + " has compressed size "
                         + compressedSize + " but uncompressed size " + uncompressedSize);
             }
-            return new EntryInputStream(new RegionInputStream(this, dataOffset, compressedSize),
-                    uncompressedSize, this, null);
+            RegionInputStream raw = new RegionInputStream(this, dataOffset, compressedSize);
+            return new EntryInputStream(raw, raw, uncompressedSize, this, null);
         }
         if (method != IndexFormat.METHOD_DEFLATED) {
             throw new IOException("Unsupported compression method " + method + " at offset " + dataOffset);
         }
         Inflater inflater = acquireInflater();
         RegionInputStream raw = new RegionInputStream(this, dataOffset, compressedSize);
-        return new EntryInputStream(new InflaterInputStream(raw, inflater, STREAM_BUFFER_SIZE),
+        return new EntryInputStream(new InflaterInputStream(raw, inflater, STREAM_BUFFER_SIZE), raw,
                 uncompressedSize, this, inflater);
     }
 
@@ -808,6 +808,10 @@ public final class ArchiveSource implements AutoCloseable {
         public int available() {
             return (int) Math.min(remaining, Integer.MAX_VALUE);
         }
+
+        private long remaining() {
+            return remaining;
+        }
     }
 
     /**
@@ -817,14 +821,17 @@ public final class ArchiveSource implements AutoCloseable {
     private static final class EntryInputStream extends InputStream {
 
         private final InputStream delegate;
+        private final RegionInputStream raw;
         private final ArchiveSource source;
         private final Inflater inflater;
         private long remaining;
         private boolean checkedTrailing;
         private boolean closed;
 
-        private EntryInputStream(InputStream delegate, long size, ArchiveSource source, Inflater inflater) {
+        private EntryInputStream(InputStream delegate, RegionInputStream raw, long size,
+                                 ArchiveSource source, Inflater inflater) {
             this.delegate = delegate;
+            this.raw = raw;
             this.source = source;
             this.inflater = inflater;
             this.remaining = size;
@@ -897,6 +904,16 @@ public final class ArchiveSource implements AutoCloseable {
             checkedTrailing = true;
             if (delegate.read() >= 0) {
                 throw new IOException("The entry holds more data than the index records");
+            }
+            if (inflater != null) {
+                if (!inflater.finished()) {
+                    throw new IOException("The deflate stream ended before its terminal block");
+                }
+                long unused = inflater.getRemaining() + raw.remaining();
+                if (unused != 0) {
+                    throw new IOException("The deflate stream ended with " + unused
+                            + " unused compressed bytes");
+                }
             }
         }
 
