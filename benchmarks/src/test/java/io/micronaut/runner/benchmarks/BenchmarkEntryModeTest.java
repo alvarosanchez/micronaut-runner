@@ -48,6 +48,7 @@ class BenchmarkEntryModeTest {
                 "thin-jar",
                 "shadow",
                 "runner-stored",
+                "runner-stored-cds",
                 "runner-stored-reflection",
                 "runner-preserve",
                 "runner-preserve-reflection",
@@ -58,6 +59,7 @@ class BenchmarkEntryModeTest {
     void reportsRequestedAndEffectiveEntryModes(@TempDir Path output) throws Exception {
         List<Variant> variants = List.of(
                 Variant.unavailable("runner-stored", "plugin-default fixture", "not built"),
+                Variant.unavailable("runner-stored-cds", "CDS fixture", "not trained"),
                 Variant.unavailable("runner-stored-reflection", "reflection fixture", "not built"),
                 Variant.unavailable("runner-extracted", "standard loader fixture", "not built"));
         RunContext context = new RunContext(output, "file:/repo", "1.0", output,
@@ -71,6 +73,7 @@ class BenchmarkEntryModeTest {
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"requestedEntryMode\": \"stub\""));
+        assertTrue(json.contains("\"applicationCacheMode\": \"cds-strict\""));
         assertTrue(json.contains("\"effectiveEntryMode\": null"));
         assertTrue(json.contains("\"requestedEntryMode\": \"reflection\""));
         assertTrue(json.contains("\"requestedEntryMode\": \"standard-loader\""));
@@ -78,6 +81,7 @@ class BenchmarkEntryModeTest {
         String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
         assertTrue(markdown.contains("| Variant | Requested entry | Effective entry | Packaging |"));
         assertTrue(markdown.contains("| `runner-stored` | stub | unavailable | plugin-default fixture |"));
+        assertTrue(markdown.contains("| `runner-stored-cds` | stub | unavailable | CDS fixture |"));
         assertTrue(markdown.contains("| `runner-stored-reflection` | reflection | unavailable | reflection fixture |"));
         assertTrue(markdown.contains("| `runner-extracted` | standard-loader | unavailable | standard loader fixture |"));
     }

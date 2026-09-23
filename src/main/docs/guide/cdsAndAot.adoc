@@ -22,20 +22,51 @@ name, class file size and CRC-32 match an archived one, the pre-parsed and pre-v
 instead of parsing the bytes again. So an archive is still worth creating; it simply does not carry the
 full benefit that AOT linking gives an ordinary classpath.
 
-== Two options
+== Keep the single JAR with CDS
 
-*Keep the single JAR.* Create a CDS archive in the usual way. The same command must be used for the
-training run and for production:
+Train only the immutable final Runner JAR. The training process must reach readiness, exercise a
+representative workload, and then terminate normally so HotSpot can write the archive:
 
 [source,bash]
 ----
-java -XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=app.jsa -jar my-app-0.1-all.jar
+java -XX:ArchiveClassesAtExit=app.jsa -jar my-app-0.1-all.jar
 ----
 
-`-XX:+AutoCreateSharedArchive` requires `-XX:SharedArchiveFile`; it creates the archive when it is missing
-or stale and reuses it otherwise.
+Bound every phase in deployment automation: build, readiness, workload requests, the normal-termination
+request, and process exit. Treat a nonzero exit or a missing or empty `app.jsa` as failed training. Do not
+train by killing the process after an arbitrary sleep: that neither proves the workload ran nor proves that
+archive generation completed.
 
-*Extract once, then get everything.* If the image is built once and started many times, extract at image
+Use strict sharing when a deployment requires its trained cache:
+
+[source,bash]
+----
+java -Xshare:on -XX:SharedArchiveFile=app.jsa -jar my-app-0.1-all.jar
+----
+
+`-Xshare:on` makes an absent, corrupt, or incompatible archive a launch failure. If continuing without the
+application cache is an intentional availability policy, select that explicitly with `-Xshare:auto` and
+monitor HotSpot's cache diagnostics. Do not describe that fallback launch as a CDS result.
+
+Store managed archives under an identity derived from the bytes of the final Runner JAR (which contains the
+ordered application and dependency bytes), the exact JDK runtime and VM build, architecture, and every JVM
+flag that can affect training or use. Changing any input selects a different archive instead of overwriting
+or accidentally reusing the old one. The repository's `runner-stored-cds` sample implements this lifecycle:
+
+[source,bash]
+----
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=12
+----
+
+It builds the sample once, trains after HTTP readiness, exercises `/hello`, calls a training-environment-only
+normal-termination endpoint, rejects missing or empty output, launches the exact same JAR and archive with
+strict sharing, and verifies `com.example.Application` came from the shared objects file. Only then does the
+archive become a benchmark launch input. The paired `runner-stored` row launches the same immutable JAR
+without an application archive.
+
+== Extract for full AOT linking
+
+If the image is built once and started many times, extract at image
 build time and run from the exploded layout, which uses no custom class loader at all and is therefore
 fully AOT-linkable:
 
@@ -51,15 +82,21 @@ it names, validating each by file size and modification time, so the whole depen
 
 == Verifying that it worked
 
-Do not assume an archive is being used. Check that your own classes are coming from it:
+Do not assume an archive is being used. Run diagnostics separately from timing and check that an application
+class, not merely a JDK class from the default archive, comes from the selected archive:
 
 [source,bash]
 ----
-java -XX:AOTCache=app.aot -Xlog:class+load -jar ./app/my-app.jar | grep 'shared objects file' | grep com.example
+java -Xshare:on -XX:SharedArchiveFile=app.jsa -Xlog:class+load -jar my-app-0.1-all.jar
+# Look for: com.example.Application source: shared objects file (top)
 ----
 
-`-Xlog:class+path=info` reports how the recorded class path was validated, which is the first thing to look
-at when a cache is silently ignored.
+For the extracted AOT path, use `-XX:AOTCache=app.aot` instead. `-Xlog:class+path=info` reports how a recorded
+class path was validated and is the first thing to inspect when a cache is ignored.
+
+IMPORTANT: Runner's custom-loader CDS reuses pre-parsed and pre-verified class data, but it does not turn the
+custom loader into a built-in loader and does not provide full built-in-loader AOT linking. Extracted-layout
+AOT caching is the path for that stronger optimization.
 
 NOTE: Measure before committing to either option. The cost and benefit depend on the size of the
 application and on how often the process starts, and the numbers move between JDK releases.

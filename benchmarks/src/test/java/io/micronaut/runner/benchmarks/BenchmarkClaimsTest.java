@@ -37,9 +37,12 @@ class BenchmarkClaimsTest {
         for (String variant : SampleBuild.variantNames()) {
             assertTrue(guide.contains("`" + variant + "`"), () -> "guide does not name " + variant);
         }
-        assertTrue(guide.contains("https://github.com/alvarosanchez/micronaut-runner/issues/44[#44]"));
         assertTrue(guide.contains("https://github.com/alvarosanchez/micronaut-runner/issues/45[#45]"));
-        assertTrue(normalizedGuide.contains("not measured by the current harness"));
+        assertTrue(normalizedGuide.contains("runner-stored-cds"));
+        assertTrue(normalizedGuide.contains("-Xshare:on"));
+        assertTrue(normalizedGuide.contains("-Xshare:auto"));
+        assertTrue(normalizedGuide.contains("application class"));
+        assertTrue(normalizedGuide.contains("custom-loader CDS"));
         assertTrue(normalizedGuide.contains("cold JVM"));
         assertTrue(normalizedGuide.contains("OS page cache"));
         assertTrue(normalizedGuide.contains("default JDK class sharing"));
@@ -70,7 +73,7 @@ class BenchmarkClaimsTest {
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"jvmProcessState\": \"fresh per sample\""));
         assertTrue(json.contains("\"osPageCacheState\": \"uncontrolled\""));
-        assertTrue(json.contains("\"applicationCacheMode\": \"none\""));
+        assertTrue(json.contains("\"applicationCacheMode\": \"per-variant\""));
         assertTrue(json.contains("aggregate shared counts do not prove trained application-class reuse"));
         assertTrue(json.contains("\"horizon\": \"spawn-through-shutdown\""));
         assertTrue(json.contains("-Xlog:class+load=info:file=${diagnostic-log}"));
@@ -78,7 +81,7 @@ class BenchmarkClaimsTest {
         String summary = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
         assertTrue(summary.contains("**JVM process**: fresh for every sample"));
         assertTrue(summary.contains("**OS page cache**: uncontrolled"));
-        assertTrue(summary.contains("**Application cache**: no trained CDS archive or AOT cache"));
+        assertTrue(summary.contains("**Application cache**: per variant"));
         assertTrue(summary.contains("spawn through completed shutdown"));
     }
 

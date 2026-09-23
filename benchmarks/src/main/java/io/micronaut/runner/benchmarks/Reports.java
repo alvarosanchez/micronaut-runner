@@ -89,7 +89,7 @@ final class Reports {
         out.append("  \"timingRunsCarryLoggingFlags\": false,\n");
         out.append("  \"jvmProcessState\": \"fresh per sample\",\n");
         out.append("  \"osPageCacheState\": \"uncontrolled\",\n");
-        out.append("  \"applicationCacheMode\": \"none\",\n");
+        out.append("  \"applicationCacheMode\": \"per-variant\",\n");
         appendProvenance(out, context.provenance());
         out.append(",\n");
         out.append("  \"environment\": {\n");
@@ -177,6 +177,19 @@ final class Reports {
         out.append("      \"effectiveEntryMode\": ")
                 .append(quote(variant.effectiveEntryMode() == null
                         ? null : variant.effectiveEntryMode().externalName())).append(",\n");
+        boolean cds = variant.name().endsWith("-cds");
+        out.append("      \"applicationCacheMode\": ")
+                .append(quote(cds ? "cds-strict" : "none")).append(",\n");
+        String cacheIdentity = cds && variant.available() && variant.launchInputs().size() > 1
+                ? variant.launchInputs().get(1).getParent().getFileName().toString() : null;
+        out.append("      \"cacheIdentity\": ").append(quote(cacheIdentity)).append(",\n");
+        out.append("      \"cacheLifecycle\": ")
+                .append(quote(cds && variant.available()
+                        ? "trained or reused, then verified before timing" : null)).append(",\n");
+        out.append("      \"cacheVerification\": ")
+                .append(quote(cds && variant.available()
+                        ? "application class reused from archive in a separate diagnostic launch" : null))
+                .append(",\n");
         out.append("      \"available\": ").append(variant.available()).append(",\n");
         out.append("      \"required\": ").append(context.requiredVariants().contains(variant.name()))
                 .append(",\n");
@@ -430,8 +443,9 @@ final class Reports {
         out.append("- **JVM process**: fresh for every sample\n");
         out.append("- **OS page cache**: uncontrolled; discarded warm-ups do not establish a controlled")
                 .append(" warm-cache or cold-filesystem-cache state\n");
-        out.append("- **Application cache**: no trained CDS archive or AOT cache; default JDK class")
-                .append(" sharing may still be active\n");
+        out.append("- **Application cache**: per variant. `runner-stored-cds` uses a verified trained CDS")
+                .append(" archive with strict loading; other rows select no application archive. Default JDK")
+                .append(" class sharing may still be active\n");
         out.append("- **Readiness**: first HTTP 200 from `").append(context.readinessPath())
                 .append("`, polled every 2 ms with one persistent client, timed on a single monotonic")
                 .append(" clock that starts immediately before the process is spawned\n");
