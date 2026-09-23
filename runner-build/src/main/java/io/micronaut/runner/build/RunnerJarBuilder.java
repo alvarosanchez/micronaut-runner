@@ -401,7 +401,7 @@ public final class RunnerJarBuilder {
                 }
                 requireSafeName(name, jar.toString());
                 byte[] content = reader.read(entry);
-                addApplicationEntry(name, ApplicationEntry.ofBytes(content), jar);
+                addApplicationEntry(name, ApplicationEntry.ofBytes(content, entry.crc32()), jar);
             }
         }
     }
@@ -638,7 +638,7 @@ public final class RunnerJarBuilder {
                 if (entry.directory() || !name.startsWith(LAUNCHER_PREFIX) || !name.endsWith(".class")) {
                     continue;
                 }
-                plan.add(PlannedEntry.ofBytes(name, reader.read(entry)));
+                plan.add(PlannedEntry.ofBytes(name, reader.read(entry), entry.crc32()));
             }
         }
     }
@@ -818,7 +818,7 @@ public final class RunnerJarBuilder {
             PlannedEntry entry = source.bytes == null
                     ? PlannedEntry.ofFile(IndexFormat.CLASSES_PREFIX + logicalName, source.file, source.size,
                         source.crc32)
-                    : PlannedEntry.ofBytes(IndexFormat.CLASSES_PREFIX + logicalName, source.bytes);
+                    : PlannedEntry.ofBytes(IndexFormat.CLASSES_PREFIX + logicalName, source.bytes, source.crc32);
             entry.indexEntry = applicationJar.addEntry(logicalName)
                     .sizes(entry.size, entry.size)
                     .crc32(entry.crc32)
@@ -1145,10 +1145,14 @@ public final class RunnerJarBuilder {
         }
 
         private static PlannedEntry ofBytes(String name, byte[] content) {
+            return ofBytes(name, content, crc32(content));
+        }
+
+        private static PlannedEntry ofBytes(String name, byte[] content, long crc32) {
             PlannedEntry entry = new PlannedEntry(name, false);
             entry.bytes = content;
             entry.size = content.length;
-            entry.crc32 = crc32(content);
+            entry.crc32 = crc32;
             return entry;
         }
 
@@ -1189,10 +1193,14 @@ public final class RunnerJarBuilder {
         private long crc32;
 
         private static ApplicationEntry ofBytes(byte[] content) {
+            return ofBytes(content, RunnerJarBuilder.crc32(content));
+        }
+
+        private static ApplicationEntry ofBytes(byte[] content, long crc32) {
             ApplicationEntry entry = new ApplicationEntry();
             entry.bytes = content;
             entry.size = content.length;
-            entry.crc32 = RunnerJarBuilder.crc32(content);
+            entry.crc32 = crc32;
             return entry;
         }
 

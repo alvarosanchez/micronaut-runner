@@ -36,6 +36,7 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
+import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -667,6 +668,65 @@ class ZipReaderTest {
     }
 
     @Test
+    void rejectsOversizedDeflatedOutputBeforeReadingItsCompressedInput() throws IOException {
+        Path jar = temp.resolve("oversized-deflated-output.jar");
+        try (ZipOutputStream ignored = new ZipOutputStream(Files.newOutputStream(jar))) {
+            // An empty archive is enough: the synthetic entry exercises validation order before any read.
+        }
+        long uncompressedSize = Integer.MAX_VALUE - 7L;
+        long compressedSize = 1;
+        ZipEntryInfo oversized = new ZipEntryInfo("large.bin", IndexFormat.METHOD_DEFLATED,
+                compressedSize, uncompressedSize, 0, 0, 0, Files.size(jar), false);
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            IOException failure = assertThrows(IOException.class, () -> reader.read(oversized));
+            assertTrue(failure.getMessage().contains("too large to read into memory"), failure.getMessage());
+        }
+    }
+
+    @Test
+    void readingAStoredEntryRejectsPayloadThatDoesNotMatchItsRecordedCrc() throws IOException {
+        byte[] recorded = "GOOD".getBytes(StandardCharsets.UTF_8);
+        Path jar = temp.resolve("stored-crc-mismatch.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "data.txt", recorded);
+        }
+        replaceEntryBytes(jar, "data.txt", recorded, "BOOD".getBytes(StandardCharsets.UTF_8));
+
+        assertCrcFailure(jar, "data.txt");
+    }
+
+    @Test
+    void readingADeflatedEntryRejectsPayloadThatDoesNotMatchItsRecordedCrc() throws IOException {
+        byte[] recorded = "GOOD".getBytes(StandardCharsets.UTF_8);
+        Path jar = temp.resolve("deflated-crc-mismatch.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            zip.setLevel(Deflater.NO_COMPRESSION);
+            deflated(zip, "data.txt", recorded);
+        }
+        replaceEntryBytes(jar, "data.txt", recorded, "BOOD".getBytes(StandardCharsets.UTF_8));
+
+        assertCrcFailure(jar, "data.txt");
+    }
+
+    @Test
+    void readingAnEntryRejectsADeclaredCrcThatDoesNotMatchItsPayload() throws IOException {
+        Path jar = temp.resolve("declared-crc-mismatch.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "data.txt", "GOOD".getBytes(StandardCharsets.UTF_8));
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        long wrongCrc = (intAt(archive, 14) & 0xFFFFFFFFL) ^ 1;
+        putInt(archive, 14, wrongCrc);
+        putInt(archive, central + 16, wrongCrc);
+        Files.write(jar, archive);
+
+        assertCrcFailure(jar, "data.txt");
+    }
+
+    @Test
     void readingADeflatedEntryRejectsMissingTerminalBlock() throws IOException {
         Path jar = temp.resolve("unterminated.jar");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
@@ -744,6 +804,42 @@ class ZipReaderTest {
         IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar), name);
         assertTrue(failure.getMessage().contains(jar.toString()), failure.getMessage());
         assertTrue(failure.getMessage().contains(name), failure.getMessage());
+    }
+
+    private static void replaceEntryBytes(Path jar, String name, byte[] expected, byte[] replacement)
+            throws IOException {
+        assertEquals(expected.length, replacement.length);
+        ZipEntryInfo entry;
+        try (ZipReader reader = ZipReader.open(jar)) {
+            entry = reader.entry(name).orElseThrow();
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int start = (int) entry.dataOffset();
+        int end = start + (int) entry.compressedSize();
+        int match = -1;
+        for (int at = start; at <= end - expected.length; at++) {
+            boolean equal = true;
+            for (int i = 0; i < expected.length; i++) {
+                equal &= archive[at + i] == expected[i];
+            }
+            if (equal) {
+                match = at;
+                break;
+            }
+        }
+        assertTrue(match >= 0, "the entry's compressed region must contain the fixture payload");
+        System.arraycopy(replacement, 0, archive, match, replacement.length);
+        Files.write(jar, archive);
+    }
+
+    private static void assertCrcFailure(Path jar, String name) throws IOException {
+        try (ZipReader reader = ZipReader.open(jar)) {
+            IOException failure = assertThrows(IOException.class,
+                    () -> reader.read(reader.entry(name).orElseThrow()));
+            assertTrue(failure.getMessage().contains(jar.toString()), failure.getMessage());
+            assertTrue(failure.getMessage().contains(name), failure.getMessage());
+            assertTrue(failure.getMessage().contains("CRC-32"), failure.getMessage());
+        }
     }
 
     static byte[] manifestBytes(String key, String value) throws IOException {
