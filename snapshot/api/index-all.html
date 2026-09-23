@@ -424,6 +424,14 @@ header.</div>
 <div class="block">Validates the dependency and normalises blank coordinates to <code>null</code>, so that the index never
 stores an empty string where "unknown" is meant.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#dependencyCache()" class="member-name-link">dependencyCache()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
+<dd>
+<div class="block">A content-addressed directory for reusable, verified dependency stages.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#dependencyCache(java.nio.file.Path)" class="member-name-link">dependencyCache(Path)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
+<dd>
+<div class="block">Enables content-addressed reuse of dependency staging in the supplied directory.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarResult.html#dependencyCount()" class="member-name-link">dependencyCount()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
 <div class="block">The number of nested dependency jars, which is every jar but the application layer.</div>
@@ -940,6 +948,10 @@ for byte.</div>
 <dd>
 <div class="block">Maven coordinates of the dependencies, keyed by absolute file path, recorded in the index so tooling
 can report what an archive contains.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getDependencyCacheDirectory()" class="member-name-link">getDependencyCacheDirectory()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
+<dd>
+<div class="block">Content-addressed dependency stages retained between executions and in the Gradle build cache.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getDependencyInputs()" class="member-name-link">getDependencyInputs()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
