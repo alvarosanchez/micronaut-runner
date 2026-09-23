@@ -179,10 +179,10 @@ assumed to remain immutable after it opens. The length comparison uses the sourc
 and each local-header check is cached after its first success; neither is ongoing mutation monitoring.</p>
 
 <h2 id="thread-safety-heading">Thread safety</h2>
-<p>Every accessor is a pure function of immutable state and uses absolute <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html" title="class or interface in java.nio" class="external-link"><code>ByteBuffer</code></a> reads, which
-do not touch the buffer position, so an instance is safe for concurrent use by any number of
-class-loading threads. <a href="#validateJar(int)"><code>validateJar(int)</code></a> writes a <code>boolean</code> into an array; the write is
-idempotent, so a race only means the check runs twice.</p></div>
+<p>Accessors use absolute <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html" title="class or interface in java.nio" class="external-link"><code>ByteBuffer</code></a> reads, which do not touch the buffer position, so an instance
+is safe for concurrent use by any number of class-loading threads. Package-name lookups lazily publish
+immutable, bounded per-jar hash tables through atomic references. <a href="#validateJar(int)"><code>validateJar(int)</code></a> writes a
+<code>boolean</code> into an array; the write is idempotent, so a race only means the check runs twice.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
