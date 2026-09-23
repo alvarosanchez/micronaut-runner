@@ -149,6 +149,15 @@ final class SyntheticArchive {
                 contributors, 16, 0, 1, 1, 0, true, true));
     }
 
+    /** Builds a one-dependency fixture whose manifest has exactly the requested package sections. */
+    static synchronized SyntheticArchive forPackageLookup(int packageSections) {
+        if (packageSections < 0) {
+            throw new IllegalArgumentException("package sections must not be negative");
+        }
+        return forShape(new WorkloadShape("package-lookup-" + packageSections,
+                1, Math.max(1, packageSections), 0, 1, 1, packageSections, false, false));
+    }
+
     private static SyntheticArchive forShape(WorkloadShape shape) {
         String name = shape.name();
         SyntheticArchive existing = SHARED.get(name);
@@ -262,6 +271,21 @@ final class SyntheticArchive {
                     + shape.entriesPerJar());
         }
         return classNames.subList(0, count).toArray(String[]::new);
+    }
+
+    /** Returns classes from the first generated package, in archive order. */
+    String[] samePackageSample(int count) {
+        String first = classNames.getFirst();
+        String packageName = first.substring(0, first.lastIndexOf('.'));
+        String[] sample = classNames.stream()
+                .filter(name -> name.startsWith(packageName + "."))
+                .limit(count)
+                .toArray(String[]::new);
+        if (sample.length != count) {
+            throw new IllegalArgumentException("package " + packageName + " holds " + sample.length
+                    + " classes, fewer than the requested " + count);
+        }
+        return sample;
     }
 
     /**

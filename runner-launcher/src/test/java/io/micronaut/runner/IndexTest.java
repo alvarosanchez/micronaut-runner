@@ -46,6 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class IndexTest {
 
     private static final String DEP = "MICRONAUT-INF/lib/dep.jar";
+    private static volatile int lookupResult;
 
     @TempDir
     Path temporary;
@@ -137,6 +138,84 @@ class IndexTest {
         assertTrue(index.entryPhysical(record));
         assertEquals(record, index.entryPhysicalIndex(record));
         assertEquals(IndexFormat.NO_INDEX, index.entryNextSameName(record));
+    }
+
+    @Test
+    void repeatedPackageLookupsDoNotDecodePackageNamesAgain() throws IOException {
+        TestIndexBuilder builder = new TestIndexBuilder();
+        TestIndexBuilder.Jar application = builder.addJar(IndexFormat.CLASSES_PREFIX);
+        String[] present = new String[64];
+        String[] missing = new String[64];
+        for (int i = 0; i < present.length; i++) {
+            present[i] = "org.example.package" + i;
+            missing[i] = "org.example.missing" + i;
+            application.addPackage(present[i]);
+        }
+        Index index = open(builder, true);
+
+        int result = exercisePackageLookups(index, present, missing, 20_000);
+        com.sun.management.ThreadMXBean allocation =
+                (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+        assertTrue(allocation.isThreadAllocatedMemorySupported(), "the test JVM must expose thread allocation");
+        if (!allocation.isThreadAllocatedMemoryEnabled()) {
+            allocation.setThreadAllocatedMemoryEnabled(true);
+        }
+        long thread = Thread.currentThread().threadId();
+        long before = allocation.getThreadAllocatedBytes(thread);
+        result += exercisePackageLookups(index, present, missing, 20_000);
+        long allocated = allocation.getThreadAllocatedBytes(thread) - before;
+        lookupResult = result;
+
+        assertTrue(allocated <= 4_096,
+                "repeated lookups allocated " + allocated + " bytes after warm-up");
+    }
+
+    private static int exercisePackageLookups(Index index, String[] present, String[] missing, int iterations) {
+        int result = 0;
+        for (int i = 0; i < iterations; i++) {
+            int slot = i & (present.length - 1);
+            result += index.findPackage(0, present[slot]);
+            result += index.findPackage(0, missing[slot]);
+        }
+        return result;
+    }
+
+    @Test
+    void packageLookupHandlesCollisionsUnicodeAndDuplicateSections() throws Exception {
+        TestIndexBuilder builder = new TestIndexBuilder();
+        builder.addJar(IndexFormat.CLASSES_PREFIX);
+        TestIndexBuilder.Jar application = builder.addJar(DEP);
+        application.addPackage("org.example.Aa").attributes(null, null, null, "first", null, null);
+        application.addPackage("org.example.BB").attributes(null, null, null, "collision", null, null);
+        application.addPackage("中文.包").attributes(null, null, null, "unicode", null, null);
+        application.addPackage("org.example.Aa").attributes(null, null, null, "duplicate", null, null);
+        Index index = open(builder, true);
+        java.lang.reflect.Field caches = Index.class.getDeclaredField("packageLookups");
+        caches.setAccessible(true);
+
+        assertNull(caches.get(index), "opening an index must not eagerly decode package metadata");
+        assertEquals(IndexFormat.NO_INDEX, index.findPackage(0, "org.example.Absent"));
+        assertNull(caches.get(index), "a zero-record jar must not allocate the package cache");
+
+        int first = index.findPackage(1, "org.example.Aa");
+        assertEquals(0, first, "the first matching manifest section keeps precedence");
+        assertEquals("first", index.packageImplTitle(first));
+        assertEquals(1, index.findPackage(1, "org.example.BB"));
+        assertEquals(2, index.findPackage(1, "中文.包"));
+        for (int i = 0; i < 1_000; i++) {
+            assertEquals(IndexFormat.NO_INDEX, index.findPackage(1, "org.example.missing" + i));
+        }
+
+        java.util.concurrent.atomic.AtomicReferenceArray<?> byJar =
+                (java.util.concurrent.atomic.AtomicReferenceArray<?>) caches.get(index);
+        assertEquals(2, byJar.length(), "the cache is bounded by the fixed jar table");
+        assertNull(byJar.get(0));
+        Object lookup = byJar.get(1);
+        java.lang.reflect.Field names = lookup.getClass().getDeclaredField("names");
+        names.setAccessible(true);
+        String[] indexed = (String[]) names.get(lookup);
+        assertEquals(3, java.util.Arrays.stream(indexed).filter(java.util.Objects::nonNull).count(),
+                "arbitrary misses must not be retained and duplicate sections share one slot");
     }
 
     @Test
