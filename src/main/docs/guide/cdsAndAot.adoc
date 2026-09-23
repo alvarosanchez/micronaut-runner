@@ -66,19 +66,92 @@ without an application archive.
 
 == Extract for full AOT linking
 
-If the image is built once and started many times, extract at image
-build time and run from the exploded layout, which uses no custom class loader at all and is therefore
-fully AOT-linkable:
+If the image is built once and started many times, extract at image build time and run from the exploded
+layout. The extracted application JAR's `Main-Class` and `Class-Path` manifest attributes make the JDK's
+built-in application class loader load the application and the ordered `lib/` JARs. There is no Runner custom
+loader in this path, so those classes are eligible for full AOT loading and linking.
+
+This one-command training interface requires JDK 25 or later (JEP 514). Vendor builds and platforms can still
+differ; first verify that the exact deployment JDK accepts `-XX:AOTCacheOutput`. An AOT cache is tied to that
+exact JDK/VM build and architecture. It is a HotSpot cache consumed by `java`; it is not GraalVM Native Image
+and does not produce a native executable.
+
+=== Reproducible repository workflow
+
+A fresh checkout can exercise the complete workflow, including build, extraction, bounded training, normal
+termination, cache verification and matched launches, with:
 
 [source,bash]
 ----
-java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination ./app
-java -XX:AOTCacheOutput=app.aot -jar ./app/my-app.jar     # training run
-java -XX:AOTCache=app.aot -jar ./app/my-app.jar           # production
+java -version                    # must be JDK 25 or later with AOTCacheOutput
+./gradlew :benchmarks:startupBenchmark \
+    -Pbenchmarks.iterations=1 \
+    -Prunner.integration=required
 ----
 
-HotSpot reads the `Class-Path` manifest attribute of the extracted application JAR and records every JAR
-it names, validating each by file size and modification time, so the whole dependency set is covered.
+The sample supplies a training-only `/cds-training/stop` endpoint, activated only in the training environment.
+The lifecycle waits at most 120 seconds, requires HTTP 200 readiness, exercises `/hello`, requests that endpoint,
+requires normal exit status zero, and then requires a nonempty cache. A separate diagnostic launch must show
+`com.example.Application` loading from the selected shared archive before the cache becomes a timing input.
+A timeout, nonzero exit, missing/empty output, unsupported option or failed class-reuse check makes the AOT
+variant unavailable; it never silently becomes a no-cache result.
+
+The matrix contains both `runner-extracted`/`runner-extracted-aot` and `shadow`/`shadow-aot`. Each pair uses
+identical artifact bytes, ordered class path, working directory, `/hello` readiness workload and JVM flags;
+the measured cached command differs only by `-XX:AOTCache=<cache>`. This provides equivalent training for the
+competing built-in-loader layouts rather than comparing a trained extracted Runner layout with an untrained
+Shadow JAR.
+
+The harness launches the real extracted application JAR with `-jar`; it reads and hashes that JAR followed by
+each real JAR named by its manifest `Class-Path`, in manifest order. It adds no helper JAR and no wrapper class
+to either measured class path. The training-only controller is already part of the identical application
+artifact used by both rows. If another application instead uses a helper or wrapper to obtain normal exit, keep
+that helper on both production class paths and include its bytes and position in the cache identity.
+
+=== Applying the workflow to an application
+
+Build and extract the immutable final Runner JAR before training. Extraction keeps the input base name, so this
+example produces `app/my-app-0.1-all.jar` plus `app/lib/*.jar`:
+
+[source,bash]
+----
+set -eu
+./gradlew micronautRunnerJar
+RUNNER_JAR=build/libs/my-app-0.1-all.jar
+LAYOUT=app
+APP_JAR="$LAYOUT/$(basename "$RUNNER_JAR")"
+CACHE=app.aot
+
+rm -rf "$LAYOUT" "$CACHE"
+java -Dmicronaut.runner.mode=extract -jar "$RUNNER_JAR" --destination "$LAYOUT"
+test -s "$APP_JAR"
+
+# The application must provide bounded readiness/workload checks and a supported
+# normal-termination action. Do not replace this lifecycle with an arbitrary sleep/kill.
+MICRONAUT_ENVIRONMENTS=cache-training \
+    java -XX:AOTCacheOutput="$CACHE" -jar "$APP_JAR"
+test -s "$CACHE"
+
+java -XX:AOTCache="$CACHE" -jar "$APP_JAR"
+----
+
+`AOTCacheOutput` does not make a long-running server stop. The training invocation above is complete only when
+the application's documented training mode performs its bounded readiness and representative workload, then
+terminates the application normally. The repository sample's HTTP orchestration is one concrete implementation.
+Killing the training JVM after a sleep is not equivalent and can leave no completed cache. Deployment automation
+must check both exit status and `test -s "$CACHE"` before publishing it.
+
+Treat the extracted application JAR, every manifest class-path JAR and the cache as one immutable versioned
+release. A managed cache key must include the ordered names and bytes of all those artifacts, the exact
+`java.runtime.version`, VM name/version, architecture, launch and training JVM flags, and workload/termination
+contract. Changing any input selects a different cache. The benchmark implementation does exactly that and
+re-verifies an existing keyed cache before reuse. It also removes `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`,
+`_JAVA_OPTIONS` and `JDK_AOT_VM_OPTIONS`; production tooling must either remove them or include their effective
+values in the key.
+
+Report the extracted runtime deployment bytes without folding in the optional AOT file. Report cache bytes,
+training cost and total preparation/verification cost separately from deployment bytes and HTTP readiness, as
+the benchmark's `results.json` and `summary.md` do.
 
 == Verifying that it worked
 
@@ -89,10 +162,13 @@ class, not merely a JDK class from the default archive, comes from the selected 
 ----
 java -Xshare:on -XX:SharedArchiveFile=app.jsa -Xlog:class+load -jar my-app-0.1-all.jar
 # Look for: com.example.Application source: shared objects file (top)
+
+java -XX:AOTCache=app.aot -Xlog:class+load -jar app/my-app-0.1-all.jar
+# Look for the same application class from the selected shared objects file.
 ----
 
-For the extracted AOT path, use `-XX:AOTCache=app.aot` instead. `-Xlog:class+path=info` reports how a recorded
-class path was validated and is the first thing to inspect when a cache is ignored.
+`-Xlog:class+path=info` reports how an AOT cache's recorded class path was validated and is the first thing to
+inspect when a cache is rejected or disabled. Keep this logging out of readiness timing.
 
 IMPORTANT: Runner's custom-loader CDS reuses pre-parsed and pre-verified class data, but it does not turn the
 custom loader into a built-in loader and does not provide full built-in-loader AOT linking. Extracted-layout

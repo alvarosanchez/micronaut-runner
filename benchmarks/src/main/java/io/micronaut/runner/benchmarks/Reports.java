@@ -177,19 +177,24 @@ final class Reports {
         out.append("      \"effectiveEntryMode\": ")
                 .append(quote(variant.effectiveEntryMode() == null
                         ? null : variant.effectiveEntryMode().externalName())).append(",\n");
-        boolean cds = variant.name().endsWith("-cds");
-        out.append("      \"applicationCacheMode\": ")
-                .append(quote(cds ? "cds-strict" : "none")).append(",\n");
-        String cacheIdentity = cds && variant.available() && variant.launchInputs().size() > 1
-                ? variant.launchInputs().get(1).getParent().getFileName().toString() : null;
-        out.append("      \"cacheIdentity\": ").append(quote(cacheIdentity)).append(",\n");
+        CacheInfo cache = variant.cache();
+        String cacheMode = cacheMode(variant);
+        out.append("      \"applicationCacheMode\": ").append(quote(cacheMode)).append(",\n");
+        out.append("      \"cacheIdentity\": ")
+                .append(quote(cache == null ? null : cache.identity())).append(",\n");
         out.append("      \"cacheLifecycle\": ")
-                .append(quote(cds && variant.available()
-                        ? "trained or reused, then verified before timing" : null)).append(",\n");
+                .append(quote(cache == null ? null : cache.lifecycle())).append(",\n");
         out.append("      \"cacheVerification\": ")
-                .append(quote(cds && variant.available()
-                        ? "application class reused from archive in a separate diagnostic launch" : null))
+                .append(quote(cache == null ? null : cache.verification())).append(",\n");
+        out.append("      \"cacheBytes\": ")
+                .append(cache == null ? "null" : cache.bytes()).append(",\n");
+        out.append("      \"cachePreparationMillis\": ")
+                .append(cache == null ? "null" : cache.preparationMillis()).append(",\n");
+        out.append("      \"trainingMillis\": ")
+                .append(cache == null || cache.trainingMillis() < 0 ? "null" : cache.trainingMillis())
                 .append(",\n");
+        out.append("      \"cacheReused\": ")
+                .append(cache == null ? "null" : cache.reused()).append(",\n");
         out.append("      \"available\": ").append(variant.available()).append(",\n");
         out.append("      \"required\": ").append(context.requiredVariants().contains(variant.name()))
                 .append(",\n");
@@ -443,9 +448,10 @@ final class Reports {
         out.append("- **JVM process**: fresh for every sample\n");
         out.append("- **OS page cache**: uncontrolled; discarded warm-ups do not establish a controlled")
                 .append(" warm-cache or cold-filesystem-cache state\n");
-        out.append("- **Application cache**: per variant. `runner-stored-cds` uses a verified trained CDS")
-                .append(" archive with strict loading; other rows select no application archive. Default JDK")
-                .append(" class sharing may still be active\n");
+        out.append("- **Application cache**: per variant. `runner-stored-cds` uses verified custom-loader")
+                .append(" CDS; `shadow-aot` and `runner-extracted-aot` use verified built-in-loader JDK AOT")
+                .append(" caches. Their paired rows select no application archive. Default JDK class sharing")
+                .append(" may still be active\n");
         out.append("- **Readiness**: first HTTP 200 from `").append(context.readinessPath())
                 .append("`, polled every 2 ms with one persistent client, timed on a single monotonic")
                 .append(" clock that starts immediately before the process is spawned\n");
@@ -495,6 +501,7 @@ final class Reports {
         out.append('\n');
 
         appendDeploymentSizes(out, results);
+        appendCachePreparation(out, results);
         appendPairedComparisons(out, context, results);
         appendIncompleteDetails(out, context, results, status);
 
@@ -573,6 +580,47 @@ final class Reports {
             }
         }
         out.append('\n');
+    }
+
+    private static void appendCachePreparation(StringBuilder out, List<VariantResult> results) {
+        out.append("## Application-cache preparation\n\n");
+        out.append("Cache bytes and build-time preparation are reported separately from complete deployment")
+                .append(" bytes and runtime readiness. A reused cache has no training cost in this invocation;")
+                .append(" preparation still includes its verification launch.\n\n");
+        out.append("| Variant | Mode | Cache bytes | Training cost | Preparation cost | Reused |\n")
+                .append("|---|---|---:|---:|---:|---|\n");
+        for (VariantResult result : results) {
+            CacheInfo cache = result.variant().cache();
+            if (cache == null) {
+                String mode = cacheMode(result.variant());
+                out.append("| `").append(result.variant().name()).append("` | ").append(mode);
+                if (!result.variant().available() && !"none".equals(mode)) {
+                    out.append(" (unavailable)");
+                }
+                out.append(" | — | — | — | — |\n");
+                continue;
+            }
+            out.append("| `").append(result.variant().name()).append("` | ").append(cache.mode())
+                    .append(" | ").append(exactSize(cache.bytes()))
+                    .append(" | ").append(cache.trainingMillis() < 0 ? "not trained (reused)"
+                            : cache.trainingMillis() + " ms")
+                    .append(" | ").append(cache.preparationMillis()).append(" ms")
+                    .append(" | ").append(cache.reused()).append(" |\n");
+        }
+        out.append('\n');
+    }
+
+    private static String cacheMode(Variant variant) {
+        if (variant.cache() != null) {
+            return variant.cache().mode();
+        }
+        if (variant.name().endsWith("-cds")) {
+            return "cds-strict";
+        }
+        if (variant.name().endsWith("-aot")) {
+            return "aot";
+        }
+        return "none";
     }
 
     private static void appendPairedComparisons(StringBuilder out,

@@ -47,7 +47,7 @@ class BenchmarkProvenanceTest {
         String left = Files.readString(firstOutput.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         String right = Files.readString(secondOutput.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertEquals(left, right);
-        assertTrue(left.contains("\"schemaVersion\": 2"));
+        assertTrue(left.contains("\"schemaVersion\": 3"));
         assertTrue(left.contains("\"id\": \"input:0\""));
         assertTrue(left.contains("\"id\": \"input:1\""));
         assertTrue(left.indexOf("\"id\": \"input:0\"") < left.indexOf("\"id\": \"input:1\""));
@@ -181,6 +181,7 @@ class BenchmarkProvenanceTest {
     void environmentPolicyRecordsPresenceButRedactsInjectedValues(@TempDir Path output) throws Exception {
         Map<String, String> environment = new HashMap<>();
         environment.put("JAVA_TOOL_OPTIONS", "-Dpassword=top-secret");
+        environment.put("JDK_AOT_VM_OPTIONS", "-Dpassword=aot-secret");
         BenchmarkProvenance provenance = BenchmarkProvenance.capture(output, output, environment);
         RunContext context = context(output, provenance);
         Variant unavailable = Variant.unavailable("fixture", "fixture", "not built");
@@ -192,7 +193,9 @@ class BenchmarkProvenanceTest {
         assertTrue(json.contains("\"JAVA_TOOL_OPTIONS\": {\"present\": true, \"action\": \"removed\","));
         assertTrue(json.contains("\"value\": \"<redacted:ambient-jvm-options>\""));
         assertTrue(json.contains("\"JDK_JAVA_OPTIONS\": {\"present\": false, \"action\": \"removed\""));
+        assertTrue(json.contains("\"JDK_AOT_VM_OPTIONS\": {\"present\": true, \"action\": \"removed\""));
         assertFalse(json.contains("top-secret"));
+        assertFalse(json.contains("aot-secret"));
         assertTrue(json.contains("\"totalMemoryBytes\":"));
         assertTrue(json.contains("\"javaRuntimeVersion\":"));
     }

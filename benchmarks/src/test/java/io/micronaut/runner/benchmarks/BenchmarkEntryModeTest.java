@@ -30,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,12 +48,14 @@ class BenchmarkEntryModeTest {
                 "exploded-cp",
                 "thin-jar",
                 "shadow",
+                "shadow-aot",
                 "runner-stored",
                 "runner-stored-cds",
                 "runner-stored-reflection",
                 "runner-preserve",
                 "runner-preserve-reflection",
-                "runner-extracted"), SampleBuild.variantNames());
+                "runner-extracted",
+                "runner-extracted-aot"), SampleBuild.variantNames());
     }
 
     @Test
@@ -128,6 +131,30 @@ class BenchmarkEntryModeTest {
         assertTrue(failure.getMessage().contains("entry stub was requested"));
     }
 
+    @Test
+    void extractedVariantLaunchesTheActualApplicationJarAndManifestClasspathInOrder(@TempDir Path output)
+            throws Exception {
+        Path classes = compile(output.resolve("extracted-input"), "fixture.ExtractedMain", """
+                package fixture;
+                public final class ExtractedMain {
+                    public static void main(String[] args) { }
+                }
+                """);
+        Path dependencyOne = emptyJar(output.resolve("first dependency.jar"));
+        Path dependencyTwo = emptyJar(output.resolve("second.jar"));
+        Variant runner = SampleBuild.runnerJar(output, "extract-source", "fixture.ExtractedMain",
+                List.of(classes), List.of(dependencyOne, dependencyTwo), Compression.STORED, EntryMode.STUB);
+
+        Variant extracted = SampleBuild.extractedRunner(output, runner, "runner-extracted");
+
+        assertEquals(EntryMode.STANDARD_LOADER, extracted.effectiveEntryMode());
+        assertEquals("-jar", extracted.command().get(1));
+        assertEquals(extracted.launchInputs().get(0).toAbsolutePath().toString(), extracted.command().get(2));
+        assertEquals(3, extracted.launchInputs().size());
+        assertEquals("first dependency.jar", extracted.launchInputs().get(1).getFileName().toString());
+        assertEquals("second.jar", extracted.launchInputs().get(2).getFileName().toString());
+    }
+
     private static Path compile(Path fixture, String className, String source) throws IOException {
         Path sources = fixture.resolve("src");
         Path classes = fixture.resolve("classes");
@@ -139,6 +166,12 @@ class BenchmarkEntryModeTest {
                 "-d", classes.toString(), sourceFile.toString());
         assertEquals(0, exit, "fixture compilation failed");
         return classes;
+    }
+
+    private static Path emptyJar(Path path) throws IOException {
+        try (JarOutputStream ignored = new JarOutputStream(Files.newOutputStream(path))) {
+            return path;
+        }
     }
 
     private static void assertRunnerIndex(Path artifact, boolean stubExpected) throws IOException {

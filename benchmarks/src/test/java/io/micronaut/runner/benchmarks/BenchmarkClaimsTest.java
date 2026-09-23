@@ -37,8 +37,17 @@ class BenchmarkClaimsTest {
         for (String variant : SampleBuild.variantNames()) {
             assertTrue(guide.contains("`" + variant + "`"), () -> "guide does not name " + variant);
         }
-        assertTrue(guide.contains("https://github.com/alvarosanchez/micronaut-runner/issues/45[#45]"));
+        assertFalse(guide.contains("https://github.com/alvarosanchez/micronaut-runner/issues/45[#45]"));
         assertTrue(normalizedGuide.contains("runner-stored-cds"));
+        assertTrue(normalizedGuide.contains("shadow-aot"));
+        assertTrue(normalizedGuide.contains("runner-extracted-aot"));
+        assertTrue(normalizedGuide.contains("-XX:AOTCacheOutput"));
+        assertTrue(normalizedGuide.contains("-XX:AOTCache="));
+        assertTrue(normalizedGuide.contains("JDK 25"));
+        assertTrue(normalizedGuide.contains("GraalVM Native Image"));
+        assertTrue(normalizedGuide.contains("no helper"));
+        assertTrue(normalizedGuide.contains("cache bytes"));
+        assertTrue(normalizedGuide.contains("training cost"));
         assertTrue(normalizedGuide.contains("-Xshare:on"));
         assertTrue(normalizedGuide.contains("-Xshare:auto"));
         assertTrue(normalizedGuide.contains("application class"));
@@ -64,8 +73,11 @@ class BenchmarkClaimsTest {
         RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
                 1, 0, 1, "/hello", false, "2026-09-22T00:00:00Z");
         Variant variant = Variant.unavailable("exploded-cp", "test", "not built");
+        Variant unavailableAot = Variant.unavailable("runner-extracted-aot", "test", "training failed");
         Reports.write(output, context,
-                List.of(new VariantResult(variant, -1, List.of(), null, null, null, List.of())),
+                List.of(
+                        new VariantResult(variant, -1, List.of(), null, null, null, List.of()),
+                        new VariantResult(unavailableAot, -1, List.of(), null, null, null, List.of())),
                 List.of(new StartupHarness.ClassLoadCount("exploded-cp", 12, 3, 42.0,
                         StartupHarness.DIAGNOSTIC_HORIZON,
                         List.of("${java}", "-Xlog:class+load=info:file=${diagnostic-log}", "-jar", "${input:0}"))));
@@ -82,6 +94,7 @@ class BenchmarkClaimsTest {
         assertTrue(summary.contains("**JVM process**: fresh for every sample"));
         assertTrue(summary.contains("**OS page cache**: uncontrolled"));
         assertTrue(summary.contains("**Application cache**: per variant"));
+        assertTrue(summary.contains("| `runner-extracted-aot` | aot (unavailable) | — | — | — | — |"));
         assertTrue(summary.contains("spawn through completed shutdown"));
     }
 
@@ -91,11 +104,13 @@ class BenchmarkClaimsTest {
         builder.environment().put("JAVA_TOOL_OPTIONS", "-XX:SharedArchiveFile=unexpected.jsa");
         builder.environment().put("JDK_JAVA_OPTIONS", "-XX:AOTCache=unexpected.aot");
         builder.environment().put("_JAVA_OPTIONS", "-Xshare:off");
+        builder.environment().put("JDK_AOT_VM_OPTIONS", "-Xmx2g");
 
         StartupHarness.removeInheritedJvmOptions(builder);
 
         assertFalse(builder.environment().containsKey("JAVA_TOOL_OPTIONS"));
         assertFalse(builder.environment().containsKey("JDK_JAVA_OPTIONS"));
         assertFalse(builder.environment().containsKey("_JAVA_OPTIONS"));
+        assertFalse(builder.environment().containsKey("JDK_AOT_VM_OPTIONS"));
     }
 }

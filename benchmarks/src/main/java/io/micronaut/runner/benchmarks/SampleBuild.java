@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.jar.Attributes;
+import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
@@ -77,12 +78,14 @@ final class SampleBuild {
     private static final String EXPLODED_CLASSPATH = "exploded-cp";
     private static final String THIN_JAR = "thin-jar";
     private static final String SHADOW = "shadow";
+    private static final String SHADOW_AOT = "shadow-aot";
     private static final String RUNNER_STORED = "runner-stored";
     private static final String RUNNER_STORED_CDS = "runner-stored-cds";
     private static final String RUNNER_STORED_REFLECTION = "runner-stored-reflection";
     private static final String RUNNER_PRESERVE = "runner-preserve";
     private static final String RUNNER_PRESERVE_REFLECTION = "runner-preserve-reflection";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
+    private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
 
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
@@ -209,10 +212,10 @@ final class SampleBuild {
      * @return the canonical variant names
      */
     static List<String> variantNames() {
-        return List.of(EXPLODED_CLASSPATH, THIN_JAR, SHADOW,
+        return List.of(EXPLODED_CLASSPATH, THIN_JAR, SHADOW, SHADOW_AOT,
                 RUNNER_STORED, RUNNER_STORED_CDS, RUNNER_STORED_REFLECTION,
                 RUNNER_PRESERVE, RUNNER_PRESERVE_REFLECTION,
-                RUNNER_EXTRACTED);
+                RUNNER_EXTRACTED, RUNNER_EXTRACTED_AOT);
     }
 
     /** Keeps the complete required matrix visible when the shared sample build fails. */
@@ -224,6 +227,8 @@ final class SampleBuild {
                         "Application jar with a Class-Path manifest pointing at lib/", reason),
                 Variant.unavailable(SHADOW,
                         "Everything flattened into one jar by the Shadow plugin", reason),
+                Variant.unavailable(SHADOW_AOT,
+                        "The same Shadow jar with a verified built-in-loader JDK AOT cache", reason),
                 Variant.unavailable(RUNNER_STORED,
                         "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub", reason),
                 Variant.unavailable(RUNNER_STORED_CDS,
@@ -235,7 +240,9 @@ final class SampleBuild {
                 Variant.unavailable(RUNNER_PRESERVE_REFLECTION,
                         "Runner jar, nested dependencies copied byte for byte; reflection ablation", reason),
                 Variant.unavailable(RUNNER_EXTRACTED,
-                        "Runner jar unpacked and run by the JDK's own loader", reason));
+                        "Runner jar unpacked and run by the JDK's own loader", reason),
+                Variant.unavailable(RUNNER_EXTRACTED_AOT,
+                        "The same extracted layout with a verified built-in-loader JDK AOT cache", reason));
     }
 
     /**
@@ -251,9 +258,13 @@ final class SampleBuild {
         variants.add(attempt(THIN_JAR,
                 "Application jar with a Class-Path manifest pointing at lib/",
                 this::thinJar));
-        variants.add(attempt(SHADOW,
+        Variant shadow = attempt(SHADOW,
                 "Everything flattened into one jar by the Shadow plugin",
-                this::shadowJar));
+                this::shadowJar);
+        variants.add(shadow);
+        variants.add(attempt(SHADOW_AOT,
+                "The same Shadow jar with a verified built-in-loader JDK AOT cache",
+                () -> AotCache.prepare(shadow, SHADOW_AOT, aotRequest())));
         Variant stored = attempt(RUNNER_STORED,
                 "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub",
                 () -> runnerJar(RUNNER_STORED, Compression.STORED, EntryMode.STUB));
@@ -273,10 +284,20 @@ final class SampleBuild {
         variants.add(attempt(RUNNER_PRESERVE_REFLECTION,
                 "Runner jar, nested dependencies copied byte for byte; reflection ablation",
                 () -> runnerJar(RUNNER_PRESERVE_REFLECTION, Compression.PRESERVE, EntryMode.REFLECTION)));
-        variants.add(attempt(RUNNER_EXTRACTED,
+        Variant extracted = attempt(RUNNER_EXTRACTED,
                 "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
-                () -> extracted(stored)));
+                () -> extracted(stored));
+        variants.add(extracted);
+        variants.add(attempt(RUNNER_EXTRACTED_AOT,
+                "The same extracted layout with a verified built-in-loader JDK AOT cache",
+                () -> AotCache.prepare(extracted, RUNNER_EXTRACTED_AOT, aotRequest())));
         return variants;
+    }
+
+    private AotCache.Request aotRequest() {
+        return new AotCache.Request(artifacts.resolve("managed-aot"), "/hello", List.of("/hello"),
+                "/cds-training/stop", java.time.Duration.ofSeconds(CDS_TIMEOUT_SECONDS),
+                mainClass, List.of(), log);
     }
 
     private Variant attempt(String name, String description, VariantFactory factory) {
@@ -431,6 +452,11 @@ final class SampleBuild {
     }
 
     private Variant extracted(Variant stored) throws IOException, InterruptedException {
+        return extractedRunner(artifacts, stored, RUNNER_EXTRACTED);
+    }
+
+    static Variant extractedRunner(Path artifacts, Variant stored, String name)
+            throws IOException, InterruptedException {
         if (!stored.available()) {
             throw new IOException("there is no runner jar to extract: " + stored.unavailableReason());
         }
@@ -461,9 +487,35 @@ final class SampleBuild {
                 applicationJar.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(
                 DeploymentSize.input("extracted-layout", destination));
-        return Variant.available(RUNNER_EXTRACTED,
+        List<Path> launchInputs = manifestClassPath(applicationJar);
+        return Variant.available(name,
                 "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
-                run, destination, destination, deploymentSize);
+                run, destination, destination, deploymentSize, launchInputs);
+    }
+
+    private static List<Path> manifestClassPath(Path applicationJar) throws IOException {
+        List<Path> inputs = new ArrayList<>();
+        inputs.add(applicationJar);
+        try (JarFile jar = new JarFile(applicationJar.toFile())) {
+            Manifest manifest = jar.getManifest();
+            String classPath = manifest == null ? null
+                    : manifest.getMainAttributes().getValue(Attributes.Name.CLASS_PATH);
+            if (classPath == null || classPath.isBlank()) {
+                return List.copyOf(inputs);
+            }
+            for (String entry : classPath.trim().split("\\s+")) {
+                java.net.URI resolved = applicationJar.toUri().resolve(entry);
+                if (!"file".equalsIgnoreCase(resolved.getScheme())) {
+                    throw new IOException("extracted manifest Class-Path entry is not a file URI: " + entry);
+                }
+                Path input = Path.of(resolved).toAbsolutePath().normalize();
+                if (!Files.isRegularFile(input)) {
+                    throw new IOException("extracted manifest Class-Path entry does not exist: " + entry);
+                }
+                inputs.add(input);
+            }
+        }
+        return List.copyOf(inputs);
     }
 
     /**

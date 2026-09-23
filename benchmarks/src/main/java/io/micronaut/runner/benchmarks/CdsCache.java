@@ -78,6 +78,7 @@ final class CdsCache {
     }
 
     static Variant prepare(Variant source, String name, Request request) throws IOException, InterruptedException {
+        long preparationStarted = System.nanoTime();
         if (!source.available()) {
             throw new IOException("cannot train CDS because " + source.name() + " is unavailable");
         }
@@ -103,21 +104,27 @@ final class CdsCache {
                 reuse = false;
             }
         }
+        long trainingMillis = -1;
         if (!reuse) {
+            long trainingStarted = System.nanoTime();
             train(source, archive, request);
+            trainingMillis = elapsedMillis(trainingStarted);
             request.log().println("[startup-benchmark] trained CDS cache " + identity);
             verify(source, archive, request);
         }
 
         List<String> command = launchCommand(source, archive, SharingPolicy.STRICT);
-        DeploymentSize deploymentSize = DeploymentSize.measure(
-                DeploymentSize.input("archive", source.artifact()),
-                DeploymentSize.input("cds-cache", archive));
+        List<Path> launchInputs = new ArrayList<>(source.launchInputs());
+        launchInputs.add(archive);
+        CacheInfo cache = new CacheInfo("cds-strict", identity, Files.size(archive),
+                elapsedMillis(preparationStarted), trainingMillis, reuse,
+                "trained or reused, then verified before timing",
+                "application class reused from archive in a separate diagnostic launch");
         return new Variant(name,
                 source.description() + "; verified application-class CDS; strict archive loading",
-                command, source.workingDirectory(), source.artifact(), deploymentSize,
+                command, source.workingDirectory(), source.artifact(), source.deploymentSize(),
                 source.requestedEntryMode(), source.effectiveEntryMode(), true, null,
-                List.of(source.artifact(), archive));
+                launchInputs, cache);
     }
 
     static String identity(Path artifact,
@@ -178,7 +185,7 @@ final class CdsCache {
         List<String> command = withJvmArguments(source.command(), List.of(
                 "-Xshare:auto",
                 "-XX:ArchiveClassesAtExit=" + temporary.toAbsolutePath().normalize()));
-        runLifecycle(source, command, request, null);
+        runLifecycle(source, command, request, null, "CDS");
         requireUsableArchive(temporary);
         try {
             Files.move(temporary, archive, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
@@ -196,7 +203,7 @@ final class CdsCache {
         List<String> command = new ArrayList<>(launchCommand(source, archive, SharingPolicy.STRICT));
         command = withJvmArguments(command, List.of(
                 "-Xlog:class+load=info:file=" + classLog.toAbsolutePath().normalize()));
-        runLifecycle(source, command, request, archive);
+        runLifecycle(source, command, request, archive, "CDS");
         if (!Files.isRegularFile(classLog)) {
             throw new IOException("CDS verification produced no class-load log");
         }
@@ -212,10 +219,11 @@ final class CdsCache {
                 + " is reused from CDS cache");
     }
 
-    private static void runLifecycle(Variant source,
-                                     List<String> command,
-                                     Request request,
-                                     Path archive) throws IOException, InterruptedException {
+    static void runLifecycle(Variant source,
+                             List<String> command,
+                             Request request,
+                             Path archive,
+                             String cacheKind) throws IOException, InterruptedException {
         int port = StartupHarness.freePort();
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(source.workingDirectory().toFile())
@@ -238,24 +246,24 @@ final class CdsCache {
                 .build()) {
             process = builder.start();
             drain = drain(process, output, drainFailure);
-            awaitReadiness(client, process, port, request.readinessPath(), deadline, output);
+            awaitReadiness(client, process, port, request.readinessPath(), deadline, output, cacheKind);
             for (String path : request.workloadPaths()) {
                 requireOk(client, port, path, "training workload", false);
             }
             requireOk(client, port, request.terminationPath(), "normal termination request", true);
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0 || !process.waitFor(remaining, TimeUnit.NANOSECONDS)) {
-                throw new IOException("CDS lifecycle did not terminate normally within " + request.timeout()
-                        + tail(output));
+                throw new IOException(cacheKind + " lifecycle did not terminate normally within "
+                        + request.timeout() + tail(output));
             }
             if (process.exitValue() != 0) {
-                throw new IOException("CDS lifecycle exited with status " + process.exitValue()
+                throw new IOException(cacheKind + " lifecycle exited with status " + process.exitValue()
                         + (archive == null ? " while training" : " while verifying " + archive.getFileName())
                         + tail(output));
             }
             drain.join(Math.max(1, REQUEST_TIMEOUT.toMillis()));
             if (drainFailure.get() != null) {
-                throw new IOException("could not capture CDS lifecycle output", drainFailure.get());
+                throw new IOException("could not capture " + cacheKind + " lifecycle output", drainFailure.get());
             }
         } finally {
             if (process != null && process.isAlive()) {
@@ -272,10 +280,11 @@ final class CdsCache {
                                        int port,
                                        String path,
                                        long deadline,
-                                       ByteArrayOutputStream output) throws IOException, InterruptedException {
+                                       ByteArrayOutputStream output,
+                                       String cacheKind) throws IOException, InterruptedException {
         while (System.nanoTime() < deadline) {
             if (!process.isAlive()) {
-                throw new IOException("CDS lifecycle exited with status " + process.exitValue()
+                throw new IOException(cacheKind + " lifecycle exited with status " + process.exitValue()
                         + " before readiness" + tail(output));
             }
             try {
@@ -288,7 +297,8 @@ final class CdsCache {
             }
             Thread.sleep(POLL_INTERVAL.toMillis());
         }
-        throw new IOException("CDS lifecycle did not reach " + path + " before its timeout" + tail(output));
+        throw new IOException(cacheKind + " lifecycle did not reach " + path + " before its timeout"
+                + tail(output));
     }
 
     private static void requireOk(HttpClient client, int port, String path, String phase, boolean post)
@@ -363,5 +373,9 @@ final class CdsCache {
 
     private static String oneLine(String message) {
         return message == null ? "no message" : message.replace('\n', ' ').replace('\r', ' ').trim();
+    }
+
+    private static long elapsedMillis(long started) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
     }
 }

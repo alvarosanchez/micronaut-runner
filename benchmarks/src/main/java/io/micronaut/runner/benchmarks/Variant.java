@@ -37,6 +37,7 @@ import java.util.List;
  * @param available         whether the variant could be built
  * @param unavailableReason why it could not, or {@code null} when it could
  * @param launchInputs       ordered files/directories whose bytes define the launched application
+ * @param cache              separately reported application-cache preparation, or {@code null}
  */
 record Variant(String name,
                String description,
@@ -48,7 +49,8 @@ record Variant(String name,
                EntryMode effectiveEntryMode,
                boolean available,
                String unavailableReason,
-               List<Path> launchInputs) {
+               List<Path> launchInputs,
+               CacheInfo cache) {
 
     Variant {
         command = List.copyOf(command);
@@ -104,7 +106,8 @@ record Variant(String name,
                              EntryMode requestedEntryMode,
                              EntryMode effectiveEntryMode) {
         return new Variant(name, description, List.copyOf(command), workingDirectory, artifact, deploymentSize,
-                requestedEntryMode, effectiveEntryMode, true, null, artifact == null ? List.of() : List.of(artifact));
+                requestedEntryMode, effectiveEntryMode, true, null,
+                artifact == null ? List.of() : List.of(artifact), null);
     }
 
     static Variant available(String name,
@@ -114,7 +117,7 @@ record Variant(String name,
                              Path artifact,
                              List<Path> launchInputs) {
         return new Variant(name, description, command, workingDirectory, artifact, null,
-                EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER, true, null, launchInputs);
+                EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER, true, null, launchInputs, null);
     }
 
     static Variant available(String name,
@@ -125,7 +128,7 @@ record Variant(String name,
                              DeploymentSize deploymentSize,
                              List<Path> launchInputs) {
         return new Variant(name, description, command, workingDirectory, artifact, deploymentSize,
-                EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER, true, null, launchInputs);
+                EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER, true, null, launchInputs, null);
     }
 
     /**
@@ -142,6 +145,6 @@ record Variant(String name,
 
     static Variant unavailable(String name, String description, EntryMode requestedEntryMode, String reason) {
         return new Variant(name, description, List.of(), null, null, null,
-                requestedEntryMode, null, false, reason, List.of());
+                requestedEntryMode, null, false, reason, List.of(), null);
     }
 }
