@@ -89,7 +89,7 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
 
     /** JVM option environment variables that would make a nominally plain variant use different flags. */
     private static final List<String> INHERITED_JVM_OPTIONS = List.of(
-            "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS");
+            "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "JDK_AOT_VM_OPTIONS");
 
     /** How often readiness is polled. */
     private static final Duration POLL_INTERVAL = Duration.ofMillis(2);

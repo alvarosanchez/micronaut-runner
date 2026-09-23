@@ -110,7 +110,8 @@ class StartupHarnessTest {
 
     @Test
     void allAmbientJvmOptionVariablesAreRemovedFromRealTimingChildren(@TempDir Path directory) throws Exception {
-        for (String variable : List.of("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")) {
+        for (String variable : List.of("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS",
+                "JDK_AOT_VM_OPTIONS")) {
             Map<String, String> environment = new HashMap<>(System.getenv());
             environment.put(variable, "-Dfixture.injected=" + variable);
             Path lifecycle = directory.resolve(variable + ".pid");

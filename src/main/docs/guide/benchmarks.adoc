@@ -7,7 +7,7 @@ Micro-benchmarks:: JMH benchmarks over the class loader's hot path: index lookup
 loading against `URLClassLoader` on the same set of JARs, and defining a class from a mapped buffer versus
 a byte array. These isolate the mechanism.
 
-Startup:: The whole process, from spawn to readiness, for the same application packaged in the nine modes
+Startup:: The whole process, from spawn to readiness, for the same application packaged in the eleven modes
 that the current harness implements:
 +
 [cols="25,75"]
@@ -22,6 +22,9 @@ that the current harness implements:
 
 |`shadow`
 |One JAR flattened by the Shadow plugin
+
+|`shadow-aot`
+|The identical Shadow JAR with a trained, application-class-verified JDK AOT cache
 
 |`runner-stored`
 |Runner JAR with nested dependencies re-packed uncompressed and the plugin-default entry stub
@@ -41,6 +44,10 @@ strict `-Xshare:on` loading
 
 |`runner-extracted`
 |The stored Runner JAR extracted and launched by the JDK's built-in loader
+
+|`runner-extracted-aot`
+|The identical extracted layout and manifest class path with a trained, application-class-verified JDK AOT
+cache
 |===
 
 Each sample starts a fresh JVM. This is a cold JVM process start, not a claim that storage or the OS page cache
@@ -48,10 +55,12 @@ is cold. Readiness is measured externally, from process spawn to the first succe
 that is what a user waits for and it captures class loading on the first request. The framework's own "startup
 completed" line is recorded separately rather than substituted for readiness.
 
-Only `runner-stored-cds` selects a trained application cache. Its paired `runner-stored` row uses the identical
-final Runner JAR without an application archive. Default JDK class sharing remains enabled when the selected
-JDK enables it, but reuse of platform classes from the JDK's default archive is not evidence of trained
-application-class CDS or AOT reuse; default JDK class sharing is a separate baseline condition.
+The cache pairs are `runner-stored`/`runner-stored-cds`, `shadow`/`shadow-aot`, and
+`runner-extracted`/`runner-extracted-aot`. Each pair shares the exact artifact bytes, ordered class path,
+working directory, measured workload and JVM options except for the one application-cache selection option.
+Default JDK class sharing remains enabled when the selected JDK enables it, but reuse of platform classes from
+the JDK's default archive is not evidence of trained application-class CDS or AOT reuse; default JDK class
+sharing is a separate baseline condition.
 
 == Methodology
 
@@ -76,27 +85,35 @@ Timing runs carry no diagnostic flags: `-Xlog` changes what is being measured, s
 collected in separate runs. Before timing begins, the CDS lifecycle makes its own diagnostic launch and
 requires `com.example.Application`, an application class, to load from the selected shared objects file;
 aggregate shared-class counts alone are insufficient. The harness removes `JAVA_TOOL_OPTIONS`,
-`JDK_JAVA_OPTIONS` and `_JAVA_OPTIONS` from child JVM environments so ambient flags cannot silently change
-that cache mode. Diagnostic counts are labelled _spawn through shutdown_: logging remains active after HTTP
+`JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_AOT_VM_OPTIONS` from child JVM environments so ambient flags
+cannot silently change that cache mode. Diagnostic counts are labelled _spawn through shutdown_: logging
+remains active after HTTP
 readiness while the startup line is awaited and while the child shuts down, so shutdown-hook loads can be
 included. Diagnostic readiness is retained only to show logging overhead and never enters measured timing
 distributions.
 
 === Trained-cache matrix
 
-Direct Runner trained CDS is the `runner-stored`/`runner-stored-cds` pair. Extracted-layout JDK AOT caching is
-planned in https://github.com/alvarosanchez/micronaut-runner/issues/45[#45] and is not measured by the current
-harness. JDK AOT caching is not GraalVM Native Image, and custom-loader CDS is not the full built-in-loader
-AOT-linking path.
+Direct Runner trained CDS is the `runner-stored`/`runner-stored-cds` pair. Built-in-loader JDK AOT caching is
+measured for both the Shadow pair and the extracted-layout pair, so a trained Runner layout is never compared
+only with an untrained Shadow layout. JDK AOT caching is not GraalVM Native Image, and custom-loader CDS is not
+the full built-in-loader AOT-linking path.
 
-CDS training and verification are bounded build-time operations outside all timing samples. Training reaches
+AOT and CDS training and verification are bounded build-time operations outside all timing samples. Training reaches
 HTTP readiness, exercises `/hello`, requests normal application termination, requires exit status zero and a
 nonempty archive, then performs a strict diagnostic launch. The managed archive identity hashes the immutable
 final JAR (and therefore its embedded application and dependency bytes), exact JDK/VM build, architecture,
 launch options and workload paths. A changed input selects a different cache. An unsupported platform or any
 failed phase makes the CDS variant unavailable; the benchmark never silently substitutes a no-cache process.
-Production deployments choose strict `-Xshare:on` failure or explicit `-Xshare:auto` fallback according to
-their availability policy.
+Production CDS deployments choose strict `-Xshare:on` failure or explicit `-Xshare:auto` fallback according to
+their availability policy. AOT variants require a nonempty completed cache and a successful application-class
+verification launch before measurement; unsupported JDKs or failed training make the variant unavailable.
+The reports keep cache bytes, training cost and total preparation cost separate from complete runtime
+deployment bytes and readiness measurements. The built-in-loader variants require JDK 25 or later: training
+uses `-XX:AOTCacheOutput=<cache>` and measured use adds `-XX:AOTCache=<cache>`. They launch the actual Shadow
+or extracted application JAR, with no helper or wrapper added to either paired class path. See <<cdsAndAot>>
+for the reproducible extraction and deployment workflow. Together with `runner-stored-cds`, these rows make
+the trained application cache mode explicit rather than inferring it from default JDK class sharing.
 
 Run it locally with:
 
