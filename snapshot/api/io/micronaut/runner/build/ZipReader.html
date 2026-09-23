@@ -205,7 +205,7 @@ repacked and its nested jars can no longer be verified.</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>byte[]</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#read(io.micronaut.runner.build.ZipEntryInfo)" class="member-name-link">read</a><wbr>(<a href="ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a>&nbsp;entry)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Reads an entry's content, decompressing it when it is deflated.</div>
+<div class="block">Reads an entry's content, decompressing it when it is deflated and verifying its CRC-32.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>byte[]</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#readRaw(io.micronaut.runner.build.ZipEntryInfo)" class="member-name-link">readRaw</a><wbr>(<a href="ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a>&nbsp;entry)</code></div>
@@ -476,16 +476,16 @@ returned object is the reader's own instance and is mutable; callers must not mo
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">byte[]</span>&nbsp;<span class="element-name">read</span><wbr><span class="parameters">(<a href="ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a>&nbsp;entry)</span>
             throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Reads an entry's content, decompressing it when it is deflated.</div>
+<div class="block">Reads an entry's content, decompressing it when it is deflated and verifying its CRC-32.</div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>entry</code> - an entry of this archive</dd>
 <dt>Returns:</dt>
-<dd>the uncompressed content, of length <a href="ZipEntryInfo.html#uncompressedSize()"><code>ZipEntryInfo.uncompressedSize()</code></a></dd>
+<dd>the verified uncompressed content, of length <a href="ZipEntryInfo.html#uncompressedSize()"><code>ZipEntryInfo.uncompressedSize()</code></a></dd>
 <dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the data cannot be read, the compression method is neither stored nor deflated,
-                    or the deflate stream is truncated, corrupt, overproduces, or does not consume its
-                    complete recorded compressed region</dd>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the data cannot be read, its CRC-32 does not match, the compression method is
+                    neither stored nor deflated, or the deflate stream is truncated, corrupt,
+                    overproduces, or does not consume its complete recorded compressed region</dd>
 </dl>
 </div>
 </section>
