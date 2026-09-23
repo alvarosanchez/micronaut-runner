@@ -1,0 +1,88 @@
+{
+  "attempts": [
+    {
+      "source": "before",
+      "applicationInput": "jar",
+      "compression": "stored",
+      "iteration": 0,
+      "elapsedNanos": 389710833,
+      "allocatedBytes": 90711280,
+      "peakHeapBytes": 59498480,
+      "inputBytes": 4996475,
+      "outputBytes": 25210080,
+      "outputSha256": "f9101b96448fedd372028088dd2c92cc600ac6b90177c7aa8197168cd16c604c",
+      "applicationJarBytes": 870,
+      "dependencyBytes": 4995605
+    },
+    {
+      "source": "before",
+      "applicationInput": "jar",
+      "compression": "stored",
+      "iteration": 1,
+      "elapsedNanos": 418257917,
+      "allocatedBytes": 91307928,
+      "peakHeapBytes": 59826152,
+      "inputBytes": 4996475,
+      "outputBytes": 25210080,
+      "outputSha256": "f9101b96448fedd372028088dd2c92cc600ac6b90177c7aa8197168cd16c604c",
+      "applicationJarBytes": 870,
+      "dependencyBytes": 4995605
+    },
+    {
+      "source": "before",
+      "applicationInput": "jar",
+      "compression": "stored",
+      "iteration": 2,
+      "elapsedNanos": 408325917,
+      "allocatedBytes": 90388720,
+      "peakHeapBytes": 59826152,
+      "inputBytes": 4996475,
+      "outputBytes": 25210080,
+      "outputSha256": "f9101b96448fedd372028088dd2c92cc600ac6b90177c7aa8197168cd16c604c",
+      "applicationJarBytes": 870,
+      "dependencyBytes": 4995605
+    },
+    {
+      "source": "before",
+      "applicationInput": "jar",
+      "compression": "preserve",
+      "iteration": 0,
+      "elapsedNanos": 285597500,
+      "allocatedBytes": 64794272,
+      "peakHeapBytes": 60219384,
+      "inputBytes": 4996475,
+      "outputBytes": 6694253,
+      "outputSha256": "abdc930d9e37fbbb103e3f923a06ed542772e8e6c5c910026a13b64f3ad0a936",
+      "applicationJarBytes": 870,
+      "dependencyBytes": 4995605
+    },
+    {
+      "source": "before",
+      "applicationInput": "jar",
+      "compression": "preserve",
+      "iteration": 1,
+      "elapsedNanos": 385764959,
+      "allocatedBytes": 63764136,
+      "peakHeapBytes": 60219384,
+      "inputBytes": 4996475,
+      "outputBytes": 6694253,
+      "outputSha256": "abdc930d9e37fbbb103e3f923a06ed542772e8e6c5c910026a13b64f3ad0a936",
+      "applicationJarBytes": 870,
+      "dependencyBytes": 4995605
+    },
+    {
+      "source": "before",
+      "applicationInput": "jar",
+      "compression": "preserve",
+      "iteration": 2,
+      "elapsedNanos": 223784833,
+      "allocatedBytes": 69250248,
+      "peakHeapBytes": 60437832,
+      "inputBytes": 4996475,
+      "outputBytes": 6694253,
+      "outputSha256": "abdc930d9e37fbbb103e3f923a06ed542772e8e6c5c910026a13b64f3ad0a936",
+      "applicationJarBytes": 870,
+      "dependencyBytes": 4995605
+    }
+  ]
+}

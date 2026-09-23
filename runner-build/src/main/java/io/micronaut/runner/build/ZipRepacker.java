@@ -105,9 +105,8 @@ public final class ZipRepacker {
                 size = 0;
                 crc = 0;
             } else {
-                byte[] content = source.read(entry);
-                dataOffset = writer.writeEntry(name, content, 0, content.length, entry.dosTime());
-                size = content.length;
+                dataOffset = writer.writeEntry(name, source, entry, entry.dosTime());
+                size = entry.uncompressedSize();
                 crc = entry.crc32();
             }
             entries.add(new ZipEntryInfo(name, IndexFormat.METHOD_STORED, size, size, crc,

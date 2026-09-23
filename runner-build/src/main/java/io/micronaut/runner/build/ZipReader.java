@@ -21,6 +21,7 @@ import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.CharacterCodingException;
@@ -68,6 +69,10 @@ import java.util.zip.Inflater;
  * @since 1.0
  */
 public final class ZipReader implements Closeable {
+
+    private static final int TRANSFER_BUFFER_SIZE = 64 * 1024;
+
+    private static final int MAX_MANIFEST_SIZE = 16 * 1024 * 1024;
 
     /** Size of a local file header, before the name and the extra field. */
     private static final int LOCAL_HEADER_SIZE = 30;
@@ -117,6 +122,8 @@ public final class ZipReader implements Closeable {
     private final Map<String, ZipEntryInfo> byName;
     private final boolean signatureFiles;
     private final Optional<Manifest> manifest;
+    private byte[] transferInput;
+    private byte[] transferOutput;
 
     private ZipReader(Path path) throws IOException {
         this.path = path;
@@ -436,38 +443,97 @@ public final class ZipReader implements Closeable {
      */
     public byte[] read(ZipEntryInfo entry) throws IOException {
         Objects.requireNonNull(entry, "entry");
+        int resultSize = checkedArraySize(entry, entry.uncompressedSize());
+        byte[] result = new byte[resultSize];
+        transfer(entry, new OutputStream() {
+            private int offset;
+
+            @Override
+            public void write(int value) {
+                result[offset++] = (byte) value;
+            }
+
+            @Override
+            public void write(byte[] source, int sourceOffset, int length) {
+                System.arraycopy(source, sourceOffset, result, offset, length);
+                offset += length;
+            }
+        });
+        return result;
+    }
+
+    /**
+     * Streams one entry to {@code target} while verifying its size, CRC-32 and complete DEFLATE region.
+     * Neither the compressed nor expanded payload is materialised in a payload-sized array.
+     *
+     * @param entry  an entry of this archive
+     * @param target destination, flushed and closed by its owner
+     * @return the verified uncompressed byte count
+     * @throws IOException if the payload or its recorded metadata disagree, or either stream fails
+     */
+    public synchronized long transfer(ZipEntryInfo entry, OutputStream target) throws IOException {
+        Objects.requireNonNull(entry, "entry");
+        Objects.requireNonNull(target, "target");
+        requireRange(entry.dataOffset(), entry.compressedSize());
         if (entry.method() == IndexFormat.METHOD_STORED) {
-            CRC32 crc = new CRC32();
-            byte[] result = readFully(entry.dataOffset(), checkedArraySize(entry, entry.compressedSize()), crc);
-            verifyCrc(entry, crc.getValue());
-            return result;
+            if (entry.compressedSize() != entry.uncompressedSize()) {
+                throw new IOException("STORED entry '" + entry.name() + "' of " + path
+                        + " has different compressed and uncompressed sizes");
+            }
+            return transferStored(entry, target);
         }
         if (entry.method() != IndexFormat.METHOD_DEFLATED) {
             throw new IOException("Entry '" + entry.name() + "' of " + path + " uses unsupported compression method "
                     + entry.method());
         }
-        int resultSize = checkedArraySize(entry, entry.uncompressedSize());
-        byte[] compressed = readRaw(entry);
-        byte[] result = new byte[resultSize];
+        return transferDeflated(entry, target);
+    }
+
+    private long transferStored(ZipEntryInfo entry, OutputStream target) throws IOException {
+        byte[] buffer = transferOutput();
+        CRC32 crc = new CRC32();
+        long remaining = entry.uncompressedSize();
+        long position = entry.dataOffset();
+        while (remaining > 0) {
+            int count = (int) Math.min(buffer.length, remaining);
+            readFully(position, buffer, count);
+            target.write(buffer, 0, count);
+            crc.update(buffer, 0, count);
+            position += count;
+            remaining -= count;
+        }
+        verifyCrc(entry, crc.getValue());
+        return entry.uncompressedSize();
+    }
+
+    private long transferDeflated(ZipEntryInfo entry, OutputStream target) throws IOException {
+        byte[] input = transferInput();
+        byte[] output = transferOutput();
         CRC32 crc = new CRC32();
         Inflater inflater = new Inflater(true);
+        long compressedRemaining = entry.compressedSize();
+        long position = entry.dataOffset();
+        long total = 0;
         try {
-            inflater.setInput(compressed);
-            int total = 0;
-            byte[] probe = new byte[1];
             while (!inflater.finished()) {
-                int read;
-                if (total < result.length) {
-                    read = inflater.inflate(result, total, result.length - total);
-                } else {
-                    read = inflater.inflate(probe, 0, 1);
-                }
-                if (read > 0) {
-                    if (total == result.length) {
-                        throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
-                                + " produces more than the recorded " + result.length + " bytes");
+                if (inflater.needsInput()) {
+                    if (compressedRemaining == 0) {
+                        throw truncatedDeflate(entry, entry.uncompressedSize(), total);
                     }
-                    crc.update(result, total, read);
+                    int count = (int) Math.min(input.length, compressedRemaining);
+                    readFully(position, input, count);
+                    inflater.setInput(input, 0, count);
+                    position += count;
+                    compressedRemaining -= count;
+                }
+                int read = inflater.inflate(output);
+                if (read > 0) {
+                    if (read > entry.uncompressedSize() - total) {
+                        throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
+                                + " produces more than the recorded " + entry.uncompressedSize() + " bytes");
+                    }
+                    target.write(output, 0, read);
+                    crc.update(output, 0, read);
                     total += read;
                 } else if (inflater.finished()) {
                     // The terminal block may produce no plaintext, including for an empty entry.
@@ -476,16 +542,16 @@ public final class ZipReader implements Closeable {
                     throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
                             + " requires a dictionary");
                 } else if (inflater.needsInput()) {
-                    throw truncatedDeflate(entry, result.length, total);
+                    continue;
                 } else {
                     throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
                             + " made no progress after " + total + " bytes");
                 }
             }
-            if (total != result.length) {
-                throw truncatedDeflate(entry, result.length, total);
+            if (total != entry.uncompressedSize()) {
+                throw truncatedDeflate(entry, entry.uncompressedSize(), total);
             }
-            int remaining = inflater.getRemaining();
+            long remaining = inflater.getRemaining() + compressedRemaining;
             if (remaining != 0) {
                 throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
                         + " ended with " + remaining + " unused compressed bytes");
@@ -496,7 +562,21 @@ public final class ZipReader implements Closeable {
         } finally {
             inflater.end();
         }
-        return result;
+        return total;
+    }
+
+    private byte[] transferInput() {
+        if (transferInput == null) {
+            transferInput = new byte[TRANSFER_BUFFER_SIZE];
+        }
+        return transferInput;
+    }
+
+    private byte[] transferOutput() {
+        if (transferOutput == null) {
+            transferOutput = new byte[TRANSFER_BUFFER_SIZE];
+        }
+        return transferOutput;
     }
 
     private int checkedArraySize(ZipEntryInfo entry, long size) throws IOException {
@@ -515,9 +595,30 @@ public final class ZipReader implements Closeable {
         }
     }
 
-    private IOException truncatedDeflate(ZipEntryInfo entry, int expected, int actual) {
+    private IOException truncatedDeflate(ZipEntryInfo entry, long expected, long actual) {
         return new IOException("Truncated deflate stream for entry '" + entry.name() + "' of " + path
                 + ": expected " + expected + " bytes, inflated " + actual);
+    }
+
+    private void requireRange(long position, long length) throws IOException {
+        if (position < 0 || length < 0 || position > fileLength - length) {
+            throw malformed("a read of " + length + " bytes at offset " + position + " runs past the end of the file");
+        }
+    }
+
+    private void readFully(long position, byte[] destination, int length) throws IOException {
+        ByteBuffer buffer = ByteBuffer.wrap(destination, 0, length);
+        long at = position;
+        while (buffer.hasRemaining()) {
+            int read = channel.read(buffer, at);
+            if (read < 0) {
+                throw malformed("unexpected end of file at offset " + at);
+            }
+            if (read == 0) {
+                continue;
+            }
+            at += read;
+        }
     }
 
     @Override
@@ -1003,6 +1104,10 @@ public final class ZipReader implements Closeable {
         }
         if (entry == null) {
             return Optional.empty();
+        }
+        if (entry.uncompressedSize() > MAX_MANIFEST_SIZE) {
+            throw new IOException("Manifest entry of " + path + " is " + entry.uncompressedSize()
+                    + " bytes; the in-memory metadata limit is " + MAX_MANIFEST_SIZE);
         }
         return Optional.of(new Manifest(new ByteArrayInputStream(read(entry))));
     }

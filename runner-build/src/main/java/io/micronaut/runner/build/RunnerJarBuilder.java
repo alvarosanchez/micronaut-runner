@@ -28,11 +28,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -103,6 +106,9 @@ public final class RunnerJarBuilder {
 
     /** Buffer size for the streaming copies. */
     private static final int BUFFER_SIZE = 64 * 1024;
+
+    /** Classes and manifests are the only application entries intentionally materialised. */
+    private static final int MAX_IN_MEMORY_METADATA_SIZE = 16 * 1024 * 1024;
 
     private final RunnerJarSpec spec;
     private final BuildLogger logger;
@@ -223,7 +229,7 @@ public final class RunnerJarBuilder {
         Files.createDirectories(directory);
         Path work = Files.createTempDirectory(directory, ".micronaut-runner-");
         try {
-            collectApplication();
+            collectApplication(work);
             requireMainClass();
             generateEntryStub();
             readApplicationManifest();
@@ -353,12 +359,14 @@ public final class RunnerJarBuilder {
      *
      * @throws IOException if an input cannot be read or carries an entry name the format cannot store
      */
-    private void collectApplication() throws IOException {
+    private void collectApplication(Path work) throws IOException {
+        int jarPosition = 0;
         for (Path input : spec.applicationOutput()) {
             if (Files.isDirectory(input)) {
                 collectDirectory(input, input);
             } else {
-                collectApplicationJar(input);
+                collectApplicationJar(input, work.resolve("application-" + jarPosition + ".spool"));
+                jarPosition++;
             }
         }
     }
@@ -388,8 +396,10 @@ public final class RunnerJarBuilder {
         }
     }
 
-    private void collectApplicationJar(Path jar) throws IOException {
-        try (ZipReader reader = ZipReader.open(jar)) {
+    private void collectApplicationJar(Path jar, Path spool) throws IOException {
+        long spoolOffset = 0;
+        try (ZipReader reader = ZipReader.open(jar);
+             OutputStream target = new BufferedOutputStream(Files.newOutputStream(spool), BUFFER_SIZE)) {
             for (ZipEntryInfo entry : reader.entries()) {
                 String name = entry.name();
                 if (entry.directory()) {
@@ -399,8 +409,10 @@ public final class RunnerJarBuilder {
                     continue;
                 }
                 requireSafeName(name, jar.toString());
-                byte[] content = reader.read(entry);
-                addApplicationEntry(name, ApplicationEntry.ofBytes(content, entry.crc32()), jar);
+                long written = reader.transfer(entry, target);
+                addApplicationEntry(name,
+                        ApplicationEntry.ofFile(spool, spoolOffset, written, entry.crc32()), jar);
+                spoolOffset += written;
             }
         }
     }
@@ -490,7 +502,26 @@ public final class RunnerJarBuilder {
     }
 
     private static byte[] applicationBytes(ApplicationEntry entry) throws IOException {
-        return entry.bytes != null ? entry.bytes : Files.readAllBytes(entry.file);
+        if (entry.size > MAX_IN_MEMORY_METADATA_SIZE) {
+            throw new IOException("Application metadata entry is " + entry.size + " bytes; the in-memory limit is "
+                    + MAX_IN_MEMORY_METADATA_SIZE);
+        }
+        if (entry.bytes != null) {
+            return entry.bytes;
+        }
+        byte[] content = new byte[(int) entry.size];
+        int offset = 0;
+        try (InputStream input = entry.open()) {
+            while (offset < content.length) {
+                int read = input.read(content, offset, content.length - offset);
+                if (read < 0) {
+                    throw new IOException("Application metadata ended after " + offset + " of "
+                            + content.length + " bytes");
+                }
+                offset += read;
+            }
+        }
+        return content;
     }
 
     /**
@@ -527,8 +558,8 @@ public final class RunnerJarBuilder {
             return;
         }
         ApplicationEntry own = application.get("META-INF/MANIFEST.MF");
-        if (own != null && own.bytes != null) {
-            applicationManifest = new Manifest(new ByteArrayInputStream(own.bytes));
+        if (own != null) {
+            applicationManifest = new Manifest(new ByteArrayInputStream(applicationBytes(own)));
         }
     }
 
@@ -815,8 +846,7 @@ public final class RunnerJarBuilder {
             String logicalName = item.getKey();
             ApplicationEntry source = item.getValue();
             PlannedEntry entry = source.bytes == null
-                    ? PlannedEntry.ofFile(IndexFormat.CLASSES_PREFIX + logicalName, source.file, source.size,
-                        source.crc32)
+                    ? PlannedEntry.ofSource(IndexFormat.CLASSES_PREFIX + logicalName, source)
                     : PlannedEntry.ofBytes(IndexFormat.CLASSES_PREFIX + logicalName, source.bytes, source.crc32);
             entry.indexEntry = applicationJar.addEntry(logicalName)
                     .sizes(entry.size, entry.size)
@@ -1086,21 +1116,26 @@ public final class RunnerJarBuilder {
             }
             int total = index.entryCount();
             int step = all ? 1 : Math.max(1, total / VERIFY_SAMPLE_SIZE);
+            byte[] verifyBuffer = new byte[BUFFER_SIZE];
             for (int record = 0; record < total; record += step) {
-                verifyEntry(reader, index, record);
+                verifyEntry(reader, index, record, verifyBuffer);
             }
         }
     }
 
-    private void verifyEntry(RunnerJarReader reader, Index index, int record) throws IOException {
+    private void verifyEntry(RunnerJarReader reader, Index index, int record, byte[] buffer) throws IOException {
         if (!index.entryPhysical(record) || index.entryDirectory(record)) {
             return;
         }
-        if (index.entryUncompressedSize(record) > Integer.MAX_VALUE - 8) {
-            return;
-        }
         long expected = index.entryCrc32(record);
-        long actual = crc32(reader.read(record));
+        CRC32 crc = new CRC32();
+        try (InputStream input = reader.stream(record)) {
+            int read;
+            while ((read = input.read(buffer)) >= 0) {
+                crc.update(buffer, 0, read);
+            }
+        }
+        long actual = crc.getValue();
         if (expected != actual) {
             throw new IOException("The entry '" + index.entryName(record) + "' of " + output
                     + " does not match the CRC-32 the index records: expected "
@@ -1187,6 +1222,7 @@ public final class RunnerJarBuilder {
 
         private byte[] bytes;
         private Path file;
+        private long offset;
         private long size;
         private long crc32;
 
@@ -1203,8 +1239,13 @@ public final class RunnerJarBuilder {
         }
 
         private static ApplicationEntry ofFile(Path file, long size, long crc32) {
+            return ofFile(file, 0, size, crc32);
+        }
+
+        private static ApplicationEntry ofFile(Path file, long offset, long size, long crc32) {
             ApplicationEntry entry = new ApplicationEntry();
             entry.file = file;
+            entry.offset = offset;
             entry.size = size;
             entry.crc32 = crc32;
             return entry;
@@ -1222,7 +1263,97 @@ public final class RunnerJarBuilder {
 
         @Override
         public InputStream open() throws IOException {
-            return bytes == null ? Files.newInputStream(file) : new ByteArrayInputStream(bytes);
+            return bytes == null
+                    ? new VerifiedFileInputStream(file, offset, size, crc32)
+                    : new ByteArrayInputStream(bytes);
+        }
+    }
+
+    /** A bounded positional file stream that detects same-length source mutation while it is consumed. */
+    private static final class VerifiedFileInputStream extends InputStream {
+
+        private final Path file;
+        private final FileChannel channel;
+        private final CRC32 crc = new CRC32();
+        private final long expectedCrc;
+        private final byte[] one = new byte[1];
+        private long position;
+        private long remaining;
+        private boolean verified;
+
+        private VerifiedFileInputStream(Path file, long offset, long size, long expectedCrc) throws IOException {
+            this.file = file;
+            this.channel = FileChannel.open(file, StandardOpenOption.READ);
+            this.position = offset;
+            this.remaining = size;
+            this.expectedCrc = expectedCrc;
+            if (size == 0) {
+                verify();
+            }
+        }
+
+        @Override
+        public int read() throws IOException {
+            int read = read(one, 0, 1);
+            return read < 0 ? -1 : one[0] & 0xFF;
+        }
+
+        @Override
+        public int read(byte[] destination, int offset, int count) throws IOException {
+            Objects.checkFromIndexSize(offset, count, destination.length);
+            if (count == 0) {
+                return 0;
+            }
+            if (remaining == 0) {
+                return -1;
+            }
+            int wanted = (int) Math.min(count, remaining);
+            ByteBuffer buffer = ByteBuffer.wrap(destination, offset, wanted);
+            int read;
+            do {
+                read = channel.read(buffer, position);
+            } while (read == 0);
+            if (read < 0) {
+                throw new IOException("The source " + file + " ended with " + remaining + " bytes remaining");
+            }
+            crc.update(destination, offset, read);
+            position += read;
+            remaining -= read;
+            if (remaining == 0) {
+                verify();
+            }
+            return read;
+        }
+
+        @Override
+        public long skip(long count) throws IOException {
+            long wanted = Math.min(Math.max(count, 0), remaining);
+            if (wanted == 0) {
+                return 0;
+            }
+            byte[] buffer = new byte[(int) Math.min(BUFFER_SIZE, wanted)];
+            long skipped = 0;
+            while (skipped < wanted) {
+                int read = read(buffer, 0, (int) Math.min(buffer.length, wanted - skipped));
+                if (read < 0) {
+                    break;
+                }
+                skipped += read;
+            }
+            return skipped;
+        }
+
+        @Override
+        public void close() throws IOException {
+            channel.close();
+        }
+
+        private void verify() throws IOException {
+            if (!verified && crc.getValue() != expectedCrc) {
+                throw new IOException("The source " + file + " does not match its recorded CRC-32: expected "
+                        + Long.toHexString(expectedCrc) + ", computed " + Long.toHexString(crc.getValue()));
+            }
+            verified = true;
         }
     }
 
