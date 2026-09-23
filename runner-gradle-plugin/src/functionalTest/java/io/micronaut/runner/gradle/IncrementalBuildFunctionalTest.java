@@ -177,16 +177,20 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
                 }
                 """, "");
 
-        BuildResult first = build(directory, "micronautRunnerJar");
+        BuildResult first = build(directory, "micronautRunnerJar", "--info");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(first, RUNNER_JAR_TASK));
+        assertEquals(2, occurrences(first.getOutput(), "Dependency stage cache miss"));
         assertIndexContains(directory, "com.example:alpha:1");
 
         BuildResult unchanged = build(directory, "micronautRunnerJar");
         assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(unchanged, RUNNER_JAR_TASK));
 
-        BuildResult changed = build(directory, "micronautRunnerJar", "-Pcoordinate=com.example:alpha:2");
+        BuildResult changed = build(directory, "micronautRunnerJar", "--info",
+                "-Pcoordinate=com.example:alpha:2");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(changed, RUNNER_JAR_TASK),
                 () -> "changing only coordinates did not rebuild the index:\n" + changed.getOutput());
+        assertEquals(2, occurrences(changed.getOutput(), "Dependency stage cache hit"),
+                "coordinate changes must rebuild final metadata without repacking dependencies");
         assertIndexContains(directory, "com.example:alpha:2");
         runJarSuccessfully(directory.resolve(DEFAULT_ARCHIVE));
     }
@@ -201,14 +205,17 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
     void rawDependencyBytesArePartOfTheTaskInputs(@TempDir Path directory) throws IOException {
         writeFixture(directory, "micronautRunnerJar { compression = 'PRESERVE' }", "");
 
-        BuildResult first = build(directory, "micronautRunnerJar");
+        BuildResult first = build(directory, "micronautRunnerJar", "--info");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(first, RUNNER_JAR_TASK));
+        assertEquals(2, occurrences(first.getOutput(), "Dependency stage cache miss"));
         byte[] before = nestedJar(directory.resolve(DEFAULT_ARCHIVE), "MICRONAUT-INF/lib/alpha.jar");
 
         rewriteZipWithTimestamp(directory.resolve("libs/alpha.jar"), 1_000_000_200_000L);
-        BuildResult changed = build(directory, "micronautRunnerJar");
+        BuildResult changed = build(directory, "micronautRunnerJar", "--info");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(changed, RUNNER_JAR_TASK),
                 () -> "changing raw ZIP bytes did not rebuild PRESERVE output:\n" + changed.getOutput());
+        assertEquals(1, occurrences(changed.getOutput(), "Dependency stage cache hit"));
+        assertEquals(1, occurrences(changed.getOutput(), "Dependency stage cache miss"));
         byte[] after = nestedJar(directory.resolve(DEFAULT_ARCHIVE), "MICRONAUT-INF/lib/alpha.jar");
         assertFalse(java.util.Arrays.equals(before, after), "the preserved nested jar still has the old bytes");
     }
@@ -233,18 +240,21 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
                 }
                 """, "");
 
-        BuildResult stored = build(directory, "micronautRunnerJar", "--configuration-cache");
+        BuildResult stored = build(directory, "micronautRunnerJar", "--configuration-cache", "--info");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(stored, RUNNER_JAR_TASK));
+        assertEquals(2, occurrences(stored.getOutput(), "Dependency stage cache miss"));
         assertTrue(stored.getOutput().contains("Configuration cache entry stored"),
                 () -> "the first run did not store a configuration cache entry:\n" + stored.getOutput());
 
         addMarker(directory, "from the configuration cache");
 
-        BuildResult reused = build(directory, "micronautRunnerJar", "--configuration-cache");
+        BuildResult reused = build(directory, "micronautRunnerJar", "--configuration-cache", "--info");
         assertTrue(reused.getOutput().contains("Configuration cache entry reused"),
                 () -> "the second run did not reuse the configuration cache entry:\n" + reused.getOutput());
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(reused, RUNNER_JAR_TASK),
                 () -> "the task did not execute from the reused entry:\n" + reused.getOutput());
+        assertEquals(2, occurrences(reused.getOutput(), "Dependency stage cache hit"),
+                "dependency stages must survive configuration-cache reuse");
 
         String output = runJarSuccessfully(directory.resolve(DEFAULT_ARCHIVE));
         assertTrue(output.contains("marker=from the configuration cache"),
@@ -252,13 +262,64 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
         assertIndexContains(directory, "com.example:alpha:configuration-cache");
     }
 
+    @Test
+    void dependencyStagesSurviveApplicationEditsAndBuildCacheRelocation(@TempDir Path root)
+            throws IOException, InterruptedException {
+        Path cache = root.resolve("build-cache");
+        String settings = """
+                buildCache {
+                    local { directory = new File('@cache@') }
+                }
+                """.replace("@cache@", cache.toAbsolutePath().toString().replace('\\', '/'));
+        Path first = writeFixture(root.resolve("first"), "", settings);
+        Path relocated = writeFixture(root.resolve("relocated"), "", settings);
+
+        BuildResult populated = build(first, "micronautRunnerJar", "--build-cache", "--info");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(populated, RUNNER_JAR_TASK));
+        assertEquals(2, occurrences(populated.getOutput(), "Dependency stage cache miss"));
+
+        BuildResult restored = build(relocated, "micronautRunnerJar", "--build-cache", "--info");
+        assertEquals(TaskOutcome.FROM_CACHE, outcomeOf(restored, RUNNER_JAR_TASK));
+        addMarker(relocated, "relocated edit");
+        BuildResult appEdit = build(relocated, "micronautRunnerJar", "--build-cache", "--info");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(appEdit, RUNNER_JAR_TASK));
+        assertEquals(2, occurrences(appEdit.getOutput(), "Dependency stage cache hit"), appEdit::getOutput);
+
+        rewriteZipWithTimestamp(relocated.resolve("libs/alpha.jar"), 1_000_000_200_000L);
+        BuildResult dependencyEdit = build(relocated, "micronautRunnerJar", "--build-cache", "--info");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(dependencyEdit, RUNNER_JAR_TASK));
+        assertEquals(1, occurrences(dependencyEdit.getOutput(), "Dependency stage cache hit"));
+        assertEquals(1, occurrences(dependencyEdit.getOutput(), "Dependency stage cache miss"));
+        Path dependencyStages = relocated.resolve("build/micronaut-runner/dependency-stages");
+        assertEquals(2, filesWithSuffix(dependencyStages, ".jar"),
+                "obsolete content-addressed stages must not accumulate in Gradle outputs");
+        assertEquals(2, filesWithSuffix(dependencyStages, ".sha256"),
+                "obsolete stage checksums must not accumulate in Gradle outputs");
+        runJarSuccessfully(relocated.resolve(DEFAULT_ARCHIVE));
+    }
+
+    private static long filesWithSuffix(Path directory, String suffix) throws IOException {
+        try (var files = Files.walk(directory)) {
+            return files.filter(path -> path.getFileName().toString().endsWith(suffix)).count();
+        }
+    }
+
+    private static int occurrences(String text, String needle) {
+        int count = 0;
+        for (int at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length())) {
+            count++;
+        }
+        return count;
+    }
+
     private static void assertCacheTracksDependencyOrder(Path root, String settings)
             throws IOException, InterruptedException {
         Path first = writeOrderFixture(root.resolve("first"), settings);
         Path second = writeOrderFixture(root.resolve("second"), settings);
 
-        BuildResult stored = build(first, "micronautRunnerJar", "--build-cache");
+        BuildResult stored = build(first, "micronautRunnerJar", "--build-cache", "--info");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(stored, RUNNER_JAR_TASK));
+        assertEquals(4, occurrences(stored.getOutput(), "Dependency stage cache miss"));
         assertOrder(first, "A");
 
         BuildResult relocated = build(second, "micronautRunnerJar", "--build-cache");
@@ -266,9 +327,11 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
                 () -> "identical ordered inputs did not survive relocation:\n" + relocated.getOutput());
         assertOrder(second, "A");
 
-        BuildResult reversed = build(second, "micronautRunnerJar", "--build-cache", "-Preversed=true");
+        BuildResult reversed = build(second, "micronautRunnerJar", "--build-cache", "--info", "-Preversed=true");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(reversed, RUNNER_JAR_TASK),
                 () -> "reordered equal-named dependencies reused stale output:\n" + reversed.getOutput());
+        assertEquals(4, occurrences(reversed.getOutput(), "Dependency stage cache hit"),
+                "same-basename stages must be reusable independently of final order and destination name");
         assertOrder(second, "B");
 
         BuildResult unchanged = build(second, "micronautRunnerJar", "--build-cache", "-Preversed=true");

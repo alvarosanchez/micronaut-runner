@@ -67,6 +67,7 @@ public final class RunnerJarSpec {
     private final List<String> addExports;
     private final boolean enableNativeAccess;
     private final Instant timestamp;
+    private final Path dependencyCache;
 
     private RunnerJarSpec(Builder builder) {
         this.mainClass = builder.mainClass;
@@ -88,6 +89,7 @@ public final class RunnerJarSpec {
         this.addExports = List.copyOf(builder.addExports);
         this.enableNativeAccess = builder.enableNativeAccess;
         this.timestamp = builder.timestamp;
+        this.dependencyCache = builder.dependencyCache;
     }
 
     /**
@@ -271,6 +273,19 @@ public final class RunnerJarSpec {
     }
 
     /**
+     * A content-addressed directory for reusable, verified dependency stages.
+     *
+     * <p>The cache is optional so direct Java and Maven callers retain their existing behaviour. Cache
+     * entries are keyed by raw dependency bytes, compression mode, runner format and staging algorithm;
+     * dependency order, coordinates and source paths deliberately remain final-assembly concerns.</p>
+     *
+     * @return the cache directory, if staging reuse was requested
+     */
+    public Optional<Path> dependencyCache() {
+        return Optional.ofNullable(dependencyCache);
+    }
+
+    /**
      * Describes a runner jar step by step.
      *
      * <p>The builder is mutable and is not thread safe; {@link #build()} takes a snapshot of it, so it can
@@ -292,6 +307,7 @@ public final class RunnerJarSpec {
         private List<String> addExports = new ArrayList<>();
         private boolean enableNativeAccess;
         private Instant timestamp = ZipWriter.DEFAULT_TIMESTAMP;
+        private Path dependencyCache;
 
         private Builder() {
         }
@@ -582,6 +598,17 @@ public final class RunnerJarSpec {
             // Fails here rather than halfway through writing the archive.
             ZipWriter.toDosTime(value);
             this.timestamp = value;
+            return this;
+        }
+
+        /**
+         * Enables content-addressed reuse of dependency staging in the supplied directory.
+         *
+         * @param value the cache directory, or {@code null} to disable reuse
+         * @return this builder
+         */
+        public Builder dependencyCache(Path value) {
+            this.dependencyCache = value;
             return this;
         }
 
