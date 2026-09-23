@@ -63,13 +63,14 @@ final class Reports {
 
     private static String json(RunContext context,
                                List<VariantResult> results,
-                               List<StartupHarness.ClassLoadCount> diagnostics) {
+                               List<StartupHarness.ClassLoadCount> diagnostics) throws IOException {
         StringBuilder out = new StringBuilder(64 * 1024);
         BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
         out.append("{\n");
+        out.append("  \"schemaVersion\": ").append(BenchmarkProvenance.SCHEMA_VERSION).append(",\n");
         out.append("  \"generatedAt\": ").append(quote(context.generatedAt())).append(",\n");
-        out.append("  \"sample\": ").append(quote(context.sample().toString())).append(",\n");
-        out.append("  \"repository\": ").append(quote(context.repository())).append(",\n");
+        out.append("  \"sample\": \"sample\",\n");
+        out.append("  \"repository\": \"<redacted:repository-location>\",\n");
         out.append("  \"runnerVersion\": ").append(quote(context.runnerVersion())).append(",\n");
         out.append("  \"readinessPath\": ").append(quote(context.readinessPath())).append(",\n");
         out.append("  \"measuredIterations\": ").append(context.iterations()).append(",\n");
@@ -89,15 +90,19 @@ final class Reports {
         out.append("  \"jvmProcessState\": \"fresh per sample\",\n");
         out.append("  \"osPageCacheState\": \"uncontrolled\",\n");
         out.append("  \"applicationCacheMode\": \"none\",\n");
+        appendProvenance(out, context.provenance());
+        out.append(",\n");
         out.append("  \"environment\": {\n");
-        out.append("    \"javaVersion\": ").append(quote(System.getProperty("java.version"))).append(",\n");
-        out.append("    \"javaVendor\": ").append(quote(System.getProperty("java.vendor"))).append(",\n");
-        out.append("    \"javaHome\": ").append(quote(System.getProperty("java.home"))).append(",\n");
-        out.append("    \"osName\": ").append(quote(System.getProperty("os.name"))).append(",\n");
-        out.append("    \"osVersion\": ").append(quote(System.getProperty("os.version"))).append(",\n");
-        out.append("    \"osArch\": ").append(quote(System.getProperty("os.arch"))).append(",\n");
-        out.append("    \"availableProcessors\": ").append(Runtime.getRuntime().availableProcessors())
-                .append('\n');
+        BenchmarkProvenance provenance = context.provenance();
+        out.append("    \"javaVersion\": ").append(quote(provenance.javaVersion())).append(",\n");
+        out.append("    \"javaRuntimeVersion\": ").append(quote(provenance.javaRuntimeVersion())).append(",\n");
+        out.append("    \"javaVendor\": ").append(quote(provenance.javaVendor())).append(",\n");
+        out.append("    \"javaVmName\": ").append(quote(provenance.javaVmName())).append(",\n");
+        out.append("    \"osName\": ").append(quote(provenance.osName())).append(",\n");
+        out.append("    \"osVersion\": ").append(quote(provenance.osVersion())).append(",\n");
+        out.append("    \"osArch\": ").append(quote(provenance.osArch())).append(",\n");
+        out.append("    \"availableProcessors\": ").append(provenance.availableProcessors()).append(",\n");
+        out.append("    \"totalMemoryBytes\": ").append(provenance.totalMemoryBytes()).append('\n');
         out.append("  },\n");
         out.append("  \"variants\": [\n");
         for (int i = 0; i < results.size(); i++) {
@@ -107,19 +112,26 @@ final class Reports {
         out.append("  ],\n");
         appendComparisons(out, context, results);
         out.append(",\n");
-        appendAttempts(out, results);
+        appendAttempts(out, context, results);
         out.append(",\n");
         out.append("  \"diagnostics\": {\n");
         out.append("    \"comment\": \"Separate runs carrying -Xlog:class+load. NOT timing runs and not")
                 .append(" comparable with the readiness numbers above.\",\n");
+        out.append("    \"sharedArchiveInterpretation\": \"aggregate shared counts do not prove trained")
+                .append(" application-class reuse\",\n");
         out.append("    \"runs\": [\n");
         for (int i = 0; i < diagnostics.size(); i++) {
             StartupHarness.ClassLoadCount count = diagnostics.get(i);
             out.append("      {\"variant\": ").append(quote(count.variant()))
                     .append(", \"classesLoaded\": ").append(count.classesLoaded())
                     .append(", \"fromSharedArchive\": ").append(count.fromSharedArchive())
+                    .append(", \"horizon\": ").append(quote(count.horizon()))
                     .append(", \"readinessMillisWithLogging\": ").append(number(count.readinessMillis()))
-                    .append('}').append(i == diagnostics.size() - 1 ? "\n" : ",\n");
+                    .append(", \"command\": [");
+            for (int argument = 0; argument < count.command().size(); argument++) {
+                out.append(argument == 0 ? "" : ", ").append(quote(count.command().get(argument)));
+            }
+            out.append("]}").append(i == diagnostics.size() - 1 ? "\n" : ",\n");
         }
         out.append("    ]\n");
         out.append("  }\n");
@@ -127,7 +139,35 @@ final class Reports {
         return out.toString();
     }
 
-    private static void appendVariant(StringBuilder out, RunContext context, VariantResult result) {
+    private static void appendProvenance(StringBuilder out, BenchmarkProvenance provenance) {
+        out.append("  \"provenance\": {\n");
+        appendSource(out, "runnerSource", provenance.runnerSource());
+        out.append(",\n");
+        appendSource(out, "sampleSource", provenance.sampleSource());
+        out.append(",\n");
+        out.append("    \"jvmOptionEnvironment\": {\n");
+        int index = 0;
+        for (var entry : provenance.optionEnvironmentPresence().entrySet()) {
+            out.append("      ").append(quote(entry.getKey())).append(": {\"present\": ")
+                    .append(entry.getValue()).append(", \"action\": \"removed\", \"value\": ")
+                    .append(quote(BenchmarkProvenance.REDACTED_JVM_OPTIONS)).append('}')
+                    .append(index++ == provenance.optionEnvironmentPresence().size() - 1 ? "\n" : ",\n");
+        }
+        out.append("    },\n");
+        out.append("    \"environmentScope\": \"allowlisted deltas only; full environment not recorded\"\n");
+        out.append("  }");
+    }
+
+    private static void appendSource(StringBuilder out,
+                                     String name,
+                                     BenchmarkProvenance.SourceState source) {
+        out.append("    ").append(quote(name)).append(": {\"revision\": ")
+                .append(quote(source.revision())).append(", \"state\": ")
+                .append(quote(source.state())).append('}');
+    }
+
+    private static void appendVariant(StringBuilder out, RunContext context, VariantResult result)
+            throws IOException {
         Variant variant = result.variant();
         out.append("    {\n");
         out.append("      \"name\": ").append(quote(variant.name())).append(",\n");
@@ -140,15 +180,28 @@ final class Reports {
         out.append("      \"available\": ").append(variant.available()).append(",\n");
         out.append("      \"required\": ").append(context.requiredVariants().contains(variant.name()))
                 .append(",\n");
-        out.append("      \"unavailableReason\": ").append(quote(variant.unavailableReason())).append(",\n");
+        out.append("      \"unavailableReason\": ")
+                .append(quote(redact(context, variant, variant.unavailableReason()))).append(",\n");
         out.append("      \"artifact\": ")
-                .append(quote(variant.artifact() == null ? null : variant.artifact().toString())).append(",\n");
+                .append(quote(variant.artifact() == null ? null : "artifact:" + variant.name())).append(",\n");
         out.append("      \"deploymentSize\": ");
         appendDeploymentSize(out, variant.deploymentSize());
         out.append(",\n");
+        List<String> command = BenchmarkProvenance.relocatableCommand(variant);
         out.append("      \"command\": [");
-        for (int i = 0; i < variant.command().size(); i++) {
-            out.append(i == 0 ? "" : ", ").append(quote(variant.command().get(i)));
+        for (int i = 0; i < command.size(); i++) {
+            out.append(i == 0 ? "" : ", ").append(quote(command.get(i)));
+        }
+        out.append("],\n");
+        out.append("      \"orderedLaunchInputs\": [");
+        List<BenchmarkProvenance.InputIdentity> identities = BenchmarkProvenance.inputIdentities(variant);
+        for (int i = 0; i < identities.size(); i++) {
+            BenchmarkProvenance.InputIdentity identity = identities.get(i);
+            out.append(i == 0 ? "" : ", ")
+                    .append("{\"id\": ").append(quote(identity.id()))
+                    .append(", \"kind\": ").append(quote(identity.kind()))
+                    .append(", \"bytes\": ").append(identity.bytes())
+                    .append(", \"sha256\": ").append(quote(identity.sha256())).append('}');
         }
         out.append("],\n");
         out.append("      \"readiness\": ").append(statistics(result.readiness())).append(",\n");
@@ -162,7 +215,8 @@ final class Reports {
         out.append(",\n");
         out.append("      \"failures\": [");
         for (int i = 0; i < result.failures().size(); i++) {
-            out.append(i == 0 ? "" : ", ").append(quote(result.failures().get(i)));
+            out.append(i == 0 ? "" : ", ")
+                    .append(quote(redact(context, variant, result.failures().get(i))));
         }
         out.append("],\n");
         out.append("      \"samples\": [\n");
@@ -212,7 +266,7 @@ final class Reports {
                 .append(", \"skipped\": ").append(counts.skipped()).append('}');
     }
 
-    private static void appendAttempts(StringBuilder out, List<VariantResult> results) {
+    private static void appendAttempts(StringBuilder out, RunContext context, List<VariantResult> results) {
         List<RunAttempt> attempts = results.stream()
                 .flatMap(result -> result.attempts().stream())
                 .sorted(java.util.Comparator.comparingInt(RunAttempt::globalOrder))
@@ -220,6 +274,10 @@ final class Reports {
         out.append("  \"attempts\": [\n");
         for (int i = 0; i < attempts.size(); i++) {
             RunAttempt attempt = attempts.get(i);
+            Variant variant = results.stream()
+                    .map(VariantResult::variant)
+                    .filter(candidate -> candidate.name().equals(attempt.variant()))
+                    .findFirst().orElse(null);
             StartupSample sample = attempt.sample();
             out.append("    {\"variant\": ").append(quote(attempt.variant()))
                     .append(", \"iteration\": ").append(attempt.iteration())
@@ -227,7 +285,8 @@ final class Reports {
                     .append(", \"globalOrder\": ").append(attempt.globalOrder())
                     .append(", \"warmup\": ").append(attempt.warmup())
                     .append(", \"outcome\": ").append(quote(attempt.outcome().externalName()))
-                    .append(", \"failureReason\": ").append(quote(attempt.failureReason()))
+                    .append(", \"failureReason\": ")
+                    .append(quote(redact(context, variant, attempt.failureReason())))
                     .append(", \"exitCode\": ")
                     .append(attempt.exitCode() == null ? "null" : attempt.exitCode())
                     .append(", \"timing\": ");
@@ -355,7 +414,7 @@ final class Reports {
         }
         out.append("Time from process spawn to the first successful HTTP response, for the same Micronaut")
                 .append(" application across the required packaging and entry-path matrix.\n\n");
-        out.append("- **Sample**: `").append(context.sample()).append("`\n");
+        out.append("- **Sample**: `sample` (relocatable identifier; source revision is in `results.json`)\n");
         out.append("- **Machine**: ").append(System.getProperty("os.name")).append(' ')
                 .append(System.getProperty("os.version")).append(" · ")
                 .append(System.getProperty("os.arch")).append(" · ")
@@ -441,7 +500,9 @@ final class Reports {
             out.append("## Diagnostic runs — NOT timing runs\n\n");
             out.append("These runs carry `-Xlog:class+load=info`, which costs milliseconds and costs them")
                     .append(" unevenly. Their times are here only so the size of that penalty is visible;")
-                    .append(" they must never be compared with the table above.\n\n");
+                    .append(" they must never be compared with the table above. Counts cover **process")
+                    .append(" spawn through completed shutdown**, so they can include classes loaded after")
+                    .append(" readiness and by shutdown hooks.\n\n");
             out.append("| Variant | Classes loaded | From a shared archive | Readiness *with logging* |\n");
             out.append("|---|---:|---:|---:|\n");
             for (StartupHarness.ClassLoadCount count : diagnostics) {
@@ -606,7 +667,8 @@ final class Reports {
                 continue;
             }
             out.append("| `").append(required).append("` | ").append(what).append(" | ")
-                    .append(escapeCell(reason(detail))).append(" |\n");
+                    .append(escapeCell(reason(redact(context, result == null ? null : result.variant(), detail))))
+                    .append(" |\n");
         }
         out.append('\n');
     }
@@ -670,6 +732,30 @@ final class Reports {
         }
         String single = value.replace('\n', ' ').replace('\r', ' ').replace("|", "\\|");
         return single.length() > 400 ? single.substring(0, 400) + " …" : single;
+    }
+
+    private static String redact(RunContext context, Variant variant, String value) {
+        if (value == null) {
+            return null;
+        }
+        String redacted = value.replace(context.repository(), "<redacted:repository-location>")
+                .replace(context.sample().toAbsolutePath().normalize().toString(), "${sample}")
+                .replace(context.outputDirectory().toAbsolutePath().normalize().toString(), "${output}");
+        String home = System.getProperty("user.home", "");
+        if (!home.isEmpty()) {
+            redacted = redacted.replace(home, "${user-home-redacted}");
+        }
+        if (variant != null) {
+            if (variant.workingDirectory() != null) {
+                redacted = redacted.replace(variant.workingDirectory().toAbsolutePath().normalize().toString(),
+                        "${workdir}");
+            }
+            for (int i = 0; i < variant.launchInputs().size(); i++) {
+                redacted = redacted.replace(variant.launchInputs().get(i).toAbsolutePath().normalize().toString(),
+                        "${input:" + i + "}");
+            }
+        }
+        return redacted;
     }
 
     private static String quote(String value) {

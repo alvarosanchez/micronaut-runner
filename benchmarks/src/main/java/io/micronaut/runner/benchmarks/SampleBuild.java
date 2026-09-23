@@ -301,9 +301,11 @@ final class SampleBuild {
         DeploymentSize deploymentSize = DeploymentSize.measure(
                 DeploymentSize.input("application", application),
                 DeploymentSize.input("dependencies", dependencyCopies));
+        List<Path> launchInputs = new ArrayList<>(application);
+        launchInputs.addAll(dependencyCopies);
         return Variant.available(EXPLODED_CLASSPATH,
                 "Class files and dependency jars on an explicit, ordered -cp",
-                command, directory, directory, deploymentSize);
+                command, directory, directory, deploymentSize, launchInputs);
     }
 
     private Variant thinJar() throws IOException {
@@ -334,9 +336,12 @@ final class SampleBuild {
         DeploymentSize deploymentSize = DeploymentSize.measure(
                 DeploymentSize.input("application", jar),
                 DeploymentSize.input("dependencies", dependencyCopies));
+        List<Path> launchInputs = new ArrayList<>();
+        launchInputs.add(jar);
+        launchInputs.addAll(dependencyCopies);
         return Variant.available(THIN_JAR,
                 "Application jar with a Class-Path manifest pointing at lib/",
-                command, directory, jar, deploymentSize);
+                command, directory, jar, deploymentSize, launchInputs);
     }
 
     private Variant shadowJar() throws IOException {

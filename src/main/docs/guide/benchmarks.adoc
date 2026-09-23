@@ -71,7 +71,10 @@ Timing runs carry no diagnostic flags: `-Xlog` changes what is being measured, s
 collected in separate runs. Those diagnostics may show default JDK class sharing, but the current variants do
 not train or select a CDS archive or an AOT cache. The harness removes `JAVA_TOOL_OPTIONS`,
 `JDK_JAVA_OPTIONS` and `_JAVA_OPTIONS` from child JVM environments so ambient flags cannot silently change
-that cache mode.
+that cache mode. Diagnostic counts are labelled _spawn through shutdown_: logging remains active after HTTP
+readiness while the startup line is awaited and while the child shuts down, so shutdown-hook loads can be
+included. Diagnostic readiness is retained only to show logging overhead and never enters measured timing
+distributions.
 
 === Planned trained-cache matrix
 
@@ -92,6 +95,7 @@ Run it locally with:
 ----
 ./gradlew :benchmarks:jmh
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true
 ----
 
 Reports are written to `benchmarks/build/reports/`. In CI the benchmarks run weekly and on demand rather
@@ -105,6 +109,14 @@ its variant, iteration, global schedule order, phase, outcome, failure and exit 
 when the attempt produced a valid measurement. A build-unavailable variant is skipped, not mislabeled as a
 failed process attempt. A warm-up failure is visible but does not by itself invalidate a complete measured
 matrix.
+
+`results.json` uses a versioned, relocatable provenance schema. It records runner and sample revisions plus
+clean/dirty state, exact JDK and platform identity, logical processor count and physical memory, cache policy,
+the seed and actual attempt order, relocatable effective command arrays, and SHA-256 identities for ordered
+launch inputs. The three ambient JVM-option variables are recorded only as present/absent and removed; their
+values are explicitly redacted. Full environments, repository locations, Java homes and private absolute paths
+are never serialized. A reader can therefore identify the exact launched bytes and reconstruct successes and
+failures without depending on the original checkout location.
 
 For investigation only, `-Pbenchmarks.allowPartial=true` selects the explicit partial policy. An incomplete
 partial run is labelled as such in both reports and exits zero only when at least one measured attempt

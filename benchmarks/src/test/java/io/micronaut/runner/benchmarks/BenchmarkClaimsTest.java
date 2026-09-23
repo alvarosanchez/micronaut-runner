@@ -63,17 +63,23 @@ class BenchmarkClaimsTest {
         Variant variant = Variant.unavailable("exploded-cp", "test", "not built");
         Reports.write(output, context,
                 List.of(new VariantResult(variant, -1, List.of(), null, null, null, List.of())),
-                List.of());
+                List.of(new StartupHarness.ClassLoadCount("exploded-cp", 12, 3, 42.0,
+                        StartupHarness.DIAGNOSTIC_HORIZON,
+                        List.of("${java}", "-Xlog:class+load=info:file=${diagnostic-log}", "-jar", "${input:0}"))));
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"jvmProcessState\": \"fresh per sample\""));
         assertTrue(json.contains("\"osPageCacheState\": \"uncontrolled\""));
         assertTrue(json.contains("\"applicationCacheMode\": \"none\""));
+        assertTrue(json.contains("aggregate shared counts do not prove trained application-class reuse"));
+        assertTrue(json.contains("\"horizon\": \"spawn-through-shutdown\""));
+        assertTrue(json.contains("-Xlog:class+load=info:file=${diagnostic-log}"));
 
         String summary = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
         assertTrue(summary.contains("**JVM process**: fresh for every sample"));
         assertTrue(summary.contains("**OS page cache**: uncontrolled"));
         assertTrue(summary.contains("**Application cache**: no trained CDS archive or AOT cache"));
+        assertTrue(summary.contains("spawn through completed shutdown"));
     }
 
     @Test

@@ -48,6 +48,8 @@ def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
     // -Pbenchmarks.iterations to be the same work and skip it, silently leaving yesterday's summary.md in
     // place for CI to publish.
     outputs.upToDateWhen { false }
+    // Source identity must be explicit: user.dir may belong to an unrelated checkout for direct CLI runs.
+    systemProperty 'runner.benchmark.sourceRoot', rootProject.layout.projectDirectory.asFile.absolutePath
     argumentProviders.add({ ->
         def arguments = [
                 '--sample', layout.projectDirectory.dir('../test-suite/samples/hello-netty').asFile.absolutePath,
@@ -57,6 +59,9 @@ def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
                 '--out', outDir.get().asFile.absolutePath]
         if (providers.gradleProperty('benchmarks.allowPartial').map(String::toBoolean).getOrElse(false)) {
             arguments.add('--allow-partial')
+        }
+        if (providers.gradleProperty('benchmarks.diagnostics').map(String::toBoolean).getOrElse(false)) {
+            arguments.add('--diagnostics')
         }
         arguments
     } as CommandLineArgumentProvider)
