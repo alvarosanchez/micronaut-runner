@@ -116,10 +116,12 @@ public final class ZipWriter implements Closeable {
     private final OutputStream out;
     private final int defaultDosTime;
     private final boolean uniqueNames;
+    private final boolean layoutOnly;
     private final List<CentralRecord> records = new ArrayList<>();
     private final Set<String> names = new HashSet<>();
     private final Set<String> foldedNames = new HashSet<>();
     private final byte[] scratch = new byte[CENTRAL_HEADER_SIZE];
+    private byte[] copyBuffer;
     private long written;
     private boolean finished;
 
@@ -165,9 +167,23 @@ public final class ZipWriter implements Closeable {
      * @throws IllegalArgumentException if the instant is outside the range MS-DOS time can represent
      */
     public ZipWriter(OutputStream out, Instant timestamp, boolean uniqueNames) {
+        this(out, timestamp, uniqueNames, false);
+    }
+
+    private ZipWriter(OutputStream out, Instant timestamp, boolean uniqueNames, boolean layoutOnly) {
         this.out = Objects.requireNonNull(out, "out");
         this.defaultDosTime = toDosTime(timestamp);
         this.uniqueNames = uniqueNames;
+        this.layoutOnly = layoutOnly;
+    }
+
+    /**
+     * Creates a metadata-only writer. Header bytes go to {@code out}, while declared payload lengths only
+     * advance the archive position. This keeps header emission and ZIP geometry identical to a real write
+     * without synthesising payload bytes.
+     */
+    static ZipWriter layout(OutputStream out, Instant timestamp) {
+        return new ZipWriter(out, timestamp, true, true);
     }
 
     /**
@@ -317,6 +333,22 @@ public final class ZipWriter implements Closeable {
     }
 
     /**
+     * Registers an entry and advances over its declared payload without reading or writing that payload.
+     * Available only on a writer created by {@link #layout(OutputStream, Instant)}.
+     */
+    long layoutEntry(String name, long length, long crc32, int dosTime) throws IOException {
+        if (!layoutOnly) {
+            throw new IllegalStateException("Payload-free entries require a metadata-only ZIP layout writer");
+        }
+        if (length < 0) {
+            throw new IllegalArgumentException("Negative length for entry '" + name + "': " + length);
+        }
+        long dataOffset = writeHeader(name, length, crc32, dosTime, false);
+        written += length;
+        return dataOffset;
+    }
+
+    /**
      * Writes a file entry from a file, reading it twice: once to compute its CRC-32 and once to copy it.
      *
      * <p>This is how a nested jar built into a temporary file is added to the outer archive without ever
@@ -330,7 +362,7 @@ public final class ZipWriter implements Closeable {
     public long writeEntry(String name, Path source) throws IOException {
         Objects.requireNonNull(source, "source");
         long length = Files.size(source);
-        long crc = crc32(source);
+        long crc = crc32(source, length);
         try (InputStream in = Files.newInputStream(source)) {
             return writeEntry(name, in, length, crc, defaultDosTime);
         }
@@ -409,9 +441,12 @@ public final class ZipWriter implements Closeable {
         }
     }
 
-    private static long crc32(Path source) throws IOException {
+    private long crc32(Path source, long length) throws IOException {
         CRC32 crc = new CRC32();
-        byte[] buffer = new byte[COPY_BUFFER_SIZE];
+        if (length == 0) {
+            return crc.getValue();
+        }
+        byte[] buffer = copyBuffer();
         try (InputStream in = Files.newInputStream(source)) {
             int read = in.read(buffer);
             while (read > 0) {
@@ -464,7 +499,10 @@ public final class ZipWriter implements Closeable {
     }
 
     private void copy(String name, InputStream source, long length) throws IOException {
-        byte[] buffer = new byte[COPY_BUFFER_SIZE];
+        if (length == 0) {
+            return;
+        }
+        byte[] buffer = copyBuffer();
         long remaining = length;
         while (remaining > 0) {
             int wanted = (int) Math.min(buffer.length, remaining);
@@ -476,6 +514,13 @@ public final class ZipWriter implements Closeable {
             writeBytes(buffer, 0, read);
             remaining -= read;
         }
+    }
+
+    private byte[] copyBuffer() {
+        if (copyBuffer == null) {
+            copyBuffer = new byte[COPY_BUFFER_SIZE];
+        }
+        return copyBuffer;
     }
 
     /**
