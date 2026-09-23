@@ -1059,23 +1059,61 @@ full benefit that AOT linking gives an ordinary classpath.</p>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_two_options">Two options</h2>
+<h2 id="_keep_the_single_jar_with_cds">Keep the single JAR with CDS</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p><strong>Keep the single JAR.</strong> Create a CDS archive in the usual way. The same command must be used for the
-training run and for production:</p>
+<p>Train only the immutable final Runner JAR. The training process must reach readiness, exercise a
+representative workload, and then terminate normally so HotSpot can write the archive:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=app.jsa -jar my-app-0.1-all.jar</code></pre>
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -XX:ArchiveClassesAtExit=app.jsa -jar my-app-0.1-all.jar</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p><code>-XX:+AutoCreateSharedArchive</code> requires <code>-XX:SharedArchiveFile</code>; it creates the archive when it is missing
-or stale and reuses it otherwise.</p>
+<p>Bound every phase in deployment automation: build, readiness, workload requests, the normal-termination
+request, and process exit. Treat a nonzero exit or a missing or empty <code>app.jsa</code> as failed training. Do not
+train by killing the process after an arbitrary sleep: that neither proves the workload ran nor proves that
+archive generation completed.</p>
 </div>
 <div class="paragraph">
-<p><strong>Extract once, then get everything.</strong> If the image is built once and started many times, extract at image
+<p>Use strict sharing when a deployment requires its trained cache:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -Xshare:on -XX:SharedArchiveFile=app.jsa -jar my-app-0.1-all.jar</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><code>-Xshare:on</code> makes an absent, corrupt, or incompatible archive a launch failure. If continuing without the
+application cache is an intentional availability policy, select that explicitly with <code>-Xshare:auto</code> and
+monitor HotSpot&#8217;s cache diagnostics. Do not describe that fallback launch as a CDS result.</p>
+</div>
+<div class="paragraph">
+<p>Store managed archives under an identity derived from the bytes of the final Runner JAR (which contains the
+ordered application and dependency bytes), the exact JDK runtime and VM build, architecture, and every JVM
+flag that can affect training or use. Changing any input selects a different archive instead of overwriting
+or accidentally reusing the old one. The repository&#8217;s <code>runner-stored-cds</code> sample implements this lifecycle:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=12</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>It builds the sample once, trains after HTTP readiness, exercises <code>/hello</code>, calls a training-environment-only
+normal-termination endpoint, rejects missing or empty output, launches the exact same JAR and archive with
+strict sharing, and verifies <code>com.example.Application</code> came from the shared objects file. Only then does the
+archive become a benchmark launch input. The paired <code>runner-stored</code> row launches the same immutable JAR
+without an application archive.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_extract_for_full_aot_linking">Extract for full AOT linking</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>If the image is built once and started many times, extract at image
 build time and run from the exploded layout, which uses no custom class loader at all and is therefore
 fully AOT-linkable:</p>
 </div>
@@ -1096,16 +1134,32 @@ it names, validating each by file size and modification time, so the whole depen
 <h2 id="_verifying_that_it_worked">Verifying that it worked</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Do not assume an archive is being used. Check that your own classes are coming from it:</p>
+<p>Do not assume an archive is being used. Run diagnostics separately from timing and check that an application
+class, not merely a JDK class from the default archive, comes from the selected archive:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -XX:AOTCache=app.aot -Xlog:class+load -jar ./app/my-app.jar | grep 'shared objects file' | grep com.example</code></pre>
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -Xshare:on -XX:SharedArchiveFile=app.jsa -Xlog:class+load -jar my-app-0.1-all.jar
+# Look for: com.example.Application source: shared objects file (top)</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p><code>-Xlog:class+path=info</code> reports how the recorded class path was validated, which is the first thing to look
-at when a cache is silently ignored.</p>
+<p>For the extracted AOT path, use <code>-XX:AOTCache=app.aot</code> instead. <code>-Xlog:class+path=info</code> reports how a recorded
+class path was validated and is the first thing to inspect when a cache is ignored.</p>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+Runner&#8217;s custom-loader CDS reuses pre-parsed and pre-verified class data, but it does not turn the
+custom loader into a built-in loader and does not provide full built-in-loader AOT linking. Extracted-layout
+AOT caching is the path for that stronger optimization.
+</td>
+</tr>
+</table>
 </div>
 <div class="admonitionblock note">
 <table>
@@ -1149,7 +1203,7 @@ a byte array. These isolate the mechanism.</p>
 </dd>
 <dt class="hdlist1">Startup</dt>
 <dd>
-<p>The whole process, from spawn to readiness, for the same application packaged in the eight modes
+<p>The whole process, from spawn to readiness, for the same application packaged in the nine modes
 that the current harness implements:</p>
 <table class="tableblock frame-all grid-all stretch">
 <colgroup>
@@ -1180,6 +1234,11 @@ that the current harness implements:</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with nested dependencies re-packed uncompressed and the plugin-default entry stub</p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-cds</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The identical default-entry stored Runner JAR with a trained, application-class-verified CDS archive and
+strict <code>-Xshare:on</code> loading</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-reflection</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The same stored Runner JAR inputs with the entry stub disabled, as a reflection ablation</p></td>
 </tr>
@@ -1207,9 +1266,10 @@ that is what a user waits for and it captures class loading on the first request
 completed" line is recorded separately rather than substituted for readiness.</p>
 </div>
 <div class="paragraph">
-<p>None of these eight commands uses a trained application cache. Default JDK class sharing remains enabled when
-the selected JDK enables it, but reuse of platform classes from the JDK&#8217;s default archive is not evidence of
-trained application-class CDS or AOT reuse.</p>
+<p>Only <code>runner-stored-cds</code> selects a trained application cache. Its paired <code>runner-stored</code> row uses the identical
+final Runner JAR without an application archive. Default JDK class sharing remains enabled when the selected
+JDK enables it, but reuse of platform classes from the JDK&#8217;s default archive is not evidence of trained
+application-class CDS or AOT reuse; default JDK class sharing is a separate baseline condition.</p>
 </div>
 </div>
 </div>
@@ -1237,8 +1297,9 @@ by themselves establish a startup speedup or statistical significance.</p>
 </div>
 <div class="paragraph">
 <p>Timing runs carry no diagnostic flags: <code>-Xlog</code> changes what is being measured, so class-load counts are
-collected in separate runs. Those diagnostics may show default JDK class sharing, but the current variants do
-not train or select a CDS archive or an AOT cache. The harness removes <code>JAVA_TOOL_OPTIONS</code>,
+collected in separate runs. Before timing begins, the CDS lifecycle makes its own diagnostic launch and
+requires <code>com.example.Application</code>, an application class, to load from the selected shared objects file;
+aggregate shared-class counts alone are insufficient. The harness removes <code>JAVA_TOOL_OPTIONS</code>,
 <code>JDK_JAVA_OPTIONS</code> and <code><em>JAVA_OPTIONS</code> from child JVM environments so ambient flags cannot silently change
 that cache mode. Diagnostic counts are labelled _spawn through shutdown</em>: logging remains active after HTTP
 readiness while the startup line is awaited and while the child shuts down, so shutdown-hook loads can be
@@ -1246,19 +1307,22 @@ included. Diagnostic readiness is retained only to show logging overhead and nev
 distributions.</p>
 </div>
 <div class="sect2">
-<h3 id="_planned_trained_cache_matrix">Planned trained-cache matrix</h3>
+<h3 id="_trained_cache_matrix">Trained-cache matrix</h3>
 <div class="paragraph">
-<p>Direct Runner trained CDS is planned in
-<a href="https://github.com/alvarosanchez/micronaut-runner/issues/44">#44</a>. Extracted-layout JDK AOT caching is planned
-in <a href="https://github.com/alvarosanchez/micronaut-runner/issues/45">#45</a>. Both are future modes and are not
-measured by the current harness. JDK AOT caching is not GraalVM Native Image, and custom-loader CDS is not
-the full built-in-loader AOT-linking path.</p>
+<p>Direct Runner trained CDS is the <code>runner-stored</code>/<code>runner-stored-cds</code> pair. Extracted-layout JDK AOT caching is
+planned in <a href="https://github.com/alvarosanchez/micronaut-runner/issues/45">#45</a> and is not measured by the current
+harness. JDK AOT caching is not GraalVM Native Image, and custom-loader CDS is not the full built-in-loader
+AOT-linking path.</p>
 </div>
 <div class="paragraph">
-<p>Before those rows can be treated as measurements, they must demonstrate reuse of application classes, train
-competing layouts with equivalent workloads and options, define cache invalidation inputs, and report cache
-misses honestly. A cache mode unsupported by the selected JDK or platform must be reported as unavailable,
-not silently run without its trained application cache.</p>
+<p>CDS training and verification are bounded build-time operations outside all timing samples. Training reaches
+HTTP readiness, exercises <code>/hello</code>, requests normal application termination, requires exit status zero and a
+nonempty archive, then performs a strict diagnostic launch. The managed archive identity hashes the immutable
+final JAR (and therefore its embedded application and dependency bytes), exact JDK/VM build, architecture,
+launch options and workload paths. A changed input selects a different cache. An unsupported platform or any
+failed phase makes the CDS variant unavailable; the benchmark never silently substitutes a no-cache process.
+Production deployments choose strict <code>-Xshare:on</code> failure or explicit <code>-Xshare:auto</code> fallback according to
+their availability policy.</p>
 </div>
 <div class="paragraph">
 <p>Run it locally with:</p>
