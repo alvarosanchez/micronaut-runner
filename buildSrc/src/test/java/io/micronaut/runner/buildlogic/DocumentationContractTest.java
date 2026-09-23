@@ -88,6 +88,24 @@ class DocumentationContractTest {
         assertTrue(spec.contains("reflective fallback"));
     }
 
+    @Test
+    void mmapGuidanceRequiresLifetimeImmutabilityAndLimitsStalenessChecks() throws IOException {
+        String runtime = read("src/main/docs/guide/runtime.adoc");
+        String format = read("src/main/docs/guide/format.adoc");
+        String archiveSource = read("runner-launcher/src/main/java/io/micronaut/runner/ArchiveSource.java");
+        String index = read("runner-launcher/src/main/java/io/micronaut/runner/Index.java");
+
+        assertTrue(runtime.contains("immutable from the moment its JVM opens it until that JVM terminates"));
+        assertTrue(runtime.contains("not ongoing file monitoring"));
+        assertTrue(runtime.contains("versioned or content-addressed name"));
+        assertTrue(runtime.contains("On Windows"));
+        assertTrue(runtime.contains("background threads may still load classes"));
+        assertTrue(format.contains("not ongoing monitoring or an integrity boundary"));
+        assertTrue(archiveSource.contains("cannot guarantee safe access after a concurrent"));
+        assertTrue(index.contains("a successful result is then cached"));
+        assertFalse(archiveSource.contains("before any stale offset is dereferenced"));
+    }
+
     private static String read(String relative) throws IOException {
         return Files.readString(repositoryRoot().resolve(relative));
     }

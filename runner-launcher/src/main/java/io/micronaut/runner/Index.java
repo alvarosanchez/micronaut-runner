@@ -39,7 +39,9 @@ import java.util.zip.CRC32;
  * would cost time proportional to the entry table, such as verifying every string reference, is checked
  * when the record is touched instead, so that opening the index faults in only the pages it needs.
  * Failures throw {@link IllegalStateException} carrying {@link #REBUILD_MESSAGE}, because in practice they
- * all mean the same thing: the jar was edited, truncated or rebuilt after it was packaged.</p>
+ * all mean the same thing: the jar was edited, truncated or rebuilt after it was packaged. The source is
+ * assumed to remain immutable after it opens. The length comparison uses the source's cached opening length,
+ * and each local-header check is cached after its first success; neither is ongoing mutation monitoring.</p>
  *
  * <h2>Thread safety</h2>
  * <p>Every accessor is a pure function of immutable state and uses absolute {@link ByteBuffer} reads, which
@@ -520,10 +522,12 @@ public final class Index {
     /**
      * Checks, once per jar, that the nested jar still starts where the index says it does.
      *
-     * <p>This is the second half of the staleness check: the file length caught a rebuild that changed the
-     * size, and the local file header signature catches one that did not. It costs a single four byte read
-     * the first time a jar is touched, which is why the class loader can call it before every define
-     * without measuring it. The application layer is not a nested jar and is never checked.</p>
+     * <p>This is the second half of the packaged-artifact staleness diagnostic: the recorded length catches
+     * a rebuild whose size differed before the source opened, and the local file header signature can catch
+     * a same-length rewrite before this jar's first access. It costs a single four byte read the first time
+     * a jar is touched; a successful result is then cached. It does not monitor later changes or make reads
+     * safe while another process mutates the archive. The application layer is not a nested jar and is never
+     * checked.</p>
      *
      * @param jarId the jar index
      * @throws IllegalStateException if the archive no longer agrees with the index

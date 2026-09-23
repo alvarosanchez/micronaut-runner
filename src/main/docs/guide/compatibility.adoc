@@ -89,7 +89,8 @@ not prevent a library from doing so.
 [[authenticating]]
 == Authenticating a deployment artifact
 
-Authenticate the final runner JAR as an immutable deployment artifact. Do not run `jarsigner`, update the
+Authenticate the final runner JAR as an immutable deployment artifact, and keep it immutable for every JVM's
+complete lifetime as described in <<runtime,archive lifetime and deployment>>. Do not run `jarsigner`, update the
 manifest, re-zip the file or otherwise mutate it after packaging: those operations change the bytes and can
 invalidate both the precomputed runner index and any signature or checksum made over the previous bytes.
 

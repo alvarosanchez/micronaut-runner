@@ -34,7 +34,8 @@ ready, application entered. Use it to separate launcher cost from framework cost
 |`micronaut.runner.mmap`
 |`true`
 |Set to `false` to read the archive with positional file reads instead of a memory mapping. Slower, and
-only needed on a platform or file system where mapping is unavailable or undesirable.
+only needed on a platform or file system where mapping is unavailable or undesirable. Positional mode does
+not make concurrent archive replacement safe.
 
 |`micronaut.runner.verify`
 |`false`
@@ -58,6 +59,31 @@ application.
 |`2` |The launcher could not start: the archive could not be located, it was modified after packaging, or
 its format version is not supported.
 |===
+
+== Archive lifetime and deployment
+
+Treat a runner JAR as immutable from the moment its JVM opens it until that JVM terminates. Do not overwrite,
+truncate, append to, sign, re-zip or otherwise modify a running archive. This requirement applies both to the
+default memory-mapped mode and to `-Dmicronaut.runner.mmap=false` positional reads.
+
+The format's length comparison happens against the file length captured when the archive opens. A nested
+JAR's local-header signature is checked only on its first use, and a successful check is cached. These checks
+are diagnostics for some stale packaging outputs, not ongoing file monitoring. CRC-32 verification with
+`micronaut.runner.verify` can diagnose accidental byte corruption as complete entries are read; it is neither
+authentication nor protection against concurrent mutation. The JDK leaves the visibility of changes to a
+mapped file, and failures after truncation, dependent on the operating system and file system. Disabling mmap
+can change the observed failure, but does not establish a supported live-mutation procedure.
+
+Publish each version under a new path, preferably a versioned or content-addressed name. Verify the final
+bytes, start a new JVM from that path, direct new work to it, and remove the old artifact only after the old
+JVM has stopped. An atomic rename or symlink/pointer update may select the new path for _new_ launches without
+changing the file already open by an existing POSIX process. It does not update that process, which must keep
+using its original immutable file. On Windows, an open mapping commonly prevents deleting or replacing its
+file, so distinct versioned filenames are required. If deployment requires reusing one filename, stop every
+JVM using it before replacement and start them again afterwards.
+
+The launcher deliberately keeps the archive open after the application `main` method returns because
+background threads may still load classes. Returning from `main` is therefore not a replacement boundary.
 
 == Running from an exploded layout
 

@@ -43,26 +43,34 @@ import java.util.zip.InflaterInputStream;
  *
  * <p>Setting the system property {@value #MMAP_PROPERTY} to exactly {@code "false"} selects a fallback mode
  * that maps nothing and serves every read with a positional {@link FileChannel#read(ByteBuffer, long)} into
- * a heap buffer. The fallback exists for platforms or containers where a large mapping is unwelcome; it is
- * behaviourally identical, only slower, and the same tests run against both modes.</p>
+ * a heap buffer. The fallback exists for platforms or containers where a large mapping is unwelcome. It
+ * reads the same immutable archive format, but it does not make concurrent changes to that archive safe.</p>
  *
  * <h2>Lifetime</h2>
  * <p>The instance is {@link AutoCloseable}, but the launcher never closes it: application threads keep
  * loading classes for as long as the JVM lives, so the mapping must outlive {@code main}. Tests and
  * benchmarks do close it, and they must: on Windows an open mapping prevents the file from being deleted.
- * {@link #close()} closes the arena, which invalidates the segment, and then the channel.</p>
+ * {@link #close()} closes the arena, which invalidates the segment, and then the channel. The launcher
+ * cannot close the source when {@code main} returns because background threads may still load classes.</p>
  *
- * <h2>Truncation</h2>
- * <p>A memory mapping is a view of the file as it is <em>now</em>. If the archive is truncated or replaced
- * in place while it is mapped, touching a page that no longer exists raises {@code SIGBUS}, which the JVM
- * reports as a fatal error that no Java code can catch. That is why the index carries the file length
- * ({@code IndexFormat.H_OUTER_FILE_LENGTH}) and the local header signature of every nested jar: both are
- * cheap staleness checks that turn "the jar was rebuilt or edited underneath us" into a clear
- * {@link IllegalStateException} before any stale offset is dereferenced.</p>
+ * <h2>Archive immutability</h2>
+ * <p>The archive must not be modified, truncated or overwritten from {@link #open(File)} until the JVM
+ * terminates. The JDK does not specify when a mapping observes same-length file changes, or which exception
+ * an access to a region made inaccessible by truncation will produce. The outcome is operating-system and
+ * file-system dependent and may include abnormal JVM termination. Positional reads can likewise observe
+ * changed bytes or fail when the file changes underneath them; disabling the mapping is not a deployment
+ * replacement protocol.</p>
+ *
+ * <p>The index's recorded length ({@code IndexFormat.H_OUTER_FILE_LENGTH}) is compared with the length
+ * captured when this source opens, and each nested jar's local-header signature is checked once, on first
+ * use. Those checks diagnose some stale packaged artifacts at open or first access. They are not ongoing
+ * monitoring, do not authenticate the archive, and cannot guarantee safe access after a concurrent
+ * mutation.</p>
  *
  * <h2>Thread safety</h2>
  * <p>Everything after {@link #open(File)} is safe for concurrent use by any number of class-loading
- * threads: the segment is immutable, positional channel reads do not touch the channel position, and the
+ * threads when the archive obeys the immutability requirement: the segment is read-only, positional channel
+ * reads do not touch the channel position, and the
  * inflater pool is guarded by its own lock. Only {@link #close()} must not race with readers.</p>
  *
  * @since 1.0
@@ -190,8 +198,8 @@ public final class ArchiveSource implements AutoCloseable {
     }
 
     /**
-     * The length of the archive as it was when it was opened. The index records the same value so that a
-     * jar rebuilt underneath a running JVM is detected instead of dereferenced.
+     * The length of the archive as it was when it was opened. The index records the same value as a startup
+     * staleness diagnostic; this cached value does not monitor later changes to the file.
      *
      * @return the file length in bytes
      */
