@@ -46,10 +46,13 @@ import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 
+import static io.micronaut.runner.build.ZipReaderTest.deflated;
 import static io.micronaut.runner.build.ZipReaderTest.deflatedWithTrailingByte;
+import static io.micronaut.runner.build.ZipReaderTest.stored;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -441,6 +444,80 @@ class RunnerJarBuilderTest {
 
         assertArrayEquals(previous, Files.readAllBytes(output),
                 "a failed build must not replace what was at the output path");
+    }
+
+    @Test
+    void packagesValidStoredDeflatedAndEmptyApplicationEntries() throws IOException {
+        Path applicationJar = fixtures.resolve("valid-mixed-application.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(applicationJar))) {
+            deflated(zip, "com/example/Application.class",
+                    Files.readAllBytes(applicationClasses.resolve("com/example/Application.class")));
+            stored(zip, "stored.txt", "STORED".getBytes(StandardCharsets.UTF_8));
+            deflated(zip, "deflated.txt", "DEFLATED".getBytes(StandardCharsets.UTF_8));
+            stored(zip, "empty-stored.txt", new byte[0]);
+            deflated(zip, "empty-deflated.txt", new byte[0]);
+        }
+
+        Path output = output();
+        RunnerJarBuilder.build(spec(output)
+                .applicationOutput(List.of(applicationJar))
+                .dependencies(List.of())
+                .build(), BuildLogger.noOp());
+
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            Index index = reader.index();
+            assertEquals("STORED", new String(reader.read(index.find("stored.txt")), StandardCharsets.UTF_8));
+            assertEquals("DEFLATED", new String(reader.read(index.find("deflated.txt")), StandardCharsets.UTF_8));
+            assertArrayEquals(new byte[0], reader.read(index.find("empty-stored.txt")));
+            assertArrayEquals(new byte[0], reader.read(index.find("empty-deflated.txt")));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rejectsCorruptStoredApplicationEntriesWithoutChangingInputOrOutput(boolean verifyAll) throws IOException {
+        Path applicationJar = fixtures.resolve("application-crc-mismatch-" + verifyAll + ".jar");
+        try (ZipWriter writer = ZipWriter.create(applicationJar, ZipWriter.DEFAULT_TIMESTAMP)) {
+            writer.writeEntry("com/example/Application.class",
+                    Files.readAllBytes(applicationClasses.resolve("com/example/Application.class")));
+            writer.writeEntry("data.txt", "GOOD".getBytes(StandardCharsets.UTF_8));
+        }
+        long dataOffset;
+        try (ZipReader reader = ZipReader.open(applicationJar)) {
+            dataOffset = reader.entry("data.txt").orElseThrow().dataOffset();
+        }
+        byte[] applicationBytes = Files.readAllBytes(applicationJar);
+        applicationBytes[(int) dataOffset] = 'B';
+        Files.write(applicationJar, applicationBytes);
+
+        Path output = output();
+        Files.createDirectories(output.getParent());
+        byte[] previousOutput = "previous application artifact".getBytes(StandardCharsets.UTF_8);
+        Files.write(output, previousOutput);
+        byte[] corruptInput = Files.readAllBytes(applicationJar);
+        String previousVerifyAll = System.getProperty(RunnerJarBuilder.VERIFY_ALL_PROPERTY);
+        System.setProperty(RunnerJarBuilder.VERIFY_ALL_PROPERTY, Boolean.toString(verifyAll));
+        IOException failure;
+        try {
+            failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                    .applicationOutput(List.of(applicationJar))
+                    .dependencies(List.of())
+                    .build(), BuildLogger.noOp()));
+        } finally {
+            if (previousVerifyAll == null) {
+                System.clearProperty(RunnerJarBuilder.VERIFY_ALL_PROPERTY);
+            } else {
+                System.setProperty(RunnerJarBuilder.VERIFY_ALL_PROPERTY, previousVerifyAll);
+            }
+        }
+
+        assertTrue(failure.getMessage().contains(applicationJar.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("data.txt"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("CRC-32"), failure.getMessage());
+        assertArrayEquals(corruptInput, Files.readAllBytes(applicationJar),
+                "rejecting a damaged application jar must leave the input byte-identical");
+        assertArrayEquals(previousOutput, Files.readAllBytes(output),
+                "rejecting a damaged application jar must not replace the previous output");
     }
 
     @Test

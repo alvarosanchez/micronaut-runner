@@ -27,7 +27,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.zip.CRC32;
 
 /**
  * Rewrites a dependency jar so that every entry is {@code STORED}, or copies it byte for byte, and reports
@@ -107,7 +106,6 @@ public final class ZipRepacker {
                 crc = 0;
             } else {
                 byte[] content = source.read(entry);
-                verifyCrc(source, entry, content);
                 dataOffset = writer.writeEntry(name, content, 0, content.length, entry.dosTime());
                 size = content.length;
                 crc = entry.crc32();
@@ -190,15 +188,6 @@ public final class ZipRepacker {
         }
     }
 
-    private static void verifyCrc(ZipReader source, ZipEntryInfo entry, byte[] content) throws IOException {
-        CRC32 crc = new CRC32();
-        crc.update(content, 0, content.length);
-        if (crc.getValue() != entry.crc32()) {
-            throw new IOException("Entry '" + entry.name() + "' of " + source.path()
-                    + " does not match its recorded CRC-32: expected " + Long.toHexString(entry.crc32())
-                    + ", computed " + Long.toHexString(crc.getValue()));
-        }
-    }
 
     /**
      * What a repack or a verbatim copy produced.

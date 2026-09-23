@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.jar.Manifest;
+import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
@@ -425,30 +426,30 @@ public final class ZipReader implements Closeable {
     }
 
     /**
-     * Reads an entry's content, decompressing it when it is deflated.
+     * Reads an entry's content, decompressing it when it is deflated and verifying its CRC-32.
      *
      * @param entry an entry of this archive
-     * @return the uncompressed content, of length {@link ZipEntryInfo#uncompressedSize()}
-     * @throws IOException if the data cannot be read, the compression method is neither stored nor deflated,
-     *                     or the deflate stream is truncated, corrupt, overproduces, or does not consume its
-     *                     complete recorded compressed region
+     * @return the verified uncompressed content, of length {@link ZipEntryInfo#uncompressedSize()}
+     * @throws IOException if the data cannot be read, its CRC-32 does not match, the compression method is
+     *                     neither stored nor deflated, or the deflate stream is truncated, corrupt,
+     *                     overproduces, or does not consume its complete recorded compressed region
      */
     public byte[] read(ZipEntryInfo entry) throws IOException {
         Objects.requireNonNull(entry, "entry");
         if (entry.method() == IndexFormat.METHOD_STORED) {
-            return readRaw(entry);
+            CRC32 crc = new CRC32();
+            byte[] result = readFully(entry.dataOffset(), checkedArraySize(entry, entry.compressedSize()), crc);
+            verifyCrc(entry, crc.getValue());
+            return result;
         }
         if (entry.method() != IndexFormat.METHOD_DEFLATED) {
             throw new IOException("Entry '" + entry.name() + "' of " + path + " uses unsupported compression method "
                     + entry.method());
         }
-        long size = entry.uncompressedSize();
-        if (size > MAX_ARRAY_LENGTH) {
-            throw new IOException("Entry '" + entry.name() + "' of " + path + " is too large to read into memory: "
-                    + size + " bytes");
-        }
+        int resultSize = checkedArraySize(entry, entry.uncompressedSize());
         byte[] compressed = readRaw(entry);
-        byte[] result = new byte[(int) size];
+        byte[] result = new byte[resultSize];
+        CRC32 crc = new CRC32();
         Inflater inflater = new Inflater(true);
         try {
             inflater.setInput(compressed);
@@ -466,6 +467,7 @@ public final class ZipReader implements Closeable {
                         throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
                                 + " produces more than the recorded " + result.length + " bytes");
                     }
+                    crc.update(result, total, read);
                     total += read;
                 } else if (inflater.finished()) {
                     // The terminal block may produce no plaintext, including for an empty entry.
@@ -488,12 +490,29 @@ public final class ZipReader implements Closeable {
                 throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
                         + " ended with " + remaining + " unused compressed bytes");
             }
+            verifyCrc(entry, crc.getValue());
         } catch (DataFormatException e) {
             throw new IOException("Corrupt deflate stream for entry '" + entry.name() + "' of " + path, e);
         } finally {
             inflater.end();
         }
         return result;
+    }
+
+    private int checkedArraySize(ZipEntryInfo entry, long size) throws IOException {
+        if (size > MAX_ARRAY_LENGTH) {
+            throw new IOException("Entry '" + entry.name() + "' of " + path + " is too large to read into memory: "
+                    + size + " bytes");
+        }
+        return (int) size;
+    }
+
+    private void verifyCrc(ZipEntryInfo entry, long actual) throws IOException {
+        if (actual != entry.crc32()) {
+            throw new IOException("Entry '" + entry.name() + "' of " + path
+                    + " does not match its recorded CRC-32: expected " + Long.toHexString(entry.crc32())
+                    + ", computed " + Long.toHexString(actual));
+        }
     }
 
     private IOException truncatedDeflate(ZipEntryInfo entry, int expected, int actual) {
@@ -546,6 +565,10 @@ public final class ZipReader implements Closeable {
     }
 
     private byte[] readFully(long position, int length) throws IOException {
+        return readFully(position, length, null);
+    }
+
+    private byte[] readFully(long position, int length, CRC32 crc) throws IOException {
         if (position < 0 || length < 0 || position > fileLength - length) {
             throw malformed("a read of " + length + " bytes at offset " + position + " runs past the end of the file");
         }
@@ -553,9 +576,13 @@ public final class ZipReader implements Closeable {
         ByteBuffer buffer = ByteBuffer.wrap(result);
         long at = position;
         while (buffer.hasRemaining()) {
+            int start = buffer.position();
             int read = channel.read(buffer, at);
             if (read < 0) {
                 throw malformed("unexpected end of file at offset " + at);
+            }
+            if (crc != null) {
+                crc.update(result, start, read);
             }
             at += read;
         }
