@@ -1,0 +1,63 @@
+plugins {
+    alias(libs.plugins.micronaut.application)
+    id 'io.micronaut.runner'
+    alias(libs.plugins.shadow)
+}
+
+version = '0.1'
+group = 'com.example'
+
+micronaut {
+    version = libs.versions.micronaut.platform.get()
+    runtime 'netty'
+    processing {
+        incremental true
+        annotations 'com.example.*'
+    }
+}
+
+dependencies {
+    annotationProcessor 'io.micronaut:micronaut-inject-java'
+    annotationProcessor 'io.micronaut.serde:micronaut-serde-processor'
+    implementation 'io.micronaut:micronaut-http-server-netty'
+    implementation 'io.micronaut:micronaut-http-client'
+    implementation 'io.micronaut:micronaut-management'
+    implementation 'io.micronaut.serde:micronaut-serde-jackson'
+    runtimeOnly 'ch.qos.logback:logback-classic'
+}
+
+application {
+    mainClass = 'com.example.Application'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+// A generated payload makes resource streaming representative without committing a binary megabyte.
+def generatedResources = layout.buildDirectory.dir('generated/representative-resources')
+def generateRepresentativePayload = tasks.register('generateRepresentativePayload') {
+    def payload = generatedResources.map { it.file('representative-payload.bin') }
+    outputs.file(payload)
+    doLast {
+        def target = payload.get().asFile
+        target.parentFile.mkdirs()
+        target.withOutputStream { output ->
+            byte[] block = new byte[16 * 1024]
+            for (int i = 0; i < block.length; i++) {
+                block[i] = (byte) (i * 31 + 17)
+            }
+            64.times { output.write(block) }
+        }
+    }
+}
+
+sourceSets.main.resources.srcDir(generatedResources)
+tasks.named('processResources') {
+    dependsOn(generateRepresentativePayload)
+}
+
+tasks.named('shadowJar') {
+    archiveClassifier = 'shadow'
+}
