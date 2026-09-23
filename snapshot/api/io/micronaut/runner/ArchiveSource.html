@@ -56,7 +56,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#" tabindex="0">Description</a>
 <ol class="toc-list">
 <li><a href="#lifetime-heading" tabindex="0">Lifetime</a></li>
-<li><a href="#truncation-heading" tabindex="0">Truncation</a></li>
+<li><a href="#archive-immutability-heading" tabindex="0">Archive immutability</a></li>
 <li><a href="#thread-safety-heading" tabindex="0">Thread safety</a></li>
 </ol>
 </li>
@@ -118,26 +118,34 @@ stores, so no per-entry bookkeeping is needed.</p>
 
 <p>Setting the system property <a href="#MMAP_PROPERTY">"micronaut.runner.mmap"</a> to exactly <code>"false"</code> selects a fallback mode
 that maps nothing and serves every read with a positional <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/channels/FileChannel.html#read(java.nio.ByteBuffer,long)" title="class or interface in java.nio.channels" class="external-link"><code>FileChannel.read(ByteBuffer, long)</code></a> into
-a heap buffer. The fallback exists for platforms or containers where a large mapping is unwelcome; it is
-behaviourally identical, only slower, and the same tests run against both modes.</p>
+a heap buffer. The fallback exists for platforms or containers where a large mapping is unwelcome. It
+reads the same immutable archive format, but it does not make concurrent changes to that archive safe.</p>
 
 <h2 id="lifetime-heading">Lifetime</h2>
 <p>The instance is <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/AutoCloseable.html" title="class or interface in java.lang" class="external-link"><code>AutoCloseable</code></a>, but the launcher never closes it: application threads keep
 loading classes for as long as the JVM lives, so the mapping must outlive <code>main</code>. Tests and
 benchmarks do close it, and they must: on Windows an open mapping prevents the file from being deleted.
-<a href="#close()"><code>close()</code></a> closes the arena, which invalidates the segment, and then the channel.</p>
+<a href="#close()"><code>close()</code></a> closes the arena, which invalidates the segment, and then the channel. The launcher
+cannot close the source when <code>main</code> returns because background threads may still load classes.</p>
 
-<h2 id="truncation-heading">Truncation</h2>
-<p>A memory mapping is a view of the file as it is <em>now</em>. If the archive is truncated or replaced
-in place while it is mapped, touching a page that no longer exists raises <code>SIGBUS</code>, which the JVM
-reports as a fatal error that no Java code can catch. That is why the index carries the file length
-(<code>IndexFormat.H_OUTER_FILE_LENGTH</code>) and the local header signature of every nested jar: both are
-cheap staleness checks that turn "the jar was rebuilt or edited underneath us" into a clear
-<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalStateException.html" title="class or interface in java.lang" class="external-link"><code>IllegalStateException</code></a> before any stale offset is dereferenced.</p>
+<h2 id="archive-immutability-heading">Archive immutability</h2>
+<p>The archive must not be modified, truncated or overwritten from <a href="#open(java.io.File)"><code>open(File)</code></a> until the JVM
+terminates. The JDK does not specify when a mapping observes same-length file changes, or which exception
+an access to a region made inaccessible by truncation will produce. The outcome is operating-system and
+file-system dependent and may include abnormal JVM termination. Positional reads can likewise observe
+changed bytes or fail when the file changes underneath them; disabling the mapping is not a deployment
+replacement protocol.</p>
+
+<p>The index's recorded length (<code>IndexFormat.H_OUTER_FILE_LENGTH</code>) is compared with the length
+captured when this source opens, and each nested jar's local-header signature is checked once, on first
+use. Those checks diagnose some stale packaged artifacts at open or first access. They are not ongoing
+monitoring, do not authenticate the archive, and cannot guarantee safe access after a concurrent
+mutation.</p>
 
 <h2 id="thread-safety-heading">Thread safety</h2>
 <p>Everything after <a href="#open(java.io.File)"><code>open(File)</code></a> is safe for concurrent use by any number of class-loading
-threads: the segment is immutable, positional channel reads do not touch the channel position, and the
+threads when the archive obeys the immutability requirement: the segment is read-only, positional channel
+reads do not touch the channel position, and the
 inflater pool is guarded by its own lock. Only <a href="#close()"><code>close()</code></a> must not race with readers.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
@@ -363,8 +371,8 @@ at all, is only diagnosed by <a href="#openIndex()"><code>openIndex()</code></a>
 <h3>length</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long</span>&nbsp;<span class="element-name">length</span>()</div>
-<div class="block">The length of the archive as it was when it was opened. The index records the same value so that a
-jar rebuilt underneath a running JVM is detected instead of dereferenced.</div>
+<div class="block">The length of the archive as it was when it was opened. The index records the same value as a startup
+staleness diagnostic; this cached value does not monitor later changes to the file.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the file length in bytes</dd>

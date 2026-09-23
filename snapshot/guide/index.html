@@ -571,12 +571,18 @@ manifest&#8217;s main attributes attribute by attribute when a package is define
 <h3 id="_detecting_a_stale_archive">Detecting a stale archive</h3>
 <div class="paragraph">
 <p>The index stores the outer file&#8217;s length, and every jar record stores the offset of the local file header
-that introduces it. Both are checked, the second lazily per JAR, and a mismatch fails with a message
-telling you to rebuild. This detects an archive that was appended to, truncated or re-zipped after
-packaging, which would otherwise mean reading from wrong offsets. It is a staleness check, not an
-integrity check: it is not designed to detect deliberate tampering, and a modification that preserves the
-length and the header positions passes it. Full CRC verification on every read is available with
-<code>-Dmicronaut.runner.verify=true</code>.</p>
+that introduces it. The recorded length is compared with the length captured when the archive opens. The
+header is checked lazily on the JAR&#8217;s first use, then a successful result is cached. A mismatch fails with a
+message telling you to rebuild. These checks diagnose some archives that were appended to, truncated or
+re-zipped between packaging and the relevant check, which would otherwise mean reading from wrong offsets.</p>
+</div>
+<div class="paragraph">
+<p>They are staleness diagnostics, not ongoing monitoring or an integrity boundary. A modification that
+preserves the length and header positions passes them, and a modification after a successful check is not
+checked again. CRC verification with <code>-Dmicronaut.runner.verify=true</code> covers complete entry contents as they
+are read, but does not authenticate the artifact or make concurrent mutation safe. The running archive must
+remain immutable for the JVM lifetime; see <a href="#runtime">archive lifetime and deployment</a> for supported
+replacement procedures.</p>
 </div>
 </div>
 </div>
@@ -675,7 +681,8 @@ ready, application entered. Use it to separate launcher cost from framework cost
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.mmap</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Set to <code>false</code> to read the archive with positional file reads instead of a memory mapping. Slower, and
-only needed on a platform or file system where mapping is unavailable or undesirable.</p></td>
+only needed on a platform or file system where mapping is unavailable or undesirable. Positional mode does
+not make concurrent archive replacement safe.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.verify</code></p></td>
@@ -723,6 +730,38 @@ its format version is not supported.</p></td>
 </tr>
 </tbody>
 </table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_archive_lifetime_and_deployment">Archive lifetime and deployment</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Treat a runner JAR as immutable from the moment its JVM opens it until that JVM terminates. Do not overwrite,
+truncate, append to, sign, re-zip or otherwise modify a running archive. This requirement applies both to the
+default memory-mapped mode and to <code>-Dmicronaut.runner.mmap=false</code> positional reads.</p>
+</div>
+<div class="paragraph">
+<p>The format&#8217;s length comparison happens against the file length captured when the archive opens. A nested
+JAR&#8217;s local-header signature is checked only on its first use, and a successful check is cached. These checks
+are diagnostics for some stale packaging outputs, not ongoing file monitoring. CRC-32 verification with
+<code>micronaut.runner.verify</code> can diagnose accidental byte corruption as complete entries are read; it is neither
+authentication nor protection against concurrent mutation. The JDK leaves the visibility of changes to a
+mapped file, and failures after truncation, dependent on the operating system and file system. Disabling mmap
+can change the observed failure, but does not establish a supported live-mutation procedure.</p>
+</div>
+<div class="paragraph">
+<p>Publish each version under a new path, preferably a versioned or content-addressed name. Verify the final
+bytes, start a new JVM from that path, direct new work to it, and remove the old artifact only after the old
+JVM has stopped. An atomic rename or symlink/pointer update may select the new path for <em>new</em> launches without
+changing the file already open by an existing POSIX process. It does not update that process, which must keep
+using its original immutable file. On Windows, an open mapping commonly prevents deleting or replacing its
+file, so distinct versioned filenames are required. If deployment requires reusing one filename, stop every
+JVM using it before replacement and start them again afterwards.</p>
+</div>
+<div class="paragraph">
+<p>The launcher deliberately keeps the archive open after the application <code>main</code> method returns because
+background threads may still load classes. Returning from <code>main</code> is therefore not a replacement boundary.</p>
+</div>
 </div>
 </div>
 <div class="sect1">
@@ -928,7 +967,8 @@ not prevent a library from doing so.</p>
 <h2 id="authenticating">Authenticating a deployment artifact</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Authenticate the final runner JAR as an immutable deployment artifact. Do not run <code>jarsigner</code>, update the
+<p>Authenticate the final runner JAR as an immutable deployment artifact, and keep it immutable for every JVM&#8217;s
+complete lifetime as described in <a href="#runtime">archive lifetime and deployment</a>. Do not run <code>jarsigner</code>, update the
 manifest, re-zip the file or otherwise mutate it after packaging: those operations change the bytes and can
 invalidate both the precomputed runner index and any signature or checksum made over the previous bytes.</p>
 </div>
@@ -1297,9 +1337,12 @@ environment of interest and treat its output as local descriptive evidence rathe
 <h2 id="_runner_jar_was_modified_after_packaging">"runner jar was modified after packaging"</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>The index records the archive&#8217;s length and the position of every nested JAR. One of those checks failed,
-which means the file changed after it was built: something appended to it, re-zipped it, or signed it in
-place. Rebuild the archive; do not sign or otherwise rewrite it in place. To authenticate a deployment,
+<p>The index records the archive&#8217;s length and the position of every nested JAR. The length is compared when the
+archive opens and each nested-JAR header is checked on first use. One of those checks failed, which means the
+file changed after it was built: something appended to it, re-zipped it, or signed it in place. These checks
+are not ongoing monitoring and do not make a live rewrite safe. Rebuild the archive; do not sign or otherwise
+rewrite it in place. Stop the JVM before replacing this path, or deploy the replacement under a new versioned
+path as described in <a href="#runtime">archive lifetime and deployment</a>. To authenticate a deployment,
 create a detached signature over the final bytes and require successful verification before launch, as
 described in <a href="#authenticating">authenticating a deployment artifact</a>.</p>
 </div>
