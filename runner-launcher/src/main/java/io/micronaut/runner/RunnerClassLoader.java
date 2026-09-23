@@ -231,16 +231,18 @@ public final class RunnerClassLoader extends ClassLoader {
         int directory = namesDirectory(logical) ? IndexFormat.NO_INDEX
                 : index.resolve(index.find(withTrailingSlash(logical)), multiReleaseVersion);
         int selected = selectResource(exact, directory);
-        while (selected != IndexFormat.NO_INDEX) {
+        int remaining = index.entryCount();
+        while (selected != IndexFormat.NO_INDEX && remaining > 0) {
             int jarId = index.entryJarId(selected);
             addUrl(urls, selected);
             if (exact != IndexFormat.NO_INDEX && index.entryJarId(exact) == jarId) {
-                exact = nextJarResource(exact);
+                exact = index.resolve(index.nextJar(exact), multiReleaseVersion);
             }
             if (directory != IndexFormat.NO_INDEX && index.entryJarId(directory) == jarId) {
-                directory = nextJarResource(directory);
+                directory = index.resolve(index.nextJar(directory), multiReleaseVersion);
             }
             selected = selectResource(exact, directory);
+            remaining--;
         }
         return Collections.enumeration(urls);
     }
@@ -720,29 +722,6 @@ public final class RunnerClassLoader extends ClassLoader {
             return exact;
         }
         return index.entryJarId(exact) <= index.entryJarId(directory) ? exact : directory;
-    }
-
-    /**
-     * Selects the first applicable record after the jar that supplied {@code selected}.
-     *
-     * <p>Same-name chains are ordered by jar and then by multi-release precedence, so skipping the rest of
-     * one jar and resolving the remaining suffix advances an enumeration in one pass.</p>
-     *
-     * @param selected the record selected for the current jar
-     * @return the selected record of the next contributing jar, or {@link IndexFormat#NO_INDEX}
-     */
-    private int nextJarResource(int selected) {
-        int jarId = index.entryJarId(selected);
-        int record = index.next(selected);
-        int guard = index.entryCount();
-        while (record != IndexFormat.NO_INDEX && index.entryJarId(record) == jarId && guard >= 0) {
-            record = index.next(record);
-            guard--;
-        }
-        if (guard < 0) {
-            return IndexFormat.NO_INDEX;
-        }
-        return index.resolve(record, multiReleaseVersion);
     }
 
     /**

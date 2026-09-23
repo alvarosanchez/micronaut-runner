@@ -102,6 +102,17 @@ class RepresentativeWorkloadTest {
     }
 
     @Test
+    void resourceEnumerationFixtureHasTheRequestedContributors() throws Exception {
+        for (int contributors : List.of(1, 30, 300)) {
+            SyntheticArchive archive = SyntheticArchive.forResourceEnumeration(contributors);
+            try (RepresentativeResourceWorkload workload = RepresentativeResourceWorkload.url(archive)) {
+                assertEquals(contributors, workload.duplicateResourceCount());
+                assertEquals(contributors, workload.serviceDiscoveryCount());
+            }
+        }
+    }
+
+    @Test
     void syntheticArchiveExercisesLocalityResourcesServicesManifestsDuplicatesAndMultiRelease() throws Exception {
         WorkloadShape shape = WorkloadShape.named("small");
         SyntheticArchive archive = SyntheticArchive.forWorkload(shape.name());
