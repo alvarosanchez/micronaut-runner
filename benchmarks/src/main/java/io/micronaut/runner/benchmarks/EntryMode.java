@@ -35,7 +35,8 @@ enum EntryMode {
         if (variantName.endsWith("-reflection")) {
             return REFLECTION;
         }
-        if (variantName.equals("runner-stored") || variantName.equals("runner-preserve")) {
+        if (variantName.equals("runner-stored") || variantName.equals("runner-stored-cds")
+                || variantName.equals("runner-preserve")) {
             return STUB;
         }
         return STANDARD_LOADER;
