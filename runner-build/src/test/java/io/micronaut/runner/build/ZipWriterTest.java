@@ -33,6 +33,8 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -46,6 +48,9 @@ import static io.micronaut.runner.build.ZipReaderTest.repeat;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -222,6 +227,71 @@ class ZipWriterTest {
         assertThrows(IOException.class, () -> writer.writeEntry("b.txt", new byte[] {2}));
         writer.close();
         assertEquals(length, bytes.size());
+    }
+
+    @Test
+    void metadataOnlyLayoutSkipsPayloadBytesAndUsesRealZipGeometry() throws IOException {
+        ByteArrayOutputStream metadata = new ByteArrayOutputStream();
+        long marker = IndexFormat.ZIP64_MARKER;
+        long directoryOffset;
+        long archiveSize;
+        int unicodeNameLength = "caf\u00e9/empty.txt".getBytes(StandardCharsets.UTF_8).length;
+        int largeNameLength = "large.bin".getBytes(StandardCharsets.UTF_8).length;
+        try (ZipWriter layout = ZipWriter.layout(metadata, ZipWriter.DEFAULT_TIMESTAMP)) {
+            long directoryData = layout.writeDirectoryEntry("dir/");
+            long emptyData = layout.layoutEntry("caf\u00e9/empty.txt", 0, 0, layout.dosTime());
+            long largeData = layout.layoutEntry("large.bin", marker, 0, layout.dosTime());
+
+            assertEquals(34, directoryData);
+            assertEquals(34 + 30 + unicodeNameLength, emptyData);
+            assertEquals(emptyData + 30 + largeNameLength + 20, largeData,
+                    "the exact ZIP64 size marker adds its local extra field");
+            directoryOffset = largeData + marker;
+            layout.finish();
+            archiveSize = layout.offset();
+        }
+
+        long directorySize = 46L + "dir/".length()
+                + 46L + unicodeNameLength
+                + 46L + largeNameLength + 20;
+        assertEquals(directoryOffset + directorySize + 56 + 20 + 22, archiveSize,
+                "the central directory and ZIP64 end records use the same geometry as a real archive");
+        assertEquals(30 + 4 + 30 + unicodeNameLength + 30 + largeNameLength + 20
+                        + directorySize + 56 + 20 + 22,
+                metadata.size(), "the metadata sink must never receive the declared multi-gigabyte payload");
+
+        byte[] headers = metadata.toByteArray();
+        int largeLocal = 30 + 4 + 30 + unicodeNameLength;
+        assertEquals(20, unsignedShortAt(headers, largeLocal + 28), "ZIP64 local extra is retained");
+        int firstCentral = indexOfSignature(headers, IndexFormat.CENTRAL_HEADER_SIGNATURE);
+        assertTrue(firstCentral >= 0);
+        assertEquals(0, unsignedShortAt(headers, firstCentral + 32), "entry comments remain absent");
+    }
+
+    @Test
+    void independentWritersReusePrivateBuffersAndEmptyStreamsAllocateNone() throws Exception {
+        ByteArrayOutputStream emptyArchive = new ByteArrayOutputStream();
+        try (ZipWriter empty = new ZipWriter(emptyArchive)) {
+            empty.writeEntry("empty", InputStream.nullInputStream(), 0, 0, empty.dosTime());
+            assertNull(copyBuffer(empty), "an empty streamed entry needs no copy buffer");
+        }
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Callable<WriterCapture> ones = () -> streamedArchive((byte) 1);
+            Callable<WriterCapture> twos = () -> streamedArchive((byte) 2);
+            var first = executor.submit(ones);
+            var second = executor.submit(twos);
+            WriterCapture firstCapture = first.get();
+            WriterCapture secondCapture = second.get();
+
+            assertSame(firstCapture.firstBuffer(), firstCapture.secondBuffer(),
+                    "one writer reuses its bounded streaming buffer");
+            assertSame(secondCapture.firstBuffer(), secondCapture.secondBuffer());
+            assertNotSame(firstCapture.firstBuffer(), secondCapture.firstBuffer(),
+                    "independent writers must never share a mutable copy buffer");
+            assertArrayEquals(repeatByte((byte) 1), firstCapture.payload());
+            assertArrayEquals(repeatByte((byte) 2), secondCapture.payload());
+        }
     }
 
     @Test
@@ -412,6 +482,37 @@ class ZipWriterTest {
         return crc.getValue();
     }
 
+    private static WriterCapture streamedArchive(byte value) throws Exception {
+        byte[] payload = repeatByte(value);
+        ByteArrayOutputStream archive = new ByteArrayOutputStream();
+        long firstOffset;
+        Object firstBuffer;
+        Object secondBuffer;
+        try (ZipWriter writer = new ZipWriter(archive)) {
+            firstOffset = writer.writeEntry("first.bin", new ByteArrayInputStream(payload), payload.length,
+                    crc(payload), writer.dosTime());
+            firstBuffer = copyBuffer(writer);
+            writer.writeEntry("second.bin", new ByteArrayInputStream(payload), payload.length,
+                    crc(payload), writer.dosTime());
+            secondBuffer = copyBuffer(writer);
+        }
+        byte[] bytes = archive.toByteArray();
+        return new WriterCapture(Arrays.copyOfRange(bytes, (int) firstOffset, (int) firstOffset + payload.length),
+                firstBuffer, secondBuffer);
+    }
+
+    private static byte[] repeatByte(byte value) {
+        byte[] payload = new byte[128 * 1024 + 17];
+        Arrays.fill(payload, value);
+        return payload;
+    }
+
+    private static Object copyBuffer(ZipWriter writer) throws Exception {
+        var field = ZipWriter.class.getDeclaredField("copyBuffer");
+        field.setAccessible(true);
+        return field.get(writer);
+    }
+
     private static HeaderCapture simulateHeaderOnlyEntry(long size, long initialOffset) throws Exception {
         String name = "boundary.bin";
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -483,5 +584,8 @@ class ZipWriterTest {
             long afterLocalHeader,
             long dataOffset,
             int centralHeader) {
+    }
+
+    private record WriterCapture(byte[] payload, Object firstBuffer, Object secondBuffer) {
     }
 }

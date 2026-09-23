@@ -104,7 +104,6 @@ public final class RunnerJarBuilder {
     /** Buffer size for the streaming copies. */
     private static final int BUFFER_SIZE = 64 * 1024;
 
-
     private final RunnerJarSpec spec;
     private final BuildLogger logger;
     private final List<String> warnings = new ArrayList<>();
@@ -961,12 +960,12 @@ public final class RunnerJarBuilder {
     }
 
     /**
-     * Writes the archive, either for real or to nowhere.
+     * Writes the archive, either for real or as metadata-only layout.
      *
-     * <p>The dry pass exists to learn offsets: it pushes the right number of bytes through a
-     * {@link ZipWriter} that throws them away, which makes the writer, rather than a second copy of its
-     * header arithmetic here, the authority on where everything lands. The real pass then checks every
-     * offset against what the dry pass recorded, so a disagreement between the two can never reach an
+     * <p>The dry pass registers the same entry metadata with a {@link ZipWriter}, but advances over declared
+     * payload lengths without reading or writing fake bytes. The writer therefore remains the sole authority
+     * on header and ZIP64 geometry while dry work stays proportional to metadata. The real pass then checks
+     * every offset against what the dry pass recorded, so a disagreement between the two can never reach an
      * archive.</p>
      *
      * @param archive the file to write, or {@code null} for the dry pass
@@ -978,16 +977,15 @@ public final class RunnerJarBuilder {
         OutputStream out = dry
                 ? OutputStream.nullOutputStream()
                 : new BufferedOutputStream(Files.newOutputStream(archive), BUFFER_SIZE);
-        try (ZipWriter zip = new ZipWriter(out, spec.timestamp())) {
+        ZipWriter writer = dry ? ZipWriter.layout(out, spec.timestamp()) : new ZipWriter(out, spec.timestamp());
+        try (ZipWriter zip = writer) {
             for (PlannedEntry entry : plan) {
                 long localHeaderOffset = zip.offset();
                 long dataOffset;
                 if (entry.directory) {
                     dataOffset = zip.writeDirectoryEntry(entry.name, dosTime);
                 } else if (dry) {
-                    try (InputStream zeros = new ZeroInputStream(entry.size)) {
-                        dataOffset = zip.writeEntry(entry.name, zeros, entry.size, 0L, dosTime);
-                    }
+                    dataOffset = zip.layoutEntry(entry.name, entry.size, entry.crc32, dosTime);
                 } else if (entry.bytes != null) {
                     dataOffset = zip.writeEntry(entry.name, entry.bytes, 0, entry.bytes.length, dosTime);
                 } else if (entry.source != null) {
@@ -1328,36 +1326,4 @@ public final class RunnerJarBuilder {
         }
     }
 
-    /**
-     * A stream of as many zero bytes as an entry is long, which is all the dry pass needs: it is measuring
-     * offsets, not writing content.
-     */
-    private static final class ZeroInputStream extends InputStream {
-
-        private long remaining;
-
-        private ZeroInputStream(long length) {
-            this.remaining = length;
-        }
-
-        @Override
-        public int read() {
-            if (remaining <= 0) {
-                return -1;
-            }
-            remaining--;
-            return 0;
-        }
-
-        @Override
-        public int read(byte[] destination, int offset, int count) {
-            if (remaining <= 0) {
-                return -1;
-            }
-            int produced = (int) Math.min(count, remaining);
-            Arrays.fill(destination, offset, offset + produced, (byte) 0);
-            remaining -= produced;
-            return produced;
-        }
-    }
 }
