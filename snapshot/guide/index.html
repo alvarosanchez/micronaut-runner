@@ -209,10 +209,12 @@ moving all of the work to build time.</p>
 <div class="paragraph">
 <p>When the archive is packaged, every entry of every nested JAR is recorded in <code>MICRONAUT-INF/index.bin</code>
 together with its absolute byte offset in the outer file. At startup the launcher memory-maps the archive
-once and reads that index directly out of the mapping. Looking up a class is a single hash probe followed
-by a byte comparison; no central directory is parsed, no nested archive is opened, nothing is extracted to
-disk, and no temporary files are written. Dependencies are stored uncompressed by default, so a class is
-defined straight from the mapped bytes with no intermediate array and no decompression.</p>
+once and reads that index directly out of the mapping. Looking up a class starts at its hash slot and uses
+linear probing up to the longest probe sequence recorded by the builder, followed by a byte comparison.
+Same-name records are then resolved in classpath order and per JAR against the effective multi-release
+version. No central directory is parsed, no nested archive is opened, nothing is extracted to disk, and no
+temporary files are written. Dependencies are stored uncompressed by default, so a class is defined straight
+from the mapped bytes with no intermediate array and no decompression.</p>
 </div>
 <div class="paragraph">
 <p>The launcher itself is written to keep off the JVM&#8217;s slow paths: no lambdas, no string concatenation
@@ -780,9 +782,11 @@ destination parent writable only by trusted participants.</p>
 
 
 <div class="paragraph">
-<p>The goal is that an application behaves identically whether it runs from a runner JAR or from an ordinary
-classpath. The class loader is tested differentially against <code>java.net.URLClassLoader</code> over the same set of
-JARs, comparing resource resolution, resource ordering, class bytes, package attributes and code sources.</p>
+<p>For ordinary resources, the goal is that an application behaves identically whether it runs from a runner
+JAR or from an ordinary classpath. The class loader is tested differentially against
+<code>java.net.URLClassLoader</code> over the same set of JARs, comparing resource resolution, resource ordering, class
+bytes, package attributes and code sources. The deliberate <code>META-INF/micronaut/</code> metadata-tree exception and the
+known limitations below bound that compatibility contract; they are not ordinary-classpath behavior.</p>
 </div>
 <div class="sect1">
 <h2 id="_what_behaves_exactly_as_on_a_classpath">What behaves exactly as on a classpath</h2>
@@ -824,6 +828,20 @@ sealing a package that is already open, raises <code>SecurityException</code>.</
 <code>JarURLConnection.getJarFile()</code> all work, which is what libraries that scan the classpath rely on.</p>
 </li>
 </ul>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_deliberate_micronaut_metadata_exception">Deliberate Micronaut metadata exception</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut Runner merges every entry below <code>META-INF/micronaut/</code> from the application and its dependencies into
+one de-duplicated tree at the outer archive root. A lookup anywhere under that prefix uses only the merged
+tree, and <code>getResources("META-INF/micronaut/")</code> returns one merged URL rather than one URL per contributing
+JAR. When contributors provide the same file name, the first content in classpath order is retained and a
+warning reports differing later content. This is intentional build-time aggregation for Micronaut bean
+discovery, not ordinary resource enumeration. Classic <code>META-INF/services/**</code> resources are not merged and
+keep the classpath behavior described above.</p>
 </div>
 </div>
 </div>
@@ -1143,9 +1161,10 @@ that the current harness implements:</p>
 </dl>
 </div>
 <div class="paragraph">
-<p>Each sample starts a fresh JVM. Readiness is measured externally, from process spawn to the first successful
-HTTP response, because that is what a user waits for and it captures class loading on the first request. The
-framework&#8217;s own "startup completed" line is recorded separately rather than substituted for readiness.</p>
+<p>Each sample starts a fresh JVM. This is a cold JVM process start, not a claim that storage or the OS page cache
+is cold. Readiness is measured externally, from process spawn to the first successful HTTP response, because
+that is what a user waits for and it captures class loading on the first request. The framework&#8217;s own "startup
+completed" line is recorded separately rather than substituted for readiness.</p>
 </div>
 <div class="paragraph">
 <p>None of these eight commands uses a trained application cache. Default JDK class sharing remains enabled when
@@ -1240,170 +1259,27 @@ are outside the explicitly declared inputs and are never included.</p>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_first_measurements">First measurements</h2>
+<h2 id="_publishing_results">Publishing results</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>These are the numbers from the prototype gate, taken on one developer machine (Apple silicon, JDK 25) with
-the <code>hello-netty</code> sample: a Micronaut 5 application with 35 dependencies. Nine runs per variant,
-interleaved rather than run in blocks, measuring from process spawn to the framework reporting that
-startup completed. Treat them as a direction, not a specification; the CI harness is the authority.</p>
-</div>
-<table class="tableblock frame-all grid-all stretch">
-<colgroup>
-<col style="width: 30%;">
-<col style="width: 20%;">
-<col style="width: 25%;">
-<col style="width: 25%;">
-</colgroup>
-<thead>
-<tr>
-<th class="tableblock halign-left valign-top">Variant</th>
-<th class="tableblock halign-left valign-top">Total</th>
-<th class="tableblock halign-left valign-top">Framework-reported</th>
-<th class="tableblock halign-left valign-top">Archive size</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR, dependencies stored</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">318 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">178 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">31.4 MB</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Shaded JAR</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">363 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">202 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">12.8 MB</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Exploded classpath</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">374 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">374 ms is the whole process; 201 ms reported</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">n/a</p></td>
-</tr>
-</tbody>
-</table>
-<div class="paragraph">
-<p>The descriptive medians put the runner JAR 12% below the shaded JAR and 15% below an exploded classpath in
-that prototype run. With only nine observations per variant, the current harness would label those values
-descriptive-only and emit no interval, so they are not evidence of a general startup speedup. The accompanying
-framework-reported figures moved in the same direction, a hypothesis for follow-up rather than a significance
-claim.</p>
+<p>This guide does not retain the early prototype numbers because their raw samples and complete executable
+configuration were not archived publicly. They cannot substantiate a current speedup claim. In particular,
+allocation avoided by defining from a mapped buffer must not be restated as elapsed-time savings, and
+cold-storage performance has not been measured by this harness.</p>
 </div>
 <div class="paragraph">
-<p>The measured cost was size: storing dependencies uncompressed made the archive 2.5 times larger than the
-shaded JAR. That observation motivated <code>PRESERVE</code>; the prototype did not control the OS page cache, so it
-did not measure whether the larger archive loses after filesystem-cache eviction.</p>
-</div>
-<div class="sect2">
-<h3 id="_class_loading_in_isolation">Class loading in isolation</h3>
-<div class="paragraph">
-<p>The JMH benchmarks measure the mechanism rather than the application. Over a synthetic classpath of 30
-jars and 3,600 classes, loading 200 classes through a freshly created loader, including opening the
-archive:</p>
-</div>
-<table class="tableblock frame-all grid-all stretch">
-<colgroup>
-<col style="width: 55%;">
-<col style="width: 45%;">
-</colgroup>
-<thead>
-<tr>
-<th class="tableblock halign-left valign-top">Loader</th>
-<th class="tableblock halign-left valign-top">Time for 200 classes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>RunnerClassLoader</code>, dependencies stored</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1.4 ms</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>RunnerClassLoader</code>, dependencies left compressed</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2.1 ms</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>URLClassLoader</code> over the same jars</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">9.2 ms</p></td>
-</tr>
-</tbody>
-</table>
-<div class="paragraph">
-<p>Storing dependencies uncompressed is worth about 35% of the class-loading time, which is what pays for
-the larger archive. Defining a class from a memory-mapped buffer rather than a byte array is worth about
-2%: on JDK 26 the virtual machine copies a direct buffer for a non-builtin loader anyway, so what is saved
-is the application-side array and the copy into it, not the copy itself.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_archive_size">Archive size</h3>
-<table class="tableblock frame-all grid-all stretch">
-<colgroup>
-<col style="width: 55%;">
-<col style="width: 45%;">
-</colgroup>
-<thead>
-<tr>
-<th class="tableblock halign-left valign-top">Packaging</th>
-<th class="tableblock halign-left valign-top">Size</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR, dependencies stored</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">31.4 MB</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR, dependencies preserved</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">14.1 MB</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Shaded JAR</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">12.8 MB</p></td>
-</tr>
-</tbody>
-</table>
-<div class="paragraph">
-<p><code>PRESERVE</code> copies each dependency byte for byte, so the archive is close to the shaded one and class
-loading pays for decompression. It reduces deployment size when that matters more than the measured
-warm-state class-loading cost. A larger <code>STORED</code> archive may require more storage I/O after filesystem-cache
-eviction, but cold-storage performance has not been measured by this harness, so these figures do not
-establish a cold-start winner.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_two_clocks_not_one">Two clocks, not one</h3>
-<div class="paragraph">
-<p>The harness reports readiness and the framework&#8217;s startup line as separate columns, and they are far
-apart: on the sample, roughly 410 ms against roughly 330 ms for the same run. The gap is serving the first
-request on a cold JVM, which readiness includes by definition and a measurement that watches the console
-does not.</p>
+<p>A publishable result must link to an immutable source revision and the raw <code>results.json</code> and <code>summary.md</code>
+produced by that revision. It must identify the machine and operating system, exact JDK build, sample and
+dependency set, packaging variant, benchmark command and properties, warm-up and measured counts, timeout,
+and application-cache and OS-page-cache conditions. Startup numbers must say whether the metric is external
+process-to-HTTP-readiness, process-to-startup-line, or framework-reported self-time.</p>
 </div>
 <div class="paragraph">
-<p>The figures in the table above are the startup line, because that is what a careful measurement by hand
-produces and what most published comparisons quote. Readiness is the more honest answer to "when can this
-serve traffic". Neither is wrong; quoting one while implying the other is. The framework&#8217;s own reported
-figure is a third quantity again, the smallest of the three, because the application only starts counting
-once the JVM has already done most of the work.</p>
-</div>
-</div>
-</div>
-</div>
-<div class="sect1">
-<h2 id="_a_measurement_that_did_not_move">A measurement that did not move</h2>
-<div class="sectionbody">
-<div class="paragraph">
-<p>The launcher&#8217;s own share of startup, which <code>-Dmicronaut.runner.timing=true</code> reports, fell from 17.4 ms to
-12.3 ms when the archive reader stopped reading through <code>VarHandle</code>-backed layout accessors. Total startup
-did not change. The most likely reason is that the work was not removed from the process, only from the
-launcher: the first use of a var handle initialises <code>java.lang.invoke</code>, and the framework initialises it
-moments later regardless.</p>
-</div>
-<div class="paragraph">
-<p>The change is kept because it is strictly less work, and because it does help an application that never
-touches method handles at all, such as a short-lived command line tool. It is recorded here because it is
-the clearest example of why this module measures the whole process rather than the phase it is proud of.</p>
+<p>Attributing a difference to stored dependencies, merged discovery, mapped-buffer definition or another
+mechanism additionally requires a matched ablation that changes only that mechanism. Hash-collision,
+resource-resolution and merged-metadata fixtures validate behavior; they cannot prove a performance cause.
+Until a report meeting these requirements is archived at an immutable public URL, run the harness for the
+environment of interest and treat its output as local descriptive evidence rather than a published result.</p>
 </div>
 </div>
 </div>
