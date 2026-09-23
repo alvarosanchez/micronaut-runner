@@ -193,6 +193,23 @@ class BenchmarkCompletenessTest {
     }
 
     @Test
+    void scheduleIsDeterministicForTheSeedAndRecordsActualOrder(@TempDir Path output) throws Exception {
+        List<Variant> variants = List.of(available("a"), available("b"), available("c"));
+        StartupBenchmark.Options first = options(output, 5, 1, 1234L);
+        StartupBenchmark.Options same = options(output, 5, 1, 1234L);
+        StartupBenchmark.Options different = options(output, 5, 1, 5678L);
+        StartupRunner runner = scriptedRunner((variant, iteration, warmup) -> sample(iteration, warmup));
+
+        List<String> firstOrder = schedule(StartupBenchmark.measure(runner, variants, first, log()));
+        List<String> sameOrder = schedule(StartupBenchmark.measure(runner, variants, same, log()));
+        List<String> differentOrder = schedule(StartupBenchmark.measure(runner, variants, different, log()));
+
+        assertEquals(firstOrder, sameOrder);
+        assertFalse(firstOrder.equals(differentOrder));
+        assertEquals(18, firstOrder.size());
+    }
+
+    @Test
     void cliFixtureReturnsFailureAfterSavingBothReports(@TempDir Path output) throws Exception {
         Process process = new ProcessBuilder(
                 SampleBuild.javaExecutable().toString(),
@@ -225,6 +242,24 @@ class BenchmarkCompletenessTest {
         Files.createDirectories(sample);
         return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, iterations, warmup,
                 1234L, "/hello", Duration.ofSeconds(1), false, policy);
+    }
+
+    private static StartupBenchmark.Options options(Path output,
+                                                    int iterations,
+                                                    int warmup,
+                                                    long seed) throws IOException {
+        Path sample = output.resolve("sample");
+        Files.createDirectories(sample);
+        return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, iterations, warmup,
+                seed, "/hello", Duration.ofSeconds(1), false, CompletenessPolicy.REQUIRED);
+    }
+
+    private static List<String> schedule(List<VariantResult> results) {
+        return results.stream()
+                .flatMap(result -> result.attempts().stream())
+                .sorted(java.util.Comparator.comparingInt(RunAttempt::globalOrder))
+                .map(attempt -> attempt.globalOrder() + ":" + attempt.iteration() + ":" + attempt.variant())
+                .toList();
     }
 
     private static List<Variant> variants() {

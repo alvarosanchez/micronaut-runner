@@ -29,7 +29,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -67,6 +69,9 @@ import java.util.regex.Pattern;
  * </ol>
  */
 final class StartupHarness implements StartupRunner, AutoCloseable {
+
+    /** Class-load logging remains active until the child has completed shutdown. */
+    static final String DIAGNOSTIC_HORIZON = "spawn-through-shutdown";
 
     /** A failed start with the child exit status when the process supplied one. */
     static final class RunFailure extends IOException {
@@ -112,9 +117,29 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
     /** Micronaut's own startup line. */
     private static final Pattern STARTUP_LINE = Pattern.compile("Startup completed in (\\d+)ms");
 
+    /** Injectable timing, port and environment policy used by deterministic forked tests. */
+    record Settings(Duration pollInterval,
+                    Duration pollTimeout,
+                    Duration logLineGrace,
+                    Duration shutdownGrace,
+                    Duration servingGrace,
+                    IntSupplier portSupplier,
+                    Map<String, String> environment) {
+
+        Settings {
+            environment = Map.copyOf(environment);
+        }
+
+        static Settings defaults() {
+            return new Settings(POLL_INTERVAL, POLL_TIMEOUT, LOG_LINE_GRACE, SHUTDOWN_GRACE, SERVING_GRACE,
+                    StartupHarness::freePort, System.getenv());
+        }
+    }
+
     private final HttpClient client;
     private final String readinessPath;
     private final Duration startupTimeout;
+    private final Settings settings;
 
     /**
      * Creates a harness with one persistent HTTP client for every poll of every run.
@@ -123,13 +148,18 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
      * @param startupTimeout how long an application may take to answer before the run is failed
      */
     StartupHarness(String readinessPath, Duration startupTimeout) {
+        this(readinessPath, startupTimeout, Settings.defaults());
+    }
+
+    StartupHarness(String readinessPath, Duration startupTimeout, Settings settings) {
         this.readinessPath = readinessPath;
         this.startupTimeout = startupTimeout;
+        this.settings = settings;
         this.client = HttpClient.newBuilder()
                 // HTTP/1.1 explicitly: the negotiation an HTTP/2-capable client performs is latency that
                 // belongs to the client, not to the application being measured.
                 .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(POLL_TIMEOUT)
+                .connectTimeout(settings.pollTimeout())
                 .build();
     }
 
@@ -155,14 +185,14 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
      *
      * @param variant the variant to start
      * @param logFile where the unified log is written
-     * @return how many classes the JVM loaded before the application answered
+     * @return how many classes the JVM loaded from process spawn through completed shutdown
      * @throws IOException          if the run fails
      * @throws InterruptedException if the wait is interrupted
      */
     ClassLoadCount diagnose(Variant variant, Path logFile) throws IOException, InterruptedException {
         Files.deleteIfExists(logFile);
-        StartupSample sample = run(variant, -1, true,
-                List.of("-Xlog:class+load=info:file=" + logFile.toAbsolutePath()));
+        List<String> diagnosticArguments = List.of("-Xlog:class+load=info:file=" + logFile.toAbsolutePath());
+        StartupSample sample = run(variant, -1, true, diagnosticArguments);
         int loaded = 0;
         int shared = 0;
         if (Files.isRegularFile(logFile)) {
@@ -175,12 +205,14 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
                 }
             }
         }
-        return new ClassLoadCount(variant.name(), loaded, shared, sample.readinessMillis());
+        return new ClassLoadCount(variant.name(), loaded, shared, sample.readinessMillis(), DIAGNOSTIC_HORIZON,
+                BenchmarkProvenance.relocatableCommand(variant,
+                        List.of("-Xlog:class+load=info:file=${diagnostic-log}")));
     }
 
     private StartupSample run(Variant variant, int iteration, boolean warmup, List<String> extraJvmArgs)
             throws IOException, InterruptedException {
-        int port = freePort();
+        int port = settings.portSupplier().getAsInt();
         List<String> command = new ArrayList<>(variant.command().size() + extraJvmArgs.size());
         command.add(variant.command().get(0));
         command.addAll(extraJvmArgs);
@@ -189,11 +221,13 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(variant.workingDirectory().toFile())
                 .redirectErrorStream(true);
+        builder.environment().clear();
+        builder.environment().putAll(settings.environment());
         removeInheritedJvmOptions(builder);
         builder.environment().put("SERVER_PORT", Integer.toString(port));
 
         URI readiness = URI.create("http://127.0.0.1:" + port + readinessPath);
-        HttpRequest request = HttpRequest.newBuilder(readiness).timeout(POLL_TIMEOUT).GET().build();
+        HttpRequest request = HttpRequest.newBuilder(readiness).timeout(settings.pollTimeout()).GET().build();
 
         Process process = null;
         Thread drain = null;
@@ -232,31 +266,31 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
                     // once in a while a connection that was accepted and then dropped mid-handshake.
                     // Both mean the same thing here: not ready, try again.
                 }
-                if (firstResponse > 0 && System.nanoTime() - firstResponse > SERVING_GRACE.toNanos()) {
+                if (firstResponse > 0 && System.nanoTime() - firstResponse > settings.servingGrace().toNanos()) {
                     throw new RunFailure(variant.name() + " is serving " + readiness + " with HTTP "
-                            + lastStatus + " and has been for " + SERVING_GRACE.toSeconds() + "s."
+                            + lastStatus + " and has been for " + settings.servingGrace().toMillis() + "ms."
                             + " The application started; it is not serving the readiness endpoint, which"
                             + " points at the packaging rather than at a slow start. Response body: "
                             + snippet(lastBody) + tail(capture), null);
                 }
                 lastFailureEnd = System.nanoTime();
-                Thread.sleep(POLL_INTERVAL.toMillis());
+                Thread.sleep(settings.pollInterval().toMillis());
             }
             if (ready < 0) {
                 throw new RunFailure(variant.name() + " did not answer " + readiness + " within "
                         + startupTimeout + tail(capture), null);
             }
 
-            awaitStartupLine(capture);
+            awaitStartupLine(capture, settings.logLineGrace());
             return new StartupSample(iteration, warmup, port,
                     (ready - start) / 1_000_000.0,
                     capture.logLineMillis(),
                     capture.reportedMillis(),
                     (ready - lastFailureEnd) / 1_000_000.0,
-                    destroy(process, drain));
+                    destroy(process, drain, settings.shutdownGrace()));
         } finally {
             if (process != null && process.isAlive()) {
-                destroy(process, drain);
+                destroy(process, drain, settings.shutdownGrace());
             }
         }
     }
@@ -272,8 +306,8 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
      * @param capture the output capture, which timestamps the line as it arrives
      * @throws InterruptedException if the wait is interrupted
      */
-    private static void awaitStartupLine(Capture capture) throws InterruptedException {
-        long deadline = System.nanoTime() + LOG_LINE_GRACE.toNanos();
+    private static void awaitStartupLine(Capture capture, Duration grace) throws InterruptedException {
+        long deadline = System.nanoTime() + grace.toNanos();
         while (capture.logLineMillis() < 0 && System.nanoTime() < deadline) {
             Thread.sleep(5);
         }
@@ -302,15 +336,15 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
         INHERITED_JVM_OPTIONS.forEach(builder.environment()::remove);
     }
 
-    private static int destroy(Process process, Thread drain) throws InterruptedException {
+    private static int destroy(Process process, Thread drain, Duration grace) throws InterruptedException {
         if (process.isAlive()) {
             process.destroy();
-            if (!process.waitFor(SHUTDOWN_GRACE.toMillis(), TimeUnit.MILLISECONDS)) {
-                process.destroyForcibly().waitFor(SHUTDOWN_GRACE.toMillis(), TimeUnit.MILLISECONDS);
+            if (!process.waitFor(grace.toMillis(), TimeUnit.MILLISECONDS)) {
+                process.destroyForcibly().waitFor(grace.toMillis(), TimeUnit.MILLISECONDS);
             }
         }
         if (drain != null) {
-            drain.join(SHUTDOWN_GRACE.toMillis());
+            drain.join(grace.toMillis());
         }
         return process.isAlive() ? -1 : process.exitValue();
     }
@@ -412,7 +446,18 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
      * @param fromSharedArchive how many of those came from a CDS or AOT archive
      * @param readinessMillis   the readiness time of this run, which is slower than a timing run because
      *                          of the logging and is reported only so the slowdown is visible
+     * @param horizon           the complete interval covered by the class-load log
+     * @param command           the effective relocatable diagnostic command
      */
-    record ClassLoadCount(String variant, int classesLoaded, int fromSharedArchive, double readinessMillis) {
+    record ClassLoadCount(String variant,
+                          int classesLoaded,
+                          int fromSharedArchive,
+                          double readinessMillis,
+                          String horizon,
+                          List<String> command) {
+
+        ClassLoadCount {
+            command = List.copyOf(command);
+        }
     }
 }

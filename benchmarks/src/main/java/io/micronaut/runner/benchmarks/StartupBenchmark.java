@@ -133,11 +133,17 @@ public final class StartupBenchmark {
                 options.runnerVersion(), options.outputDirectory(), options.iterations(),
                 options.warmupIterations(), options.seed(), options.readinessPath(),
                 options.diagnostics(), Instant.now().toString(), SampleBuild.variantNames(),
-                options.completenessPolicy());
+                options.completenessPolicy(), BenchmarkProvenance.capture(
+                        configuredRunnerSource(), options.sample(), System.getenv()));
         int exitCode = finish(context, results, diagnostics, log);
         if (exitCode != 0) {
             System.exit(exitCode);
         }
+    }
+
+    private static Path configuredRunnerSource() {
+        String configured = System.getProperty("runner.benchmark.sourceRoot");
+        return configured == null || configured.isBlank() ? null : Path.of(configured);
     }
 
     static int finish(RunContext context,
