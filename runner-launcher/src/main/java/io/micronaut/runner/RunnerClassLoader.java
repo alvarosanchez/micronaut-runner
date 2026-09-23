@@ -614,6 +614,10 @@ public final class RunnerClassLoader extends ClassLoader {
             checkSealing(defined, packageName, base, sealed);
             return;
         }
+        definePackageFromMetadata(packageName, jarId, section, base, sealed);
+    }
+
+    private void definePackageFromMetadata(String packageName, int jarId, int section, URL base, boolean sealed) {
         String specTitle = index.jarSpecTitle(jarId);
         String specVersion = index.jarSpecVersion(jarId);
         String specVendor = index.jarSpecVendor(jarId);

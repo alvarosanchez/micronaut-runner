@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.zip.CRC32;
 
 /**
@@ -44,10 +45,10 @@ import java.util.zip.CRC32;
  * and each local-header check is cached after its first success; neither is ongoing mutation monitoring.</p>
  *
  * <h2>Thread safety</h2>
- * <p>Every accessor is a pure function of immutable state and uses absolute {@link ByteBuffer} reads, which
- * do not touch the buffer position, so an instance is safe for concurrent use by any number of
- * class-loading threads. {@link #validateJar(int)} writes a {@code boolean} into an array; the write is
- * idempotent, so a race only means the check runs twice.</p>
+ * <p>Accessors use absolute {@link ByteBuffer} reads, which do not touch the buffer position, so an instance
+ * is safe for concurrent use by any number of class-loading threads. Package-name lookups lazily publish
+ * immutable, bounded per-jar hash tables through atomic references. {@link #validateJar(int)} writes a
+ * {@code boolean} into an array; the write is idempotent, so a race only means the check runs twice.</p>
  *
  * @since 1.0
  */
@@ -97,6 +98,7 @@ public final class Index {
     private final int stringTableOffset;
     private final int stringTableLength;
     private final boolean[] validatedJars;
+    private volatile AtomicReferenceArray<PackageLookup> packageLookups;
 
     private Index(ArchiveSource source, ByteBuffer buffer) {
         this.source = source;
@@ -701,13 +703,52 @@ public final class Index {
     public int findPackage(int jarId, String name) {
         int first = jarFirstPackage(jarId);
         int count = jarPackageCount(jarId);
-        for (int i = 0; i < count; i++) {
-            int record = first + i;
-            if (name.equals(packageName(record))) {
-                return record;
+        if (count == 0) {
+            return IndexFormat.NO_INDEX;
+        }
+        AtomicReferenceArray<PackageLookup> lookups = packageLookups;
+        if (lookups == null) {
+            synchronized (this) {
+                lookups = packageLookups;
+                if (lookups == null) {
+                    lookups = new AtomicReferenceArray<>(jarCount);
+                    packageLookups = lookups;
+                }
             }
         }
-        return IndexFormat.NO_INDEX;
+        PackageLookup lookup = lookups.get(jarId);
+        if (lookup == null) {
+            PackageLookup candidate = packageLookup(first, count);
+            if (lookups.compareAndSet(jarId, null, candidate)) {
+                lookup = candidate;
+            } else {
+                lookup = lookups.get(jarId);
+            }
+        }
+        return lookup.find(name);
+    }
+
+    private PackageLookup packageLookup(int first, int count) {
+        int slots = Integer.highestOneBit((count << 1) - 1) << 1;
+        String[] names = new String[slots];
+        int[] records = new int[slots];
+        int mask = slots - 1;
+        for (int i = 0; i < count; i++) {
+            int record = first + i;
+            String name = packageName(record);
+            int slot = IndexFormat.spread(name.hashCode()) & mask;
+            while (names[slot] != null) {
+                if (name.equals(names[slot])) {
+                    break;
+                }
+                slot = (slot + 1) & mask;
+            }
+            if (names[slot] == null) {
+                names[slot] = name;
+                records[slot] = record;
+            }
+        }
+        return new PackageLookup(names, records);
     }
 
     /**
@@ -1370,6 +1411,33 @@ public final class Index {
         byte[] bytes = new byte[size];
         buffer.get(at, bytes, 0, size);
         return name.equals(new String(bytes, StandardCharsets.UTF_8));
+    }
+
+    /** One immutable hash table containing only the package metadata declared by a single jar. */
+    private static final class PackageLookup {
+
+        private final String[] names;
+        private final int[] records;
+        private final int mask;
+
+        private PackageLookup(String[] names, int[] records) {
+            this.names = names;
+            this.records = records;
+            this.mask = names.length - 1;
+        }
+
+        private int find(String name) {
+            int slot = IndexFormat.spread(name.hashCode()) & mask;
+            String candidate = names[slot];
+            while (candidate != null) {
+                if (name.equals(candidate)) {
+                    return records[slot];
+                }
+                slot = (slot + 1) & mask;
+                candidate = names[slot];
+            }
+            return IndexFormat.NO_INDEX;
+        }
     }
 
     /** Verifies an indexed entry without buffering its content. */

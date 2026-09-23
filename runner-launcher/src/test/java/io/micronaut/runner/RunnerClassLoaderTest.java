@@ -128,6 +128,10 @@ class RunnerClassLoaderTest {
         alpha.addPackage("org.alpha.pkg", null, "9.9", null, "SectionImpl", null, null);
         alpha.add("org/alpha/Alpha.class", classBytes("org.alpha.Alpha", "alpha"));
         alpha.add("org/alpha/pkg/Attrs.class", classBytes("org.alpha.pkg.Attrs", "attrs"));
+        for (int i = 0; i < 8; i++) {
+            alpha.add("org/alpha/pkg/Concurrent" + i + ".class",
+                    classBytes("org.alpha.pkg.Concurrent" + i, "concurrent" + i));
+        }
         alpha.add("org/example/Shared.class", classBytes("org.example.Shared", "jar1"));
         alpha.add("shared.txt", text("jar1-shared"));
         alpha.add("duplicate.txt", text("alpha-first"));
@@ -461,6 +465,35 @@ class RunnerClassLoaderTest {
         assertEquals("AlphaVendor", defined.getSpecificationVendor(), "inherited from the jar");
         assertEquals("2.0", defined.getImplementationVersion(), "inherited from the jar");
         assertEquals("AlphaImplVendor", defined.getImplementationVendor(), "inherited from the jar");
+    }
+
+    @Test
+    void concurrentDefinitionsSharePackageOverrideMetadata() throws Exception {
+        RunnerClassLoader loader = newLoader();
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        try {
+            List<Future<Class<?>>> futures = new ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                String name = "org.alpha.pkg.Concurrent" + i;
+                futures.add(pool.submit(() -> loader.loadClass(name)));
+            }
+            Package defined = null;
+            for (int i = 0; i < futures.size(); i++) {
+                Class<?> type = futures.get(i).get(30, TimeUnit.SECONDS);
+                assertEquals("concurrent" + i, id(type));
+                if (defined == null) {
+                    defined = type.getPackage();
+                } else {
+                    assertSame(defined, type.getPackage());
+                }
+            }
+            assertEquals("9.9", defined.getSpecificationVersion());
+            assertEquals("SectionImpl", defined.getImplementationTitle());
+            assertEquals("AlphaSpec", defined.getSpecificationTitle());
+            assertEquals("2.0", defined.getImplementationVersion());
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     @Test

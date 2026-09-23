@@ -52,9 +52,11 @@ import java.util.concurrent.TimeUnit;
 public class StoredRunnerClassLoaderBenchmark {
 
     private static final int CLASSES = 200;
+    private static final int SAME_PACKAGE_CLASSES = 12;
 
     private SyntheticArchive archive;
     private String[] names;
+    private String[] samePackageNames;
     private RunnerRegistration registration;
 
     /** Opens the STORED registration outside measurement and keeps it alive for this trial. */
@@ -62,6 +64,7 @@ public class StoredRunnerClassLoaderBenchmark {
     public void setUp() throws IOException, ClassNotFoundException {
         archive = SyntheticArchive.shared();
         names = archive.spreadSample(CLASSES);
+        samePackageNames = archive.samePackageSample(SAME_PACKAGE_CLASSES);
         RunnerRegistration open = RunnerRegistration.open(archive.storedRunnerJar());
         try {
             ClassLoaderBenchmarkSanity.verifyRunnerArchive(archive.storedRunnerJar(), names[0]);
@@ -95,6 +98,21 @@ public class StoredRunnerClassLoaderBenchmark {
             RunnerClassLoader loader = new RunnerClassLoader(index, source, RunnerClassLoader.defaultParent());
             for (int i = 0; i < CLASSES; i++) {
                 blackhole.consume(loader.loadClass(names[i]));
+            }
+        } finally {
+            source.close();
+        }
+    }
+
+    /** Defines several different classes from one package through one fresh loader. */
+    @Benchmark
+    public void runnerClassesInSamePackage(Blackhole blackhole) throws Exception {
+        ArchiveSource source = ArchiveSource.open(archive.storedRunnerJar().toFile());
+        try {
+            Index index = Index.open(source);
+            RunnerClassLoader loader = new RunnerClassLoader(index, source, RunnerClassLoader.defaultParent());
+            for (String name : samePackageNames) {
+                blackhole.consume(loader.loadClass(name));
             }
         } finally {
             source.close();
