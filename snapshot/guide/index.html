@@ -1283,9 +1283,18 @@ Runner are produced by a harness in the repository rather than quoted from memor
 <dl>
 <dt class="hdlist1">Micro-benchmarks</dt>
 <dd>
-<p>JMH benchmarks over the class loader&#8217;s hot path: index lookup hit and miss, class
-loading against <code>URLClassLoader</code> on the same set of JARs, and defining a class from a mapped buffer versus
-a byte array. These isolate the mechanism.</p>
+<p>JMH benchmarks over the class loader&#8217;s hot path: index lookup hit and miss, package-table
+lookup, class loading against <code>URLClassLoader</code> on the same set of JARs, defining a class from a mapped buffer
+versus a byte array, resource streaming, duplicate-resource enumeration and service discovery. Named synthetic
+shapes vary JAR and entry count, class size and locality, resource size, manifest packages, duplicate names and
+multi-release entries. These isolate mechanisms; they are not startup results.</p>
+</dd>
+<dt class="hdlist1">Packaging</dt>
+<dd>
+<p>Fresh-JVM profiles build STORED and PRESERVE Runner archives for deterministic first-build,
+unchanged-rebuild, application-edit and dependency-edit scenarios. Elapsed time/allocation and process
+RSS/peak heap come from separate invocations. Logical input/output bytes are reported separately from time and
+memory and are not kernel I/O counters.</p>
 </dd>
 <dt class="hdlist1">Startup</dt>
 <dd>
@@ -1435,9 +1444,18 @@ the trained application cache mode explicit rather than inferring it from defaul
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">./gradlew :benchmarks:jmh
+./gradlew :benchmarks:packagingProfile
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true</code></pre>
 </div>
+</div>
+<div class="paragraph">
+<p><code>-Pbenchmarks.workloads=no-manifest,small,representative,wide</code> selects packaging shapes and
+<code>-Pbenchmarks.packagingIterations=2</code> changes the number of independent packaging workers. The JMH resource
+benchmarks expose the same <code>workload</code> parameter. The startup task defaults to the larger
+<code>test-suite/samples/benchmark-large</code> application; use <code>-Pbenchmarks.sample=&lt;sample-directory-name&gt;</code> for an
+explicit sample. Short smoke runs and retained issue investigations must remain labelled descriptive rather
+than being promoted to release claims.</p>
 </div>
 <div class="paragraph">
 <p>Reports are written to <code>benchmarks/build/reports/</code>. In CI the benchmarks run weekly and on demand rather
