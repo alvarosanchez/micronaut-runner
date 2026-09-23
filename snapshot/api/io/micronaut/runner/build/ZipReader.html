@@ -72,6 +72,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#manifest()" tabindex="0">manifest()</a></li>
 <li><a href="#readRaw(io.micronaut.runner.build.ZipEntryInfo)" tabindex="0">readRaw(ZipEntryInfo)</a></li>
 <li><a href="#read(io.micronaut.runner.build.ZipEntryInfo)" tabindex="0">read(ZipEntryInfo)</a></li>
+<li><a href="#transfer(io.micronaut.runner.build.ZipEntryInfo,java.io.OutputStream)" tabindex="0">transfer(ZipEntryInfo, OutputStream)</a></li>
 <li><a href="#close()" tabindex="0">close()</a></li>
 </ol>
 </li>
@@ -218,6 +219,12 @@ repacked and its nested jars can no longer be verified.</div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Checks an entry name with <a href="#isSafeEntryName(java.lang.String)"><code>isSafeEntryName(String)</code></a> and fails with a message naming both the
 archive and the offending entry.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#transfer(io.micronaut.runner.build.ZipEntryInfo,java.io.OutputStream)" class="member-name-link">transfer</a><wbr>(<a href="ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a>&nbsp;entry,
+ <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/OutputStream.html" title="class or interface in java.io" class="external-link">OutputStream</a>&nbsp;target)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Streams one entry to <code>target</code> while verifying its size, CRC-32 and complete DEFLATE region.</div>
 </div>
 </div>
 </div>
@@ -486,6 +493,27 @@ returned object is the reader's own instance and is mutable; callers must not mo
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the data cannot be read, its CRC-32 does not match, the compression method is
                     neither stored nor deflated, or the deflate stream is truncated, corrupt,
                     overproduces, or does not consume its complete recorded compressed region</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="transfer(io.micronaut.runner.build.ZipEntryInfo,java.io.OutputStream)">
+<h3>transfer</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long</span>&nbsp;<span class="element-name">transfer</span><wbr><span class="parameters">(<a href="ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a>&nbsp;entry,
+ <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/OutputStream.html" title="class or interface in java.io" class="external-link">OutputStream</a>&nbsp;target)</span>
+              throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
+<div class="block">Streams one entry to <code>target</code> while verifying its size, CRC-32 and complete DEFLATE region.
+Neither the compressed nor expanded payload is materialised in a payload-sized array.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>entry</code> - an entry of this archive</dd>
+<dd><code>target</code> - destination, flushed and closed by its owner</dd>
+<dt>Returns:</dt>
+<dd>the verified uncompressed byte count</dd>
+<dt>Throws:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the payload or its recorded metadata disagree, or either stream fails</dd>
 </dl>
 </div>
 </section>

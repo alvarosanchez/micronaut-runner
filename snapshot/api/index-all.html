@@ -2222,6 +2222,11 @@ and <code>dataOffset() + compressedSize()</code> are the content itself.</div>
 <dd>
 <div class="block">The physical entries of this jar, in central directory order.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarReader.html#stream(int)" class="member-name-link">stream(int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></dt>
+<dd>
+<div class="block">Streams an entry without the Java-array size limit, enforcing the sizes and DEFLATE completion in the
+same way as the launcher's archive source.</div>
+</dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#stream(long,long,long,int)" class="member-name-link">stream(long, long, long, int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">Streams the content of an entry, decompressing it when needed.</div>
@@ -2295,6 +2300,10 @@ bits and the time in the low 16 bits.</div>
 <dt><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html#toString()" class="member-name-link">toString()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></dt>
 <dd>
 <div class="block">Returns a string representation of this record class.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/ZipReader.html#transfer(io.micronaut.runner.build.ZipEntryInfo,java.io.OutputStream)" class="member-name-link">transfer(ZipEntryInfo, OutputStream)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
+<dd>
+<div class="block">Streams one entry to <code>target</code> while verifying its size, CRC-32 and complete DEFLATE region.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#two-passes-one-archive-heading" class="search-tag-link">Two passes, one archive</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
 <dd>&nbsp;</dd>
@@ -2430,6 +2439,10 @@ dependency whose signatures were removed, a <code>Class-Path</code> attribute th
 <dt><a href="io/micronaut/runner/build/ZipWriter.html#writeEntry(java.lang.String,byte%5B%5D,int,int,int)" class="member-name-link">writeEntry(String, byte[], int, int, int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
 <dd>
 <div class="block">Writes a file entry from part of an array, with an explicit MS-DOS timestamp.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/ZipWriter.html#writeEntry(java.lang.String,io.micronaut.runner.build.ZipReader,io.micronaut.runner.build.ZipEntryInfo,int)" class="member-name-link">writeEntry(String, ZipReader, ZipEntryInfo, int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
+<dd>
+<div class="block">Writes and verifies an entry from another ZIP without materialising either compressed or expanded data.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/ZipWriter.html#writeEntry(java.lang.String,java.io.InputStream,long,long,int)" class="member-name-link">writeEntry(String, InputStream, long, long, int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
 <dd>

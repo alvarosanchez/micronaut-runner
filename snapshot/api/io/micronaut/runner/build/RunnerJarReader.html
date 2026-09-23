@@ -63,6 +63,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#source()" tabindex="0">source()</a></li>
 <li><a href="#index()" tabindex="0">index()</a></li>
 <li><a href="#read(int)" tabindex="0">read(int)</a></li>
+<li><a href="#stream(int)" tabindex="0">stream(int)</a></li>
 <li><a href="#close()" tabindex="0">close()</a></li>
 </ol>
 </li>
@@ -148,6 +149,12 @@ the file locked, so a build that forgets to close one cannot overwrite the archi
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#source()" class="member-name-link">source</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The open archive, for reading entry data.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stream(int)" class="member-name-link">stream</a><wbr>(int&nbsp;record)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Streams an entry without the Java-array size limit, enforcing the sizes and DEFLATE completion in the
+same way as the launcher's archive source.</div>
 </div>
 </div>
 </div>
@@ -259,6 +266,25 @@ the file locked, so a build that forgets to close one cannot overwrite the archi
 <dd>the entry content, empty for a directory or a synthesised record</dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the entry is larger than a Java array, or its data cannot be read</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="stream(int)">
+<h3>stream</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></span>&nbsp;<span class="element-name">stream</span><wbr><span class="parameters">(int&nbsp;record)</span>
+                   throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
+<div class="block">Streams an entry without the Java-array size limit, enforcing the sizes and DEFLATE completion in the
+same way as the launcher's archive source.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>record</code> - an entry record index</dd>
+<dt>Returns:</dt>
+<dd>the entry stream, which the caller closes</dd>
+<dt>Throws:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the indexed region or compression metadata is invalid</dd>
 </dl>
 </div>
 </section>

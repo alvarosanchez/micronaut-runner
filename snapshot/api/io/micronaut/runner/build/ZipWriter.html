@@ -80,6 +80,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#writeEntry(java.lang.String,byte%5B%5D,int,int)" tabindex="0">writeEntry(String, byte[], int, int)</a></li>
 <li><a href="#writeEntry(java.lang.String,byte%5B%5D,int,int,int)" tabindex="0">writeEntry(String, byte[], int, int, int)</a></li>
 <li><a href="#writeEntry(java.lang.String,java.io.InputStream,long,long,int)" tabindex="0">writeEntry(String, InputStream, long, long, int)</a></li>
+<li><a href="#writeEntry(java.lang.String,io.micronaut.runner.build.ZipReader,io.micronaut.runner.build.ZipEntryInfo,int)" tabindex="0">writeEntry(String, ZipReader, ZipEntryInfo, int)</a></li>
 <li><a href="#writeEntry(java.lang.String,java.nio.file.Path)" tabindex="0">writeEntry(String, Path)</a></li>
 <li><a href="#writeDirectoryEntry(java.lang.String)" tabindex="0">writeDirectoryEntry(String)</a></li>
 <li><a href="#writeDirectoryEntry(java.lang.String,int)" tabindex="0">writeDirectoryEntry(String, int)</a></li>
@@ -264,18 +265,26 @@ bits and the time in the low 16 bits.</div>
 <div class="block">Writes a file entry from part of an array, with an explicit MS-DOS timestamp.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#writeEntry(java.lang.String,java.io.InputStream,long,long,int)" class="member-name-link">writeEntry</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#writeEntry(java.lang.String,io.micronaut.runner.build.ZipReader,io.micronaut.runner.build.ZipEntryInfo,int)" class="member-name-link">writeEntry</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
+ <a href="ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a>&nbsp;source,
+ <a href="ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a>&nbsp;sourceEntry,
+ int&nbsp;dosTime)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Writes and verifies an entry from another ZIP without materialising either compressed or expanded data.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#writeEntry(java.lang.String,java.io.InputStream,long,long,int)" class="member-name-link">writeEntry</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a>&nbsp;source,
  long&nbsp;length,
  long&nbsp;crc32,
  int&nbsp;dosTime)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Writes a file entry by streaming exactly <code>length</code> bytes from a source.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#writeEntry(java.lang.String,java.nio.file.Path)" class="member-name-link">writeEntry</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#writeEntry(java.lang.String,java.nio.file.Path)" class="member-name-link">writeEntry</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;source)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Writes a file entry from a file, reading it twice: once to compute its CRC-32 and once to copy it.</div>
 </div>
 </div>
@@ -567,6 +576,32 @@ them and this writer never emits a data descriptor.</p></div>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the name is unsafe or duplicated, the source ends early, or the stream cannot
                     be written</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="writeEntry(java.lang.String,io.micronaut.runner.build.ZipReader,io.micronaut.runner.build.ZipEntryInfo,int)">
+<h3>writeEntry</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long</span>&nbsp;<span class="element-name">writeEntry</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
+ <a href="ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a>&nbsp;source,
+ <a href="ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a>&nbsp;sourceEntry,
+ int&nbsp;dosTime)</span>
+                throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
+<div class="block">Writes and verifies an entry from another ZIP without materialising either compressed or expanded data.
+The source's recorded size and CRC are used for the local header, but become trusted only when
+<a href="ZipReader.html#transfer(io.micronaut.runner.build.ZipEntryInfo,java.io.OutputStream)"><code>ZipReader.transfer(ZipEntryInfo, OutputStream)</code></a> has checked the complete payload.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>name</code> - the target entry name</dd>
+<dd><code>source</code> - the source ZIP reader</dd>
+<dd><code>sourceEntry</code> - the source ZIP entry</dd>
+<dd><code>dosTime</code> - the MS-DOS date and time to store</dd>
+<dt>Returns:</dt>
+<dd>the absolute offset of the entry's first data byte</dd>
+<dt>Throws:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the source payload is invalid or cannot be read or written</dd>
 </dl>
 </div>
 </section>
