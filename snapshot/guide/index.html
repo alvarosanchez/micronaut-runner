@@ -1239,8 +1239,11 @@ by themselves establish a startup speedup or statistical significance.</p>
 <p>Timing runs carry no diagnostic flags: <code>-Xlog</code> changes what is being measured, so class-load counts are
 collected in separate runs. Those diagnostics may show default JDK class sharing, but the current variants do
 not train or select a CDS archive or an AOT cache. The harness removes <code>JAVA_TOOL_OPTIONS</code>,
-<code>JDK_JAVA_OPTIONS</code> and <code>_JAVA_OPTIONS</code> from child JVM environments so ambient flags cannot silently change
-that cache mode.</p>
+<code>JDK_JAVA_OPTIONS</code> and <code><em>JAVA_OPTIONS</code> from child JVM environments so ambient flags cannot silently change
+that cache mode. Diagnostic counts are labelled _spawn through shutdown</em>: logging remains active after HTTP
+readiness while the startup line is awaited and while the child shuts down, so shutdown-hook loads can be
+included. Diagnostic readiness is retained only to show logging overhead and never enters measured timing
+distributions.</p>
 </div>
 <div class="sect2">
 <h3 id="_planned_trained_cache_matrix">Planned trained-cache matrix</h3>
@@ -1263,7 +1266,8 @@ not silently run without its trained application cache.</p>
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">./gradlew :benchmarks:jmh
-./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20</code></pre>
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -1279,6 +1283,15 @@ its variant, iteration, global schedule order, phase, outcome, failure and exit 
 when the attempt produced a valid measurement. A build-unavailable variant is skipped, not mislabeled as a
 failed process attempt. A warm-up failure is visible but does not by itself invalidate a complete measured
 matrix.</p>
+</div>
+<div class="paragraph">
+<p><code>results.json</code> uses a versioned, relocatable provenance schema. It records runner and sample revisions plus
+clean/dirty state, exact JDK and platform identity, logical processor count and physical memory, cache policy,
+the seed and actual attempt order, relocatable effective command arrays, and SHA-256 identities for ordered
+launch inputs. The three ambient JVM-option variables are recorded only as present/absent and removed; their
+values are explicitly redacted. Full environments, repository locations, Java homes and private absolute paths
+are never serialized. A reader can therefore identify the exact launched bytes and reconstruct successes and
+failures without depending on the original checkout location.</p>
 </div>
 <div class="paragraph">
 <p>For investigation only, <code>-Pbenchmarks.allowPartial=true</code> selects the explicit partial policy. An incomplete
