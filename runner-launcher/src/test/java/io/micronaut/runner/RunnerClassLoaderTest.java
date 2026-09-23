@@ -80,6 +80,12 @@ class RunnerClassLoaderTest {
     private static final String SERVICE = "META-INF/micronaut/io.micronaut.Svc/";
     private static final String APP_SERVICE = SERVICE + "org.example.App";
     private static final String ALPHA_SERVICE = SERVICE + "org.alpha.Alpha";
+    private static final String ENUMERATION_ONE = "enumeration/one.txt";
+    private static final String ENUMERATION_THIRTY = "enumeration/thirty.txt";
+    private static final String ENUMERATION_MANY = "enumeration/three-hundred.txt";
+    private static final String ENUMERATION_ADVERSARIAL = "enumeration/adversarial.txt";
+    private static final String ENUMERATION_COLLISION = "enumeration/collision";
+    private static final int ENUMERATION_JARS = 300;
     private static final int GENERATED_CLASSES = 24;
 
     private static File archive;
@@ -169,6 +175,8 @@ class RunnerClassLoaderTest {
         Fixture.Jar sealer = fixture.addJar(SEALER);
         sealer.addSealedPackage("org.unsealed");
         sealer.add("org/unsealed/Second.class", classBytes("org.unsealed.Second", "unsealed-second"));
+
+        addEnumerationFixtures(fixture);
 
         archive = fixture.writeTo(temporary.resolve("runner-classloader-test.jar").toFile());
         TestArchiveBuilder alphaClasspath = new TestArchiveBuilder();
@@ -377,6 +385,29 @@ class RunnerClassLoaderTest {
         assertTrue(multiRelease.get(1).toString().endsWith("META-INF/versions/9/mr-slashless-collision"),
                 multiRelease.toString());
         assertEquals("beta-version", string(multiRelease.get(1).openStream()));
+    }
+
+    @Test
+    void enumeratesZeroOneThirtyAndThreeHundredContributorsInClasspathOrder() throws Exception {
+        assumeHandlersRegistered();
+        RunnerClassLoader loader = newLoader();
+
+        assertEquals(List.of(), list(loader.findResources("enumeration/absent.txt")));
+        assertEnumeration(loader, ENUMERATION_ONE, 1, false);
+        assertEnumeration(loader, ENUMERATION_THIRTY, 30, false);
+        assertEnumeration(loader, ENUMERATION_MANY, ENUMERATION_JARS, false);
+        assertEnumeration(loader, ENUMERATION_ADVERSARIAL, ENUMERATION_JARS, true);
+
+        List<URL> collisions = list(loader.findResources(ENUMERATION_COLLISION));
+        assertEquals(ENUMERATION_JARS, collisions.size());
+        assertEquals(collisions.getFirst(), loader.findResource(ENUMERATION_COLLISION));
+        for (int i = 0; i < collisions.size(); i++) {
+            int jarId = i + 1;
+            assertTrue(collisions.get(i).toString().contains(index.jarName(jarId)),
+                    "URL " + i + " must identify jar " + jarId);
+            String expected = jarId == 1 || (jarId & 1) == 0 ? value(jarId, "exact") : "";
+            assertEquals(expected, string(collisions.get(i).openStream()), "collision jar " + jarId);
+        }
     }
 
     @Test
@@ -725,6 +756,62 @@ class RunnerClassLoaderTest {
             contents.add(string(connection.getInputStream()));
         }
         return contents;
+    }
+
+    private static void assertEnumeration(RunnerClassLoader loader, String name, int count, boolean adversarial)
+            throws IOException {
+        List<URL> urls = list(loader.findResources(name));
+        assertEquals(count, urls.size(), name);
+        assertEquals(urls.getFirst(), loader.findResource(name));
+        for (int i = 0; i < urls.size(); i++) {
+            int jarId = i + 1;
+            URL url = urls.get(i);
+            assertTrue(url.toString().contains(index.jarName(jarId)),
+                    "URL " + i + " must identify jar " + jarId + ": " + url);
+            String suffix = adversarial && jarId % 3 == 0 ? "v17-last" : adversarial ? "base-last" : "value";
+            assertEquals(value(jarId, suffix), string(url.openStream()), name + " jar " + jarId);
+            if (adversarial && jarId % 3 == 0) {
+                assertTrue(url.toString().contains("META-INF/versions/17/"), url.toString());
+            }
+        }
+    }
+
+    private static void addEnumerationFixtures(Fixture fixture) {
+        while (fixture.jars.size() <= ENUMERATION_JARS) {
+            int jarId = fixture.jars.size();
+            fixture.addJar(String.format("MICRONAUT-INF/lib/enumeration-%03d.jar", jarId));
+        }
+        for (int jarId = 1; jarId <= ENUMERATION_JARS; jarId++) {
+            Fixture.Jar jar = fixture.jars.get(jarId);
+            jar.add(ENUMERATION_MANY, text(value(jarId, "value")));
+            if (jarId <= 30) {
+                jar.add(ENUMERATION_THIRTY, text(value(jarId, "value")));
+            }
+            if (jarId == 1) {
+                jar.add(ENUMERATION_ONE, text(value(jarId, "value")));
+            }
+            jar.add(ENUMERATION_ADVERSARIAL, text(value(jarId, "base-first")));
+            jar.add(ENUMERATION_ADVERSARIAL, text(value(jarId, "base-last")));
+            if (jarId % 3 == 0) {
+                jar.multiRelease();
+                jar.add("META-INF/versions/17/" + ENUMERATION_ADVERSARIAL,
+                        text(value(jarId, "v17-first")));
+                jar.add("META-INF/versions/17/" + ENUMERATION_ADVERSARIAL,
+                        text(value(jarId, "v17-last")));
+                jar.add("META-INF/versions/99/" + ENUMERATION_ADVERSARIAL,
+                        text(value(jarId, "future")));
+            }
+            if (jarId == 1 || (jarId & 1) == 0) {
+                jar.add(ENUMERATION_COLLISION, text(value(jarId, "exact")));
+            }
+            if ((jarId & 1) != 0) {
+                jar.add(ENUMERATION_COLLISION + "/", new byte[0]);
+            }
+        }
+    }
+
+    private static String value(int jarId, String suffix) {
+        return String.format("jar-%03d-%s", jarId, suffix);
     }
 
     private static byte[] text(String value) {

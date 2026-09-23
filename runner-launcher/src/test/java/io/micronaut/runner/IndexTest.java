@@ -315,6 +315,14 @@ class IndexTest {
             chain.add(index.entryDataOffset(record));
         }
         assertEquals(List.of(10L, 211L, 210L, 171L, 170L, 21L, 20L, 31L, 30L), chain);
+
+        List<Long> selected = new ArrayList<>();
+        for (int record = index.resolve(head, 25); record != IndexFormat.NO_INDEX;
+             record = index.resolve(index.nextJar(record), 25)) {
+            selected.add(index.entryDataOffset(record));
+        }
+        assertEquals(List.of(10L, 211L, 31L), selected,
+                "advancing from the current record selects one effective entry per jar");
     }
 
     @ParameterizedTest(name = "mapped={0}")

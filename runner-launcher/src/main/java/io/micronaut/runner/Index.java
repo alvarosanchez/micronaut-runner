@@ -978,6 +978,30 @@ public final class Index {
     }
 
     /**
+     * Advances a same-name chain from the current record to the first record in the next JAR.
+     *
+     * <p>Records of one JAR are contiguous in a same-name chain. Starting here, rather than at the chain
+     * head, lets resource enumeration consume the chain once while still selecting one effective record
+     * per JAR.</p>
+     *
+     * @param record the record selected for the current JAR
+     * @return the first record in the next JAR, or {@link IndexFormat#NO_INDEX} at the end of the chain
+     */
+    public int nextJar(int record) {
+        int jarId = entryJarId(record);
+        int current = next(record);
+        int guard = entryCount;
+        while (current != IndexFormat.NO_INDEX && entryJarId(current) == jarId) {
+            current = next(current);
+            guard--;
+            if (guard < 0) {
+                throw stale("the chain from record " + record + " does not leave jar " + jarId);
+            }
+        }
+        return current;
+    }
+
+    /**
      * Picks the record a chain resolves to for a given runtime.
      *
      * <p>Within one jar the chain lists versioned aliases in descending version order before the base

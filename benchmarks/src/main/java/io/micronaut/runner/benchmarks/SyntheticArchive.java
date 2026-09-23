@@ -132,12 +132,31 @@ final class SyntheticArchive {
      * @return the fixture
      */
     static synchronized SyntheticArchive forWorkload(String name) {
+        return forShape(WorkloadShape.named(name));
+    }
+
+    /**
+     * Builds or reuses the small, resource-focused fixture used to measure same-name enumeration.
+     *
+     * @param contributors dependency jars that contribute the measured name
+     * @return a prebuilt runner archive with exactly that many contributors
+     */
+    static synchronized SyntheticArchive forResourceEnumeration(int contributors) {
+        if (contributors < 1) {
+            throw new IllegalArgumentException("contributors must be positive");
+        }
+        return forShape(new WorkloadShape("resource-enumeration-" + contributors,
+                contributors, 16, 0, 1, 1, 0, true, true));
+    }
+
+    private static SyntheticArchive forShape(WorkloadShape shape) {
+        String name = shape.name();
         SyntheticArchive existing = SHARED.get(name);
         if (existing != null) {
             return existing;
         }
         try {
-            SyntheticArchive built = build(WorkloadShape.named(name));
+            SyntheticArchive built = build(shape);
             Runtime.getRuntime().addShutdownHook(new Thread(built::delete, "synthetic-archive-cleanup"));
             SHARED.put(name, built);
             return built;
