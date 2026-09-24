@@ -22,7 +22,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
@@ -63,11 +62,19 @@ import java.util.jar.JarFile;
  * factory, because by the time the launcher runs the JDK has usually resolved and cached its own jar
  * handler already.</p>
  *
- * <p>None of that is load bearing. {@link #urlFor} and {@link #codeSourceUrlFor} build their URLs with
- * {@link URL#of(URI, java.net.URLStreamHandler)} and an explicit handler instance, so the URLs the class
- * loader returns work whether or not the property took effect. The property only matters for a URL that is
- * re-parsed from its string form by somebody else, which is why {@link #register} verifies it and prints
- * one warning when it did not take, rather than failing the launch.</p>
+ * <p>None of that is load bearing. {@link #urlFor} and {@link #codeSourceUrlFor} build their URLs from the
+ * encoders' output with an explicit handler instance, so the URLs the class loader returns work whether or
+ * not the property took effect. The property only matters for a URL that is re-parsed from its string form
+ * by somebody else, which is why {@link #register} verifies it and prints one warning when it did not take,
+ * rather than failing the launch.</p>
+ *
+ * <p>Each of those URLs is built with a single parse, the handler's own, and no {@link URI} in front of it:
+ * that parse is where {@code getResources} spends its time, once per contributing jar. Nothing is lost by
+ * skipping the URI, because every spec is a valid URI by construction: after {@code jar:}, the encoders
+ * emit only unreserved ASCII, {@code '/'}, {@code ':'} (in the archive path only) and a {@code %XX} escape
+ * per UTF-8 byte of anything else, and the jar and entry parts are joined by {@value #SEPARATOR}.
+ * {@code HandlerTest} checks that guarantee once, together with the fields of every URL shape against its
+ * re-parsed string form, instead of every call paying for it.</p>
  *
  * @since 1.0
  */
@@ -199,14 +206,7 @@ public final class Handlers {
         if (prefix == null) {
             return null;
         }
-        int at = 0;
-        while (at < logicalName.length() && logicalName.charAt(at) == '/') {
-            at++;
-        }
-        StringBuilder spec = new StringBuilder(prefix.length() + logicalName.length() + 16);
-        spec.append(prefix);
-        encodeName(spec, logicalName, at);
-        return url(spec.toString());
+        return entryUrl(prefix, logicalName);
     }
 
     /**
@@ -226,15 +226,7 @@ public final class Handlers {
         if (archiveUrl == null || outerEntryName == null) {
             return null;
         }
-        String base = archiveJarPrefix;
-        int at = 0;
-        while (at < outerEntryName.length() && outerEntryName.charAt(at) == '/') {
-            at++;
-        }
-        StringBuilder spec = new StringBuilder(base.length() + outerEntryName.length() + 16);
-        spec.append(base);
-        encodeName(spec, outerEntryName, at);
-        return url(spec.toString());
+        return entryUrl(archiveJarPrefix, outerEntryName);
     }
 
     /**
@@ -487,6 +479,42 @@ public final class Handlers {
     }
 
     /**
+     * Builds the URL of an entry under an encoded prefix, the one spec builder behind {@link #urlFor} and
+     * {@link #outerUrlFor}.
+     *
+     * <p>Leading slashes are dropped. Most names need no escaping at all, so the name is scanned once for
+     * its plain run of unreserved ASCII and {@code '/'}: when that run is the whole name, the spec is one
+     * {@link String#concat} of the prefix and the name, a single copy. Otherwise the plain run is appended
+     * and {@link #encodeName} resumes at the first character that needs escaping, which is exact because
+     * the encoder treats every character before the first non-ASCII one on its own, and the plain run
+     * contains none.</p>
+     *
+     * @param prefix the encoded prefix, ending with {@value #SEPARATOR} or a directory slash
+     * @param name   the entry name, not yet encoded
+     * @return the URL, or {@code null} when the spec is rejected
+     */
+    private static URL entryUrl(String prefix, String name) {
+        int length = name.length();
+        int at = 0;
+        while (at < length && name.charAt(at) == '/') {
+            at++;
+        }
+        int plain = at;
+        while (plain < length && (unreserved(name.charAt(plain)) || name.charAt(plain) == '/')) {
+            plain++;
+        }
+        if (plain == length) {
+            // The launcher compiles with -XDstringConcat=inline, so '+' would go through a StringBuilder
+            // and copy twice.
+            return url(prefix.concat(at == 0 ? name : name.substring(at)));
+        }
+        StringBuilder spec = new StringBuilder(prefix.length() + (length - at) + 16);
+        spec.append(prefix).append(name, at, plain);
+        encodeName(spec, name, plain);
+        return url(spec.toString());
+    }
+
+    /**
      * Percent-encodes a name into a URL, one escape per UTF-8 byte, leaving the unreserved set and the
      * path separator alone.
      *
@@ -641,10 +669,24 @@ public final class Handlers {
         return prefix;
     }
 
+    /**
+     * Builds a URL of the registered archive from a spec this class encoded, with one parse.
+     *
+     * <p>This is the constructor {@link URL#of(URI, java.net.URLStreamHandler)} ends in, called with the
+     * same string, so every field, {@code equals}, {@code hashCode}, {@code toExternalForm} and
+     * {@code toURI} come out the same. What it skips is the {@link URI} parse in front of it, which only
+     * validated a spec the encoders already guarantee to be a valid URI (see the class documentation) and
+     * cost more than the URL parse itself. The constructor wraps anything {@link Handler#parseURL} throws
+     * in a {@link MalformedURLException}.</p>
+     *
+     * @param spec a complete {@code jar:} spec, the archive's prefix followed by encoder output
+     * @return the URL, or {@code null} when the spec is rejected
+     */
+    @SuppressWarnings("deprecation")
     private static URL url(String spec) {
         try {
-            return URL.of(new URI(spec), archiveHandler);
-        } catch (URISyntaxException | MalformedURLException | IllegalArgumentException e) {
+            return new URL((URL) null, spec, archiveHandler);
+        } catch (MalformedURLException e) {
             return null;
         }
     }
