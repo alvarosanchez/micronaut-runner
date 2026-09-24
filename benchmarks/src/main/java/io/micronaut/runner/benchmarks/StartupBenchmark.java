@@ -38,6 +38,7 @@ import java.util.Random;
  *     --version    &lt;v&gt;     the version they were published under
  *     --iterations &lt;n&gt;     measured runs per variant
  *     --out        &lt;dir&gt;   where results.json and summary.md are written
+ *   [ --work       &lt;dir&gt; ] where variants are built and caches trained (default: &lt;out&gt;/artifacts)
  *   [ --warmup     &lt;n&gt;  ]  discarded runs per variant (default: min(3, iterations))
  *   [ --seed       &lt;n&gt;  ]  seed of the interleaving shuffle and the bootstrap
  *   [ --readiness  &lt;p&gt;  ]  the HTTP path polled for readiness (default /hello)
@@ -104,7 +105,7 @@ public final class StartupBenchmark {
             return;
         }
 
-        Path artifacts = options.outputDirectory().resolve("artifacts");
+        Path artifacts = options.workDirectory();
         Files.createDirectories(artifacts);
 
         List<Variant> variants;
@@ -265,6 +266,7 @@ public final class StartupBenchmark {
      * @param repository       the Maven repository the runner plugins come from
      * @param runnerVersion    the version they were published under
      * @param outputDirectory  where the reports go
+     * @param workDirectory    where the variants are built and their caches trained
      * @param iterations       measured runs per variant
      * @param warmupIterations discarded runs per variant
      * @param seed             the seed of the shuffle and the bootstrap
@@ -277,6 +279,7 @@ public final class StartupBenchmark {
                    String repository,
                    String runnerVersion,
                    Path outputDirectory,
+                   Path workDirectory,
                    int iterations,
                    int warmupIterations,
                    long seed,
@@ -297,6 +300,7 @@ public final class StartupBenchmark {
             String repository = null;
             String version = null;
             Path out = null;
+            Path work = null;
             Integer iterations = null;
             Integer warmup = null;
             long seed = DEFAULT_SEED;
@@ -312,6 +316,7 @@ public final class StartupBenchmark {
                     case "--repo" -> repository = value(args, ++i, argument);
                     case "--version" -> version = value(args, ++i, argument);
                     case "--out" -> out = Path.of(value(args, ++i, argument));
+                    case "--work" -> work = Path.of(value(args, ++i, argument));
                     case "--iterations" -> iterations = number(value(args, ++i, argument), argument);
                     case "--warmup" -> warmup = number(value(args, ++i, argument), argument);
                     case "--seed" -> seed = number(value(args, ++i, argument), argument);
@@ -340,8 +345,11 @@ public final class StartupBenchmark {
             if (effectiveWarmup < 0) {
                 throw new IllegalArgumentException("--warmup cannot be negative");
             }
+            Path outputDirectory = out.toAbsolutePath().normalize();
+            Path workDirectory = work != null ? work.toAbsolutePath().normalize()
+                    : outputDirectory.resolve("artifacts");
             return new Options(sample.toAbsolutePath().normalize(), repository, version,
-                    out.toAbsolutePath().normalize(), iterations, effectiveWarmup, seed,
+                    outputDirectory, workDirectory, iterations, effectiveWarmup, seed,
                     readiness.startsWith("/") ? readiness : "/" + readiness,
                     Duration.ofSeconds(timeoutSeconds), diagnostics, completenessPolicy);
         }
@@ -355,7 +363,7 @@ public final class StartupBenchmark {
             return """
                    Usage: StartupBenchmark --sample <dir> --repo <uri> --version <v> \
                    --iterations <n> --out <dir>
-                                          [--warmup <n>] [--seed <n>] [--readiness <path>] \
+                                          [--work <dir>] [--warmup <n>] [--seed <n>] [--readiness <path>] \
                    [--timeout <seconds>] [--diagnostics] [--allow-partial]""";
         }
 

@@ -62,7 +62,9 @@ def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
                 '--repo', layout.buildDirectory.dir('aggregated-repo').get().asFile.toURI().toASCIIString(),
                 '--version', providers.gradleProperty('projectVersion').get().replace('-SNAPSHOT', '-DUMMY'),
                 '--iterations', providers.gradleProperty('benchmarks.iterations').getOrElse('10'),
-                '--out', outDir.get().asFile.absolutePath]
+                '--out', outDir.get().asFile.absolutePath,
+                // Built variants and trained caches are build output, not reports: keep them out of reports/.
+                '--work', layout.buildDirectory.dir('tmp/startupBenchmark').get().asFile.absolutePath]
         if (providers.gradleProperty('benchmarks.allowPartial').map(String::toBoolean).getOrElse(false)) {
             arguments.add('--allow-partial')
         }

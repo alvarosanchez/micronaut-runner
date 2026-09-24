@@ -46,6 +46,41 @@ class BenchmarkCompletenessTest {
     }
 
     @Test
+    void workDirectoryDefaultsUnderTheOutputDirectoryAndCanBeMovedOutOfIt(@TempDir Path output) {
+        Path out = output.resolve("reports");
+        Path work = output.resolve("work");
+        String[] defaulted = {"--sample", output.toString(), "--repo", "file:/repo", "--version", "1.0",
+                "--iterations", "2", "--out", out.toString()};
+        String[] explicit = {"--sample", output.toString(), "--repo", "file:/repo", "--version", "1.0",
+                "--iterations", "2", "--out", out.toString(), "--work", work.toString()};
+
+        assertEquals(out.resolve("artifacts"), StartupBenchmark.Options.parse(defaulted).workDirectory());
+        assertEquals(work, StartupBenchmark.Options.parse(explicit).workDirectory());
+        assertEquals(out, StartupBenchmark.Options.parse(explicit).outputDirectory());
+    }
+
+    @Test
+    void failureTextKeepsVariantPathsUnderTheHomeDirectoryTokenised(@TempDir Path output) throws Exception {
+        Path fixture = Path.of(System.getProperty("user.home")).resolve("runner-redaction-fixture");
+        Path work = fixture.resolve("work");
+        Path jar = fixture.resolve("lib").resolve("runner.jar");
+        List<Variant> variants = List.of(
+                Variant.available("a", "fixture a", List.of("java"), work, jar, List.of(jar)),
+                available("b"));
+        StartupBenchmark.Options options = options(output, 1, 0, CompletenessPolicy.PARTIAL);
+        List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
+            if (variant.name().equals("a")) {
+                throw new StartupHarness.RunFailure("cannot open " + jar + " from " + work, null);
+            }
+            return sample(iteration, warmup);
+        }), variants, options, log());
+
+        Reports.write(output, context(output, options), results, List.of());
+        String json = Files.readString(output.resolve(Reports.RESULTS_FILE));
+        assertTrue(json.contains("\"failureReason\": \"cannot open ${input:0} from ${workdir}\""), json);
+    }
+
+    @Test
     void mixedMeasuredSuccessFailsRequiredMatrixAndRecordsEveryAttempt(@TempDir Path output) throws Exception {
         StartupBenchmark.Options options = options(output, 3, 0, CompletenessPolicy.REQUIRED);
         List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
@@ -142,7 +177,8 @@ class BenchmarkCompletenessTest {
     void sharedBuildFailurePreservesEveryRequiredVariantAsUnavailable(@TempDir Path output) throws Exception {
         List<Variant> variants = SampleBuild.unavailableVariants("sample build failed");
         StartupBenchmark.Options options = new StartupBenchmark.Options(output, "file:/repo", "1.0", output,
-                2, 1, 1234L, "/hello", Duration.ofSeconds(1), false, CompletenessPolicy.REQUIRED);
+                output.resolve("artifacts"), 2, 1, 1234L, "/hello", Duration.ofSeconds(1), false,
+                CompletenessPolicy.REQUIRED);
         List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
             throw new AssertionError("an unavailable variant must not reach the runner");
         }), variants, options, log());
@@ -239,8 +275,8 @@ class BenchmarkCompletenessTest {
                                                     CompletenessPolicy policy) throws IOException {
         Path sample = output.resolve("sample");
         Files.createDirectories(sample);
-        return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, iterations, warmup,
-                1234L, "/hello", Duration.ofSeconds(1), false, policy);
+        return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, output.resolve("artifacts"),
+                iterations, warmup, 1234L, "/hello", Duration.ofSeconds(1), false, policy);
     }
 
     private static StartupBenchmark.Options options(Path output,
@@ -249,8 +285,8 @@ class BenchmarkCompletenessTest {
                                                     long seed) throws IOException {
         Path sample = output.resolve("sample");
         Files.createDirectories(sample);
-        return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, iterations, warmup,
-                seed, "/hello", Duration.ofSeconds(1), false, CompletenessPolicy.REQUIRED);
+        return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, output.resolve("artifacts"),
+                iterations, warmup, seed, "/hello", Duration.ofSeconds(1), false, CompletenessPolicy.REQUIRED);
     }
 
     private static List<String> schedule(List<VariantResult> results) {
