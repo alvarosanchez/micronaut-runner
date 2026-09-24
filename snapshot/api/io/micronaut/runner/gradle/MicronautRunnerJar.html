@@ -68,6 +68,9 @@ loadScripts(document, 'script');</script>
 <li><a href="#getMainClass()" tabindex="0">getMainClass()</a></li>
 <li><a href="#getApplicationOutput()" tabindex="0">getApplicationOutput()</a></li>
 <li><a href="#getApplicationJar()" tabindex="0">getApplicationJar()</a></li>
+<li><a href="#getInheritedManifest()" tabindex="0">getInheritedManifest()</a></li>
+<li><a href="#setInheritedManifest(org.gradle.api.java.archives.Manifest)" tabindex="0">setInheritedManifest(Manifest)</a></li>
+<li><a href="#getInheritedManifestAttributes()" tabindex="0">getInheritedManifestAttributes()</a></li>
 <li><a href="#getClasspath()" tabindex="0">getClasspath()</a></li>
 <li><a href="#getCoordinates()" tabindex="0">getCoordinates()</a></li>
 <li><a href="#getDependencyInputs()" tabindex="0">getDependencyInputs()</a></li>
@@ -111,8 +114,10 @@ loadScripts(document, 'script');</script>
 <span class="extends-implements">extends org.gradle.api.DefaultTask</span></div>
 <div class="block">Packages the application and its dependencies into a runner jar.
 
-<p>Every property has a convention taken from the project, so the task normally needs no configuration
-at all. See the plugin documentation for the properties worth overriding.</p></div>
+<p>The plugin takes the task's inputs from the project: conventions for its properties, and the
+<code>jar</code> task's manifest configuration for the application's own manifest attributes. The task
+therefore normally needs no configuration at all. See the plugin documentation for the properties worth
+overriding.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -188,8 +193,8 @@ the flag.</div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getApplicationJar()" class="member-name-link">getApplicationJar</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">The jar produced by the <code>jar</code> task, used only as the source of the application's own manifest
-attributes.</div>
+<div class="block">An explicit override: a jar whose manifest supplies the application's own manifest attributes, for a
+manifest that the <code>jar</code> task's configuration cannot describe.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.ConfigurableFileCollection</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getApplicationOutput()" class="member-name-link">getApplicationOutput</a>()</code></div>
@@ -248,6 +253,20 @@ can report what an archive contains.</div>
 <div class="block">Whether to generate the entry stub that lets the launcher call the application main method through
 an interface rather than by reflection.</div>
 </div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>@Nullable org.gradle.api.java.archives.Manifest</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getInheritedManifest()" class="member-name-link">getInheritedManifest</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">The manifest configuration the application's own manifest attributes are taken from; the plugin sets
+the <code>jar</code> task's.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/SortedMap.html" title="class or interface in java.util" class="external-link">SortedMap</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getInheritedManifestAttributes()" class="member-name-link">getInheritedManifestAttributes</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">What the packaging library reads from the <a href="#getInheritedManifest()">inherited manifest</a>: the
+six <code>Specification-*</code> and <code>Implementation-*</code> attributes and <code>Sealed</code>, keyed by
+<code>Name</code> in the main section and by <code>&lt;section&gt;Name</code> in a package section, whose name ends in
+<code>/</code>.</div>
+</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getJavaLauncherVersion()" class="member-name-link">getJavaLauncherVersion</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
@@ -273,6 +292,11 @@ compiled the application and the JDK that will run it easy to spot.</div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageArchive()" class="member-name-link">packageArchive</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Builds the archive.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#setInheritedManifest(org.gradle.api.java.archives.Manifest)" class="member-name-link">setInheritedManifest</a><wbr>(@Nullable org.gradle.api.java.archives.Manifest&nbsp;manifest)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Sets the manifest configuration the application's own manifest attributes are taken from.</div>
 </div>
 </div>
 </div>
@@ -353,12 +377,66 @@ compiled the application and the JDK that will run it easy to spot.</div>
 @Optional
 @PathSensitive(NONE)
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.file.RegularFileProperty</span>&nbsp;<span class="element-name">getApplicationJar</span>()</div>
-<div class="block">The jar produced by the <code>jar</code> task, used only as the source of the application's own manifest
-attributes. A directory of classes cannot carry a manifest, so without this the archive would lose
-attributes such as <code>Implementation-Version</code>.</div>
+<div class="block">An explicit override: a jar whose manifest supplies the application's own manifest attributes, for a
+manifest that the <code>jar</code> task's configuration cannot describe. It has no default.
+
+<p>Without it, the six <code>Implementation-*</code> and <code>Specification-*</code> attributes, <code>Sealed</code>
+and the package sections come from the <code>jar</code> task's manifest configuration, including
+<code>manifest.from(...)</code> merges, and this task does not build the thin JAR. When attributes are added
+in the <code>jar</code> task's <code>doFirst</code> or <code>doLast</code>, or merged from a file that another task
+generates, set it to <code>tasks.named('jar').flatMap { it.archiveFile }</code>.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the application jar</dd>
+<dd>the jar whose manifest supplies the application's attributes</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="getInheritedManifest()">
+<h3>getInheritedManifest</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type">@Nullable org.gradle.api.java.archives.Manifest</span>&nbsp;<span class="element-name">getInheritedManifest</span>()</div>
+<div class="block">The manifest configuration the application's own manifest attributes are taken from; the plugin sets
+the <code>jar</code> task's. It is read when this task executes, not when it is configured, so an attribute
+whose value is a provider, or a merged manifest file, is read as it is then. Only the attributes the
+archive carries are inputs: see <a href="#getInheritedManifestAttributes()"><code>getInheritedManifestAttributes()</code></a>.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the manifest configuration, or <code>null</code> when none was set</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="setInheritedManifest(org.gradle.api.java.archives.Manifest)">
+<h3>setInheritedManifest</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">void</span>&nbsp;<span class="element-name">setInheritedManifest</span><wbr><span class="parameters">(@Nullable org.gradle.api.java.archives.Manifest&nbsp;manifest)</span></div>
+<div class="block">Sets the manifest configuration the application's own manifest attributes are taken from.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>manifest</code> - the manifest configuration, or <code>null</code> for none</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="getInheritedManifestAttributes()">
+<h3>getInheritedManifestAttributes</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="annotations">@Input
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/SortedMap.html" title="class or interface in java.util" class="external-link">SortedMap</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getInheritedManifestAttributes</span>()</div>
+<div class="block">What the packaging library reads from the <a href="#getInheritedManifest()">inherited manifest</a>: the
+six <code>Specification-*</code> and <code>Implementation-*</code> attributes and <code>Sealed</code>, keyed by
+<code>Name</code> in the main section and by <code>&lt;section&gt;Name</code> in a package section, whose name ends in
+<code>/</code>. Every other attribute and section is left out, so it cannot invalidate the archive.
+
+<p>Empty when there is no inherited manifest, or when <a href="#getApplicationJar()"><code>getApplicationJar()</code></a> overrides it.</p></div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the consumed attributes, sorted by key</dd>
 </dl>
 </div>
 </section>

@@ -341,6 +341,12 @@ archives under one name. The plugin fails the build if it detects that.
 </div>
 </div>
 <div class="paragraph">
+<p>The application&#8217;s <code>Implementation-<strong></code>, <code>Specification-</strong></code> and <code>Sealed</code> attributes and package sections come from the
+<code>jar</code> task&#8217;s manifest configuration, including <code>manifest.from(&#8230;&#8203;)</code> merges; <code>micronautRunnerJar</code> does not build the
+thin JAR. If the <code>jar</code> task adds attributes in <code>doFirst</code> or <code>doLast</code>, or merges a file that another task generates,
+set <code>applicationJar = tasks.named('jar').flatMap { it.archiveFile }</code>.</p>
+</div>
+<div class="paragraph">
 <p><code>manifestAttributes</code> may override attributes imported from the application&#8217;s manifest. <code>Manifest-Version</code>,
 <code>Main-Class</code> and every attribute whose name begins with <code>Micronaut-Runner-</code> are reserved for the runner
 format and are rejected case-insensitively.</p>
