@@ -88,6 +88,7 @@ java io.micronaut.runner.benchmarks.StartupBenchmark \
     --version    &lt;v&gt;     the version they were published under
     --iterations &lt;n&gt;     measured runs per variant
     --out        &lt;dir&gt;   where results.json and summary.md are written
+  [ --work       &lt;dir&gt; ] where variants are built and caches trained (default: &lt;out&gt;/artifacts)
   [ --warmup     &lt;n&gt;  ]  discarded runs per variant (default: min(3, iterations))
   [ --seed       &lt;n&gt;  ]  seed of the interleaving shuffle and the bootstrap
   [ --readiness  &lt;p&gt;  ]  the HTTP path polled for readiness (default /hello)

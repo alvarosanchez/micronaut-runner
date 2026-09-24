@@ -1351,12 +1351,13 @@ the trained application cache mode explicit rather than inferring it from defaul
 <code>-Pbenchmarks.packagingIterations=2</code> changes the number of independent packaging workers. The JMH resource
 benchmarks expose the same <code>workload</code> parameter. The startup task defaults to the larger
 <code>test-suite/samples/benchmark-large</code> application; use <code>-Pbenchmarks.sample=&lt;sample-directory-name&gt;</code> for an
-explicit sample. Short smoke runs and retained issue investigations must remain labelled descriptive rather
-than being promoted to release claims.</p>
+explicit sample. Short smoke runs must remain labelled descriptive rather than being promoted to release
+claims.</p>
 </div>
 <div class="paragraph">
-<p>Reports are written to <code>benchmarks/build/reports/</code>. In CI the benchmarks run weekly and on demand rather
-than on every pull request, because shared runners are too noisy to gate a build on.</p>
+<p>Reports are written to <code>benchmarks/build/reports/</code>. The startup task builds its variants and trains its caches
+in <code>benchmarks/build/tmp/startupBenchmark</code>. In CI the benchmarks run weekly and on demand rather than on every
+pull request, because shared runners are too noisy to gate a build on.</p>
 </div>
 <div class="paragraph">
 <p>The startup harness uses a required, fail-closed matrix by default. Every required packaging variant must
