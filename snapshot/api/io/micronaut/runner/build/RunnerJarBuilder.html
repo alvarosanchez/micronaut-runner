@@ -56,6 +56,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#" tabindex="0">Description</a>
 <ol class="toc-list">
 <li><a href="#two-passes-one-archive-heading" tabindex="0">Two passes, one archive</a></li>
+<li><a href="#dependency-staging-heading" tabindex="0">Dependency staging</a></li>
 <li><a href="#path-safety-heading" tabindex="0">Path safety</a></li>
 </ol>
 </li>
@@ -99,6 +100,16 @@ where the dry run said it would.</p>
 <p>The result is reproducible: entries are visited in a fixed order, every one of them is dated with
 <a href="RunnerJarSpec.html#timestamp()"><code>RunnerJarSpec.timestamp()</code></a> converted in UTC, and nothing about the machine that ran the build
 reaches the bytes. Building the same inputs twice, in different time zones, produces identical files.</p>
+
+<h2 id="dependency-staging-heading">Dependency staging</h2>
+<p>Each dependency is repacked or copied into its nested jar on up to
+<code>min(availableProcessors(), 8)</code> daemon threads. The threads are created for each build and have
+stopped before <code>build</code> returns; with one processor, or at most one dependency, staging runs on the
+calling thread. A staging thread holds one open <a href="ZipReader.html" title="class in io.micronaut.runner.build"><code>ZipReader</code></a> (its parsed central directory and
+manifest), at most one <code>Inflater</code> at a time and at most four 64 KiB buffers. The archive's bytes do
+not depend on the thread count: every nested jar's name and work file are fixed in class-path order
+before staging starts, warnings are emitted in that order afterwards, and the outer archive is written on
+one thread.</p>
 
 <h2 id="path-safety-heading">Path safety</h2>
 <p>Configured input paths may themselves be symbolic links. The builder resolves their real identities,
