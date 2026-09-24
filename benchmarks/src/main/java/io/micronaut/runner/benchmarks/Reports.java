@@ -641,8 +641,8 @@ final class Reports {
                     ? ReadinessSnapshot.UNAVAILABLE : result.atReadiness();
             out.append("| `").append(result.variant().name()).append("` | ").append(result.readiness().count())
                     .append(" | ").append(mebibytes(medians.rssBytes()))
-                    .append(" | ").append(mebibytes(privateBytes(medians)))
-                    .append(" | ").append(mebibytes(peakBytes(medians)))
+                    .append(" | ").append(mebibytes(medians.privateBytes()))
+                    .append(" | ").append(mebibytes(medians.peakBytes()))
                     .append(" | ").append(medians.loadedClasses() < 0 ? "—" : medians.loadedClasses())
                     .append(" | ").append(medians.sharedClasses() < 0 ? "—" : medians.sharedClasses())
                     .append(" |\n");
@@ -674,15 +674,7 @@ final class Reports {
         return ReadinessSnapshot.macOs() ? "Peak (`phys_footprint_peak`)" : "Peak (`VmHWM`)";
     }
 
-    private static long privateBytes(ReadinessSnapshot snapshot) {
-        return ReadinessSnapshot.macOs() ? snapshot.footprintBytes() : snapshot.anonBytes();
-    }
-
-    private static long peakBytes(ReadinessSnapshot snapshot) {
-        return ReadinessSnapshot.macOs() ? snapshot.peakFootprintBytes() : snapshot.peakRssBytes();
-    }
-
-    private static String mebibytes(long bytes) {
+    static String mebibytes(long bytes) {
         return bytes < 0 ? "—" : String.format(Locale.ROOT, "%.1f MiB", bytes / (1024.0 * 1024.0));
     }
 
@@ -851,7 +843,7 @@ final class Reports {
             out.append("| ").append(row.spec().label()).append(": `").append(comparison.candidateVariant())
                     .append("` − `").append(comparison.baselineVariant()).append("` | ")
                     .append(signedMebibytes(candidate.rssBytes(), baseline.rssBytes())).append(" | ")
-                    .append(signedMebibytes(privateBytes(candidate), privateBytes(baseline))).append(" | ")
+                    .append(signedMebibytes(candidate.privateBytes(), baseline.privateBytes())).append(" | ")
                     .append(signedCount(candidate.loadedClasses(), baseline.loadedClasses())).append(" |\n");
         }
         out.append('\n');

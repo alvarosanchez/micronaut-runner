@@ -173,6 +173,20 @@ class ReadinessSnapshotTest {
     }
 
     @Test
+    void privateAndPeakMemoryAreEachPlatformsOwnCounters() {
+        ReadinessSnapshot linux = ReadinessSnapshot.parseProcStatus(PROC_STATUS);
+        assertEquals(linux.anonBytes(), linux.privateBytes());
+        assertEquals(linux.peakRssBytes(), linux.peakBytes());
+
+        ReadinessSnapshot macOs = new ReadinessSnapshot(-1, 168_312_832, -1, -1, -1, 118_522_960, 127_452_216, -1, -1);
+        assertEquals(118_522_960, macOs.privateBytes());
+        assertEquals(127_452_216, macOs.peakBytes());
+
+        assertEquals(-1, ReadinessSnapshot.UNAVAILABLE.privateBytes());
+        assertEquals(-1, ReadinessSnapshot.UNAVAILABLE.peakBytes());
+    }
+
+    @Test
     void withProbeMillisKeepsEveryOtherField() {
         ReadinessSnapshot snapshot = new ReadinessSnapshot(-1, 1, 2, 3, 4, 5, 6, 7, 8).withProbeMillis(12.5);
 

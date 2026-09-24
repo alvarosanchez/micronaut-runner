@@ -81,6 +81,24 @@ record ReadinessSnapshot(double probeMillis,
     }
 
     /**
+     * The private memory, the like-for-like figure between a mapped archive and a flattened JAR.
+     *
+     * @return {@code phys_footprint} on macOS, {@code RssAnon} on Linux, or {@code -1} when neither was read
+     */
+    long privateBytes() {
+        return footprintBytes >= 0 ? footprintBytes : anonBytes;
+    }
+
+    /**
+     * The lifetime peak that pairs with {@link #privateBytes()} on each platform.
+     *
+     * @return {@code phys_footprint_peak} on macOS, {@code VmHWM} on Linux, or {@code -1} when neither was read
+     */
+    long peakBytes() {
+        return peakFootprintBytes >= 0 ? peakFootprintBytes : peakRssBytes;
+    }
+
+    /**
      * Reads memory first, which takes microseconds and is therefore effectively at readiness, then class
      * counts. It never throws: anything that cannot be read is {@code -1}.
      *

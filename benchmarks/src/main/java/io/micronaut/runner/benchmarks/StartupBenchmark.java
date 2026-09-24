@@ -202,12 +202,13 @@ public final class StartupBenchmark {
                             variant.name(), phaseIteration, attemptOrder, sample));
                     log.printf(Locale.ROOT,
                             "[startup-benchmark] %s %-18s ready %7.1f ms | log line %7.1f ms |"
-                                    + " framework says %s%n",
+                                    + " framework says %s | at readiness: %s%n",
                             warmup ? "warmup " : "measure", variant.name(), sample.readinessMillis(),
                             sample.logLineMillis(),
                             sample.frameworkMillis() < 0
                                     ? "nothing"
-                                    : String.format(Locale.ROOT, "%.0f ms", sample.frameworkMillis()));
+                                    : String.format(Locale.ROOT, "%.0f ms", sample.frameworkMillis()),
+                            atReadiness(sample.atReadiness()));
                 } catch (IOException e) {
                     String reason = oneLine(e.getMessage());
                     Integer exitCode = e instanceof StartupHarness.RunFailure failure
@@ -253,6 +254,18 @@ public final class StartupBenchmark {
             }
         }
         return runs;
+    }
+
+    /** One progress-log fragment for a readiness snapshot; {@code —} marks what could not be read. */
+    static String atReadiness(ReadinessSnapshot snapshot) {
+        ReadinessSnapshot value = snapshot == null ? ReadinessSnapshot.UNAVAILABLE : snapshot;
+        return "rss " + Reports.mebibytes(value.rssBytes())
+                + " | private " + Reports.mebibytes(value.privateBytes())
+                + " | peak " + Reports.mebibytes(value.peakBytes())
+                + " | classes " + (value.loadedClasses() < 0 ? "—" : value.loadedClasses())
+                + " (" + (value.sharedClasses() < 0 ? "—" : value.sharedClasses()) + " shared)"
+                + " | probe " + (value.probeMillis() < 0
+                        ? "—" : String.format(Locale.ROOT, "%.1f ms", value.probeMillis()));
     }
 
     private static String oneLine(String message) {

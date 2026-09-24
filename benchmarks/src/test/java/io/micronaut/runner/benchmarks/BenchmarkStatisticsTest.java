@@ -112,12 +112,13 @@ class BenchmarkStatisticsTest {
     @Test
     void runnerVersusShadowHasAMemoryRowForEveryTimingRow(@TempDir Path output) throws Exception {
         long mebibyte = 1024 * 1024;
+        // Linux-shaped snapshots: RssAnon is the private memory and VmHWM the peak, whatever OS runs the test.
         VariantResult stored = withSnapshot("runner-stored",
                 new ReadinessSnapshot(5, 180 * mebibyte, 190 * mebibyte, 120 * mebibyte, 60 * mebibyte,
-                        130 * mebibyte, 140 * mebibyte, 6200, 1280));
+                        -1, -1, 6200, 1280));
         VariantResult shadow = withSnapshot("shadow",
                 new ReadinessSnapshot(5, 178 * mebibyte, 185 * mebibyte, 150 * mebibyte, 28 * mebibyte,
-                        156 * mebibyte, 160 * mebibyte, 6100, 1270));
+                        -1, -1, 6100, 1270));
         VariantResult preserve = withSnapshot("runner-preserve", ReadinessSnapshot.UNAVAILABLE);
 
         Path sample = Files.createDirectory(output.resolve("sample"));
@@ -128,9 +129,8 @@ class BenchmarkStatisticsTest {
 
         String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
         String section = section(markdown, "## Runner vs Shadow");
-        String privateDelta = ReadinessSnapshot.macOs() ? "-26.0 MiB" : "-30.0 MiB";
-        assertTrue(section.contains("| Runner default vs Shadow: `runner-stored` − `shadow` | +2.0 MiB | "
-                + privateDelta + " | +100 |"), section);
+        assertTrue(section.contains("| Runner default vs Shadow: `runner-stored` − `shadow` | +2.0 MiB | -30.0 MiB"
+                + " | +100 |"), section);
         assertTrue(section.contains("| Runner PRESERVE vs Shadow: `runner-preserve` − `shadow` | — | — | — |"),
                 section);
         assertTrue(section.contains("| STORED vs PRESERVE: `runner-stored` − `runner-preserve` | — | — | — |"),
@@ -143,10 +143,8 @@ class BenchmarkStatisticsTest {
         }
 
         String memory = section(markdown, "## Memory and classes at readiness (not timed)");
-        String privateMedian = ReadinessSnapshot.macOs() ? "130.0 MiB" : "120.0 MiB";
-        String peakMedian = ReadinessSnapshot.macOs() ? "140.0 MiB" : "190.0 MiB";
-        assertTrue(memory.contains("| `runner-stored` | 1 | 180.0 MiB | " + privateMedian + " | " + peakMedian
-                + " | 6200 | 1280 |"), memory);
+        assertTrue(memory.contains("| `runner-stored` | 1 | 180.0 MiB | 120.0 MiB | 190.0 MiB | 6200 | 1280 |"),
+                memory);
         assertTrue(memory.contains("| `runner-preserve` | 1 | — | — | — | — | — |"), memory);
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);

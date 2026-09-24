@@ -75,6 +75,11 @@ class RepresentativeWorkloadTest {
         assertTrue(report.attempts().stream().allMatch(attempt -> attempt.inputBytes() > 0));
         assertTrue(report.attempts().stream().allMatch(attempt -> attempt.outputBytes() > 0));
         assertTrue(report.attempts().stream().allMatch(attempt -> attempt.peakHeapBytes() > 0));
+        if (org.junit.jupiter.api.condition.OS.MAC.isCurrentOs()
+                || org.junit.jupiter.api.condition.OS.LINUX.isCurrentOs()) {
+            assertTrue(report.attempts().stream().allMatch(attempt -> attempt.peakRssBytes() > 0
+                    && attempt.rssMethod().equals("rss-sampled")), report.attempts().toString());
+        }
         try (var entries = java.nio.file.Files.list(output)) {
             assertEquals(java.util.Set.of("packaging-results.json", "packaging-summary.md"),
                     entries.map(path -> path.getFileName().toString())
