@@ -67,8 +67,10 @@ import java.util.function.Consumer;
  * <p>A stub that cannot work is worse than no stub at all: it fails when the application starts rather than
  * when it is packaged, and the launcher's reflective fallback would have started the same application
  * without complaint. {@link #ineligibilityReason(String, byte[])} is therefore deliberately narrow, and it
- * answers by <em>parsing</em> the main class rather than loading it - a packager must never run application
- * code or initialise application classes.</p>
+ * answers by <em>parsing</em> the main class rather than loading it: the packager never loads, initialises or runs
+ * application classes. The one exception to running no library code either is {@link LogbackPrecompiler}'s front
+ * end, which runs only Logback and slf4j-api classes, in an isolated loader whose parent is the platform loader,
+ * instantiating only {@code ch.qos.logback.*} classes the configuration names.</p>
  *
  * @since 1.0
  */

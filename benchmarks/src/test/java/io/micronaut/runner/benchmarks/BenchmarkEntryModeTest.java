@@ -72,10 +72,16 @@ class BenchmarkEntryModeTest {
         assertTrue(core.stream().noneMatch(name -> name.endsWith("-reflection")), core.toString());
 
         List<String> expected = new ArrayList<>(CORE_ROWS);
-        expected.add(expected.indexOf("runner-stored-aot") + 1, "runner-stored-reflection");
+        int afterStored = expected.indexOf("runner-stored-aot") + 1;
+        expected.addAll(afterStored, List.of("runner-stored-reflection", "runner-stored-joran",
+                "runner-stored-joran-aot"));
         assertEquals(expected, withOptIn);
-        assertEquals(CORE_ROWS.size() + 1, withOptIn.size());
+        assertEquals(CORE_ROWS.size() + 3, withOptIn.size());
+        assertTrue(core.stream().noneMatch(name -> name.contains("joran")), core.toString());
+        assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("joran")));
         assertEquals(EntryMode.REFLECTION, EntryMode.requestedBy("runner-stored-reflection"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran-aot"));
         assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-stored"));
     }
 

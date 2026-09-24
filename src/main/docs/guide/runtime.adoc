@@ -49,6 +49,11 @@ Useful when you suspect a corrupted archive.
 |The parent of the application class loader. `platform` isolates the application from anything on the real
 `java.class.path`. `system` is an escape hatch for an agent or tool that must share types with the
 application.
+
+|`micronaut.runner.logback.precompiled`
+|`true`
+|`false` hands a precompiled Logback configuration (<<precompiledLogback>>) over to Logback's Joran at startup. It
+has no effect on an archive without one.
 |===
 
 == Exit codes

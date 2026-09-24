@@ -199,6 +199,7 @@ public final class RunnerJarBuilder {
     private Manifest applicationManifest;
     private String launcherVersion;
     private String entryStubClass;
+    private boolean logbackPrecompiled;
     private int mergedServiceEntryCount;
 
     private RunnerJarBuilder(RunnerJarSpec spec, BuildLogger logger, int parallelism, Runnable beforeWrite) {
@@ -337,6 +338,7 @@ public final class RunnerJarBuilder {
             generateEntryStub();
             readApplicationManifest();
             collectDependencies(work);
+            precompileLogback(work);
             loadLauncher(work);
 
             plan.add(PlannedEntry.ofBytes("META-INF/MANIFEST.MF", manifestBytes()));
@@ -371,7 +373,8 @@ public final class RunnerJarBuilder {
 
             // The caller reports the build with the result's summary(), so the builder logs no line of its own.
             return new RunnerJarResult(output, writer.jars().size(), layout.entryCount(),
-                    application.size(), mergedServiceEntryCount, archiveSize, warnings, spec.effectiveOptions());
+                    application.size(), mergedServiceEntryCount, archiveSize, warnings, spec.effectiveOptions(),
+                    logbackPrecompiled);
         } catch (Throwable e) {
             failure = e;
             throw e;
@@ -733,9 +736,9 @@ public final class RunnerJarBuilder {
      * application that generates classes into the runner's own package - the name already being taken.</p>
      *
      * <p>The base main class and every versioned variant the runner can select are <em>parsed</em>, never
-     * loaded: a packager that loaded application classes would run their static initialisers in the build
-     * JVM. A versioned directory matters only when the application layer is declared multi-release, and it
-     * is recognised with the same rules the index writer uses to create aliases.</p>
+     * loaded: the packager never loads, initialises or runs application classes (it runs library code only in
+     * {@link LogbackPrecompiler}'s isolated front end). A versioned directory matters only when the application
+     * layer is multi-release, and it is recognised with the same rules the index writer uses to create aliases.</p>
      *
      * @throws IOException if the main class cannot be read back from the application output
      */
@@ -1086,6 +1089,19 @@ public final class RunnerJarBuilder {
             suffix++;
         }
         return candidate;
+    }
+
+    /** Precompiles {@code logback.xml} once the dependencies, whose Logback decides, are staged. */
+    private void precompileLogback(Path work) {
+        List<LogbackPrecompiler.Layer> layers = new ArrayList<>(nested.size() + 1);
+        layers.add(LogbackPrecompiler.Layer.application(application.keySet(), n -> applicationBytes(application.get(n))));
+        for (NestedJar jar : nested) {
+            layers.add(LogbackPrecompiler.Layer.of(jar.dependency, jar.file, jar.manifest, jar.result.entries()));
+        }
+        Map<String, byte[]> generated = LogbackPrecompiler.precompile(spec.precompileLogback(), layers,
+                application.keySet(), work, logger, this::warn);
+        generated.forEach((name, bytes) -> application.putIfAbsent(name, ApplicationEntry.ofBytes(bytes)));
+        logbackPrecompiled = !generated.isEmpty();
     }
 
     /**

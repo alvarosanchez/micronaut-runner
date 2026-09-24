@@ -1,0 +1,72 @@
+Packaging can do work once, at build time, that an application would otherwise repeat at every start. Each
+transformation is an option of the Runner JAR, fails closed, and names in the build log why it did nothing when it
+does nothing.
+
+[[precompiledLogback]]
+== Precompiled Logback configuration
+
+Runner JARs precompile logback.xml by default; Shadow JARs, Docker images and native images configure Logback with
+Joran at startup unless Micronaut AOT's `logback.xml.to.java` has replaced `logback.xml`, so switching a project from
+Shadow to Runner changes how Logback is configured. The opt-out restores Joran.
+
+Without it, Logback parses `logback.xml` on the main thread at every start: it loads the JDK's XML parser and
+Joran's model classes, and `io.micronaut.runtime.Micronaut` waits for it. With it, the packager reads the file with
+Logback's own parser, in an isolated class loader that holds only the application's Logback and SLF4J jars, and
+generates `io.micronaut.runner.generated.logback.LogbackConfigurator`, registered as a
+`ch.qos.logback.classic.spi.Configurator` service. At startup that class creates the appenders and sets the loggers
+the file declares, in the order Joran does, without XML. `logback.xml` stays in the archive.
+
+=== What is compiled
+
+A file is compiled only when all of it is within this subset:
+
+* `<configuration>` without `debug`, `scan`, `scanPeriod` or `packagingData`, or with them `false`;
+* `<appender>` elements of public `ch.qos.logback` appender classes, such as `ConsoleAppender` and `FileAppender`,
+with `String`, `boolean` or `int` properties (`<target>`, `<file>`, `<append>`) and at most one `<encoder>`, a
+`PatternLayoutEncoder` whose only child is a `<pattern>` using Logback's built-in conversion words;
+* `<logger>` (name, level, `additivity`) and `<root>` elements that contain only `<appender-ref>`s.
+
+No value may use a variable. Anything else, such as `<property>`, `<include>`, `<if>`, `<conversionRule>`, a
+`<filter>`, a `<rollingPolicy>` or a custom appender, leaves the file to Joran.
+
+=== When nothing is compiled
+
+The packager also leaves the file to Joran when logback-classic, logback-core or slf4j-api is missing, when the two
+Logback jars differ in version or are outside 1.5.37 to 1.6 (exclusive), when there is no `logback.xml`, when any
+layer has a `logback-test.xml`, `logback.groovy` or versioned Logback file, when any layer already registers a
+`Configurator` (your own, or Micronaut AOT's), and when a packaged `application*` or `bootstrap*` file may set
+`logger.config` or `logback.configurationFile`. The build logs one line either way, at info level: `Precompiled
+logback.xml (application layer) into ...` or `No Logback configuration was precompiled because <reason>; Logback
+will configure itself with Joran at startup`. A generated class name that is already taken is a warning.
+
+=== At runtime
+
+The generated configurator hands the configuration to Joran when:
+
+* `-Dlogback.configurationFile` is set;
+* Micronaut refreshes logging (any `logger.*` property does) and `-Dlogger.config`, `LOGGER_CONFIG` or
+`LOGBACK_CONFIGURATIONFILE` names a location: that file is configured, as without Micronaut Runner;
+* `-Dlogback.debug` or `-Dlogback.statusListenerClass` asks for Logback's status output;
+* `-Dmicronaut.runner.logback.precompiled=false` is set.
+
+What changes when it applies: Joran's INFO status messages about reading `logback.xml` are not recorded, and every
+way to see them falls back to Joran. `logback.xml` is read only on the paths above.
+
+One case is not covered: a `logger.config` set by configuration outside the archive, such as
+`-Dmicronaut.config.files` or an `application.yml` in the working directory, is not applied once a `Configurator` is
+registered, and the runtime opt-out does not change that. Set the location with `-Dlogger.config` or `LOGGER_CONFIG`
+instead, or turn precompilation off.
+
+=== Turning it off
+
+[source,groovy]
+----
+micronaut {
+    runner {
+        options.put('precompileLogback', 'false')
+    }
+}
+----
+
+In Maven, pass `-Dmicronaut.runner.precompileLogback=false`, or add `<precompileLogback>false</precompileLogback>` to
+`<runnerOptions>`.

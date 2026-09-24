@@ -88,6 +88,8 @@ final class SampleBuild {
     private static final String RUNNER_STORED = "runner-stored";
     private static final String RUNNER_STORED_AOT = "runner-stored-aot";
     private static final String RUNNER_STORED_REFLECTION = "runner-stored-reflection";
+    private static final String RUNNER_STORED_JORAN = "runner-stored-joran";
+    private static final String RUNNER_STORED_JORAN_AOT = "runner-stored-joran-aot";
     private static final String RUNNER_PRESERVE = "runner-preserve";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
     private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
@@ -96,7 +98,16 @@ final class SampleBuild {
     private static final String SHADOW_STORED_DESCRIPTION =
             "The same Shadow inputs written with STORED entries (compression-matched control)";
 
+    private static final String RUNNER_STORED_JORAN_DESCRIPTION =
+            "The same stored Runner jar with precompileLogback=false: logback.xml read by Joran (control)";
+    private static final String RUNNER_STORED_JORAN_AOT_DESCRIPTION =
+            "The same Joran control Runner jar with a verified JDK AOT cache";
+
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
+
+    /** The configurator runner-build generates from logback.xml when it precompiles it. */
+    private static final String GENERATED_LOGBACK_CONFIGURATOR =
+            "io.micronaut.runner.generated.logback.LogbackConfigurator";
 
     /** The task the init script registers on the sample's build. */
     private static final String METADATA_TASK = "runnerBenchmarkMetadata";
@@ -273,7 +284,11 @@ final class SampleBuild {
                 new ComparisonSpec(RUNNER_STORED, SHADOW_STORED,
                         "Runner default vs Shadow STORED (compression-matched)"),
                 new ComparisonSpec(SHADOW_STORED, SHADOW,
-                        "Shadow-only control: Shadow STORED vs Shadow default (compression only)"));
+                        "Shadow-only control: Shadow STORED vs Shadow default (compression only)"),
+                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_JORAN,
+                        "Precompiled Logback vs Joran at startup (Runner-only control)"),
+                new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_JORAN_AOT,
+                        "Precompiled Logback vs Joran at startup (Runner-only control) + AOT cache"));
     }
 
     /**
@@ -300,6 +315,8 @@ final class SampleBuild {
         if (optionalRows) {
             variants.add(Variant.unavailable(RUNNER_STORED_REFLECTION,
                     "Runner jar, nested dependencies re-packed uncompressed; reflection ablation", reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_JORAN, RUNNER_STORED_JORAN_DESCRIPTION, reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_JORAN_AOT, RUNNER_STORED_JORAN_AOT_DESCRIPTION, reason));
         }
         variants.add(Variant.unavailable(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub", reason));
@@ -343,6 +360,11 @@ final class SampleBuild {
             variants.add(attempt(RUNNER_STORED_REFLECTION,
                     "Runner jar, nested dependencies re-packed uncompressed; reflection ablation",
                     () -> runnerJar(RUNNER_STORED_REFLECTION, Compression.STORED, EntryMode.REFLECTION)));
+            Variant joran = attempt(RUNNER_STORED_JORAN, RUNNER_STORED_JORAN_DESCRIPTION,
+                    () -> joranControl(stored));
+            variants.add(joran);
+            variants.add(attempt(RUNNER_STORED_JORAN_AOT, RUNNER_STORED_JORAN_AOT_DESCRIPTION,
+                    () -> AotCache.prepare(joran, RUNNER_STORED_JORAN_AOT, aotRequest())));
         }
         variants.add(attempt(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
@@ -470,6 +492,41 @@ final class SampleBuild {
                 compression, requestedEntryMode);
     }
 
+    /**
+     * The Joran control row: the {@code runner-stored} inputs with {@code precompileLogback=false}. It is only a
+     * control while {@code runner-stored} really carries the generated configurator and this archive does not.
+     *
+     * @param stored the {@code runner-stored} row
+     * @return the control row
+     * @throws IOException if either archive is not what the comparison needs
+     */
+    private Variant joranControl(Variant stored) throws IOException {
+        if (!stored.available() || !logbackPrecompiled(stored.artifact())) {
+            throw new IOException("runner-stored carries no " + GENERATED_LOGBACK_CONFIGURATOR
+                    + ", so there is no precompiled Logback configuration to compare Joran with");
+        }
+        Variant joran = runnerJar(artifacts, RUNNER_STORED_JORAN, mainClass, applicationOutput, dependencies,
+                Compression.STORED, EntryMode.STUB, new RunnerOptions(Boolean.FALSE));
+        if (logbackPrecompiled(joran.artifact())) {
+            throw new IOException(joran.artifact() + " carries " + GENERATED_LOGBACK_CONFIGURATOR
+                    + " although precompileLogback=false");
+        }
+        return joran;
+    }
+
+    /**
+     * Whether a runner jar carries the Logback configurator runner-build generates.
+     *
+     * @param archive the runner jar
+     * @return whether its index knows the generated configurator
+     * @throws IOException if the archive cannot be read
+     */
+    static boolean logbackPrecompiled(Path archive) throws IOException {
+        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+            return reader.index().findClass(GENERATED_LOGBACK_CONFIGURATOR) != IndexFormat.NO_INDEX;
+        }
+    }
+
     static Variant runnerJar(Path artifacts,
                              String name,
                              String mainClass,
@@ -477,17 +534,31 @@ final class SampleBuild {
                              List<Path> dependencies,
                              Compression compression,
                              EntryMode requestedEntryMode) throws IOException {
+        return runnerJar(artifacts, name, mainClass, applicationOutput, dependencies, compression,
+                requestedEntryMode, RunnerOptions.DEFAULTS);
+    }
+
+    static Variant runnerJar(Path artifacts,
+                             String name,
+                             String mainClass,
+                             List<Path> applicationOutput,
+                             List<Path> dependencies,
+                             Compression compression,
+                             EntryMode requestedEntryMode,
+                             RunnerOptions options) throws IOException {
         Path output = artifacts.resolve(name + ".jar");
         Files.deleteIfExists(output);
-        RunnerJarSpec spec = RunnerJarSpec.builder()
+        RunnerJarSpec.Builder builder = RunnerJarSpec.builder()
                 .mainClass(mainClass)
                 .applicationOutput(applicationOutput)
                 .dependencies(dependencies.stream().map(Dependency::of).toList())
                 .output(output)
                 .compression(compression)
-                .entryStub(requestedEntryMode == EntryMode.STUB)
-                .build();
-        RunnerJarBuilder.build(spec, BuildLogger.noOp());
+                .entryStub(requestedEntryMode == EntryMode.STUB);
+        if (options.precompileLogback() != null) {
+            builder.precompileLogback(options.precompileLogback());
+        }
+        RunnerJarBuilder.build(builder.build(), BuildLogger.noOp());
         EntryMode effectiveEntryMode = inspectEntryMode(output, requestedEntryMode);
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 output.toAbsolutePath().toString());
@@ -497,8 +568,21 @@ final class SampleBuild {
                         ? "Runner jar, nested dependencies re-packed uncompressed"
                         : "Runner jar, nested dependencies copied byte for byte")
                         + (requestedEntryMode == EntryMode.STUB
-                        ? "; plugin-default entry stub" : "; reflection ablation"),
+                        ? "; plugin-default entry stub" : "; reflection ablation")
+                        + (Boolean.FALSE.equals(options.precompileLogback()) ? "; logback.xml left to Joran" : ""),
                 command, artifacts, output, deploymentSize, requestedEntryMode, effectiveEntryMode);
+    }
+
+    /**
+     * The packaging options a row sets beyond compression and entry mode; {@code null} leaves an option at the
+     * builder's default. A row that needs another option adds a field here rather than another overload.
+     *
+     * @param precompileLogback whether to precompile {@code logback.xml}, or {@code null} for the default
+     */
+    record RunnerOptions(Boolean precompileLogback) {
+
+        /** Every option at the builder's default. */
+        static final RunnerOptions DEFAULTS = new RunnerOptions(null);
     }
 
     private static EntryMode inspectEntryMode(Path output, EntryMode requestedEntryMode) throws IOException {
