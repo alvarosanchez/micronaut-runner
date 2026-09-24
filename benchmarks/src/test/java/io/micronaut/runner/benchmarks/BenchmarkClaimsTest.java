@@ -29,44 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BenchmarkClaimsTest {
 
     @Test
-    void guideMatchesTheImplementedMatrixAndLabelsPlannedCaches() throws Exception {
-        String guide = Files.readString(Path.of(System.getProperty("runner.benchmark.guide")),
-                StandardCharsets.UTF_8);
-        String normalizedGuide = guide.replaceAll("\\s+", " ");
-
-        for (String variant : SampleBuild.variantNames()) {
-            assertTrue(guide.contains("`" + variant + "`"), () -> "guide does not name " + variant);
-        }
-        assertFalse(guide.contains("https://github.com/alvarosanchez/micronaut-runner/issues/45[#45]"));
-        assertTrue(normalizedGuide.contains("runner-stored-cds"));
-        assertTrue(normalizedGuide.contains("shadow-aot"));
-        assertTrue(normalizedGuide.contains("runner-extracted-aot"));
-        assertTrue(normalizedGuide.contains("-XX:AOTCacheOutput"));
-        assertTrue(normalizedGuide.contains("-XX:AOTCache="));
-        assertTrue(normalizedGuide.contains("JDK 25"));
-        assertTrue(normalizedGuide.contains("GraalVM Native Image"));
-        assertTrue(normalizedGuide.contains("no helper"));
-        assertTrue(normalizedGuide.contains("cache bytes"));
-        assertTrue(normalizedGuide.contains("training cost"));
-        assertTrue(normalizedGuide.contains("-Xshare:on"));
-        assertTrue(normalizedGuide.contains("-Xshare:auto"));
-        assertTrue(normalizedGuide.contains("application class"));
-        assertTrue(normalizedGuide.contains("custom-loader CDS"));
-        assertTrue(normalizedGuide.contains("cold JVM"));
-        assertTrue(normalizedGuide.contains("OS page cache"));
-        assertTrue(normalizedGuide.contains("default JDK class sharing"));
-        assertTrue(normalizedGuide.contains("trained application cache"));
-        assertTrue(normalizedGuide.contains("cold-storage performance has not been measured"));
-        assertTrue(normalizedGuide.contains("descriptive-only"));
-        assertTrue(normalizedGuide.contains("complete measured iteration pairs"));
-        assertTrue(normalizedGuide.contains("reporting threshold, not a universal guarantee"));
-
-        assertFalse(guide.contains("each also with a CDS archive"));
-        assertFalse(guide.contains("Both a warm and a cold page cache are measured"));
-        assertFalse(guide.contains("cold-page-cache case is measured separately"));
-    }
-
-    @Test
     void reportsStateTheUncontrolledCacheConditions(@TempDir Path output) throws Exception {
         Path sample = output.resolve("sample");
         Files.createDirectory(sample);

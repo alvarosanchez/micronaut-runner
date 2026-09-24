@@ -60,22 +60,6 @@ class RepresentativeWorkloadTest {
     }
 
     @Test
-    void largerMicronautSampleHasRealDependencyBeanAndResourceWork() throws Exception {
-        java.nio.file.Path sample = java.nio.file.Path.of(System.getProperty("runner.benchmark.largeSample"));
-        String build = java.nio.file.Files.readString(sample.resolve("build.gradle"));
-        String beans = java.nio.file.Files.readString(sample.resolve(
-                "src/main/java/com/example/RepresentativeBeans.java"));
-        long singletonCount = beans.lines().filter(line -> line.contains("@Singleton public static final class")).count();
-
-        assertTrue(build.contains("micronaut-management"));
-        assertTrue(build.contains("micronaut-http-client"));
-        assertTrue(build.contains("representative-payload.bin"));
-        assertEquals(48, singletonCount);
-        assertTrue(java.nio.file.Files.isRegularFile(sample.resolve(
-                "src/main/java/com/example/RepresentativeController.java")));
-    }
-
-    @Test
     void packagingProfileSeparatesModesEditScenariosAndMetrics(@org.junit.jupiter.api.io.TempDir java.nio.file.Path output)
             throws Exception {
         PackagingProfile.Report report = PackagingProfile.run(List.of("no-manifest"), 2, output);

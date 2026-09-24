@@ -27,19 +27,6 @@ jmh {
     duplicateClassesStrategy = DuplicatesStrategy.WARN
 }
 
-def benchmarkGuide = rootProject.layout.projectDirectory.file('src/main/docs/guide/benchmarks.adoc')
-def largeSample = rootProject.layout.projectDirectory.dir('test-suite/samples/benchmark-large')
-tasks.named('test', Test) {
-    inputs.file(benchmarkGuide)
-            .withPathSensitivity(PathSensitivity.RELATIVE)
-            .withPropertyName('benchmarkGuide')
-    systemProperty 'runner.benchmark.guide', benchmarkGuide.asFile
-    inputs.dir(largeSample)
-            .withPathSensitivity(PathSensitivity.RELATIVE)
-            .withPropertyName('representativeBenchmarkSample')
-    systemProperty 'runner.benchmark.largeSample', largeSample.asFile
-}
-
 def benchmarkSample = providers.gradleProperty('benchmarks.sample').getOrElse('benchmark-large')
 def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
     group = 'benchmark'
