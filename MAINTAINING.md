@@ -152,28 +152,6 @@ aren't lost.
 
 Note that it is perfectly possible to have new workflows that aren't part of the sync process.
 
-##### Release workflow ownership and rollout
-
-The canonical shared release workflow is owned by
-[`micronaut-projects/micronaut-project-template`](https://github.com/micronaut-projects/micronaut-project-template/tree/master/.github/workflows).
-This repository intentionally carries a local `release.yml` override and removes the legacy `central-sync.yml`
-manual publisher until that template provides the same finalized-tree and immutable-bundle guarantees. File-sync
-pull requests must neither overwrite the override nor restore the bypass. The rollout plan is to contribute the
-verified sequence upstream, let template consumers adopt it, then remove this exception only after the
-synchronized workflow is equivalent.
-
-The local release policy is automatic authorization: after pre-release commits the final version and retargets
-the tag, CI records the commit and tree, runs required checks and the production publication smoke test on that
-exact checkout, and signs artifacts into a local staging repository. It seals those bytes as
-`central-bundle.zip`, records SHA-256 subjects for provenance, and uploads that unchanged bundle with Central's
-`AUTOMATIC` policy. Any source, checksum, signature, manifest, or bundle mismatch fails before credentials are
-made available to the promotion job. A successful promotion is read back from Central as `PUBLISHED` before
-documentation and post-release mutation proceed. No separate Maven Central authorization is required.
-
-The personal-fork owner guard remains the release enablement boundary. Local validation uses the fail-closed
-script regression suite and the production-shaped local publication smoke test; it never requires Central
-credentials or invokes the Central upload endpoint.
-
 ## Releases
 
 The release process is highly automated and normally involves just publishing a GitHub release. But before you get there,
@@ -196,18 +174,16 @@ will kick off, performing the following steps:
 
 * Pre-release: sets the `projectVersion` property in `gradle.properties` to the release version, and commit and pushes
   the result.
-* Verifies the finalized commit and tree, including production-shaped publication checks.
-* Stages and signs publications locally, seals their checksums in one immutable bundle, and automatically
-  promotes exactly that bundle to Maven Central.
-* Generates the documentation guide and publishes it to the `gh-pages` branch after promotion succeeds.
+* Generates documentation guide and publishes it to the `gh-pages` branch.
 * Sends a pull request to Core to update the BOM.
 * Post-release:
   * Determines the next patch version, and sets it as a `SNAPSHOT` version.
   * Closes the milestone that matches the release version, and creates a new one for the next patch.
 
-If verification or Central validation fails, promotion, provenance, documentation publication and post-release
-steps stop. A version published to Maven Central cannot be changed or removed, so a failed run must be diagnosed
-from its retained release evidence rather than rebuilt or manually substituted.
+If everything goes well, you now need to manually trigger the Maven Central publishing workflow via the GitHub UI.
+
+If there is an issue with the release, it's important not to trigger the Maven Central publishing workflow because once
+we publish a version to Maven Central we cannot change or remove it anymore.
 
 There are some properties in `gradle.properties` that affect the release process:
 
