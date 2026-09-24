@@ -31,6 +31,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,6 +45,7 @@ import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
@@ -61,6 +63,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -81,6 +84,9 @@ class RunnerJarBuilderTest {
 
     /** A fixed MS-DOS timestamp for the fixture jars, so a rebuild of a fixture changes nothing. */
     private static final long FIXTURE_TIME = 1_000_000_000_000L;
+
+    /** What an output path holds before a build that must fail without replacing it. */
+    private static final byte[] PREVIOUS_OUTPUT = "the existing good output".getBytes(StandardCharsets.UTF_8);
 
     private static final String SERVICE_DIRECTORY =
             "META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/";
@@ -712,25 +718,168 @@ class RunnerJarBuilderTest {
     }
 
     @Test
-    void rejectsSymbolicLinksInsideApplicationDirectories() throws IOException {
-        Path application = fixtures.resolve("application-with-link");
-        Path mainClass = application.resolve("com/example/Application.class");
+    void followsSymbolicLinksInsideApplicationDirectoriesLikeAClassPath() throws IOException {
+        Path shared = fixtures.resolve("links/shared");
+        Files.createDirectories(shared.resolve("dir"));
+        Map<String, byte[]> expected = new LinkedHashMap<>();
+        expected.put("logback.xml", "<configuration/>".getBytes(StandardCharsets.UTF_8));
+        expected.put("relative.txt", "reached through a relative link".getBytes(StandardCharsets.UTF_8));
+        expected.put("linked/inner.txt", "inside a linked directory".getBytes(StandardCharsets.UTF_8));
+        Files.write(shared.resolve("logback.xml"), expected.get("logback.xml"));
+        Files.write(shared.resolve("relative.txt"), expected.get("relative.txt"));
+        Files.write(shared.resolve("dir/inner.txt"), expected.get("linked/inner.txt"));
+        Path tree = applicationTree(fixtures.resolve("links/app"));
+        createSymbolicLink(tree.resolve("logback.xml"), shared.resolve("logback.xml"));
+        createSymbolicLink(tree.resolve("relative.txt"), Path.of("..", "shared", "relative.txt"));
+        createSymbolicLink(tree.resolve("linked"), shared.resolve("dir"));
+        Path output = existingOutput();
+
+        buildApplicationTree(tree, output);
+
+        try (ZipReader archive = ZipReader.open(output)) {
+            for (Map.Entry<String, byte[]> entry : expected.entrySet()) {
+                String name = IndexFormat.CLASSES_PREFIX + entry.getKey();
+                assertArrayEquals(entry.getValue(), archive.read(archive.entry(name).orElseThrow()),
+                        name + " carries the bytes of the link's target");
+            }
+        }
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            for (Map.Entry<String, byte[]> entry : expected.entrySet()) {
+                int record = reader.index().find(entry.getKey());
+                assertNotEquals(IndexFormat.NO_INDEX, record, entry.getKey() + " should resolve at runtime");
+                assertArrayEquals(entry.getValue(), reader.read(record),
+                        "the logical runtime lookup of " + entry.getKey() + " returns the target's bytes");
+            }
+        }
+        Path again = output();
+        buildApplicationTree(tree, again);
+        assertArrayEquals(Files.readAllBytes(output), Files.readAllBytes(again),
+                "a tree with symbolic links packages reproducibly");
+    }
+
+    @Test
+    void rejectsADirectoryLinkToItsOwnDirectory() throws IOException {
+        Path tree = applicationTree(fixtures.resolve("cycle-self/app"));
+        Path loop = createSymbolicLink(Files.createDirectories(tree.resolve("a")).resolve("loop"), Path.of("."));
+
+        assertCycleRejected(tree, loop);
+    }
+
+    @Test
+    void rejectsTwoSiblingLinksToTheirOwnDirectory() throws IOException {
+        Path tree = applicationTree(fixtures.resolve("cycle-siblings/app"));
+        Path directory = Files.createDirectories(tree.resolve("a"));
+        Path first = createSymbolicLink(directory.resolve("l1"), Path.of("."));
+        createSymbolicLink(directory.resolve("l2"), Path.of("."));
+
+        assertCycleRejected(tree, first);
+    }
+
+    @Test
+    void rejectsADirectoryLinkThatLeadsBackAboveTheApplicationDirectory() throws IOException {
+        // The link reaches <fixtures>/cycle-up, whose only child is the application directory: the walk comes
+        // back to its own root, far from the directory that holds the output.
+        Path tree = applicationTree(fixtures.resolve("cycle-up/app"));
+        Path up = createSymbolicLink(Files.createDirectories(tree.resolve("a")).resolve("up"), Path.of("..", ".."));
+
+        assertCycleRejected(tree, up);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"../missing/logback.xml", "logback.xml"})
+    void rejectsASymbolicLinkThatDoesNotResolve(String target) throws IOException {
+        // The second target is the link itself, which no file system can resolve either.
+        Path tree = applicationTree(fixtures.resolve("dangling-" + (target.contains("/") ? "missing" : "self"))
+                .resolve("app"));
+        Path link = createSymbolicLink(tree.resolve("logback.xml"), Path.of(target));
+        Path output = existingOutput();
+
+        IOException failure = assertThrows(IOException.class, () -> buildApplicationTree(tree, output));
+
+        assertTrue(failure.getMessage().contains(link.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains(" to " + Path.of(target) + ","), failure.getMessage());
+        assertTrue(failure.getMessage().contains("maven-resources-plugin 3.4.0"), failure.getMessage());
+        assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
+                "a dangling link must leave an existing good output intact");
+        assertNoWorkDirectory(output.getParent());
+    }
+
+    @Test
+    void rejectsADirectoryLinkToTheOutputDirectoryOrOneOfItsAncestors() throws IOException {
+        Path output = existingOutput();
+        List<Path> targets = List.of(output.getParent(), fixtures);
+        for (int i = 0; i < targets.size(); i++) {
+            Path tree = applicationTree(fixtures.resolve("output-guard-" + i + "/app"));
+            Path link = createSymbolicLink(tree.resolve("linked"), targets.get(i));
+
+            IOException failure = assertThrows(IOException.class, () -> buildApplicationTree(tree, output));
+
+            assertTrue(failure.getMessage().contains(link.toString()), failure.getMessage());
+            assertTrue(failure.getMessage().contains("would read what it is writing"), failure.getMessage());
+            assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
+                    "a link to " + targets.get(i) + " must leave an existing good output intact");
+            assertNoWorkDirectory(output.getParent());
+        }
+    }
+
+    @Test
+    void rejectsAnOutputThatIsASymbolicLinkInsideAnApplicationDirectory() throws IOException {
+        Path tree = applicationTree(fixtures.resolve("output-link/app"));
+        Path outside = tree.resolveSibling("outside.jar");
+        Files.write(outside, PREVIOUS_OUTPUT);
+        Path output = createSymbolicLink(tree.resolve("runner.jar"), outside);
+
+        IOException failure = assertThrows(IOException.class, () -> buildApplicationTree(tree, output));
+
+        assertTrue(failure.getMessage().contains("is inside the application output"), failure.getMessage());
+        assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(outside),
+                "rejecting the output link must leave the file it points to byte-identical");
+        assertNoWorkDirectory(tree);
+    }
+
+    private void assertCycleRejected(Path tree, Path link) throws IOException {
+        Path output = existingOutput();
+
+        IOException failure = assertTimeoutPreemptively(Duration.ofSeconds(10),
+                () -> assertThrows(IOException.class, () -> buildApplicationTree(tree, output)));
+
+        assertTrue(failure.getMessage().contains(link.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("symbolic-link cycles are not supported"), failure.getMessage());
+        assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
+                "a symbolic-link cycle must leave an existing good output intact");
+        assertNoWorkDirectory(output.getParent());
+    }
+
+    /** A new application directory holding only the main class, for the symbolic-link tests to add to. */
+    private static Path applicationTree(Path root) throws IOException {
+        Path mainClass = root.resolve("com/example/Application.class");
         Files.createDirectories(mainClass.getParent());
         Files.copy(applicationClasses.resolve("com/example/Application.class"), mainClass);
-        createSymbolicLink(application.resolve("linked-resources"), applicationResources);
+        return root;
+    }
+
+    /** A new output path that already holds {@link #PREVIOUS_OUTPUT}, as a previous good build would. */
+    private Path existingOutput() throws IOException {
         Path output = output();
         Files.createDirectories(output.getParent());
-        byte[] previous = "the existing good output".getBytes(StandardCharsets.UTF_8);
-        Files.write(output, previous);
+        Files.write(output, PREVIOUS_OUTPUT);
+        return output;
+    }
 
-        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
-                .applicationOutput(List.of(application))
+    private RunnerJarResult buildApplicationTree(Path tree, Path output) throws IOException {
+        return RunnerJarBuilder.build(spec(output)
+                .applicationOutput(List.of(tree))
                 .dependencies(List.of())
-                .build(), BuildLogger.noOp()));
+                .build(), BuildLogger.noOp());
+    }
 
-        assertTrue(failure.getMessage().contains("symbolic link"), failure.getMessage());
-        assertArrayEquals(previous, Files.readAllBytes(output),
-                "a rejected application tree must leave an existing good output intact");
+    private static void assertNoWorkDirectory(Path directory) throws IOException {
+        try (Stream<Path> children = Files.list(directory)) {
+            List<Path> left = children
+                    .filter(child -> child.getFileName().toString().startsWith(".micronaut-runner-"))
+                    .toList();
+            assertTrue(left.isEmpty(), "work directories left behind: " + left);
+        }
     }
 
     @Test
