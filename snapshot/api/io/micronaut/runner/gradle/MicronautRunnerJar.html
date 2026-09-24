@@ -74,7 +74,10 @@ loadScripts(document, 'script');</script>
 <li><a href="#getCoordinates()" tabindex="0">getCoordinates()</a></li>
 <li><a href="#getDependencyInputs()" tabindex="0">getDependencyInputs()</a></li>
 <li><a href="#getArchiveFile()" tabindex="0">getArchiveFile()</a></li>
+<li><a href="#getArchiveBaseName()" tabindex="0">getArchiveBaseName()</a></li>
+<li><a href="#getArchiveVersion()" tabindex="0">getArchiveVersion()</a></li>
 <li><a href="#getArchiveClassifier()" tabindex="0">getArchiveClassifier()</a></li>
+<li><a href="#getDestinationDirectory()" tabindex="0">getDestinationDirectory()</a></li>
 <li><a href="#getCompression()" tabindex="0">getCompression()</a></li>
 <li><a href="#getMultiRelease()" tabindex="0">getMultiRelease()</a></li>
 <li><a href="#getEntryStub()" tabindex="0">getEntryStub()</a></li>
@@ -119,7 +122,10 @@ overriding.</p>
 
 <p>The task is wiring: it hands the project's facts and the options the build sets to the packaging
 library, which owns every option's default, parsing and validation. A <a href="../build/RunnerJarOption.Exposure.html#TYPED"><code>typed</code></a> option has a property here; every option, typed or not, can also be set by name through
-<a href="#getOptions()"><code>getOptions()</code></a>.</p></div>
+<a href="#getOptions()"><code>getOptions()</code></a>. Each option property takes the <a href="MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle"><code>MicronautRunnerExtension</code></a>'s value as its
+convention, so a value set here wins for this task only. The archive is named as an archive task names
+it, from <a href="#getArchiveBaseName()"><code>getArchiveBaseName()</code></a>, <a href="#getArchiveVersion()"><code>getArchiveVersion()</code></a>, <a href="#getArchiveClassifier()"><code>getArchiveClassifier()</code></a> and
+<a href="#getDestinationDirectory()"><code>getDestinationDirectory()</code></a>.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -166,7 +172,9 @@ library, which owns every option's default, parsing and validation. A <a href=".
 <div class="table-header col-first">Constructor</div>
 <div class="table-header col-last">Description</div>
 <div class="col-constructor-name even-row-color"><code><a href="#%3Cinit%3E()" class="member-name-link">MicronautRunnerJar</a>()</code></div>
-<div class="col-last even-row-color">&nbsp;</div>
+<div class="col-last even-row-color">
+<div class="block">Creates the task, deriving the archive's location from its naming properties.</div>
+</div>
 </div>
 </section>
 </li>
@@ -204,14 +212,25 @@ manifest that the <code>jar</code> task's configuration cannot describe.</div>
 <div class="block">The application's own classes and resources, which become the application layer of the archive.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getArchiveClassifier()" class="member-name-link">getArchiveClassifier</a>()</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getArchiveBaseName()" class="member-name-link">getArchiveBaseName</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">The archive classifier used to build the default output file name.</div>
+<div class="block">The base name of the archive.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getArchiveFile()" class="member-name-link">getArchiveFile</a>()</code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getArchiveClassifier()" class="member-name-link">getArchiveClassifier</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">Where the archive is written.</div>
+<div class="block">The classifier in the archive name, left out when absent or empty.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>org.gradle.api.provider.Provider<wbr>&lt;org.gradle.api.file.RegularFile&gt;</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getArchiveFile()" class="member-name-link">getArchiveFile</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Where the archive is written: <code>&lt;destinationDirectory&gt;/&lt;archiveBaseName&gt;[-&lt;archiveVersion&gt;]
+[-&lt;archiveClassifier&gt;].jar</code>, as an archive task names it.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getArchiveVersion()" class="member-name-link">getArchiveVersion</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="block">The version in the archive name, left out when absent.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.ConfigurableFileCollection</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getClasspath()" class="member-name-link">getClasspath</a>()</code></div>
@@ -236,60 +255,65 @@ can report what an archive contains.</div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The ordered, relocatable identity of every dependency used to build the archive.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getEnableNativeAccess()" class="member-name-link">getEnableNativeAccess</a>()</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.DirectoryProperty</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getDestinationDirectory()" class="member-name-link">getDestinationDirectory</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest.</div>
+<div class="block">The directory the archive is written to.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getEntryStub()" class="member-name-link">getEntryStub</a>()</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getEnableNativeAccess()" class="member-name-link">getEnableNativeAccess</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getEntryStub()" class="member-name-link">getEntryStub</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Whether to generate the entry stub that lets the launcher call the application main method through
 an interface rather than by reflection.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>@Nullable org.gradle.api.java.archives.Manifest</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getInheritedManifest()" class="member-name-link">getInheritedManifest</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>@Nullable org.gradle.api.java.archives.Manifest</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getInheritedManifest()" class="member-name-link">getInheritedManifest</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The manifest configuration the application's own manifest attributes are taken from; the plugin sets
 the <code>jar</code> task's.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/SortedMap.html" title="class or interface in java.util" class="external-link">SortedMap</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getInheritedManifestAttributes()" class="member-name-link">getInheritedManifestAttributes</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/SortedMap.html" title="class or interface in java.util" class="external-link">SortedMap</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getInheritedManifestAttributes()" class="member-name-link">getInheritedManifestAttributes</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">What the packaging library reads from the <a href="#getInheritedManifest()">inherited manifest</a>, as
 <a href="../build/ApplicationManifest.html#filter(java.util.Map,java.util.Map)"><code>ApplicationManifest.filter(Map, Map)</code></a> keeps it: the six <code>Specification-*</code> and
 <code>Implementation-*</code> attributes and <code>Sealed</code>, keyed by <code>Name</code> in the main section and by
 <code>&lt;section&gt;Name</code> in a package section, whose name ends in <code>/</code>.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getMainClass()" class="member-name-link">getMainClass</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getMainClass()" class="member-name-link">getMainClass</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">The application main class.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getManifestAttributes()" class="member-name-link">getManifestAttributes</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getManifestAttributes()" class="member-name-link">getManifestAttributes</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Extra main manifest attributes.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getMultiRelease()" class="member-name-link">getMultiRelease</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getMultiRelease()" class="member-name-link">getMultiRelease</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Whether the application layer itself is multi-release.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getOptions()" class="member-name-link">getOptions</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getOptions()" class="member-name-link">getOptions</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Packaging options by <a href="../build/RunnerJarOption.html#optionName()">name</a>, for the options that have no
 typed property here.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageArchive()" class="member-name-link">packageArchive</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageArchive()" class="member-name-link">packageArchive</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Builds the archive.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#setInheritedManifest(org.gradle.api.java.archives.Manifest)" class="member-name-link">setInheritedManifest</a><wbr>(@Nullable org.gradle.api.java.archives.Manifest&nbsp;manifest)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#setInheritedManifest(org.gradle.api.java.archives.Manifest)" class="member-name-link">setInheritedManifest</a><wbr>(@Nullable org.gradle.api.java.archives.Manifest&nbsp;manifest)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the manifest configuration the application's own manifest attributes are taken from.</div>
 </div>
 </div>
@@ -323,6 +347,7 @@ typed property here.</div>
 <h3>MicronautRunnerJar</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="element-name">MicronautRunnerJar</span>()</div>
+<div class="block">Creates the task, deriving the archive's location from its naming properties.</div>
 </div>
 </section>
 </li>
@@ -493,8 +518,10 @@ identical project must not change its cache key.</p></div>
 <h3>getArchiveFile</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@OutputFile
-</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.file.RegularFileProperty</span>&nbsp;<span class="element-name">getArchiveFile</span>()</div>
-<div class="block">Where the archive is written.</div>
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type">org.gradle.api.provider.Provider&lt;org.gradle.api.file.RegularFile&gt;</span>&nbsp;<span class="element-name">getArchiveFile</span>()</div>
+<div class="block">Where the archive is written: <code>&lt;destinationDirectory&gt;/&lt;archiveBaseName&gt;[-&lt;archiveVersion&gt;]
+[-&lt;archiveClassifier&gt;].jar</code>, as an archive task names it. It is derived from the naming properties and
+cannot be set.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the output file</dd>
@@ -503,15 +530,59 @@ identical project must not change its cache key.</p></div>
 </section>
 </li>
 <li>
+<section class="detail" id="getArchiveBaseName()">
+<h3>getArchiveBaseName</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="annotations">@Internal("Represented as part of archiveFile")
+</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getArchiveBaseName</span>()</div>
+<div class="block">The base name of the archive. The plugin sets <code>base.archivesName</code> as the convention.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the base name</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="getArchiveVersion()">
+<h3>getArchiveVersion</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="annotations">@Internal("Represented as part of archiveFile")
+</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getArchiveVersion</span>()</div>
+<div class="block">The version in the archive name, left out when absent. The plugin sets the project version as the
+convention, absent when it is empty or <code>unspecified</code>.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the version</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
 <section class="detail" id="getArchiveClassifier()">
 <h3>getArchiveClassifier</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="annotations">@Input
+<div class="member-signature"><span class="annotations">@Internal("Represented as part of archiveFile")
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getArchiveClassifier</span>()</div>
-<div class="block">The archive classifier used to build the default output file name. Defaults to <code>all</code>.</div>
+<div class="block">The classifier in the archive name, left out when absent or empty. The plugin sets <code>all</code> as the
+convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the classifier</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="getDestinationDirectory()">
+<h3>getDestinationDirectory</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="annotations">@Internal("Represented as part of archiveFile")
+</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.file.DirectoryProperty</span>&nbsp;<span class="element-name">getDestinationDirectory</span>()</div>
+<div class="block">The directory the archive is written to. The plugin sets <code>base.libsDirectory</code> as the convention.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the directory</dd>
 </dl>
 </div>
 </section>
@@ -525,7 +596,7 @@ identical project must not change its cache key.</p></div>
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getCompression</span>()</div>
 <div class="block">How the entries of each dependency are stored: <code>STORED</code> re-packs them uncompressed so classes
 are defined straight from the memory-mapped archive, <code>PRESERVE</code> copies each dependency byte
-for byte. The plugin sets <a href="../build/RunnerJarOption.html#COMPRESSION"><code>RunnerJarOption.COMPRESSION</code></a>'s default as the convention.</div>
+for byte. The plugin sets the extension's value as the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the compression mode</dd>
@@ -540,8 +611,8 @@ for byte. The plugin sets <a href="../build/RunnerJarOption.html#COMPRESSION"><c
 <div class="member-signature"><span class="annotations">@Input
 @Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</span>&nbsp;<span class="element-name">getMultiRelease</span>()</div>
-<div class="block">Whether the application layer itself is multi-release. The plugin sets
-<a href="../build/RunnerJarOption.html#MULTI_RELEASE"><code>RunnerJarOption.MULTI_RELEASE</code></a>'s default as the convention.</div>
+<div class="block">Whether the application layer itself is multi-release. The plugin sets the extension's value as the
+convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the multi-release flag</dd>
@@ -557,8 +628,7 @@ for byte. The plugin sets <a href="../build/RunnerJarOption.html#COMPRESSION"><c
 @Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</span>&nbsp;<span class="element-name">getEntryStub</span>()</div>
 <div class="block">Whether to generate the entry stub that lets the launcher call the application main method through
-an interface rather than by reflection. The plugin sets <a href="../build/RunnerJarOption.html#ENTRY_STUB"><code>RunnerJarOption.ENTRY_STUB</code></a>'s default as
-the convention.</div>
+an interface rather than by reflection. The plugin sets the extension's value as the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the entry stub flag</dd>
@@ -575,7 +645,7 @@ the convention.</div>
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.ListProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getAddOpens</span>()</div>
 <div class="block">Module/package pairs to open, written into the manifest as <code>Add-Opens</code> so users need not pass
 the flag. Each entry uses JAR manifest syntax, for example <code>java.base/java.lang</code>, without the
-command-line-only <code>=ALL-UNNAMED</code> suffix.</div>
+command-line-only <code>=ALL-UNNAMED</code> suffix. The plugin sets the extension's value as the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the packages to open</dd>
@@ -592,7 +662,7 @@ command-line-only <code>=ALL-UNNAMED</code> suffix.</div>
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.ListProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getAddExports</span>()</div>
 <div class="block">Module/package pairs to export, written into the manifest as <code>Add-Exports</code>. Each entry uses JAR
 manifest syntax, for example <code>java.base/sun.nio.ch</code>, without the command-line-only
-<code>=ALL-UNNAMED</code> suffix.</div>
+<code>=ALL-UNNAMED</code> suffix. The plugin sets the extension's value as the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the packages to export</dd>
@@ -607,8 +677,8 @@ manifest syntax, for example <code>java.base/sun.nio.ch</code>, without the comm
 <div class="member-signature"><span class="annotations">@Input
 @Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</span>&nbsp;<span class="element-name">getEnableNativeAccess</span>()</div>
-<div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest. The plugin sets
-<a href="../build/RunnerJarOption.html#ENABLE_NATIVE_ACCESS"><code>RunnerJarOption.ENABLE_NATIVE_ACCESS</code></a>'s default as the convention.</div>
+<div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest. The plugin sets the
+extension's value as the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the native access flag</dd>
@@ -623,7 +693,7 @@ manifest syntax, for example <code>java.base/sun.nio.ch</code>, without the comm
 <div class="member-signature"><span class="annotations">@Input
 @Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.MapProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getManifestAttributes</span>()</div>
-<div class="block">Extra main manifest attributes.</div>
+<div class="block">Extra main manifest attributes. The plugin sets the extension's value as the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the attributes</dd>
@@ -640,7 +710,8 @@ manifest syntax, for example <code>java.base/sun.nio.ch</code>, without the comm
 <div class="block">Packaging options by <a href="../build/RunnerJarOption.html#optionName()">name</a>, for the options that have no
 typed property here. Each value uses the grammar <a href="../build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> documents, and the packaging
 library parses and validates it; an unknown name fails the task. An entry is applied after the typed
-properties, so it wins over a typed property of the same option.</div>
+properties, so it wins over a typed property of the same option. The plugin sets the extension's value
+as the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the options by name</dd>

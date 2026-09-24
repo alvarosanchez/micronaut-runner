@@ -253,9 +253,27 @@ packaged application. A compilation toolchain does not change the build-tool JVM
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">plugins {
     id 'io.micronaut.application' version '5.0.2'
-    id 'io.micronaut.runner' version '{version}'
+    id 'io.micronaut.runner.standalone' version '{version}'
 }</code></pre>
 </div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<code>io.micronaut.runner.standalone</code> is an interim plugin. The <code>io.micronaut.runner</code> plugin of micronaut-gradle-plugin
+(<a href="https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1378">micronaut-projects/micronaut-gradle-plugin#1378</a>)
+will replace it, with the same task names and the same <code>micronaut { runner { } }</code> block, so moving to it is a change of
+plugin ID. Applying both fails the build with <code>The io.micronaut.runner plugin from micronaut-gradle-plugin builds the
+Runner JAR in this build. Remove io.micronaut.runner.standalone: &#8230;&#8203;</code>. Only when a Micronaut plugin, this plugin and then
+<code>io.micronaut.runner</code> are applied in that order does the build fail earlier, with Gradle&#8217;s <code>Cannot add extension with
+name 'runner', as there is an extension already registered with that name.</code>
+</td>
+</tr>
+</table>
 </div>
 <div class="paragraph">
 <p>That is the whole configuration. The plugin adds a <code>micronautRunnerJar</code> task, wires it into <code>assemble</code>,
@@ -288,35 +306,42 @@ archives under one name. The plugin fails the build if it detects that.
 <div class="sect2">
 <h3 id="_configuration">Configuration</h3>
 <div class="paragraph">
-<p>Every setting is a property of the task:</p>
+<p>In a build that applies a Micronaut plugin, the packaging options go in <code>micronaut { runner { } }</code>:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">micronautRunnerJar {
-    // Defaults to application.mainClass
-    mainClass = 'com.example.Application'
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">micronaut {
+    runner {
+        // false skips every task the plugin registers.
+        enabled = true
 
-    // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
-    // PRESERVE copies each dependency byte for byte, producing a smaller archive that loads more slowly.
-    compression = 'STORED'
+        // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
+        // PRESERVE copies each dependency byte for byte, producing a smaller archive that loads more slowly.
+        compression = 'STORED'
 
-    // Enter main through a generated direct call instead of reflection.
-    entryStub = true
+        // Enter main through a generated direct call instead of reflection.
+        entryStub = true
 
-    // Set this only when the application's own output is a multi-release JAR.
-    multiRelease = false
+        // Set this only when the application's own output is a multi-release JAR.
+        multiRelease = false
 
-    // Written into the manifest, so users need not pass the matching command line flags.
-    addOpens.add('java.base/java.lang')
-    addExports.add('java.base/sun.nio.ch')
-    enableNativeAccess = true
+        // Written into the manifest, so users need not pass the matching command line flags.
+        addOpens.add('java.base/java.lang')
+        addExports.add('java.base/sun.nio.ch')
+        enableNativeAccess = true
 
-    manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
+        manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
 
-    // Options without a typed property, by name (see the table below):
-    // options.put('&lt;name&gt;', '&lt;value&gt;')
+        // Options without a typed property, by name (see the table below):
+        // options.put('&lt;name&gt;', '&lt;value&gt;')
+    }
 }</code></pre>
 </div>
+</div>
+<div class="paragraph">
+<p><code>micronautRunner { }</code> is the same extension under another name, for a build without a Micronaut plugin. Each option is
+also a property of the <code>micronautRunnerJar</code> task, which takes the extension&#8217;s value as its default: a setting on the
+task wins for that task.</p>
 </div>
 <div class="paragraph">
 <p>Micronaut Runner&#8217;s packaging library owns every option, its default and its validation; the plugins only pass
@@ -421,12 +446,73 @@ set <code>applicationJar = tasks.named('jar').flatMap { it.archiveFile }</code>.
 <p>Dependencies that are JAR files are nested, a dependency that is a directory fails the build, and any other
 file, such as a POM, is skipped with a warning.</p>
 </div>
+<div class="paragraph">
+<p>The main class and the archive&#8217;s name are properties of the task only:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">micronautRunnerJar {
+    // Defaults to application.mainClass
+    mainClass = 'com.example.Application'
+
+    // Defaults to all
+    archiveClassifier = 'executable'
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The task names the archive <code>&lt;archiveBaseName&gt;-&lt;archiveVersion&gt;-&lt;archiveClassifier&gt;.jar</code> and writes it to
+<code>destinationDirectory</code>. These default to <code>base.archivesName</code>, the project version, <code>all</code> and <code>base.libsDirectory</code>, so
+<code>base { libsDirectory = &#8230;&#8203; }</code> moves the archive with every other JAR of the project. In a build that applies
+<code>io.micronaut.application</code>, do not choose <code>runner</code> as the classifier: the Docker plugin&#8217;s <code>runnerJar</code> task already
+writes <code>-runner.jar</code>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_publishing">Publishing</h3>
+<div class="paragraph">
+<p>The plugin exposes the archive as the <code>micronautRunnerElements</code> configuration. Its <code>Usage</code> attribute is
+<code>micronaut-runner</code>, so a Java consumer of the project never selects it by accident; another project of the build
+takes it by name, with <code>project(path: ':app', configuration: 'micronautRunnerElements')</code>.</p>
+</div>
+<div class="paragraph">
+<p>To publish the archive with <code>maven-publish</code>, add it to the publication:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            artifact(tasks.named('micronautRunnerJar').flatMap { it.archiveFile }) {
+                classifier = 'all'
+                builtBy tasks.named('micronautRunnerJar')
+            }
+        }
+    }
+}</code></pre>
+</div>
+</div>
 </div>
 </div>
 </div>
 <div class="sect1">
 <h2 id="_maven">Maven</h2>
 <div class="sectionbody">
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+This Maven plugin is interim. The <code>runner</code> packaging of micronaut-maven-plugin
+(<a href="https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1720">micronaut-projects/micronaut-maven-plugin#1720</a>)
+will replace it, and this plugin&#8217;s <code>package</code> goal fails in a project with <code>runner</code> packaging, even when it is skipped.
+</td>
+</tr>
+</table>
+</div>
 <div class="paragraph">
 <p>Add the plugin to your build. Bind it to <code>package</code>, so it runs after the JAR is built:</p>
 </div>

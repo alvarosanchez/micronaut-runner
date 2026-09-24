@@ -103,7 +103,10 @@ library, which owns every option's default, parsing and validation. A
 <a href="../build/RunnerJarOption.Exposure.html#TYPED"><code>typed</code></a> option has a parameter here that is passed only when it is set;
 every option can also be set by name through <code>&lt;runnerOptions&gt;</code>, and a
 <a href="../build/RunnerJarOption.Exposure.html#PASSTHROUGH"><code>passthrough</code></a> option through the
-<code>micronaut.runner.&lt;name&gt;</code> user or project property.</p></div>
+<code>micronaut.runner.&lt;name&gt;</code> user or project property.</p>
+
+<p>This is the interim plugin. micronaut-maven-plugin's <code>runner</code> packaging replaces it, and in a
+project with that packaging the goal fails, even when skipped.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>

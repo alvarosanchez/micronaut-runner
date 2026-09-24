@@ -60,6 +60,9 @@ loadScripts(document, 'script');</script>
 <ol class="toc-list">
 <li><a href="#TASK_NAME" tabindex="0">TASK_NAME</a></li>
 <li><a href="#SHADOW_COLLISION_TASK_NAME" tabindex="0">SHADOW_COLLISION_TASK_NAME</a></li>
+<li><a href="#EXTENSION_NAME" tabindex="0">EXTENSION_NAME</a></li>
+<li><a href="#ELEMENTS_CONFIGURATION_NAME" tabindex="0">ELEMENTS_CONFIGURATION_NAME</a></li>
+<li><a href="#USAGE" tabindex="0">USAGE</a></li>
 <li><a href="#DEFAULT_CLASSIFIER" tabindex="0">DEFAULT_CLASSIFIER</a></li>
 </ol>
 </li>
@@ -96,12 +99,18 @@ implements org.gradle.api.Plugin&lt;org.gradle.api.Project&gt;</span></div>
 <div class="block">Packages a Micronaut application as a runner jar: one executable archive in which every dependency
 remains an intact nested jar.
 
-<p>The plugin registers the <a href="#TASK_NAME">"micronautRunnerJar"</a> task and wires it into <code>assemble</code>. It
-needs no configuration in a project that already applies the <code>application</code> plugin: the main class
-comes from the <code>application</code> block, the application classes and resources from the main source
-set's output, and the dependencies from the runtime classpath in resolution order. Only a project that
-applies a Shadow plugin also gets <a href="#SHADOW_COLLISION_TASK_NAME">"validateMicronautRunnerShadowOutputs"</a>, which both archive tasks depend
-on.</p></div>
+<p>This is the interim plugin, <code>io.micronaut.runner.standalone</code>. The Micronaut Gradle plugin's
+<code>io.micronaut.runner</code> replaces it, with the same task names and the same <code>micronaut { runner {} }</code>
+block, and the two refuse to run in one build.</p>
+
+<p>The plugin creates the <a href="#EXTENSION_NAME">"micronautRunner"</a> extension, a <a href="MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle"><code>MicronautRunnerExtension</code></a>, which is
+also <code>micronaut.runner</code> in a build that applies a Micronaut plugin. It registers the
+<a href="#TASK_NAME">"micronautRunnerJar"</a> task, wires it into <code>assemble</code> and exposes its archive as the
+<a href="#ELEMENTS_CONFIGURATION_NAME">"micronautRunnerElements"</a> configuration. It needs no configuration in a project that already
+applies the <code>application</code> plugin: the main class comes from the <code>application</code> block, the
+application classes and resources from the main source set's output, and the dependencies from the
+runtime classpath in resolution order. Only a project that applies a Shadow plugin also gets
+<a href="#SHADOW_COLLISION_TASK_NAME">"validateMicronautRunnerShadowOutputs"</a>, which both archive tasks depend on.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -125,6 +134,17 @@ on.</p></div>
 <div class="block">The default archive classifier.</div>
 </div>
 <div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#ELEMENTS_CONFIGURATION_NAME" class="member-name-link">ELEMENTS_CONFIGURATION_NAME</a></code></div>
+<div class="col-last odd-row-color">
+<div class="block">The consumable configuration that carries the archive, for another project of the build or for a
+publication.</div>
+</div>
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="#EXTENSION_NAME" class="member-name-link">EXTENSION_NAME</a></code></div>
+<div class="col-last even-row-color">
+<div class="block">The name of the extension this plugin creates on the project.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color"><code><a href="#SHADOW_COLLISION_TASK_NAME" class="member-name-link">SHADOW_COLLISION_TASK_NAME</a></code></div>
 <div class="col-last odd-row-color">
 <div class="block">The task that checks Runner and Shadow output locations before either producer executes.</div>
@@ -133,6 +153,11 @@ on.</p></div>
 <div class="col-second even-row-color"><code><a href="#TASK_NAME" class="member-name-link">TASK_NAME</a></code></div>
 <div class="col-last even-row-color">
 <div class="block">The name of the task this plugin registers.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#USAGE" class="member-name-link">USAGE</a></code></div>
+<div class="col-last odd-row-color">
+<div class="block">The <code>Usage</code> of <a href="#ELEMENTS_CONFIGURATION_NAME">"micronautRunnerElements"</a>.</div>
 </div>
 </div>
 </section>
@@ -210,6 +235,59 @@ only in a project that applies a Shadow plugin.</div>
 <dd>
 <ul class="tag-list">
 <li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.SHADOW_COLLISION_TASK_NAME">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="EXTENSION_NAME">
+<h3>EXTENSION_NAME</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">EXTENSION_NAME</span></div>
+<div class="block">The name of the extension this plugin creates on the project.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.EXTENSION_NAME">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="ELEMENTS_CONFIGURATION_NAME">
+<h3>ELEMENTS_CONFIGURATION_NAME</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">ELEMENTS_CONFIGURATION_NAME</span></div>
+<div class="block">The consumable configuration that carries the archive, for another project of the build or for a
+publication.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.ELEMENTS_CONFIGURATION_NAME">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="USAGE">
+<h3>USAGE</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">USAGE</span></div>
+<div class="block">The <code>Usage</code> of <a href="#ELEMENTS_CONFIGURATION_NAME">"micronautRunnerElements"</a>. It is its own, so that no Java consumer
+selects the runner jar by accident.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.USAGE">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>

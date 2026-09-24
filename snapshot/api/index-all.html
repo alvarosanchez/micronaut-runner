@@ -426,6 +426,11 @@ clamped to it, and anything below 9 means base entries only.</div>
 <div class="block">The value every <a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> has in this spec, whether it was set or defaulted, keyed by
 <a href="io/micronaut/runner/build/RunnerJarOption.html#optionName()">option name</a> in table order.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#ELEMENTS_CONFIGURATION_NAME" class="member-name-link">ELEMENTS_CONFIGURATION_NAME</a> - Static variable in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html" title="class in io.micronaut.runner.gradle">MicronautRunnerPlugin</a></dt>
+<dd>
+<div class="block">The consumable configuration that carries the archive, for another project of the build or for a
+publication.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#ENABLE_NATIVE_ACCESS" class="member-name-link">ENABLE_NATIVE_ACCESS</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
 <div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest.</div>
@@ -636,6 +641,10 @@ for it.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#EXTCRC" class="member-name-link">EXTCRC</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#EXTENSION_NAME" class="member-name-link">EXTENSION_NAME</a> - Static variable in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html" title="class in io.micronaut.runner.gradle">MicronautRunnerPlugin</a></dt>
+<dd>
+<div class="block">The name of the extension this plugin creates on the project.</div>
+</dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#EXTHDR" class="member-name-link">EXTHDR</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#EXTHDR" class="member-name-link">EXTHDR</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></dt>
@@ -717,9 +726,19 @@ chain, without building that name.</div>
 <dd>
 <div class="block">Package into which the packager generates classes; it is part of the application layer.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getAddExports()" class="member-name-link">getAddExports()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">Module/package pairs written into the manifest as <code>Add-Exports</code>, in JAR manifest syntax such as
+<code>java.base/sun.nio.ch</code>.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getAddExports()" class="member-name-link">getAddExports()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
 <div class="block">Module/package pairs to export, written into the manifest as <code>Add-Exports</code>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getAddOpens()" class="member-name-link">getAddOpens()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">Module/package pairs written into the manifest as <code>Add-Opens</code>, in JAR manifest syntax such as
+<code>java.base/java.lang</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getAddOpens()" class="member-name-link">getAddOpens()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
@@ -735,13 +754,22 @@ manifest that the <code>jar</code> task's configuration cannot describe.</div>
 <dd>
 <div class="block">The application's own classes and resources, which become the application layer of the archive.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getArchiveBaseName()" class="member-name-link">getArchiveBaseName()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
+<dd>
+<div class="block">The base name of the archive.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getArchiveClassifier()" class="member-name-link">getArchiveClassifier()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
-<div class="block">The archive classifier used to build the default output file name.</div>
+<div class="block">The classifier in the archive name, left out when absent or empty.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getArchiveFile()" class="member-name-link">getArchiveFile()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
-<div class="block">Where the archive is written.</div>
+<div class="block">Where the archive is written: <code>&lt;destinationDirectory&gt;/&lt;archiveBaseName&gt;[-&lt;archiveVersion&gt;]
+[-&lt;archiveClassifier&gt;].jar</code>, as an archive task names it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getArchiveVersion()" class="member-name-link">getArchiveVersion()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
+<dd>
+<div class="block">The version in the archive name, left out when absent.</div>
 </dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#getAttributes()" class="member-name-link">getAttributes()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>
@@ -770,6 +798,10 @@ no entry is ever verified.</div>
 <div class="block">Always <code>null</code>: the nested jar is stored inside the outer archive, so whatever comment it
 carried is not part of what the index records.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getCompression()" class="member-name-link">getCompression()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">How the entries of each dependency are stored: <code>STORED</code> or <code>PRESERVE</code>.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getCompression()" class="member-name-link">getCompression()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
 <div class="block">How the entries of each dependency are stored: <code>STORED</code> re-packs them uncompressed so classes
@@ -797,6 +829,18 @@ can report what an archive contains.</div>
 <dd>
 <div class="block">The ordered, relocatable identity of every dependency used to build the archive.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getDestinationDirectory()" class="member-name-link">getDestinationDirectory()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
+<dd>
+<div class="block">The directory the archive is written to.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getEnabled()" class="member-name-link">getEnabled()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">Whether the plugin's tasks run.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getEnableNativeAccess()" class="member-name-link">getEnableNativeAccess()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getEnableNativeAccess()" class="member-name-link">getEnableNativeAccess()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
 <div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest.</div>
@@ -809,6 +853,10 @@ can report what an archive contains.</div>
 <dd>
 <div class="block">The name of the entry inside the jar <a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html#getJarFileURL()"><code>RunnerJarURLConnection.getJarFileURL()</code></a> names, which for a nested entry is the
 name relative to the nested jar rather than the one the super class would have parsed.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getEntryStub()" class="member-name-link">getEntryStub()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">Whether to generate the entry stub that calls the main method directly.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getEntryStub()" class="member-name-link">getEntryStub()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
@@ -887,9 +935,17 @@ so that the instant does not depend on the machine's time zone.</div>
 <div class="block">The manifest of the jar this connection reads from: the nested jar's own manifest for a nested
 entry, and the outer archive's manifest otherwise.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getManifestAttributes()" class="member-name-link">getManifestAttributes()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">Extra main manifest attributes.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getManifestAttributes()" class="member-name-link">getManifestAttributes()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
 <div class="block">Extra main manifest attributes.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getMultiRelease()" class="member-name-link">getMultiRelease()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">Whether the application layer itself is multi-release.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getMultiRelease()" class="member-name-link">getMultiRelease()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
@@ -900,6 +956,11 @@ entry, and the outer archive's manifest otherwise.</div>
 <div class="block">The name of this jar, in the form <code>&lt;outer archive path&gt;!/MICRONAUT-INF/lib/&lt;dep&gt;.jar</code>, which
 is what the JDK's own nested-looking jar names have always looked like and what turns up in the
 error messages and logs of libraries that print <code>JarFile.getName()</code>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getOptions()" class="member-name-link">getOptions()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">Packaging options by <a href="io/micronaut/runner/build/RunnerJarOption.html#optionName()">name</a>, for the options that have no typed
+property.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getOptions()" class="member-name-link">getOptions()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
@@ -1419,12 +1480,22 @@ archive root.</div>
 <dd>
 <div class="block">Micronaut's service metadata directory, merged into the outer archive root by the packager.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" class="type-name-link" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a> - Class in <a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a></dt>
+<dd>
+<div class="block">The packaging options of every archive the plugin builds, and its kill switch.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#%3Cinit%3E()" class="member-name-link">MicronautRunnerExtension()</a> - Constructor for class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">Gradle creates the extension when the plugin is applied.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" class="type-name-link" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a> - Class in <a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a></dt>
 <dd>
 <div class="block">Packages the application and its dependencies into a runner jar.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#%3Cinit%3E()" class="member-name-link">MicronautRunnerJar()</a> - Constructor for class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
-<dd>&nbsp;</dd>
+<dd>
+<div class="block">Creates the task, deriving the archive's location from its naming properties.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html" class="type-name-link" title="class in io.micronaut.runner.gradle">MicronautRunnerJar.DependencyInput</a> - Class in <a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a></dt>
 <dd>
 <div class="block">One position in the ordered dependency input sequence.</div>
@@ -2038,6 +2109,10 @@ with the documented default.</div>
 <dt><a href="io/micronaut/runner/Handlers.html#urlFor(int,java.lang.String)" class="member-name-link">urlFor(int, String)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
 <div class="block">A URL for one logical entry of one jar of the registered archive.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#USAGE" class="member-name-link">USAGE</a> - Static variable in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html" title="class in io.micronaut.runner.gradle">MicronautRunnerPlugin</a></dt>
+<dd>
+<div class="block">The <code>Usage</code> of <a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#ELEMENTS_CONFIGURATION_NAME">"micronautRunnerElements"</a>.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:V">V</h2>
