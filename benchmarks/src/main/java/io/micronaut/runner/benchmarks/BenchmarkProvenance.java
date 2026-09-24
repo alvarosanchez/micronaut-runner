@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /** Reproducible, deliberately bounded provenance for one benchmark invocation. */
 final class BenchmarkProvenance {
 
-    static final int SCHEMA_VERSION = 3;
+    static final int SCHEMA_VERSION = 4;
     static final String REDACTED_JVM_OPTIONS = "<redacted:ambient-jvm-options>";
     private static final List<String> JVM_OPTION_ENVIRONMENT = List.of(
             "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "JDK_AOT_VM_OPTIONS");

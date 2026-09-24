@@ -218,6 +218,43 @@ final class SampleBuild {
                 RUNNER_EXTRACTED, RUNNER_EXTRACTED_AOT);
     }
 
+    /**
+     * One predeclared readiness comparison. Its estimate is candidate − baseline, so a negative difference
+     * means the candidate is faster.
+     *
+     * @param candidate the variant being judged
+     * @param baseline  the variant it is judged against
+     * @param label     what the comparison answers, for the report
+     */
+    record ComparisonSpec(String candidate, String baseline, String label) {
+
+        ComparisonSpec {
+            if (candidate == null || baseline == null || candidate.equals(baseline)) {
+                throw new IllegalArgumentException("a comparison needs two distinct variants");
+            }
+            if (label == null || label.isBlank()) {
+                throw new IllegalArgumentException("a comparison needs a label");
+            }
+        }
+    }
+
+    /**
+     * The predeclared readiness comparisons, in report order, headline first. A row that a later change adds
+     * to the matrix appends its own specs here; a spec is skipped in a run whose results lack either variant.
+     *
+     * @return the ordered comparison specs
+     */
+    static List<ComparisonSpec> comparisons() {
+        return List.of(
+                new ComparisonSpec(RUNNER_STORED, SHADOW, "Runner default vs Shadow"),
+                new ComparisonSpec(RUNNER_PRESERVE, SHADOW, "Runner PRESERVE vs Shadow"),
+                new ComparisonSpec(RUNNER_STORED_AOT, SHADOW_AOT, "Runner + AOT cache vs Shadow + AOT cache"),
+                new ComparisonSpec(RUNNER_EXTRACTED_AOT, SHADOW_AOT,
+                        "Extracted Runner + AOT cache vs Shadow + AOT cache"),
+                new ComparisonSpec(RUNNER_STORED, RUNNER_PRESERVE, "STORED vs PRESERVE"),
+                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_REFLECTION, "Entry stub vs reflection"));
+    }
+
     /** Keeps the complete required matrix visible when the shared sample build fails. */
     static List<Variant> unavailableVariants(String reason) {
         return List.of(

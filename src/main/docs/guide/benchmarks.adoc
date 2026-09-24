@@ -89,12 +89,11 @@ uncontrolled and is typically affected by the build and earlier starts; the harn
 protocol on Linux, macOS or Windows and therefore reports neither a warm-cache nor a cold-filesystem-cache
 measurement.
 
-Pairwise readiness comparisons predeclare the median iteration-level difference (left minus right) as their
-estimator. Bootstrap resampling uses complete measured iteration pairs as its unit, preserving the shared
-iteration conditions. A failed, missing or unavailable attempt excludes that iteration and remains visible in
-the pair and exclusion counts; successful values from later iterations are never shifted into the gap. Paired
-intervals use the same minimum of ten complete pairs, retain the seed and method in `results.json`, and do not
-by themselves establish a startup speedup or statistical significance.
+Readiness comparisons are a predeclared list of candidate minus baseline pairs, led by `runner-stored` minus
+`shadow`, so a negative difference means the candidate is faster. Each reports the median per-iteration
+difference and a relative change, the median per-iteration candidate/baseline ratio minus one, over complete
+measured iterations only; an incomplete iteration is excluded and listed, never re-paired. A bootstrap interval
+over complete iteration pairs appears only with at least ten complete pairs.
 
 Timing runs carry no diagnostic flags: `-Xlog` changes what is being measured, so class-load counts are
 collected in separate runs. Before timing begins, each cache lifecycle makes its own diagnostic launch and
@@ -121,8 +120,9 @@ final JAR (and therefore its embedded application and dependency bytes), exact J
 launch options and workload paths. A changed input selects a different cache. A cached variant is measured only
 after a nonempty completed cache and a successful application-class verification launch; an unsupported JDK or
 any failed phase makes the variant unavailable, and the benchmark never silently substitutes a no-cache process.
-The reports keep cache bytes, training cost and total preparation cost separate from complete runtime
-deployment bytes and readiness measurements. The cached variants require JDK 25 or later: training
+The launch cannot start without the trained cache file, so its bytes count toward the complete deployment;
+training cost and total preparation cost are reported separately from deployment bytes and readiness
+measurements. The cached variants require JDK 25 or later: training
 uses `-XX:AOTCacheOutput=<cache>` and measured use adds `-XX:AOTMode=on -XX:AOTCache=<cache>`, so a missing or
 unusable cache fails the launch. They launch the actual Shadow JAR, Runner JAR or extracted application JAR,
 with no helper or wrapper added to either paired class path. See <<cdsAndAot>> for the reproducible extraction
@@ -174,11 +174,17 @@ turns a timeout into a zero duration or retries until a favorable sample appears
 
 The size column is the complete deployment boundary, not just the process's launch artifact. It sums the
 logical lengths of every required regular file: the application and dependency components for thin and
-exploded layouts, the whole extracted layout, or the single complete archive for Shadow and Runner variants.
-Both reports expose component bytes and the reconciled total in bytes. Repeated normalized paths are counted
-once and attributed to the first component that names them. Symbolic links are not followed or counted;
-distinct hard-linked paths are counted separately. Build workspaces, logs, reports and neighboring variants
-are outside the explicitly declared inputs and are never included.
+exploded layouts, the whole extracted layout, or the single complete archive for Shadow and Runner variants,
+plus the trained cache file for every cached variant. Both reports give two metrics for each component and for
+the reconciled total: raw logical bytes, and gzip -6 bytes, the sum of per-file gzip -6 lengths, an
+approximation of image-layer transfer size (tar headers and cross-file dictionary effects excluded). The gzip
+lengths are computed while variants are prepared, never during timed launches. Repeated normalized paths are
+counted once and attributed to the first component that names them. Symbolic links are not followed or
+counted, except that a required cache file which is a link is an error; distinct hard-linked paths are counted
+separately. Build workspaces, logs, reports and neighboring variants are outside the explicitly declared inputs
+and are never included. STORED stays the default and no resources-only deflate mode is planned: STORED's raw
+archive is the larger one, but classes are about 94% of the benchmark sample's uncompressed content, so
+compressing only resources could not close that gap.
 
 == Publishing results
 

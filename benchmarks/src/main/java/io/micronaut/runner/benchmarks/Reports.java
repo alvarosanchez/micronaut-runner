@@ -19,8 +19,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Writes the two files the module promises: {@code results.json}, which keeps every raw sample, and
@@ -55,14 +58,16 @@ final class Reports {
                       List<VariantResult> results,
                       List<StartupHarness.ClassLoadCount> diagnostics) throws IOException {
         Files.createDirectories(outputDirectory);
-        Files.writeString(outputDirectory.resolve(RESULTS_FILE), json(context, results, diagnostics),
+        List<ComparisonRow> comparisons = comparisons(context, results);
+        Files.writeString(outputDirectory.resolve(RESULTS_FILE), json(context, results, comparisons, diagnostics),
                 StandardCharsets.UTF_8);
-        Files.writeString(outputDirectory.resolve(SUMMARY_FILE), markdown(context, results, diagnostics),
-                StandardCharsets.UTF_8);
+        Files.writeString(outputDirectory.resolve(SUMMARY_FILE),
+                markdown(context, results, comparisons, diagnostics), StandardCharsets.UTF_8);
     }
 
     private static String json(RunContext context,
                                List<VariantResult> results,
+                               List<ComparisonRow> comparisons,
                                List<StartupHarness.ClassLoadCount> diagnostics) throws IOException {
         StringBuilder out = new StringBuilder(64 * 1024);
         BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
@@ -110,7 +115,9 @@ final class Reports {
             out.append(i == results.size() - 1 ? "\n" : ",\n");
         }
         out.append("  ],\n");
-        appendComparisons(out, context, results);
+        appendComparisonMethod(out);
+        out.append(",\n");
+        appendComparisons(out, comparisons);
         out.append(",\n");
         appendAttempts(out, context, results);
         out.append(",\n");
@@ -266,12 +273,14 @@ final class Reports {
                 .append(", \"symlinkPolicy\": ").append(quote(DeploymentSize.SYMLINK_POLICY))
                 .append(", \"hardLinkPolicy\": ").append(quote(DeploymentSize.HARD_LINK_POLICY))
                 .append(", \"totalBytes\": ").append(deploymentSize.totalBytes())
+                .append(", \"totalGzipBytes\": ").append(deploymentSize.totalGzipBytes())
                 .append(", \"components\": [");
         for (int i = 0; i < deploymentSize.components().size(); i++) {
             DeploymentSize.Component component = deploymentSize.components().get(i);
             out.append(i == 0 ? "" : ", ")
                     .append("{\"name\": ").append(quote(component.name()))
-                    .append(", \"bytes\": ").append(component.bytes()).append('}');
+                    .append(", \"bytes\": ").append(component.bytes())
+                    .append(", \"gzipBytes\": ").append(component.gzipBytes()).append('}');
         }
         out.append("]}");
     }
@@ -325,17 +334,31 @@ final class Reports {
         out.append("  ]");
     }
 
-    private static void appendComparisons(StringBuilder out,
-                                          RunContext context,
-                                          List<VariantResult> results) {
-        List<PairedComparison> comparisons = comparisons(context, results);
+    /** The method every comparison shares, written once; the bootstrap seed is the run's top-level seed. */
+    private static void appendComparisonMethod(StringBuilder out) {
+        out.append("  \"comparisonMethod\": {")
+                .append("\"estimator\": ").append(quote(PairedComparison.ESTIMATOR))
+                .append(", \"relativeEstimator\": ").append(quote(PairedComparison.RELATIVE_ESTIMATOR))
+                .append(", \"resamplingUnit\": ").append(quote(PairedComparison.RESAMPLING_UNIT))
+                .append(", \"ciMethod\": ").append(quote(PairedComparison.CI_METHOD))
+                .append(", \"ciConfidence\": ").append(number(Statistics.CONFIDENCE))
+                .append(", \"ciResamples\": ").append(Statistics.RESAMPLES)
+                .append(", \"ciMinimumPairs\": ").append(Statistics.MIN_CONFIDENCE_SAMPLES)
+                .append('}');
+    }
+
+    /**
+     * One record per applicable declared comparison. The pairs themselves are not repeated: {@code attempts}
+     * plus {@code includedIterations} rebuild them.
+     */
+    private static void appendComparisons(StringBuilder out, List<ComparisonRow> rows) {
         out.append("  \"comparisons\": [\n");
-        for (int i = 0; i < comparisons.size(); i++) {
-            PairedComparison comparison = comparisons.get(i);
-            out.append("    {\"leftVariant\": ").append(quote(comparison.leftVariant()))
-                    .append(", \"rightVariant\": ").append(quote(comparison.rightVariant()))
-                    .append(", \"estimator\": ").append(quote(PairedComparison.ESTIMATOR))
-                    .append(", \"resamplingUnit\": ").append(quote(PairedComparison.RESAMPLING_UNIT))
+        for (int i = 0; i < rows.size(); i++) {
+            ComparisonRow row = rows.get(i);
+            PairedComparison comparison = row.comparison();
+            out.append("    {\"label\": ").append(quote(row.spec().label()))
+                    .append(", \"candidateVariant\": ").append(quote(comparison.candidateVariant()))
+                    .append(", \"baselineVariant\": ").append(quote(comparison.baselineVariant()))
                     .append(", \"requestedPairs\": ").append(comparison.requestedPairs())
                     .append(", \"pairedCount\": ").append(comparison.pairedCount())
                     .append(", \"excludedCount\": ").append(comparison.excludedCount())
@@ -344,49 +367,55 @@ final class Reports {
                     .append(nullableNumber(comparison.medianDifferenceMillis()))
                     .append(", \"ci95Low\": ").append(nullableNumber(comparison.ciLow()))
                     .append(", \"ci95High\": ").append(nullableNumber(comparison.ciHigh()))
-                    .append(", \"ciConfidence\": ").append(number(Statistics.CONFIDENCE))
-                    .append(", \"ciMethod\": \"percentile bootstrap of paired median differences\"")
-                    .append(", \"ciResamples\": ").append(Statistics.RESAMPLES)
-                    .append(", \"ciMinimumPairs\": ").append(Statistics.MIN_CONFIDENCE_SAMPLES)
+                    .append(", \"relativeChange\": ").append(nullableRatio(comparison.relativeChange()))
+                    .append(", \"relativeCi95Low\": ").append(nullableRatio(comparison.relativeCiLow()))
+                    .append(", \"relativeCi95High\": ").append(nullableRatio(comparison.relativeCiHigh()))
                     .append(", \"ciReason\": ").append(quote(comparison.ciReason()))
-                    .append(", \"seed\": ").append(comparison.seed())
                     .append(", \"includedIterations\": [");
             for (int pair = 0; pair < comparison.pairs().size(); pair++) {
                 out.append(pair == 0 ? "" : ", ").append(comparison.pairs().get(pair).iteration());
-            }
-            out.append("], \"pairs\": [");
-            for (int pair = 0; pair < comparison.pairs().size(); pair++) {
-                PairedComparison.Pair value = comparison.pairs().get(pair);
-                out.append(pair == 0 ? "" : ", ")
-                        .append("{\"iteration\": ").append(value.iteration())
-                        .append(", \"leftMillis\": ").append(number(value.leftMillis()))
-                        .append(", \"rightMillis\": ").append(number(value.rightMillis()))
-                        .append(", \"differenceMillis\": ").append(number(value.differenceMillis()))
-                        .append('}');
             }
             out.append("], \"exclusions\": [");
             for (int exclusion = 0; exclusion < comparison.exclusions().size(); exclusion++) {
                 PairedComparison.Exclusion value = comparison.exclusions().get(exclusion);
                 out.append(exclusion == 0 ? "" : ", ")
                         .append("{\"iteration\": ").append(value.iteration())
-                        .append(", \"leftOutcome\": ").append(quote(value.leftOutcome()))
-                        .append(", \"rightOutcome\": ").append(quote(value.rightOutcome()))
+                        .append(", \"candidateOutcome\": ").append(quote(value.candidateOutcome()))
+                        .append(", \"baselineOutcome\": ").append(quote(value.baselineOutcome()))
                         .append('}');
             }
-            out.append("]}").append(i == comparisons.size() - 1 ? "\n" : ",\n");
+            out.append("]}").append(i == rows.size() - 1 ? "\n" : ",\n");
         }
         out.append("  ]");
     }
 
-    private static List<PairedComparison> comparisons(RunContext context, List<VariantResult> results) {
-        java.util.ArrayList<PairedComparison> comparisons = new java.util.ArrayList<>();
-        for (int left = 0; left < results.size(); left++) {
-            for (int right = left + 1; right < results.size(); right++) {
-                comparisons.add(PairedComparison.of(results.get(left), results.get(right),
-                        context.iterations(), context.seed()));
-            }
+    /**
+     * Pairs every declared comparison whose two variants are both in the results, in declaration order. A
+     * present but unavailable variant still yields a row, whose exclusions say so.
+     */
+    private static List<ComparisonRow> comparisons(RunContext context, List<VariantResult> results) {
+        Map<String, VariantResult> byName = new HashMap<>();
+        for (VariantResult result : results) {
+            byName.putIfAbsent(result.variant().name(), result);
         }
-        return comparisons;
+        List<ComparisonRow> rows = new ArrayList<>();
+        for (SampleBuild.ComparisonSpec spec : SampleBuild.comparisons()) {
+            VariantResult candidate = byName.get(spec.candidate());
+            VariantResult baseline = byName.get(spec.baseline());
+            if (candidate == null || baseline == null) {
+                continue;
+            }
+            rows.add(new ComparisonRow(spec, candidate, baseline,
+                    PairedComparison.of(candidate, baseline, context.iterations(), context.seed())));
+        }
+        return rows;
+    }
+
+    /** A declared comparison and the two results it pairs. */
+    private record ComparisonRow(SampleBuild.ComparisonSpec spec,
+                                 VariantResult candidate,
+                                 VariantResult baseline,
+                                 PairedComparison comparison) {
     }
 
     private static String statistics(Statistics statistics) {
@@ -411,6 +440,7 @@ final class Reports {
 
     private static String markdown(RunContext context,
                                    List<VariantResult> results,
+                                   List<ComparisonRow> comparisons,
                                    List<StartupHarness.ClassLoadCount> diagnostics) {
         StringBuilder out = new StringBuilder(8 * 1024);
         BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
@@ -430,6 +460,9 @@ final class Reports {
                 out.append("Partial policy still exits nonzero because no measured run succeeded.\n\n");
             }
         }
+        appendRunnerVsShadow(out, comparisons);
+
+        out.append("## Run conditions\n\n");
         out.append("Time from process spawn to the first successful HTTP response, for the same Micronaut")
                 .append(" application across the required packaging and entry-path matrix.\n\n");
         out.append("- **Sample**: `sample` (relocatable identifier; source revision is in `results.json`)\n");
@@ -496,13 +529,12 @@ final class Reports {
                     .append(result.logLine() == null ? "not seen" : millis(result.logLine().median()))
                     .append(" | ")
                     .append(result.framework() == null ? "not seen" : millis(result.framework().median()))
-                    .append(" | ").append(size(result.deploymentBytes())).append(" |\n");
+                    .append(" | ").append(completeDeployment(variant.deploymentSize())).append(" |\n");
         }
         out.append('\n');
 
         appendDeploymentSizes(out, results);
         appendCachePreparation(out, results);
-        appendPairedComparisons(out, context, results);
         appendIncompleteDetails(out, context, results, status);
 
         out.append("## What each variant is\n\n");
@@ -541,11 +573,11 @@ final class Reports {
                 .append(" deviation because process start times have a hard floor and a long right tail.\n");
         out.append("- Runs with fewer than ").append(Statistics.MIN_CONFIDENCE_SAMPLES)
                 .append(" successful measured samples are **descriptive only**: medians and percentiles")
-                .append(" remain visible, but no confidence interval is emitted. This reporting threshold")
-                .append(" is not a universal guarantee of precision.\n");
+                .append(" remain visible, but no confidence interval is emitted and the interval cell reads")
+                .append(" `n=K (<").append(Statistics.MIN_CONFIDENCE_SAMPLES).append(")`. This reporting")
+                .append(" threshold is not a universal guarantee of precision.\n");
         out.append("- When the threshold is met, the interval is a percentile bootstrap of the median (")
-                .append(Statistics.RESAMPLES).append(" resamples). Per-variant intervals are not a test of")
-                .append(" a difference and do not by themselves establish a startup speedup.\n");
+                .append(Statistics.RESAMPLES).append(" resamples).\n");
         out.append("- **Readiness**, **to startup line** and **the framework's own figure** are three")
                 .append(" different quantities and the gaps between them are informative. Readiness")
                 .append(" includes serving the first request, which on a cold JVM is not free. The startup")
@@ -561,22 +593,27 @@ final class Reports {
 
     private static void appendDeploymentSizes(StringBuilder out, List<VariantResult> results) {
         out.append("## Deployment sizes\n\n");
-        out.append("Complete deployment is the sum of required regular-file lengths in logical bytes;")
-                .append(" allocated filesystem blocks and compressed transfer sizes are not reported. Repeated")
+        out.append("Complete deployment is the sum of required regular-file lengths in logical bytes, trained")
+                .append(" application-cache files included. Its gzip figure is the sum of per-file gzip -6")
+                .append(" lengths, an approximation of image-layer transfer size (tar headers and cross-file")
+                .append(" dictionary effects excluded). Allocated filesystem blocks are not reported. Repeated")
                 .append(" normalized paths are counted once and attributed to their first component. Symbolic")
                 .append(" links are not followed or counted; distinct hard-linked paths count separately.\n\n");
-        out.append("| Variant | Component | Component bytes | Complete deployment |\n")
-                .append("|---|---|---:|---:|\n");
+        out.append("| Variant | Component | Component bytes | Component gzip | Complete deployment |")
+                .append(" Complete deployment gzip |\n")
+                .append("|---|---|---:|---:|---:|---:|\n");
         for (VariantResult result : results) {
             DeploymentSize deploymentSize = result.variant().deploymentSize();
             if (deploymentSize == null || deploymentSize.components().isEmpty()) {
-                out.append("| `").append(result.variant().name()).append("` | — | — | — |\n");
+                out.append("| `").append(result.variant().name()).append("` | — | — | — | — | — |\n");
                 continue;
             }
             for (DeploymentSize.Component component : deploymentSize.components()) {
                 out.append("| `").append(result.variant().name()).append("` | ")
                         .append(component.name()).append(" | ").append(exactSize(component.bytes()))
-                        .append(" | ").append(exactSize(deploymentSize.totalBytes())).append(" |\n");
+                        .append(" | ").append(exactSize(component.gzipBytes()))
+                        .append(" | ").append(exactSize(deploymentSize.totalBytes()))
+                        .append(" | ").append(exactSize(deploymentSize.totalGzipBytes())).append(" |\n");
             }
         }
         out.append('\n');
@@ -584,9 +621,10 @@ final class Reports {
 
     private static void appendCachePreparation(StringBuilder out, List<VariantResult> results) {
         out.append("## Application-cache preparation\n\n");
-        out.append("Cache bytes and build-time preparation are reported separately from complete deployment")
-                .append(" bytes and runtime readiness. A reused cache has no training cost in this invocation;")
-                .append(" preparation still includes its verification launch.\n\n");
+        out.append("Cache bytes are a component of the complete deployment above, because the launch needs the")
+                .append(" cache file. Training and preparation cost are build-time costs reported only here,")
+                .append(" separate from deployment bytes and runtime readiness. A reused cache has no training")
+                .append(" cost in this invocation; preparation still includes its verification launch.\n\n");
         out.append("| Variant | Mode | Cache bytes | Training cost | Preparation cost | Reused |\n")
                 .append("|---|---|---:|---:|---:|---|\n");
         for (VariantResult result : results) {
@@ -620,56 +658,93 @@ final class Reports {
         return "none";
     }
 
-    private static void appendPairedComparisons(StringBuilder out,
-                                                RunContext context,
-                                                List<VariantResult> results) {
-        List<PairedComparison> comparisons = comparisons(context, results);
-        if (comparisons.isEmpty()) {
+    /**
+     * The headline: one row per declared comparison whose two variants are both in the results, written
+     * directly after the status block. This is the only place the report explains what an interval does not
+     * establish.
+     */
+    private static void appendRunnerVsShadow(StringBuilder out, List<ComparisonRow> rows) {
+        out.append("## Runner vs Shadow\n\n");
+        if (rows.isEmpty()) {
+            out.append("No declared comparison applies: these results do not contain both variants of any")
+                    .append(" declared candidate and baseline.\n\n");
             return;
         }
-        out.append("## Paired readiness comparisons\n\n");
-        out.append("The predeclared estimator is the median iteration-level readiness difference")
-                .append(" (**left − right**). Only attempts from the same measured iteration form a pair;")
-                .append(" incomplete iterations are excluded and listed rather than silently re-paired.\n\n");
-        out.append("| Comparison | Pairs | Median difference | 95% paired interval | Excluded |\n")
-                .append("|---|---:|---:|---|---:|\n");
-        for (PairedComparison comparison : comparisons) {
-            out.append("| `").append(comparison.leftVariant()).append("` − `")
-                    .append(comparison.rightVariant()).append("` | ")
-                    .append(comparison.pairedCount()).append(" complete / ")
-                    .append(comparison.requestedPairs()).append(" requested | ")
+        out.append("Negative means the candidate is faster: the medians, Δ (the median of per-iteration readiness")
+                .append(" differences, candidate − baseline) and the relative change (the median per-iteration")
+                .append(" ratio − 1) cover complete measured iterations only, and an interval needs at least ")
+                .append(Statistics.MIN_CONFIDENCE_SAMPLES)
+                .append(" complete pairs and does not by itself establish a startup speedup.\n\n");
+        out.append("| Comparison | Candidate median | Baseline median | Δ | Relative | 95% CI of Δ | Pairs |")
+                .append(" Size ratio, raw | Size ratio, gzip |\n")
+                .append("|---|---:|---:|---:|---:|---|---:|---:|---:|\n");
+        for (ComparisonRow row : rows) {
+            PairedComparison comparison = row.comparison();
+            out.append("| ").append(row.spec().label()).append(": `").append(comparison.candidateVariant())
+                    .append("` − `").append(comparison.baselineVariant()).append("` | ")
+                    .append(nullableMillis(comparison.candidateMedianMillis())).append(" | ")
+                    .append(nullableMillis(comparison.baselineMedianMillis())).append(" | ")
                     .append(comparison.medianDifferenceMillis() == null
-                            ? "—" : millis(comparison.medianDifferenceMillis()))
+                            ? "—" : signedMillis(comparison.medianDifferenceMillis()))
+                    .append(" | ")
+                    .append(comparison.relativeChange() == null
+                            ? "—" : signedPercent(comparison.relativeChange()))
                     .append(" | ");
             if (comparison.descriptiveOnly()) {
-                out.append("descriptive only (").append(comparison.pairedCount()).append('/')
-                        .append(Statistics.MIN_CONFIDENCE_SAMPLES).append(" pairs)");
+                out.append("n=").append(comparison.pairedCount())
+                        .append(" (<").append(Statistics.MIN_CONFIDENCE_SAMPLES).append(')');
             } else {
-                out.append(millis(comparison.ciLow())).append(" – ").append(millis(comparison.ciHigh()));
+                out.append(signedMillis(comparison.ciLow())).append(" to ")
+                        .append(signedMillis(comparison.ciHigh()));
             }
-            out.append(" | ").append(comparison.excludedCount()).append(" |\n");
+            DeploymentSize candidateSize = row.candidate().variant().deploymentSize();
+            DeploymentSize baselineSize = row.baseline().variant().deploymentSize();
+            out.append(" | ").append(comparison.pairedCount()).append('/').append(comparison.requestedPairs())
+                    .append(" | ").append(sizeRatio(candidateSize == null ? -1 : candidateSize.totalBytes(),
+                            baselineSize == null ? -1 : baselineSize.totalBytes()))
+                    .append(" | ").append(sizeRatio(candidateSize == null ? -1 : candidateSize.totalGzipBytes(),
+                            baselineSize == null ? -1 : baselineSize.totalGzipBytes()))
+                    .append(" |\n");
         }
         out.append('\n');
-        for (PairedComparison comparison : comparisons) {
+        boolean excluded = false;
+        for (ComparisonRow row : rows) {
+            PairedComparison comparison = row.comparison();
             if (comparison.exclusions().isEmpty()) {
                 continue;
             }
-            out.append("- Excluded from `").append(comparison.leftVariant()).append("` − `")
-                    .append(comparison.rightVariant()).append("`: ");
+            excluded = true;
+            out.append("- Excluded from ").append(row.spec().label()).append(": ");
             for (int i = 0; i < comparison.exclusions().size(); i++) {
                 PairedComparison.Exclusion exclusion = comparison.exclusions().get(i);
                 out.append(i == 0 ? "" : "; ").append("iteration ").append(exclusion.iteration())
-                        .append(" (").append(comparison.leftVariant()).append(": ")
-                        .append(exclusion.leftOutcome()).append("; ").append(comparison.rightVariant())
-                        .append(": ").append(exclusion.rightOutcome()).append(')');
+                        .append(" (").append(comparison.candidateVariant()).append(": ")
+                        .append(exclusion.candidateOutcome()).append("; ").append(comparison.baselineVariant())
+                        .append(": ").append(exclusion.baselineOutcome()).append(')');
             }
             out.append(".\n");
         }
-        out.append("\nIntervals use ").append(Statistics.RESAMPLES)
-                .append(" bootstrap resamples of complete iteration pairs and are emitted only with at")
-                .append(" least ").append(Statistics.MIN_CONFIDENCE_SAMPLES)
-                .append(" complete pairs. The threshold is a reporting policy, not a universal guarantee;")
-                .append(" an interval does not by itself establish a startup speedup.\n\n");
+        if (excluded) {
+            out.append('\n');
+        }
+    }
+
+    private static String nullableMillis(Double value) {
+        return value == null ? "—" : millis(value);
+    }
+
+    private static String completeDeployment(DeploymentSize deploymentSize) {
+        if (deploymentSize == null) {
+            return "—";
+        }
+        return size(deploymentSize.totalBytes()) + " (" + size(deploymentSize.totalGzipBytes()) + " gzip)";
+    }
+
+    private static String sizeRatio(long candidate, long baseline) {
+        if (candidate < 0 || baseline <= 0) {
+            return "—";
+        }
+        return String.format(Locale.ROOT, "%.2f×", (double) candidate / baseline);
     }
 
     /**
@@ -751,11 +826,17 @@ final class Reports {
         return String.format(Locale.ROOT, "%.1f ms", value);
     }
 
+    private static String signedMillis(double value) {
+        return String.format(Locale.ROOT, "%+.1f ms", value);
+    }
+
+    private static String signedPercent(double fraction) {
+        return String.format(Locale.ROOT, "%+.1f%%", fraction * 100);
+    }
+
     private static String confidenceInterval(Statistics statistics) {
         if (!statistics.hasConfidenceInterval()) {
-            return "descriptive only (" + statistics.count() + "/" + Statistics.MIN_CONFIDENCE_SAMPLES
-                    + " samples; at least " + Statistics.MIN_CONFIDENCE_SAMPLES
-                    + " successful measured samples required)";
+            return "n=" + statistics.count() + " (<" + Statistics.MIN_CONFIDENCE_SAMPLES + ")";
         }
         return millis(statistics.ciLow()) + " – " + millis(statistics.ciHigh());
     }
@@ -783,6 +864,11 @@ final class Reports {
 
     private static String nullableNumber(Double value) {
         return value == null ? "null" : number(value);
+    }
+
+    /** Relative changes are fractions, so they keep more digits than milliseconds do. */
+    private static String nullableRatio(Double value) {
+        return value == null ? "null" : String.format(Locale.ROOT, "%.6f", value);
     }
 
     private static String escapeCell(String value) {
