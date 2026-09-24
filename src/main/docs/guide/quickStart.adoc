@@ -51,14 +51,6 @@ java -jar build/libs/my-app-0.1-all.jar
 The archive is named with the `all` classifier, the same name the Shadow plugin uses, so existing
 Dockerfiles and CI scripts that reference `build/libs/*-all.jar` keep working.
 
-The Gradle task retains content-addressed dependency stages under
-`build/micronaut-runner/dependency-stages`. An application-only edit therefore rebuilds the application and
-outer index without repacking unchanged dependencies. The stage key includes the dependency's raw bytes,
-compression mode, runner/index format and staging algorithm version; source paths, coordinates and classpath
-position are deliberately excluded and are applied only while assembling the final archive. Cache entries
-are checksummed and structurally verified before use. The directory is a declared task output, so Gradle's
-build cache can restore it safely in a relocated checkout together with the archive.
-
 WARNING: Do not apply the Shadow plugin and configure it to write the same file. The two produce different
 archives under one name. The plugin fails the build if it detects that.
 

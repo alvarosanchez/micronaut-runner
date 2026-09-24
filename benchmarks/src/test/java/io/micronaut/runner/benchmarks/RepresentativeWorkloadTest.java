@@ -80,62 +80,15 @@ class RepresentativeWorkloadTest {
             throws Exception {
         PackagingProfile.Report report = PackagingProfile.run(List.of("no-manifest"), 2, output);
 
-        assertEquals(20, report.attempts().size());
+        assertEquals(16, report.attempts().size());
         assertEquals(java.util.Set.of("stored", "preserve"),
                 report.attempts().stream().map(PackagingProfile.Attempt::compression).collect(java.util.stream.Collectors.toSet()));
-        assertEquals(java.util.Set.of("first-build", "unchanged-rebuild", "application-edit", "dependency-edit",
-                        "relocated-cache-restored"),
+        assertEquals(java.util.Set.of("first-build", "unchanged-rebuild", "application-edit", "dependency-edit"),
                 report.attempts().stream().map(PackagingProfile.Attempt::scenario).collect(java.util.stream.Collectors.toSet()));
         assertTrue(report.attempts().stream().allMatch(attempt -> attempt.elapsedNanos() > 0));
         assertTrue(report.attempts().stream().allMatch(attempt -> attempt.inputBytes() > 0));
         assertTrue(report.attempts().stream().allMatch(attempt -> attempt.outputBytes() > 0));
         assertTrue(report.attempts().stream().allMatch(attempt -> attempt.peakHeapBytes() > 0));
-        assertTrue(report.attempts().stream().filter(attempt -> attempt.scenario().equals("first-build"))
-                .allMatch(attempt -> attempt.cacheHits() == 0 && attempt.cacheMisses() > 0));
-        assertTrue(report.attempts().stream().filter(attempt -> attempt.scenario().equals("unchanged-rebuild"))
-                .allMatch(attempt -> attempt.cacheHits() > 0 && attempt.cacheMisses() == 0));
-        assertTrue(report.attempts().stream().filter(attempt -> attempt.scenario().equals("application-edit"))
-                .allMatch(attempt -> attempt.cacheHits() > 0 && attempt.cacheMisses() == 0));
-        assertTrue(report.attempts().stream().filter(attempt -> attempt.scenario().equals("dependency-edit"))
-                .allMatch(attempt -> attempt.cacheHits() > 0 && attempt.cacheMisses() == 1));
-        assertTrue(report.attempts().stream().filter(attempt -> attempt.scenario().equals("relocated-cache-restored"))
-                .allMatch(attempt -> attempt.cacheHits() > 0 && attempt.cacheMisses() == 0));
-        assertTrue(report.attempts().stream().filter(attempt -> attempt.cacheMisses() == 0)
-                .allMatch(attempt -> attempt.dependencyStageBytesWritten() == 0));
-        assertTrue(report.attempts().stream().filter(attempt -> attempt.scenario().equals("first-build")
-                        || attempt.scenario().equals("dependency-edit"))
-                .allMatch(attempt -> attempt.dependencyStageBytesWritten() > 0));
-        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("mac")) {
-            assertTrue(report.attempts().stream().allMatch(attempt -> attempt.physicalBlockInputs() >= 0
-                    && attempt.physicalBlockOutputs() >= 0));
-            assertTrue(report.attempts().stream()
-                    .allMatch(attempt -> attempt.rssMethod().equals("time-rusage-maxrss")));
-        }
-        for (String compression : List.of("stored", "preserve")) {
-            for (int iteration = 0; iteration < 2; iteration++) {
-                int current = iteration;
-                String firstHash = report.attempts().stream()
-                        .filter(attempt -> attempt.compression().equals(compression)
-                                && attempt.iteration() == current && attempt.scenario().equals("first-build"))
-                        .findFirst().orElseThrow().outputSha256();
-                assertTrue(report.attempts().stream()
-                        .filter(attempt -> attempt.compression().equals(compression)
-                                && attempt.iteration() == current
-                                && (attempt.scenario().equals("unchanged-rebuild")
-                                || attempt.scenario().equals("relocated-cache-restored")))
-                        .allMatch(attempt -> attempt.outputSha256().equals(firstHash)),
-                        compression + " cache reuse must keep final bytes reproducible");
-                PackagingProfile.Attempt dependencyEdit = report.attempts().stream()
-                        .filter(attempt -> attempt.compression().equals(compression)
-                                && attempt.iteration() == current && attempt.scenario().equals("dependency-edit"))
-                        .findFirst().orElseThrow();
-                Path stages = output.resolve("work/no-manifest").resolve(compression)
-                        .resolve("dependency-edit").resolve(Integer.toString(iteration))
-                        .resolve("timing/dependency-stages");
-                assertTrue(stageSizes(stages).contains(dependencyEdit.dependencyStageBytesWritten()),
-                        "stage writes must report the replaced stage's full bytes, not net cache growth");
-            }
-        }
         assertTrue(java.nio.file.Files.isRegularFile(output.resolve("packaging-results.json")));
         assertTrue(java.nio.file.Files.isRegularFile(output.resolve("packaging-summary.md")));
     }
@@ -305,20 +258,6 @@ class RepresentativeWorkloadTest {
             try (InputStream stream = loader.getResourceAsStream(SyntheticArchive.VERSIONED_RESOURCE)) {
                 assertEquals("version-25", new String(stream.readAllBytes(), StandardCharsets.UTF_8));
             }
-        }
-    }
-
-    private static List<Long> stageSizes(Path directory) throws IOException {
-        try (var paths = Files.walk(directory)) {
-            return paths.filter(path -> path.getFileName().toString().endsWith(".jar")).map(path -> {
-                try {
-                    return Files.size(path);
-                } catch (IOException e) {
-                    throw new java.io.UncheckedIOException(e);
-                }
-            }).toList();
-        } catch (java.io.UncheckedIOException e) {
-            throw e.getCause();
         }
     }
 

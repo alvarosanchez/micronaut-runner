@@ -30,23 +30,16 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.nio.charset.StandardCharsets;
-import java.security.DigestOutputStream;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -56,14 +49,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.zip.CRC32;
 import java.util.zip.CheckedOutputStream;
-
 
 /**
  * Turns an application's own output and its resolved dependencies into a runner jar.
@@ -121,18 +110,11 @@ public final class RunnerJarBuilder {
     /** Classes and manifests are the only application entries intentionally materialised. */
     private static final int MAX_IN_MEMORY_METADATA_SIZE = 16 * 1024 * 1024;
 
-    /** Bump whenever dependency-stage bytes or their interpretation changes. */
-    private static final int DEPENDENCY_STAGE_VERSION = 1;
-
-    /** JVM-local companions to the filesystem locks that coordinate shared dependency caches. */
-    private static final ConcurrentMap<Path, ReentrantLock> DEPENDENCY_CACHE_LOCKS = new ConcurrentHashMap<>();
-
     private final RunnerJarSpec spec;
     private final BuildLogger logger;
     private final List<String> warnings = new ArrayList<>();
     private final List<PlannedEntry> plan = new ArrayList<>();
     private final List<NestedJar> nested = new ArrayList<>();
-    private final Set<String> activeDependencyStages = new HashSet<>();
     private final Map<String, ApplicationEntry> application = new LinkedHashMap<>();
     private final Set<String> serviceNames = new TreeSet<>();
     private final IndexWriter writer = new IndexWriter();
@@ -240,24 +222,6 @@ public final class RunnerJarBuilder {
 
     private RunnerJarResult run() throws IOException {
         validate();
-        if (spec.dependencyCache().isEmpty()) {
-            return runWithValidatedInputs();
-        }
-        Path cache = spec.dependencyCache().orElseThrow().toAbsolutePath().normalize();
-        Files.createDirectories(cache);
-        Path identity = cache.toRealPath();
-        ReentrantLock localLock = DEPENDENCY_CACHE_LOCKS.computeIfAbsent(identity, ignored -> new ReentrantLock());
-        localLock.lock();
-        try (FileChannel channel = FileChannel.open(cache.resolve(".micronaut-runner.lock"),
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-             FileLock ignored = channel.lock()) {
-            return runWithValidatedInputs();
-        } finally {
-            localLock.unlock();
-        }
-    }
-
-    private RunnerJarResult runWithValidatedInputs() throws IOException {
         Path directory = output.getParent();
         if (directory == null) {
             throw new IOException("The output " + output + " has no parent directory");
@@ -298,7 +262,6 @@ public final class RunnerJarBuilder {
             }
             verify(archive, layout);
             move(archive);
-            pruneDependencyStages();
 
             StringBuilder message = new StringBuilder();
             message.append("Packaged ").append(spec.mainClass()).append(" into ").append(output)
@@ -364,38 +327,6 @@ public final class RunnerJarBuilder {
                 throw new IOException("The output " + output + " is also the application manifest source");
             }
         }
-        if (spec.dependencyCache().isPresent()) {
-            Path cache = spec.dependencyCache().get().toAbsolutePath().normalize();
-            if (Files.exists(cache, LinkOption.NOFOLLOW_LINKS)
-                    && !Files.isDirectory(cache, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IOException("The dependency cache " + cache + " is not a directory");
-            }
-            Path resolvedCache = resolveExistingAncestor(cache);
-            if (overlaps(resolvedCache, resolvedOutput)) {
-                throw new IOException("The dependency cache " + cache + " overlaps the output " + output);
-            }
-            for (Path input : spec.applicationOutput()) {
-                if (overlaps(resolvedCache, input.toRealPath())) {
-                    throw new IOException("The dependency cache " + cache
-                            + " overlaps the application output " + input);
-                }
-            }
-            for (Dependency dependency : spec.dependencies()) {
-                if (overlaps(resolvedCache, dependency.path().toRealPath())) {
-                    throw new IOException("The dependency cache " + cache
-                            + " overlaps the dependency " + dependency.path());
-                }
-            }
-            if (manifestSource.isPresent() && Files.exists(manifestSource.get())
-                    && overlaps(resolvedCache, manifestSource.get().toRealPath())) {
-                throw new IOException("The dependency cache " + cache
-                        + " overlaps the application manifest source " + manifestSource.get());
-            }
-        }
-    }
-
-    private static boolean overlaps(Path first, Path second) {
-        return first.startsWith(second) || second.startsWith(first);
     }
 
     private static boolean sameFile(Path candidate, Path input, Path resolvedCandidate, Path resolvedInput)
@@ -646,8 +577,8 @@ public final class RunnerJarBuilder {
         for (Dependency dependency : spec.dependencies()) {
             String entryName = IndexFormat.LIB_PREFIX + uniqueName(taken, fileName(dependency.path()));
             Path target = work.resolve("lib-" + position + ".jar");
-            long targetCrc;
             position++;
+            CRC32 crc = new CRC32();
             ZipRepacker.RepackResult result;
             Manifest manifest;
             boolean hasManifest;
@@ -655,14 +586,11 @@ public final class RunnerJarBuilder {
                 manifest = reader.manifest().orElse(null);
                 hasManifest = reader.entry("META-INF/MANIFEST.MF").isPresent();
                 warnAboutClassPath(dependency, manifest);
-                try {
-                    DependencyStage stage = stageDependency(dependency.path(), reader, target);
-                    target = stage.path();
-                    targetCrc = stage.crc32();
-                    try (ZipReader staged = ZipReader.open(target)) {
-                        result = new ZipRepacker.RepackResult(staged.entries(), staged.fileLength(),
-                                reader.hasSignatureFiles(), List.of());
-                    }
+                try (OutputStream file = new BufferedOutputStream(Files.newOutputStream(target), BUFFER_SIZE);
+                     CheckedOutputStream checked = new CheckedOutputStream(file, crc)) {
+                    result = spec.compression() == Compression.STORED
+                            ? ZipRepacker.repack(reader, checked)
+                            : ZipRepacker.copy(reader, checked);
                 } catch (IOException e) {
                     // Without this the message names only the entry, and a build with dozens of
                     // dependencies says nothing about which jar has to be looked at.
@@ -680,203 +608,8 @@ public final class RunnerJarBuilder {
             for (ZipEntryInfo entry : result.entries()) {
                 requireSafeName(entry.name(), dependency.path().toString());
             }
-            nested.add(new NestedJar(dependency, entryName, target, result, manifest, hasManifest, targetCrc));
-        }
-    }
-
-    /**
-     * Returns a verified dependency stage, creating and atomically publishing it when it is absent.
-     */
-    private DependencyStage stageDependency(Path source, ZipReader reader, Path uncachedTarget)
-            throws IOException {
-        Optional<Path> configured = spec.dependencyCache();
-        if (configured.isEmpty()) {
-            StageDigest digest = writeDependencyStage(reader, uncachedTarget);
-            return new DependencyStage(uncachedTarget, digest.crc32());
-        }
-        String key = dependencyStageKey(source);
-        activeDependencyStages.add(key);
-        Path bucket = configured.get().toAbsolutePath().normalize().resolve(key.substring(0, 2));
-        Path stage = bucket.resolve(key + ".jar");
-        Path checksum = bucket.resolve(key + ".sha256");
-        Long cachedCrc = validDependencyStage(key, stage, checksum);
-        if (cachedCrc != null) {
-            logger.info("Dependency stage cache hit " + key + " for " + fileName(source));
-            return new DependencyStage(stage, cachedCrc);
-        }
-
-        logger.info("Dependency stage cache miss " + key + " for " + fileName(source));
-        Files.createDirectories(bucket);
-        Path temporary = Files.createTempFile(bucket, key + ".tmp-", ".jar");
-        Path temporaryChecksum = Files.createTempFile(bucket, key + ".tmp-", ".sha256");
-        try {
-            StageDigest digest = writeDependencyStage(reader, temporary);
-            logger.info("Dependency stage cache wrote " + digest.length() + " bytes " + key
-                    + " for " + fileName(source));
-            Files.writeString(temporaryChecksum, key + " " + digest.sha256() + " " + digest.crc32()
-                    + " " + digest.length() + "\n", StandardCharsets.US_ASCII,
-                    StandardOpenOption.TRUNCATE_EXISTING);
-            Long verifiedCrc = validDependencyStage(key, temporary, temporaryChecksum);
-            if (verifiedCrc == null) {
-                throw new IOException("The dependency stage for " + source + " failed verification");
-            }
-            moveAtomically(temporary, stage);
-            moveAtomically(temporaryChecksum, checksum);
-            return new DependencyStage(stage, verifiedCrc);
-        } finally {
-            Files.deleteIfExists(temporary);
-            Files.deleteIfExists(temporaryChecksum);
-        }
-    }
-
-    private StageDigest writeDependencyStage(ZipReader source, Path target) throws IOException {
-        MessageDigest sha256 = sha256Digest();
-        CRC32 crc32 = new CRC32();
-        try (OutputStream file = new DigestOutputStream(new CheckedOutputStream(new BufferedOutputStream(
-                Files.newOutputStream(target, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING),
-                BUFFER_SIZE), crc32), sha256)) {
-            if (spec.compression() == Compression.STORED) {
-                ZipRepacker.repack(source, file);
-            } else {
-                ZipRepacker.copy(source, file);
-            }
-        }
-        return new StageDigest(HexFormat.of().formatHex(sha256.digest()), crc32.getValue(), Files.size(target));
-    }
-
-    private Long validDependencyStage(String key, Path stage, Path checksum) {
-        if (!Files.isRegularFile(stage) || !Files.isRegularFile(checksum)) {
-            return null;
-        }
-        try {
-            String[] expected = Files.readString(checksum, StandardCharsets.US_ASCII).trim().split(" ");
-            if (expected.length != 4 || !key.equals(expected[0]) || expected[1].length() != 64) {
-                return null;
-            }
-            long expectedCrc = Long.parseLong(expected[2]);
-            long expectedLength = Long.parseLong(expected[3]);
-            StageDigest actual = dependencyStageDigest(stage);
-            if (actual.length() != expectedLength || actual.crc32() != expectedCrc
-                    || !actual.sha256().equals(expected[1])) {
-                return null;
-            }
-            try (ZipReader cached = ZipReader.open(stage)) {
-                for (ZipEntryInfo entry : cached.entries()) {
-                    if (!ZipReader.isSafeEntryName(entry.name())
-                            || spec.compression() == Compression.STORED
-                            && !entry.directory() && entry.method() != IndexFormat.METHOD_STORED) {
-                        return null;
-                    }
-                }
-            }
-            return expectedCrc;
-        } catch (IOException | RuntimeException e) {
-            return null;
-        }
-    }
-
-    private static StageDigest dependencyStageDigest(Path stage) throws IOException {
-        MessageDigest sha256 = sha256Digest();
-        CRC32 crc32 = new CRC32();
-        long length = 0;
-        byte[] buffer = new byte[BUFFER_SIZE];
-        try (InputStream input = Files.newInputStream(stage)) {
-            int read;
-            while ((read = input.read(buffer)) >= 0) {
-                sha256.update(buffer, 0, read);
-                crc32.update(buffer, 0, read);
-                length += read;
-            }
-        }
-        return new StageDigest(HexFormat.of().formatHex(sha256.digest()), crc32.getValue(), length);
-    }
-
-    private void pruneDependencyStages() throws IOException {
-        Optional<Path> configured = spec.dependencyCache();
-        if (configured.isEmpty()) {
-            return;
-        }
-        Path cache = configured.get().toAbsolutePath().normalize();
-        if (!Files.isDirectory(cache, LinkOption.NOFOLLOW_LINKS)) {
-            return;
-        }
-        try (DirectoryStream<Path> buckets = Files.newDirectoryStream(cache)) {
-            for (Path bucket : buckets) {
-                String bucketName = bucket.getFileName().toString();
-                if (bucketName.length() != 2 || !isLowerHex(bucketName)
-                        || !Files.isDirectory(bucket, LinkOption.NOFOLLOW_LINKS)) {
-                    continue;
-                }
-                try (DirectoryStream<Path> entries = Files.newDirectoryStream(bucket)) {
-                    for (Path entry : entries) {
-                        if (!Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
-                            continue;
-                        }
-                        String name = entry.getFileName().toString();
-                        if (name.length() < 64) {
-                            continue;
-                        }
-                        String key = name.substring(0, 64);
-                        if (!key.startsWith(bucketName) || !isLowerHex(key)) {
-                            continue;
-                        }
-                        boolean published = name.equals(key + ".jar") || name.equals(key + ".sha256");
-                        boolean temporary = name.startsWith(key + ".tmp-")
-                                && (name.endsWith(".jar") || name.endsWith(".sha256"));
-                        if (temporary || published && !activeDependencyStages.contains(key)) {
-                            Files.deleteIfExists(entry);
-                        }
-                    }
-                }
-                try (DirectoryStream<Path> remaining = Files.newDirectoryStream(bucket)) {
-                    if (!remaining.iterator().hasNext()) {
-                        Files.deleteIfExists(bucket);
-                    }
-                }
-            }
-        }
-    }
-
-    private static boolean isLowerHex(String value) {
-        for (int i = 0; i < value.length(); i++) {
-            char current = value.charAt(i);
-            if (!(current >= '0' && current <= '9') && !(current >= 'a' && current <= 'f')) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private String dependencyStageKey(Path source) throws IOException {
-        MessageDigest digest = sha256Digest();
-        String toolVersion = Optional.ofNullable(RunnerJarBuilder.class.getPackage().getImplementationVersion())
-                .orElse("development");
-        digest.update(("micronaut-runner-dependency-stage\0" + DEPENDENCY_STAGE_VERSION + "\0"
-                + IndexFormat.FORMAT_VERSION + "\0" + toolVersion + "\0" + spec.compression() + "\0")
-                .getBytes(StandardCharsets.UTF_8));
-        try (InputStream input = Files.newInputStream(source)) {
-            byte[] buffer = new byte[BUFFER_SIZE];
-            int read;
-            while ((read = input.read(buffer)) >= 0) {
-                digest.update(buffer, 0, read);
-            }
-        }
-        return HexFormat.of().formatHex(digest.digest());
-    }
-
-    private static MessageDigest sha256Digest() {
-        try {
-            return MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is required by the JDK", e);
-        }
-    }
-
-    private static void moveAtomically(Path source, Path target) throws IOException {
-        try {
-            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException | UnsupportedOperationException e) {
-            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+            nested.add(new NestedJar(dependency, entryName, target, result, manifest, hasManifest,
+                    crc.getValue()));
         }
     }
 
@@ -1420,12 +1153,6 @@ public final class RunnerJarBuilder {
     private static String fileName(Path path) {
         Path name = path.getFileName();
         return name == null ? path.toString() : name.toString();
-    }
-
-    private record DependencyStage(Path path, long crc32) {
-    }
-
-    private record StageDigest(String sha256, long crc32, long length) {
     }
 
     /**

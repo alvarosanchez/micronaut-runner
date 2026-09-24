@@ -170,32 +170,6 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
         runJarSuccessfully(archive);
     }
 
-    @Test
-    void manuallyRegisteredTaskDoesNotRequireDependencyCaching(@TempDir Path directory) throws IOException {
-        writeFixture(directory, """
-                tasks.register('customRunnerJar', io.micronaut.runner.gradle.MicronautRunnerJar) {
-                    mainClass.set(application.mainClass)
-                    applicationOutput.from(sourceSets.main.output)
-                    classpath.from(configurations.runtimeClasspath)
-                    coordinates.set([:])
-                    archiveFile.set(layout.buildDirectory.file('libs/custom.jar'))
-                    archiveClassifier.set('custom')
-                    compression.set('STORED')
-                    multiRelease.set(false)
-                    entryStub.set(true)
-                    addOpens.set([])
-                    addExports.set([])
-                    enableNativeAccess.set(false)
-                    manifestAttributes.set([:])
-                }
-                """, "");
-
-        BuildResult result = build(directory, "customRunnerJar");
-
-        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, ":customRunnerJar"));
-        assertTrue(Files.isRegularFile(directory.resolve("build/libs/custom.jar")));
-    }
-
     /**
      * An unusable compression value fails the build with a message that names the value and the alternatives,
      * rather than with an enum constant error from somewhere inside the packaging library.
