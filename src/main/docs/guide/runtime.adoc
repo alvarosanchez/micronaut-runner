@@ -104,20 +104,8 @@ times in the same container image may be better served by extracting once at ima
 
 === Publication and replacement
 
-Extraction stages the complete layout in a temporary sibling directory before publishing it. Without
-`--force`, the destination is checked again after staging and the final move does not replace an existing
-path. If another process populates the destination while extraction is running, extraction fails and
-preserves that occupant.
-
-With `--force`, existing output is renamed to a temporary sibling backup before the staged layout is moved
-into place. A publication failure restores the backup when possible. If restoration or cleanup also fails,
-the error names the backup (or the part of it cleanup could not remove). A failed restoration therefore
-leaves the old output recoverable instead of silently losing it. Successful replacement removes the backup.
-
-Forced backup, publication, and restoration first request an atomic filesystem move and fall back to an
-ordinary same-filesystem move only when atomic moves are unsupported. Java's portable filesystem API does
-not provide an atomic directory exchange or bind earlier path-identity checks to a later move. Consequently,
-publishing over an existing empty destination or performing a forced replacement can briefly leave the
-destination absent. Forced replacement is rollback-protected but not universally transactional, and a
-process able to rewrite destination path components can still race publication. Keep the source and
-destination parent writable only by trusted participants.
+Extraction writes the layout into a temporary sibling directory and renames it into place, so an interrupted
+run leaves no partial tree. Without `--force`, a destination that exists and is not an empty directory,
+including a symbolic link, is refused and left untouched, also when it appears while extraction runs. With
+`--force`, the old destination (or only the link, when it is a symbolic link) is renamed to a sibling backup
+until the new layout is in place; if publication fails it is restored, or the error names the backup.
