@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.micronaut.application)
     // Applied without a version: the version is pinned in settings.gradle.
-    id 'io.micronaut.runner'
+    id 'io.micronaut.runner.standalone'
     // Only so the benchmark harness can compare against the format this one replaces.
     alias(libs.plugins.shadow)
 }
@@ -15,6 +15,11 @@ micronaut {
     processing {
         incremental true
         annotations 'com.example.*'
+    }
+    // The Runner plugin's options, where micronaut-gradle-plugin's own io.micronaut.runner reads them.
+    // STORED is the default.
+    runner {
+        compression = 'STORED'
     }
 }
 

@@ -6,11 +6,15 @@ description = 'Gradle plugin that packages Micronaut applications as fast-starti
 
 gradlePlugin {
     plugins {
+        // The declaration keeps its name, runner, so its publish tasks keep theirs. The id leaves
+        // io.micronaut.runner to micronaut-gradle-plugin, whose plugin of that id replaces this one.
         runner {
-            id = 'io.micronaut.runner'
+            id = 'io.micronaut.runner.standalone'
             implementationClass = 'io.micronaut.runner.gradle.MicronautRunnerPlugin'
-            displayName = 'Micronaut Runner Plugin'
-            description = 'Packages Micronaut applications as fast-starting single executable jars'
+            displayName = 'Micronaut Runner Plugin (interim)'
+            description = 'Packages Micronaut applications as fast-starting single executable jars. Interim:' +
+                    ' micronaut-gradle-plugin\'s io.micronaut.runner replaces it, with the same tasks and' +
+                    ' micronaut { runner { } } block.'
             tags.set(['micronaut', 'packaging', 'executable-jar'])
         }
     }

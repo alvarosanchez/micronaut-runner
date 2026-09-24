@@ -189,6 +189,57 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
     }
 
     /**
+     * The archive is named as an archive task names it: {@code base} moves and renames it, and the task's own
+     * classifier completes the name.
+     *
+     * @param directory a fresh project directory
+     * @throws IOException          if the fixture cannot be written
+     * @throws InterruptedException if the forked application is interrupted
+     */
+    @Test
+    void theArchiveFollowsTheBaseNamingConventions(@TempDir Path directory) throws IOException, InterruptedException {
+        writeFixture(directory, """
+                base {
+                    archivesName = 'renamed'
+                    libsDirectory = layout.buildDirectory.dir('dist')
+                }
+                tasks.named('micronautRunnerJar') {
+                    archiveClassifier = 'named'
+                }
+                """, "");
+
+        BuildResult result = build(directory, "micronautRunnerJar");
+
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, RUNNER_JAR_TASK));
+        Path archive = directory.resolve("build/dist/renamed-" + PROJECT_VERSION + "-named.jar");
+        assertTrue(Files.isRegularFile(archive), () -> "no archive at " + archive + ":\n" + result.getOutput());
+        assertFalse(Files.exists(directory.resolve(DEFAULT_ARCHIVE)),
+                () -> "the archive was also written under the default name:\n" + result.getOutput());
+        runJarSuccessfully(archive);
+    }
+
+    /**
+     * {@code enabled = false} skips the task, even as part of {@code assemble}, and writes nothing.
+     *
+     * @param directory a fresh project directory
+     * @throws IOException if the fixture cannot be written
+     */
+    @Test
+    void theKillSwitchSkipsTheTask(@TempDir Path directory) throws IOException {
+        writeFixture(directory, """
+                micronautRunner {
+                    enabled = false
+                }
+                """, "");
+
+        BuildResult result = build(directory, "assemble");
+
+        assertEquals(TaskOutcome.SKIPPED, outcomeOf(result, RUNNER_JAR_TASK));
+        assertFalse(Files.exists(directory.resolve(DEFAULT_ARCHIVE)),
+                () -> "a disabled plugin wrote the archive:\n" + result.getOutput());
+    }
+
+    /**
      * An unusable compression value fails the build with the packaging library's message, which names the
      * value and every supported alternative, rather than with an enum constant error.
      *

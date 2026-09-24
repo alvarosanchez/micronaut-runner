@@ -84,6 +84,9 @@ abstract class AbstractFunctionalTest {
     /** The path of the task this plugin registers, as Gradle reports it. */
     static final String RUNNER_JAR_TASK = ":micronautRunnerJar";
 
+    /** The id of the plugin under test. */
+    static final String PLUGIN_ID = "io.micronaut.runner.standalone";
+
     /** The aggregated local repository of {@code -DUMMY} publications, as a URI string. */
     private static final String REPOSITORY = requiredProperty("runner.test.repo");
 
@@ -100,7 +103,7 @@ abstract class AbstractFunctionalTest {
                     maven { url = uri('@repository@') }
                 }
                 plugins {
-                    id 'io.micronaut.runner' version '@version@'
+                    id '@plugin@' version '@version@'
                 }
             }
             @extra@
@@ -116,7 +119,7 @@ abstract class AbstractFunctionalTest {
     private static final String BUILD = """
             plugins {
                 id 'application'
-                id 'io.micronaut.runner'
+                @plugins@
             }
 
             group = 'com.example'
@@ -224,16 +227,27 @@ abstract class AbstractFunctionalTest {
      * @throws IOException if the fixture cannot be written
      */
     static Path writeFixture(Path directory, String buildExtra, String settingsExtra) throws IOException {
+        writeSettings(directory, settingsExtra);
+        write(directory.resolve("build.gradle"), buildScript("id '" + PLUGIN_ID + "'", buildExtra));
+        writeApplication(directory);
+        return directory;
+    }
+
+    /**
+     * Writes the settings file and the {@code gradle.properties} of a fixture build.
+     *
+     * @param directory     the root directory of the build
+     * @param settingsExtra Groovy appended to the settings file, outside the {@code pluginManagement} block
+     * @throws IOException if the files cannot be written
+     */
+    static void writeSettings(Path directory, String settingsExtra) throws IOException {
         Files.createDirectories(directory);
         write(directory.resolve("settings.gradle"), SETTINGS
                 .replace("@repository@", REPOSITORY)
+                .replace("@plugin@", PLUGIN_ID)
                 .replace("@version@", PLUGIN_VERSION)
                 .replace("@extra@", settingsExtra)
                 .replace("@name@", PROJECT_NAME));
-        write(directory.resolve("build.gradle"), BUILD
-                .replace("@version@", PROJECT_VERSION)
-                .replace("@mainClass@", MAIN_CLASS)
-                .replace("@extra@", buildExtra));
         // Identical in every fixture: a differing value would fork a second TestKit daemon.
         write(directory.resolve("gradle.properties"), """
                 org.gradle.jvmargs=-Xmx1g -Dfile.encoding=UTF-8
@@ -241,14 +255,81 @@ abstract class AbstractFunctionalTest {
                 org.gradle.caching=false
                 org.gradle.parallel=false
                 """);
-        write(directory.resolve("src/main/java/com/example/App.java"), APP_SOURCE);
-        write(directory.resolve("src/main/resources/message.txt"), "from the application layer\n");
+    }
 
-        Path libs = directory.resolve("libs");
+    /**
+     * The Groovy build file of a fixture project.
+     *
+     * @param plugins    the lines of the {@code plugins} block after {@code application}
+     * @param buildExtra Groovy appended to the build file
+     * @return the build file's content
+     */
+    static String buildScript(String plugins, String buildExtra) {
+        return BUILD
+                .replace("@plugins@", plugins)
+                .replace("@version@", PROJECT_VERSION)
+                .replace("@mainClass@", MAIN_CLASS)
+                .replace("@extra@", buildExtra);
+    }
+
+    /**
+     * Writes the fixture application into a project directory: its sources, its resource and the two
+     * dependency jars its build file declares.
+     *
+     * @param project the project directory
+     * @throws IOException if the files cannot be written
+     */
+    static void writeApplication(Path project) throws IOException {
+        write(project.resolve("src/main/java/com/example/App.java"), APP_SOURCE);
+        write(project.resolve("src/main/resources/message.txt"), "from the application layer\n");
+
+        Path libs = project.resolve("libs");
         Files.createDirectories(libs);
         Files.copy(libraries().resolve("alpha.jar"), libs.resolve("alpha.jar"));
         Files.copy(libraries().resolve("beta.jar"), libs.resolve("beta.jar"));
-        return directory;
+    }
+
+    /**
+     * Writes a {@code buildSrc} that stubs the Micronaut plugins by precompiled script plugins.
+     *
+     * <ul>
+     *     <li>{@code micronaut-stub} creates the {@code micronaut} extension, as {@code MicronautBasePlugin}
+     *     does, with an extensible type of the {@code buildSrc}'s own, as {@code MicronautExtension} is.</li>
+     *     <li>{@code io.micronaut.runner} stubs micronaut-gradle-plugin's Runner plugin: like it, it creates
+     *     {@code micronaut} if it is absent, and then {@code micronaut.runner}.</li>
+     * </ul>
+     *
+     * @param directory the root directory of the build
+     * @throws IOException if the files cannot be written
+     */
+    static void writeMicronautStubs(Path directory) throws IOException {
+        Path buildSrc = directory.resolve("buildSrc");
+        write(buildSrc.resolve("build.gradle"), """
+                plugins {
+                    id 'groovy-gradle-plugin'
+                }
+                """);
+        write(buildSrc.resolve("src/main/java/stub/MicronautStubExtension.java"), """
+                package stub;
+
+                import org.gradle.api.plugins.ExtensionAware;
+
+                public abstract class MicronautStubExtension implements ExtensionAware {
+                }
+                """);
+        write(buildSrc.resolve("src/main/java/stub/UpstreamRunnerStubExtension.java"), """
+                package stub;
+
+                public abstract class UpstreamRunnerStubExtension {
+                }
+                """);
+        write(buildSrc.resolve("src/main/groovy/micronaut-stub.gradle"), """
+                extensions.create('micronaut', stub.MicronautStubExtension)
+                """);
+        write(buildSrc.resolve("src/main/groovy/io.micronaut.runner.gradle"), """
+                def micronaut = extensions.findByName('micronaut') ?: extensions.create('micronaut', stub.MicronautStubExtension)
+                micronaut.extensions.create('runner', stub.UpstreamRunnerStubExtension)
+                """);
     }
 
     /**

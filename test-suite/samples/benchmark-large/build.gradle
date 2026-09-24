@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.micronaut.application)
-    id 'io.micronaut.runner'
+    id 'io.micronaut.runner.standalone'
     alias(libs.plugins.shadow)
 }
 

@@ -12,9 +12,17 @@ Apply the plugin alongside the Micronaut application plugin:
 ----
 plugins {
     id 'io.micronaut.application' version '5.0.2'
-    id 'io.micronaut.runner' version '{version}'
+    id 'io.micronaut.runner.standalone' version '{version}'
 }
 ----
+
+NOTE: `io.micronaut.runner.standalone` is an interim plugin. The `io.micronaut.runner` plugin of micronaut-gradle-plugin
+(https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1378[micronaut-projects/micronaut-gradle-plugin#1378])
+will replace it, with the same task names and the same `micronaut { runner { } }` block, so moving to it is a change of
+plugin ID. Applying both fails the build with `The io.micronaut.runner plugin from micronaut-gradle-plugin builds the
+Runner JAR in this build. Remove io.micronaut.runner.standalone: ...`. Only when a Micronaut plugin, this plugin and then
+`io.micronaut.runner` are applied in that order does the build fail earlier, with Gradle's `Cannot add extension with
+name 'runner', as there is an extension already registered with that name.`
 
 That is the whole configuration. The plugin adds a `micronautRunnerJar` task, wires it into `assemble`,
 and takes your main class from the `application` block and your dependencies from the runtime classpath,
@@ -34,35 +42,41 @@ archives under one name. The plugin fails the build if it detects that.
 
 === Configuration
 
-Every setting is a property of the task:
+In a build that applies a Micronaut plugin, the packaging options go in `micronaut { runner { } }`:
 
 [source,groovy]
 ----
-micronautRunnerJar {
-    // Defaults to application.mainClass
-    mainClass = 'com.example.Application'
+micronaut {
+    runner {
+        // false skips every task the plugin registers.
+        enabled = true
 
-    // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
-    // PRESERVE copies each dependency byte for byte, producing a smaller archive that loads more slowly.
-    compression = 'STORED'
+        // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
+        // PRESERVE copies each dependency byte for byte, producing a smaller archive that loads more slowly.
+        compression = 'STORED'
 
-    // Enter main through a generated direct call instead of reflection.
-    entryStub = true
+        // Enter main through a generated direct call instead of reflection.
+        entryStub = true
 
-    // Set this only when the application's own output is a multi-release JAR.
-    multiRelease = false
+        // Set this only when the application's own output is a multi-release JAR.
+        multiRelease = false
 
-    // Written into the manifest, so users need not pass the matching command line flags.
-    addOpens.add('java.base/java.lang')
-    addExports.add('java.base/sun.nio.ch')
-    enableNativeAccess = true
+        // Written into the manifest, so users need not pass the matching command line flags.
+        addOpens.add('java.base/java.lang')
+        addExports.add('java.base/sun.nio.ch')
+        enableNativeAccess = true
 
-    manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
+        manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
 
-    // Options without a typed property, by name (see the table below):
-    // options.put('<name>', '<value>')
+        // Options without a typed property, by name (see the table below):
+        // options.put('<name>', '<value>')
+    }
 }
 ----
+
+`micronautRunner { }` is the same extension under another name, for a build without a Micronaut plugin. Each option is
+also a property of the `micronautRunnerJar` task, which takes the extension's value as its default: a setting on the
+task wins for that task.
 
 Micronaut Runner's packaging library owns every option, its default and its validation; the plugins only pass
 what you set. Every option can be set by name, with the value as text: `true` or `false` for a boolean, a
@@ -104,7 +118,53 @@ set `applicationJar = tasks.named('jar').flatMap { it.archiveFile }`.
 Dependencies that are JAR files are nested, a dependency that is a directory fails the build, and any other
 file, such as a POM, is skipped with a warning.
 
+The main class and the archive's name are properties of the task only:
+
+[source,groovy]
+----
+micronautRunnerJar {
+    // Defaults to application.mainClass
+    mainClass = 'com.example.Application'
+
+    // Defaults to all
+    archiveClassifier = 'executable'
+}
+----
+
+The task names the archive `<archiveBaseName>-<archiveVersion>-<archiveClassifier>.jar` and writes it to
+`destinationDirectory`. These default to `base.archivesName`, the project version, `all` and `base.libsDirectory`, so
+`base { libsDirectory = ... }` moves the archive with every other JAR of the project. In a build that applies
+`io.micronaut.application`, do not choose `runner` as the classifier: the Docker plugin's `runnerJar` task already
+writes `-runner.jar`.
+
+=== Publishing
+
+The plugin exposes the archive as the `micronautRunnerElements` configuration. Its `Usage` attribute is
+`micronaut-runner`, so a Java consumer of the project never selects it by accident; another project of the build
+takes it by name, with `project(path: ':app', configuration: 'micronautRunnerElements')`.
+
+To publish the archive with `maven-publish`, add it to the publication:
+
+[source,groovy]
+----
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            artifact(tasks.named('micronautRunnerJar').flatMap { it.archiveFile }) {
+                classifier = 'all'
+                builtBy tasks.named('micronautRunnerJar')
+            }
+        }
+    }
+}
+----
+
 == Maven
+
+NOTE: This Maven plugin is interim. The `runner` packaging of micronaut-maven-plugin
+(https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1720[micronaut-projects/micronaut-maven-plugin#1720])
+will replace it, and this plugin's `package` goal fails in a project with `runner` packaging, even when it is skipped.
 
 Add the plugin to your build. Bind it to `package`, so it runs after the JAR is built:
 

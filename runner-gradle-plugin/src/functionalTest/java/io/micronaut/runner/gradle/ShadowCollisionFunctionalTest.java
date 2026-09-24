@@ -247,7 +247,7 @@ class ShadowCollisionFunctionalTest extends AbstractFunctionalTest {
                 () -> "the failure does not explain the collision:\n" + output);
         assertTrue(output.contains(PROJECT_NAME + "-" + PROJECT_VERSION + "-all.jar"),
                 () -> "the failure does not name the archive they collided on:\n" + output);
-        assertTrue(output.contains("micronautRunnerJar { archiveClassifier = 'runner' }"),
+        assertTrue(output.contains("micronautRunnerJar { archiveClassifier = 'executable' }"),
                 () -> "the failure does not say how to fix it:\n" + output);
     }
 }

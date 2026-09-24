@@ -60,7 +60,7 @@ public abstract class ValidateShadowArchiveCollision extends DefaultTask {
             throw new GradleException("The shadow plugin is configured to write " + shadow
                     + " from shadowJar, which is also the micronautRunnerJar output. A runner jar and a"
                     + " shaded jar are different archives and cannot share a file name. Give one of them"
-                    + " another classifier, for example micronautRunnerJar { archiveClassifier = 'runner' }.");
+                    + " another classifier, for example micronautRunnerJar { archiveClassifier = 'executable' }.");
         }
     }
 }

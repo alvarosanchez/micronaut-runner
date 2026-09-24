@@ -3,7 +3,7 @@
 # Micronaut Runner
 
 [![Maven Central](https://img.shields.io/maven-central/v/io.micronaut.runner/micronaut-runner-launcher.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:%22io.micronaut.runner%22%20AND%20a:%22micronaut-runner-launcher%22)
-[![Gradle Plugin Portal](https://img.shields.io/gradle-plugin-portal/v/io.micronaut.runner?label=Gradle%20Plugin%20Portal)](https://plugins.gradle.org/plugin/io.micronaut.runner)
+[![Gradle Plugin Portal](https://img.shields.io/gradle-plugin-portal/v/io.micronaut.runner.standalone?label=Gradle%20Plugin%20Portal)](https://plugins.gradle.org/plugin/io.micronaut.runner.standalone)
 [![Build Status](https://github.com/micronaut-projects/micronaut-runner/workflows/Java%20CI/badge.svg)](https://github.com/micronaut-projects/micronaut-runner/actions)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=micronaut-projects_micronaut-runner&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=micronaut-projects_micronaut-runner)
 [![Revved up by Develocity](https://img.shields.io/badge/Revved%20up%20by-Develocity-06A0CE?logo=Gradle&labelColor=02303A)](https://ge.micronaut.io/scans)
