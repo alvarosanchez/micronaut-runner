@@ -79,7 +79,13 @@ class RepresentativeWorkloadTest {
         assertTrue(java.nio.file.Files.isRegularFile(output.resolve("packaging-summary.md")));
     }
 
+    /**
+     * Builds the 300-jar wide fixture only to assert lookup counts that
+     * {@link #resourceWorkloadExercisesSteadyStateOperations()} also asserts on the small shape, so it runs with
+     * the benchmark-tool tests to keep the default task within its CI budget.
+     */
     @Test
+    @Tag("benchmark-integration")
     void resourceWorkloadSupportsWideLowEntryShape() throws Exception {
         SyntheticArchive archive = SyntheticArchive.forWorkload("wide");
         try (RepresentativeResourceWorkload workload = RepresentativeResourceWorkload.url(archive)) {
