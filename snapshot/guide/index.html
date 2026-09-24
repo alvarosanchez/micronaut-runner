@@ -237,34 +237,9 @@ classes, and it hands control to your <code>main</code> method through an interf
 <h2 id="_prerequisites">Prerequisites</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Micronaut Runner&#8217;s published libraries and build plugins target Java 25. Use a JDK 25 installation to run
-the build and Java 25 to launch the packaged application. JDK 25 is the supported baseline. The project&#8217;s
-non-blocking early-access JDK 26 CI job is a forward-compatibility signal, not a requirement or an unlimited
-compatibility guarantee for later JDKs.</p>
-</div>
-<div class="paragraph">
-<p>The Java installations selected for the shell, the build tool, application compilation and deployment can
-be different. In particular, a Gradle or Maven Java toolchain controls application compilation; it does not
-change the build-tool JVM that loads the Micronaut Runner plugin. Point <code>JAVA_HOME</code> at JDK 25 (and put its
-<code>bin</code> directory first on <code>PATH</code>) before invoking Gradle or Maven. If the build has an explicit Gradle daemon
-JVM or Maven launcher configuration, update that selection as well. The deployment image or host that runs
-the resulting runner JAR must also provide Java 25; selecting a Java 25 compilation toolchain alone does not
-update that runtime.</p>
-</div>
-<div class="paragraph">
-<p>Check each relevant JVM before applying the plugin or launching the application:</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -version
-./gradlew --version
-mvn -version</code></pre>
-</div>
-</div>
-<div class="paragraph">
-<p><code>java -version</code> reports the shell and deployment command&#8217;s runtime. In <code>./gradlew --version</code>, verify the
-launcher and daemon JVM; in <code>mvn -version</code>, verify the reported Java version and runtime path. Each must show
-the intended JDK 25 installation for the corresponding quick-start path.</p>
+<p>Micronaut Runner needs Java 25 in two places: the JVM that runs Gradle or Maven, and the JVM that runs the
+packaged application. A compilation toolchain does not change the build-tool JVM, so check
+<code>./gradlew --version</code> or <code>mvn -version</code> as well as <code>java -version</code>.</p>
 </div>
 </div>
 </div>
@@ -325,7 +300,7 @@ archives under one name. The plugin fails the build if it detects that.
     // PRESERVE copies each dependency byte for byte, producing a smaller archive that loads more slowly.
     compression = 'STORED'
 
-    // Both build plugins default to requesting an entry stub. The low-level RunnerJarSpec builder does not.
+    // Enter main through a generated direct call instead of reflection.
     entryStub = true
 
     // Set this only when the application's own output is a multi-release JAR.
@@ -341,30 +316,23 @@ archives under one name. The plugin fails the build if it detects that.
 </div>
 </div>
 <div class="paragraph">
-<p>The application&#8217;s <code>Implementation-<strong></code>, <code>Specification-</strong></code> and <code>Sealed</code> attributes and package sections come from the
+<p>The entry stub is generated only when the main class is a public, non-abstract class in a named package that
+declares its own <code>public static void main(String[])</code>, in every selectable version of a multi-release application.
+Otherwise the packager reports why and the launcher calls <code>main</code> through reflection.</p>
+</div>
+<div class="paragraph">
+<p><code>addOpens</code> and <code>addExports</code> entries are <code>module/package</code> pairs in manifest syntax, with no <code>=ALL-UNNAMED</code> suffix,
+and invalid entries fail packaging.</p>
+</div>
+<div class="paragraph">
+<p>The application&#8217;s <code>Implementation-*</code>, <code>Specification-*</code> and <code>Sealed</code> attributes and package sections come from the
 <code>jar</code> task&#8217;s manifest configuration, including <code>manifest.from(&#8230;&#8203;)</code> merges; <code>micronautRunnerJar</code> does not build the
 thin JAR. If the <code>jar</code> task adds attributes in <code>doFirst</code> or <code>doLast</code>, or merges a file that another task generates,
 set <code>applicationJar = tasks.named('jar').flatMap { it.archiveFile }</code>.</p>
 </div>
 <div class="paragraph">
-<p><code>manifestAttributes</code> may override attributes imported from the application&#8217;s manifest. <code>Manifest-Version</code>,
-<code>Main-Class</code> and every attribute whose name begins with <code>Micronaut-Runner-</code> are reserved for the runner
-format and are rejected case-insensitively.</p>
-</div>
-<div class="paragraph">
-<p>The low-level <code>RunnerJarSpec.Builder.manifestAttributes</code> API preserves the map&#8217;s iteration order. Pass a
-deterministically ordered map, such as <code>LinkedHashMap</code>, when builds in separate JVMs must produce identical
-bytes. Code that wants logical map equality to be the reproducibility input can instead call
-<code>canonicalManifestAttributes</code>; it sorts names lexicographically without using the default locale and rejects
-two names that differ only by case, because manifest attribute names are case insensitive.</p>
-</div>
-<div class="paragraph">
-<p><code>addExports</code> and <code>addOpens</code> use executable-JAR manifest syntax in both plugins and in
-<code>RunnerJarSpec.Builder</code>: each list entry is exactly one <code>module/package</code> pair. The packager joins multiple
-entries with spaces in <code>Add-Exports</code> or <code>Add-Opens</code>. Do not append <code>=ALL-UNNAMED</code>; that target is implicit in
-the manifest. The suffix belongs only to the equivalent Java command-line options, for example
-<code>--add-exports java.base/sun.nio.ch=ALL-UNNAMED</code>. Invalid entries fail packaging rather than being written
-into a manifest the JDK would ignore.</p>
+<p><code>manifestAttributes</code> may override attributes imported from the application&#8217;s manifest, but <code>Manifest-Version</code>,
+<code>Main-Class</code> and <code>Micronaut-Runner-*</code> attributes are reserved and rejected.</p>
 </div>
 </div>
 </div>
@@ -406,15 +374,7 @@ attach it as an additional artifact instead and leave the main one untouched.</p
 <p>The main class is taken from the <code>exec.mainClass</code> property, which the Micronaut parent POM already sets.</p>
 </div>
 <div class="paragraph">
-<p>Both plugins request a generated entry stub by default; the low-level <code>RunnerJarSpec.Builder</code> default is
-<code>false</code>. A request produces a stub only when the main class is a public, non-abstract class in a named
-package that declares its own <code>public static void main(String[])</code>. For a declared multi-release application,
-every selectable version of the main class must have that shape. Otherwise the packager reports the reason,
-records no stub in the index and the launcher enters the application through its reflective fallback. The
-request is therefore not a promise that a stub will be present or that startup will be faster.</p>
-</div>
-<div class="paragraph">
-<p>The Maven list syntax follows the same manifest grammar:</p>
+<p>In Maven, each <code>addExports</code>/<code>addOpens</code> entry is its own element:</p>
 </div>
 <div class="listingblock">
 <div class="content">
@@ -862,16 +822,6 @@ complete URL path, including components after Unicode text. Unicode is encoded a
 <code>%</code>, <code>#</code> and <code>?</code> are percent-encoded. A Windows drive path therefore starts with <code>file:/C:/</code>; a UNC shape
 starts with <code><a href="file://server/share/" class="bare">file://server/share/</a></code>. On POSIX, a backslash is data rather than a separator and is encoded as
 <code>%5C</code>.</p>
-</div>
-<div class="paragraph">
-<p>Windows CI starts both the synthetic end-to-end fixture and a real Micronaut HTTP application from a path
-shaped like <code>unicode-é/apps with a space/app.jar</code>. The former opens resources through <code>URL</code>, <code>JarFile</code> and
-the same URI-to-<code>File</code> conversion that Micronaut uses to list bean metadata; the latter must start and find
-its beans before serving a request. A separate Windows JDK 25 regression probe confirms that the previous
-non-canonical representation, which changed later separators to <code>%5C</code>, was still accepted by <code>File</code>,
-<code>URL.openStream()</code>, <code>JarFile</code> and a <code>jar:</code> URL. The encoding defect therefore did not reproduce as a startup
-or bean-discovery failure in those supported consumers. Hosted CI has no network share, so UNC behavior is
-limited to deterministic URL-shape coverage rather than opening a real UNC archive.</p>
 </div>
 </div>
 </div>
