@@ -129,7 +129,7 @@ class MavenBasicSampleTest {
         AssertionError mismatch = assertThrows(AssertionError.class, () -> assertChecksumsMatch(jar));
         assertTrue(mismatch.getMessage().contains("does not describe the staged bytes"), mismatch::getMessage);
 
-        Path sample = copySample(Samples.sample("maven-basic"), temporary.resolve("stale-sample"));
+        Path sample = Samples.copySample(Samples.sample("maven-basic"), temporary.resolve("stale-sample"));
         StringBuilder log = new StringBuilder();
         int status = maven(sample, log, repository.toUri().toASCIIString(),
                 temporary.resolve("empty-maven-local"), "package");
@@ -145,7 +145,7 @@ class MavenBasicSampleTest {
         Files.writeString(source.resolve("pom.xml"), "fixture", StandardCharsets.UTF_8);
         Files.writeString(source.resolve("target/stale.jar"), "stale", StandardCharsets.UTF_8);
 
-        Path copy = copySample(source, temporary.resolve("copy"));
+        Path copy = Samples.copySample(source, temporary.resolve("copy"));
 
         assertEquals("fixture", Files.readString(copy.resolve("pom.xml"), StandardCharsets.UTF_8));
         assertFalse(Files.exists(copy.resolve("target")), "build output must not be copied into the test fixture");
@@ -197,7 +197,7 @@ class MavenBasicSampleTest {
         Samples.requirePublishedArtifact("io/micronaut/runner/micronaut-runner-maven-plugin/"
                 + Samples.VERSION + "/micronaut-runner-maven-plugin-" + Samples.VERSION + ".jar");
         requireMavenCanLoadThePlugin();
-        Path sample = copySample(Samples.sample("maven-basic"), temporary.resolve("maven-basic"));
+        Path sample = Samples.copySample(Samples.sample("maven-basic"), temporary.resolve("maven-basic"));
         Path archive = sample.resolve("target/maven-basic-0.1.jar");
         Path original = sample.resolve("target/original-maven-basic-0.1.jar");
 
@@ -252,7 +252,7 @@ class MavenBasicSampleTest {
 
     /** Runs Maven against the sample, capturing everything it prints. */
     private static int maven(Path projectDirectory, StringBuilder log, String... goals) throws Exception {
-        return maven(projectDirectory, log, Samples.REPO, localRepository(), goals);
+        return maven(projectDirectory, log, Samples.REPO, Samples.mavenLocalRepository(), goals);
     }
 
     private static int maven(Path projectDirectory, StringBuilder log, String repository,
@@ -293,14 +293,8 @@ class MavenBasicSampleTest {
         return result.getExitCode();
     }
 
-    /** This suite's own Maven local repository, beside the other outputs of the test-suite build. */
-    private static Path localRepository() {
-        return Path.of(System.getProperty("runner.test.samplesDir"))
-                .getParent().resolve("build").resolve("maven-local-repo");
-    }
-
     /** Returns the checksum-verified Maven home provisioned by the Gradle build. */
-    private static Path mavenHome() {
+    static Path mavenHome() {
         return mavenHome(System.getProperty("runner.test.mavenHome"), System.getProperty("os.name", ""));
     }
 
@@ -393,24 +387,6 @@ class MavenBasicSampleTest {
                 }
             }
         }
-    }
-
-    private static Path copySample(Path source, Path target) throws IOException {
-        try (var files = Files.walk(source)) {
-            for (Path file : files.toList()) {
-                Path relative = source.relativize(file);
-                if (relative.getNameCount() > 0 && relative.getName(0).toString().equals("target")) {
-                    continue;
-                }
-                Path destination = target.resolve(relative);
-                if (Files.isDirectory(file)) {
-                    Files.createDirectories(destination);
-                } else {
-                    Files.copy(file, destination);
-                }
-            }
-        }
-        return target;
     }
 
     private static void assertManifestVersion(Path jar, String section, String expected) throws IOException {

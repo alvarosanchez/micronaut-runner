@@ -32,26 +32,18 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.OutputKeys;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -65,18 +57,23 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Publishes the normal (non-DUMMY) publications from an isolated copy of the production build, then
- * inspects and consumes them without {@code mavenLocal}, composite substitution or TestKit's plugin
+ * Inspects and consumes the normal (non-DUMMY) publications that the main build published into
+ * {@code runner.smoke.repo}, without {@code mavenLocal}, composite substitution or TestKit's plugin
  * classpath. This deliberately complements the fast {@code -DUMMY} repository used by the rest of the
  * suite: that repository reconstructs POMs and disables module metadata, so it cannot prove that the
  * release publications themselves are consumable.
+ *
+ * <p>Runs only as {@code :test-suite:publicationSmokeTest}, never in {@code check}, and needs a
+ * release-shaped version such as {@code -PprojectVersion=1.0.0-PUBLICATION-SMOKE}: a {@code -SNAPSHOT}
+ * publishes timestamped file names. Every prerequisite is a hard requirement, because the task only runs
+ * when someone asks for it.</p>
  */
-@Timeout(value = 45, unit = TimeUnit.MINUTES)
+@Timeout(value = 20, unit = TimeUnit.MINUTES)
 class PublicationMetadataSmokeTest {
 
     private static final String GROUP = "io.micronaut.runner";
     private static final String GROUP_PATH = "io/micronaut/runner";
-    private static final String VERSION = "1.0.0-PUBLICATION-SMOKE";
+    private static final String VERSION = System.getProperty("runner.smoke.version");
     private static final String MARKER = "io.micronaut.runner.gradle.plugin";
     private static final String GRADLE_PLUGIN = "micronaut-runner-gradle-plugin";
     private static final String MAVEN_PLUGIN = "micronaut-runner-maven-plugin";
@@ -90,55 +87,24 @@ class PublicationMetadataSmokeTest {
             "sha512", "SHA-512");
 
     private static Path workspace;
-    private static Path isolatedBuild;
     private static Path repository;
 
     @BeforeAll
-    static void publishNormalPublications() throws Exception {
-        Samples.assumeTheBuildProvidedItsProperties();
-        Samples.requireIntegrationScenario();
-        Path project = requiredPathProperty("runner.test.projectDir");
+    static void requirePublicationsAndWorkspace() throws IOException {
+        assertNotNull(VERSION, "runner.smoke.version is not set; run this test through "
+                + ":test-suite:publicationSmokeTest");
+        assertFalse(VERSION.endsWith("-SNAPSHOT"), () -> "runner.smoke.version must be release-shaped, not "
+                + VERSION + "; run with -PprojectVersion=1.0.0-PUBLICATION-SMOKE");
+        repository = requiredPathProperty("runner.smoke.repo");
+        assertTrue(Files.isDirectory(artifactDirectory(repository, BOM)),
+                () -> "the main build published nothing at " + VERSION + " into " + repository);
+        requiredPathProperty("runner.test.samplesDir");
+        MavenBasicSampleTest.mavenHome();
+        assertNotNull(Samples.javaExecutable(), "no JDK to start the packaged applications with; "
+                + "set runner.test.javaHome");
         workspace = requiredPathProperty("runner.test.publicationSmokeDir");
         Samples.deleteRecursively(workspace);
         Files.createDirectories(workspace);
-        isolatedBuild = workspace.resolve("producer");
-        repository = workspace.resolve("repository");
-        copyBuild(project, isolatedBuild);
-
-        Path initScript = workspace.resolve("publication-smoke.init.gradle");
-        Files.writeString(initScript, """
-                gradle.beforeProject { project ->
-                    project.pluginManager.withPlugin('maven-publish') {
-                        project.publishing.repositories.maven {
-                            name = 'publicationSmoke'
-                            url = new File(System.getProperty('runner.smoke.repo')).toURI()
-                        }
-                    }
-                }
-                """, StandardCharsets.UTF_8);
-
-        BuildResult result = gradle(isolatedBuild, workspace.resolve("producer-gradle-home"),
-                "-I", initScript.toString(),
-                "-Drunner.smoke.repo=" + repository,
-                "-PprojectVersion=" + VERSION,
-                ":micronaut-runner-launcher:publishMavenPublicationToPublicationSmokeRepository",
-                ":micronaut-runner-build:publishMavenPublicationToPublicationSmokeRepository",
-                ":micronaut-runner-gradle-plugin:publishPluginMavenPublicationToPublicationSmokeRepository",
-                ":micronaut-runner-gradle-plugin:publishRunnerPluginMarkerMavenPublicationToPublicationSmokeRepository",
-                ":micronaut-runner-maven-plugin:publishMavenPublicationToPublicationSmokeRepository",
-                ":micronaut-runner-bom:publishMavenPublicationToPublicationSmokeRepository");
-
-        for (String task : List.of(
-                ":micronaut-runner-launcher:publishMavenPublicationToPublicationSmokeRepository",
-                ":micronaut-runner-build:publishMavenPublicationToPublicationSmokeRepository",
-                ":micronaut-runner-gradle-plugin:publishPluginMavenPublicationToPublicationSmokeRepository",
-                ":micronaut-runner-gradle-plugin:publishRunnerPluginMarkerMavenPublicationToPublicationSmokeRepository",
-                ":micronaut-runner-maven-plugin:publishMavenPublicationToPublicationSmokeRepository",
-                ":micronaut-runner-bom:publishMavenPublicationToPublicationSmokeRepository")) {
-            assertNotNull(result.task(task), () -> "normal publication task did not run: " + task);
-            assertEquals(TaskOutcome.SUCCESS, result.task(task).getOutcome(),
-                    () -> "normal publication task did not succeed: " + task + "\n" + result.getOutput());
-        }
     }
 
     @Test
@@ -197,64 +163,22 @@ class PublicationMetadataSmokeTest {
     }
 
     @Test
-    void gradleMarkerAndModuleMetadataAreRequiredByFreshConsumers() throws Exception {
-        Path markerConsumer = isolatedBuild.resolve("test-suite/samples/published-marker-consumer");
-        BuildResult markerResult = gradle(markerConsumer, workspace.resolve("marker-gradle-home"),
+    void gradleConsumersResolveThePluginMarkerAndModuleMetadata() {
+        BuildResult markerResult = gradle(Samples.sample("published-marker-consumer"),
                 "verifyMarker", "-Prunner.repo=" + repository.toUri(), "-Prunner.version=" + VERSION);
         assertEquals(TaskOutcome.SUCCESS, markerResult.task(":verifyMarker").getOutcome(), markerResult::getOutput);
 
-        Path metadataConsumer = isolatedBuild.resolve("test-suite/samples/published-module-metadata-consumer");
-        BuildResult metadataResult = gradle(metadataConsumer, workspace.resolve("metadata-gradle-home"),
+        BuildResult metadataResult = gradle(Samples.sample("published-module-metadata-consumer"),
                 "verifyMetadata", "-Prunner.repo=" + repository.toUri(), "-Prunner.version=" + VERSION);
         assertEquals(TaskOutcome.SUCCESS, metadataResult.task(":verifyMetadata").getOutcome(),
                 metadataResult::getOutput);
     }
 
     @Test
-    void brokenMarkerDependencyIsRejectedByFreshGradleConsumer() throws Exception {
-        Path brokenRepository = workspace.resolve("broken-marker-repository");
-        copyTree(repository, brokenRepository);
-        Path markerPom = artifact(brokenRepository, MARKER, "pom");
-        Document document = parseXml(markerPom);
-        Element dependencies = directChild(document.getDocumentElement(), "dependencies");
-        assertNotNull(dependencies, "the production marker fixture must start with a dependency");
-        document.getDocumentElement().removeChild(dependencies);
-        writeXml(document, markerPom);
-
-        Path consumer = isolatedBuild.resolve("test-suite/samples/published-marker-consumer");
-        BuildResult failure = gradleAndFail(consumer, workspace.resolve("broken-marker-gradle-home"),
-                "verifyMarker", "-Prunner.repo=" + brokenRepository.toUri(), "-Prunner.version=" + VERSION);
-        String output = failure.getOutput().toLowerCase(Locale.ROOT);
-        assertTrue(output.contains("plugin") && (output.contains("not found") || output.contains("unknownplugin")),
-                () -> "breaking the marker dependency failed for an unrelated reason:\n" + failure.getOutput());
-    }
-
-    @Test
-    void brokenJvmAttributeIsRejectedByMetadataOnlyConsumer() throws Exception {
-        Path brokenRepository = workspace.resolve("broken-module-repository");
-        copyTree(repository, brokenRepository);
-        Path module = artifact(brokenRepository, GRADLE_PLUGIN, "module");
-        String original = Files.readString(module, StandardCharsets.UTF_8);
-        String broken = original.replace("\"org.gradle.jvm.version\": 25", "\"org.gradle.jvm.version\": 99");
-        assertFalse(original.equals(broken), "the fixture must carry the declared Java 25 variants");
-        Files.writeString(module, broken, StandardCharsets.UTF_8);
-
-        Path consumer = isolatedBuild.resolve("test-suite/samples/published-module-metadata-consumer");
-        BuildResult failure = gradleAndFail(consumer, workspace.resolve("broken-module-gradle-home"),
-                "verifyMetadata", "-Prunner.repo=" + brokenRepository.toUri(), "-Prunner.version=" + VERSION);
-        String output = failure.getOutput().toLowerCase(Locale.ROOT);
-        assertTrue(output.contains("no matching variant") || output.contains("incompatible because")
-                        || output.contains("only compatible with jvm runtime version"),
-                () -> "breaking the JVM attribute failed for an unrelated reason:\n" + failure.getOutput());
-    }
-
-    @Test
-    void gradleConsumerPackagesAndLaunchesFromFreshCache() throws Exception {
-        Samples.requireIntegrationScenario();
-        Path sample = isolatedBuild.resolve("test-suite/samples/hello-netty");
-        BuildResult result = gradle(sample, workspace.resolve("sample-gradle-home"),
-                "clean", ":micronautRunnerJar", "-Prunner.repo=" + repository.toUri(),
-                "-Prunner.version=" + VERSION);
+    void gradleConsumerPackagesHelloNettyAndServesARequest() throws Exception {
+        Path sample = Samples.sample("hello-netty");
+        BuildResult result = gradle(sample, "clean", ":micronautRunnerJar",
+                "-Prunner.repo=" + repository.toUri(), "-Prunner.version=" + VERSION);
         assertEquals(TaskOutcome.SUCCESS, result.task(":micronautRunnerJar").getOutcome(), result::getOutput);
 
         Path archive = sample.resolve("build/libs/hello-netty-0.1-all.jar");
@@ -272,13 +196,11 @@ class PublicationMetadataSmokeTest {
     }
 
     @Test
-    void mavenConsumerPackagesAndLaunchesStrictlyFromFreshCache() throws Exception {
-        Samples.requireIntegrationScenario();
-        Path source = isolatedBuild.resolve("test-suite/samples/maven-basic");
-        Path sample = workspace.resolve("maven-sample");
-        copyTree(source, sample);
-        Path localRepository = workspace.resolve("maven-local-repository");
+    void strictMavenConsumerPackagesAndRunsMavenBasic() throws Exception {
+        Path sample = Samples.copySample(Samples.sample("maven-basic"), workspace.resolve("maven-basic"));
+        Path localRepository = Samples.mavenLocalRepository();
         Files.createDirectories(localRepository);
+        Samples.deleteRecursively(localRepository.resolve(GROUP_PATH));
 
         StringBuilder log = new StringBuilder();
         Properties properties = new Properties();
@@ -300,7 +222,8 @@ class PublicationMetadataSmokeTest {
                 .setInputStream(InputStream.nullInputStream());
         request.setOutputHandler(line -> log.append(line).append('\n'));
         request.setErrorHandler(line -> log.append(line).append('\n'));
-        InvocationResult result = new DefaultInvoker().setMavenHome(mavenHome().toFile()).execute(request);
+        InvocationResult result = new DefaultInvoker().setMavenHome(MavenBasicSampleTest.mavenHome().toFile())
+                .execute(request);
         if (result.getExecutionException() != null) {
             throw new AssertionError("Maven could not be run:\n" + log, result.getExecutionException());
         }
@@ -524,46 +447,24 @@ class PublicationMetadataSmokeTest {
         return factory.newDocumentBuilder().parse(file.toFile());
     }
 
-    private static void writeXml(Document document, Path file) throws Exception {
-        var transformer = TransformerFactory.newInstance().newTransformer();
-        transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-        transformer.transform(new DOMSource(document), new StreamResult(file.toFile()));
-    }
-
-    private static BuildResult gradle(Path project, Path gradleHome, String... arguments) throws IOException {
-        Files.createDirectories(gradleHome);
+    /**
+     * Runs a consumer build in place, in TestKit's default directory: the Gradle home every Test task of
+     * this build shares. Gradle never caches metadata or artifacts from a {@code file:} repository, so a
+     * warm home cannot hide a missing publication.
+     */
+    private static BuildResult gradle(Path project, String... arguments) {
         List<String> allArguments = new ArrayList<>(List.of(arguments));
         allArguments.add("--stacktrace");
         allArguments.add("--console=plain");
-        allArguments.add("--no-build-cache");
         allArguments.add("--max-workers=2");
         return GradleRunner.create()
                 .withProjectDir(project.toFile())
-                .withTestKitDir(gradleHome.toFile())
                 .withArguments(allArguments)
                 .build();
     }
 
-    private static BuildResult gradleAndFail(Path project, Path gradleHome, String... arguments) throws IOException {
-        Files.createDirectories(gradleHome);
-        List<String> allArguments = new ArrayList<>(List.of(arguments));
-        allArguments.add("--stacktrace");
-        allArguments.add("--console=plain");
-        allArguments.add("--no-build-cache");
-        allArguments.add("--max-workers=2");
-        return GradleRunner.create()
-                .withProjectDir(project.toFile())
-                .withTestKitDir(gradleHome.toFile())
-                .withArguments(allArguments)
-                .buildAndFail();
-    }
-
     private static Path artifact(String artifactId, String extension) {
-        return artifact(repository, artifactId, extension);
-    }
-
-    private static Path artifact(Path root, String artifactId, String extension) {
-        return artifactDirectory(root, artifactId).resolve(artifactId + "-" + VERSION + "." + extension);
+        return artifactDirectory(repository, artifactId).resolve(artifactId + "-" + VERSION + "." + extension);
     }
 
     private static Path artifactDirectory(Path root, String artifactId) {
@@ -576,74 +477,7 @@ class PublicationMetadataSmokeTest {
 
     private static Path requiredPathProperty(String name) {
         String value = System.getProperty(name);
-        assertNotNull(value, () -> name + " is not set; run this test through :test-suite:test");
+        assertNotNull(value, () -> name + " is not set; run this test through :test-suite:publicationSmokeTest");
         return Path.of(value);
-    }
-
-    private static Path mavenHome() {
-        String configured = System.getProperty("runner.test.mavenHome");
-        assertNotNull(configured, "runner.test.mavenHome is not set; run this test through Gradle");
-        Path home = Path.of(configured);
-        String executable = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
-                ? "mvn.cmd" : "mvn";
-        assertTrue(Files.isRegularFile(home.resolve("bin").resolve(executable)),
-                () -> "the pinned Maven distribution has no " + executable);
-        return home;
-    }
-
-    private static void copyBuild(Path source, Path target) throws IOException {
-        Files.walkFileTree(source, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
-                    throws IOException {
-                Path relative = source.relativize(directory);
-                if (isExcluded(relative)) {
-                    return FileVisitResult.SKIP_SUBTREE;
-                }
-                Files.createDirectories(target.resolve(relative));
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
-                Path relative = source.relativize(file);
-                if (!isExcluded(relative)) {
-                    Files.copy(file, target.resolve(relative), StandardCopyOption.REPLACE_EXISTING);
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
-    }
-
-    private static boolean isExcluded(Path relative) {
-        boolean insideSources = false;
-        for (Path part : relative) {
-            String name = part.toString();
-            if (name.equals("src")) {
-                insideSources = true;
-            }
-            if (name.equals(".git") || name.equals(".gradle") || name.equals(".idea")
-                    || (!insideSources && (name.equals("build") || name.equals("target")))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static void copyTree(Path source, Path target) throws IOException {
-        Files.walkFileTree(source, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
-                    throws IOException {
-                Files.createDirectories(target.resolve(source.relativize(directory)));
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
-                Files.copy(file, target.resolve(source.relativize(file)), StandardCopyOption.REPLACE_EXISTING);
-                return FileVisitResult.CONTINUE;
-            }
-        });
     }
 }

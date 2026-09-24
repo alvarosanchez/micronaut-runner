@@ -32,7 +32,9 @@ When deliberately working without dependency-repository access, opt out explicit
 RUNNER_TEST_OFFLINE=true ./gradlew check
 ```
 
-Combining `-Prunner.integration=required` with `RUNNER_TEST_OFFLINE=true` is an error.
+`-Prunner.integration` takes precedence over `RUNNER_TEST_OFFLINE`.
+
+`check` does not run the production-publication smoke test. Run it with `./gradlew :test-suite:publicationSmokeTest -PprojectVersion=1.0.0-PUBLICATION-SMOKE` when you change publishing or build logic.
 
 `check` does not run the build-logic tests; after changing `buildSrc/`, run `./gradlew :buildSrc:test`.
 

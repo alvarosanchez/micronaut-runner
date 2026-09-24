@@ -1,3 +1,22 @@
 plugins {
     id "io.micronaut.build.internal.parent"
 }
+
+// The production publications, published on demand for :test-suite:publicationSmokeTest. Registered here
+// rather than in runner-test-repo because runner-bom does not apply that convention; its onlyIf already keeps
+// the -DUMMY twins out of every repository but testRepo.
+def publicationSmokeRepo = layout.buildDirectory.dir('publication-smoke-repo')
+def cleanPublicationSmokeRepo = tasks.register('cleanPublicationSmokeRepo', Delete) {
+    delete publicationSmokeRepo
+}
+subprojects { p ->
+    p.pluginManager.withPlugin('maven-publish') {
+        p.extensions.getByType(PublishingExtension).repositories.maven {
+            name = 'publicationSmoke'
+            url = publicationSmokeRepo
+        }
+        p.tasks.withType(PublishToMavenRepository)
+                .matching { it.name.endsWith('ToPublicationSmokeRepository') }
+                .configureEach { dependsOn cleanPublicationSmokeRepo }
+    }
+}

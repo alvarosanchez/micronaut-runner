@@ -4,8 +4,6 @@
  *
  * Adapted from micronaut-gradle-plugin's io.micronaut.internal.build.functional-testing convention plugin.
  */
-import io.micronaut.runner.buildlogic.IntegrationMode
-
 import java.security.MessageDigest
 
 plugins {
@@ -116,9 +114,14 @@ abstract class RepositoryProvider implements CommandLineArgumentProvider {
     }
 }
 
-def integrationMode = IntegrationMode.resolve(
-        providers.gradleProperty('runner.integration').orNull,
-        providers.environmentVariable('RUNNER_TEST_OFFLINE').orNull).id()
+// -Prunner.integration wins over the RUNNER_TEST_OFFLINE shorthand; required is the fail-closed default.
+def integrationMode = providers.gradleProperty('runner.integration')
+        .orElse(providers.environmentVariable('RUNNER_TEST_OFFLINE')
+                .map { Boolean.parseBoolean(it.trim()) ? 'offline' : 'required' })
+        .getOrElse('required')
+if (!(integrationMode in ['required', 'offline'])) {
+    throw new GradleException("runner.integration must be 'required' or 'offline', not '${integrationMode}'")
+}
 def usesPinnedMaven = project.path == ':test-suite'
 
 tasks.withType(Test).configureEach {
@@ -133,7 +136,7 @@ tasks.withType(Test).configureEach {
         inputs.property('mavenVersion', mavenVersion)
         inputs.property('mavenSha512', mavenSha512)
         systemProperty 'runner.test.mavenHome', mavenHome.get().asFile.absolutePath
-        if (integrationMode == IntegrationMode.REQUIRED.id()) {
+        if (integrationMode == 'required') {
             dependsOn provisionMaven
             inputs.files(provisionMaven)
                   .withPathSensitivity(PathSensitivity.RELATIVE)
