@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.build;
 
-import io.micronaut.runner.ArchiveSource;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
 
@@ -23,11 +22,9 @@ import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.DirectoryStream;
@@ -109,6 +106,12 @@ public final class RunnerJarBuilder {
 
     /** Classes and manifests are the only application entries intentionally materialised. */
     private static final int MAX_IN_MEMORY_METADATA_SIZE = 16 * 1024 * 1024;
+
+    /** The content of every zero-length entry, which is written without opening anything. */
+    private static final byte[] EMPTY_BYTES = new byte[0];
+
+    /** The content every zero-length dependency contributor to the merged Micronaut metadata shares. */
+    private static final ApplicationEntry EMPTY_CONTENT = ApplicationEntry.ofBytes(EMPTY_BYTES, 0);
 
     private final RunnerJarSpec spec;
     private final BuildLogger logger;
@@ -705,7 +708,13 @@ public final class RunnerJarBuilder {
      * loader answers every lookup under that prefix from the merged copy, so a merged copy written empty
      * would serve zero bytes for a file that is not empty, without a word in the build log.</p>
      *
-     * @throws IOException if a contributed entry cannot be read back out of the jar that holds it
+     * <p>The first contributor on the class path wins, even when it is empty, and there is no size limit.
+     * A zero-length entry costs no I/O at all, here or when the archive is written: every one of them shares
+     * a single in-memory empty content. The rare dependency entry that has content is read once, through the
+     * build's own {@link ZipReader}, while its nested jar's entries are collected.</p>
+     *
+     * @throws IOException if a non-empty entry cannot be read back out of the nested jar that holds it, or an
+     *                     application contributor cannot be compared with another
      */
     private void planMergedServices() throws IOException {
         Map<String, ContentSource> contents = new LinkedHashMap<>();
@@ -767,20 +776,39 @@ public final class RunnerJarBuilder {
      * Adds one dependency's {@code META-INF/micronaut/} entries to the merged set. A zero-length entry is a
      * contributor in its own right: it reserves the name just as an empty class-path resource does.
      *
+     * <p>The entries come from {@link NestedJar#result}, which describes the nested jar that was just
+     * written, so the nested jar is not parsed again. A zero-length entry becomes the shared
+     * {@link #EMPTY_CONTENT} and costs no I/O. An entry with content is read into memory with
+     * {@link ZipReader#read(ZipEntryInfo)}, which inflates it when it is compressed and verifies its CRC-32;
+     * the reader is opened at the first such entry, at most once for the jar, and closed before this
+     * method returns. A jar whose metadata entries are all empty, or that has none, is never opened.</p>
+     *
      * @param jar      the dependency, already written as a nested jar
      * @param contents the merged content so far, keyed by logical name, in class path order
-     * @throws IOException if a candidate cannot be compared with the selected contributor
+     * @throws IOException if a non-empty entry cannot be read back out of the nested jar, or does not match
+     *                     its recorded size or CRC-32
      */
     private void collectMergedServices(NestedJar jar, Map<String, ContentSource> contents) throws IOException {
         Set<String> contributed = new HashSet<>();
-        try (ZipReader reader = ZipReader.open(jar.file)) {
-            for (ZipEntryInfo entry : reader.entries()) {
+        ZipReader reader = null;
+        try {
+            for (ZipEntryInfo entry : jar.result.entries()) {
                 String name = entry.name();
                 if (entry.directory() || !isMergedServiceName(name) || !contributed.add(name)) {
                     continue;
                 }
                 serviceNames.add(name);
-                ContentSource candidate = new ArchiveEntrySource(jar.file, entry);
+                ContentSource candidate;
+                if (entry.uncompressedSize() == 0 && entry.crc32() == 0) {
+                    candidate = EMPTY_CONTENT;
+                } else {
+                    // Also the path for a zero-length entry that records a non-zero CRC-32, which only
+                    // a damaged PRESERVE input can carry: reading it verifies the CRC and fails loudly.
+                    if (reader == null) {
+                        reader = ZipReader.open(jar.file);
+                    }
+                    candidate = ApplicationEntry.ofBytes(readMergedService(jar, reader, entry), entry.crc32());
+                }
                 ContentSource existing = contents.putIfAbsent(name, candidate);
                 if (existing != null && !sameContent(existing, candidate)) {
                     warn("Two class path entries contribute a different '" + name
@@ -789,12 +817,30 @@ public final class RunnerJarBuilder {
                             + " is reachable only through that jar");
                 }
             }
+        } finally {
+            if (reader != null) {
+                reader.close();
+            }
+        }
+    }
+
+    private static byte[] readMergedService(NestedJar jar, ZipReader reader, ZipEntryInfo entry)
+            throws IOException {
+        try {
+            return reader.read(entry);
+        } catch (IOException e) {
+            // The reader names the nested copy in the work directory; the dependency is what has to be fixed.
+            throw new IOException("The dependency " + jar.dependency.path() + " cannot be packaged: "
+                    + e.getMessage(), e);
         }
     }
 
     private static boolean sameContent(ContentSource first, ContentSource second) throws IOException {
         if (first.size() != second.size() || first.crc32() != second.crc32()) {
             return false;
+        }
+        if (first.size() == 0) {
+            return true;
         }
         try (InputStream left = first.open(); InputStream right = second.open()) {
             byte[] leftBuffer = new byte[BUFFER_SIZE];
@@ -998,9 +1044,13 @@ public final class RunnerJarBuilder {
      * every offset against what the dry pass recorded, so a disagreement between the two can never reach an
      * archive.</p>
      *
+     * <p>A zero-length entry is written from a constant in the real pass too, whatever it is backed by, so
+     * it never opens a stream, a channel or a mapping.</p>
+     *
      * @param archive the file to write, or {@code null} for the dry pass
      * @return the length of the archive
-     * @throws IOException if an entry cannot be written or does not land where it was planned to
+     * @throws IOException if an entry cannot be written, does not land where it was planned to, or is empty
+     *                     but records a non-zero CRC-32
      */
     private long writeArchive(Path archive) throws IOException {
         boolean dry = archive == null;
@@ -1016,6 +1066,14 @@ public final class RunnerJarBuilder {
                     dataOffset = zip.writeDirectoryEntry(entry.name, dosTime);
                 } else if (dry) {
                     dataOffset = zip.layoutEntry(entry.name, entry.size, entry.crc32, dosTime);
+                } else if (entry.size == 0) {
+                    // Nothing to copy, so nothing to open: no stream, channel or mapping for an empty entry,
+                    // whatever it is backed by. Its recorded CRC-32 is the only thing left to check.
+                    if (entry.crc32 != 0) {
+                        throw new IOException("The empty entry '" + entry.name + "' records CRC-32 "
+                                + Long.toHexString(entry.crc32));
+                    }
+                    dataOffset = zip.writeEntry(entry.name, EMPTY_BYTES, 0, 0, dosTime);
                 } else if (entry.bytes != null) {
                     dataOffset = zip.writeEntry(entry.name, entry.bytes, 0, entry.bytes.length, dosTime);
                 } else if (entry.source != null) {
@@ -1365,67 +1423,6 @@ public final class RunnerJarBuilder {
         long crc32();
 
         InputStream open() throws IOException;
-    }
-
-    /** A range in a prepared nested jar, inflated lazily when its original entry was compressed. */
-    private static final class ArchiveEntrySource implements ContentSource {
-
-        private final Path archive;
-        private final ZipEntryInfo entry;
-
-        private ArchiveEntrySource(Path archive, ZipEntryInfo entry) {
-            this.archive = archive;
-            this.entry = entry;
-        }
-
-        @Override
-        public long size() {
-            return entry.uncompressedSize();
-        }
-
-        @Override
-        public long crc32() {
-            return entry.crc32();
-        }
-
-        @Override
-        public InputStream open() throws IOException {
-            ArchiveSource source = ArchiveSource.open(archive.toFile());
-            try {
-                InputStream stream = source.stream(entry.dataOffset(), entry.compressedSize(),
-                        entry.uncompressedSize(), entry.method());
-                return new FilterInputStream(stream) {
-                    @Override
-                    public void close() throws IOException {
-                        IOException failure = null;
-                        try {
-                            super.close();
-                        } catch (IOException e) {
-                            failure = e;
-                        }
-                        try {
-                            source.close();
-                        } catch (UncheckedIOException e) {
-                            if (failure == null) {
-                                failure = e.getCause();
-                            } else {
-                                failure.addSuppressed(e.getCause());
-                            }
-                        }
-                        if (failure != null) {
-                            throw failure;
-                        }
-                    }
-                };
-            } catch (IOException | RuntimeException | Error e) {
-                try {
-                    source.close();
-                } catch (UncheckedIOException closeFailure) {
-                    e.addSuppressed(closeFailure.getCause());
-                }
-                throw e;
-            }
-        }
     }
 
     /**
