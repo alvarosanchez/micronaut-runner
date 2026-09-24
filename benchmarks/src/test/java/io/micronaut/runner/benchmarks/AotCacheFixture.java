@@ -23,10 +23,10 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Forked application used to exercise the complete CDS training lifecycle. */
-public final class CdsCacheFixture {
+/** Forked application used to exercise the complete AOT cache training lifecycle. */
+public final class AotCacheFixture {
 
-    private CdsCacheFixture() {
+    private AotCacheFixture() {
     }
 
     public static void main(String[] args) throws Exception {

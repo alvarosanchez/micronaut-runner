@@ -450,9 +450,8 @@ final class Reports {
                 .append(" warm-cache or cold-filesystem-cache state\n");
         out.append("- **Application cache**: per variant. `shadow-aot`, `runner-stored-aot` and")
                 .append(" `runner-extracted-aot` use verified JDK AOT caches launched with `-XX:AOTMode=on`;")
-                .append(" classes defined by Runner's loader are cached but not AOT-linked. `runner-stored-cds`")
-                .append(" uses a verified, strict dynamic CDS archive. Their paired rows select no application")
-                .append(" cache. Default JDK class sharing may still be active\n");
+                .append(" classes defined by Runner's loader are cached but not AOT-linked. Their paired rows")
+                .append(" select no application cache. Default JDK class sharing may still be active\n");
         out.append("- **Readiness**: first HTTP 200 from `").append(context.readinessPath())
                 .append("`, polled every 2 ms with one persistent client, timed on a single monotonic")
                 .append(" clock that starts immediately before the process is spawned\n");
@@ -614,9 +613,6 @@ final class Reports {
     private static String cacheMode(Variant variant) {
         if (variant.cache() != null) {
             return variant.cache().mode();
-        }
-        if (variant.name().endsWith("-cds")) {
-            return "cds-strict";
         }
         if (variant.name().endsWith("-aot")) {
             return "aot";

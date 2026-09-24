@@ -51,7 +51,6 @@ class BenchmarkEntryModeTest {
                 "shadow-aot",
                 "runner-stored",
                 "runner-stored-aot",
-                "runner-stored-cds",
                 "runner-stored-reflection",
                 "runner-preserve",
                 "runner-preserve-reflection",

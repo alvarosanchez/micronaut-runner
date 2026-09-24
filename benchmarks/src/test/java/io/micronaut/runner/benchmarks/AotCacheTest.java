@@ -69,8 +69,8 @@ class AotCacheTest {
     @Tag("benchmark-integration")
     void forkedLifecycleTrainsReusesAndProvesAnApplicationClassIsShared(@TempDir Path directory)
             throws Exception {
-        Path classes = Path.of(CdsCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-        Variant plain = SampleBuild.runnerJar(directory, "runner-stored", CdsCacheFixture.class.getName(),
+        Path classes = Path.of(AotCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        Variant plain = SampleBuild.runnerJar(directory, "runner-stored", AotCacheFixture.class.getName(),
                 List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
         ByteArrayOutputStream console = new ByteArrayOutputStream();
         AotCache.Request request = request(directory, console);
@@ -100,7 +100,7 @@ class AotCacheTest {
         assertTrue(reused.cache().reused());
         String output = console.toString(StandardCharsets.UTF_8);
         assertTrue(output.contains("trained AOT cache"), output);
-        assertTrue(output.contains("verified application class " + CdsCacheFixture.class.getName()), output);
+        assertTrue(output.contains("verified application class " + AotCacheFixture.class.getName()), output);
         assertTrue(output.contains("reusing AOT cache"), output);
 
         Path report = directory.resolve("report");
@@ -183,7 +183,7 @@ class AotCacheTest {
 
     private static AotCache.Request request(Path directory, ByteArrayOutputStream console) {
         return new AotCache.Request(directory.resolve("managed-aot"), "/ready", List.of("/work"), "/stop",
-                Duration.ofSeconds(30), CdsCacheFixture.class.getName(), List.of(),
+                Duration.ofSeconds(30), AotCacheFixture.class.getName(), List.of(),
                 new PrintStream(console, true, StandardCharsets.UTF_8));
     }
 
