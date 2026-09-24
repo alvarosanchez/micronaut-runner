@@ -103,15 +103,15 @@ reaches the bytes. Building the same inputs twice, in different time zones, prod
 <h2 id="path-safety-heading">Path safety</h2>
 <p>Configured input paths may themselves be symbolic links. The builder resolves their real identities,
 and resolves a not-yet-created output through its nearest existing ancestor, before comparing them. It
-rejects an output that aliases an application jar, dependency or manifest source, or is canonically below
-an application directory. The same checks run again immediately before publication. Symbolic links found
-inside an application directory are rejected rather than followed; this also rejects directory-link
-cycles and prevents the scan from escaping the configured tree.</p>
+rejects an output that aliases an application jar, dependency or manifest source, or whose directory is
+canonically at or below an application directory. Symbolic links found inside an application directory
+are followed, as they are on a class path, and packaged under the link's own name. Three kinds are
+rejected: a link that does not resolve, a directory link that leads back into a directory the walk is
+already inside (a cycle), and a directory link to the directory that holds the output and the work
+directory, or to one of its ancestors.</p>
 
-<p>These checks protect normal builds from accidental aliases. The standard <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a> API cannot make
-checking and replacement one indivisible operation, so a hostile process that can replace path components
-concurrently can still race them. Output and input directories must therefore be writable only by trusted
-build participants.</p></div>
+<p>These checks guard against accidental aliases, not against concurrent replacement of path
+components.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
