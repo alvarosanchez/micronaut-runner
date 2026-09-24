@@ -21,16 +21,28 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
+import java.util.SplittableRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -38,6 +50,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -48,6 +62,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ArchiveSourceTest {
 
     private static final byte[] HELLO = "hello runner".getBytes(StandardCharsets.UTF_8);
+
+    /** Size of the random file the interrupt stress reads. */
+    private static final int STRESS_FILE_LENGTH = 4 * 1024 * 1024;
+    private static final int STRESS_THREADS = 4;
+    private static final int STRESS_READS_PER_THREAD = 5_000;
+    /** Longest stress read: larger than the 64 KiB chunk that a heap read is split into. */
+    private static final int STRESS_MAX_READ = 96 * 1024;
+    private static final long INTERRUPT_SPIN_NANOS = 20_000;
+    /** How long the replaced-file stress waits for an interrupt to close the channel. */
+    private static final long REPLACED_STRESS_SECONDS = 10;
+    /** Upper bound for a complete stress run, which takes well under a second on a laptop. */
+    private static final long STRESS_SECONDS = 120;
 
     @TempDir
     Path temporary;
@@ -108,7 +134,15 @@ class ArchiveSourceTest {
         ArchiveSource source = open(HELLO, mapped);
 
         ByteBuffer slice = source.slice(6, 6);
-        assertTrue(slice.isReadOnly());
+        if (mapped) {
+            assertTrue(slice.isReadOnly(), "a mapped slice is a read-only window onto the mapping");
+        } else {
+            // A class defines straight from an accessible array; a read-only heap buffer is copied again.
+            assertFalse(slice.isReadOnly());
+            assertTrue(slice.hasArray());
+            ByteBuffer again = source.slice(6, 6);
+            assertNotSame(slice.array(), again.array(), "every fallback slice owns a fresh array");
+        }
         assertEquals(6, slice.remaining());
         byte[] read = new byte[slice.remaining()];
         slice.get(read);
@@ -385,6 +419,122 @@ class ArchiveSourceTest {
 
     @ParameterizedTest(name = "mapped={0}")
     @ValueSource(booleans = {true, false})
+    void readsWithTheInterruptFlagSet(boolean mapped) throws IOException {
+        // A FileChannel read by an interrupted thread closes the channel for every thread, so before the
+        // positional reads handled interrupts, one cancelled task stopped all class loading in the process.
+        byte[] stored = payload(200_000);
+        byte[] deflated = random(150_000, 149);
+        TestArchiveBuilder archive = new TestArchiveBuilder();
+        long storedAt = archive.stored("stored.bin", stored);
+        long deflatedAt = archive.deflated("deflated.bin", deflated);
+        int compressed = archive.storedSize("deflated.bin");
+        ArchiveSource source = open(archive.build(), mapped);
+        long expectedU32 = ByteBuffer.wrap(stored).order(ByteOrder.LITTLE_ENDIAN).getInt(9) & 0xFFFFFFFFL;
+
+        try {
+            Thread.currentThread().interrupt();
+            assertArrayEquals(Arrays.copyOfRange(stored, 1_000, 101_000),
+                    source.readFully(storedAt + 1_000, 100_000));
+            assertTrue(Thread.interrupted(), "readFully must leave the interrupt status set");
+
+            Thread.currentThread().interrupt();
+            assertEquals(expectedU32, source.u32(storedAt + 9));
+            assertTrue(Thread.interrupted(), "u32 must leave the interrupt status set");
+
+            Thread.currentThread().interrupt();
+            ByteBuffer slice = source.slice(storedAt, stored.length);
+            assertTrue(Thread.interrupted(), "slice must leave the interrupt status set");
+            byte[] sliced = new byte[slice.remaining()];
+            slice.get(sliced);
+            assertArrayEquals(stored, sliced);
+
+            Thread.currentThread().interrupt();
+            try (InputStream in = source.stream(storedAt, stored.length, stored.length,
+                    IndexFormat.METHOD_STORED)) {
+                assertArrayEquals(stored, in.readAllBytes());
+            }
+            assertTrue(Thread.interrupted(), "a STORED stream must leave the interrupt status set");
+
+            Thread.currentThread().interrupt();
+            try (InputStream in = source.stream(deflatedAt, compressed, deflated.length,
+                    IndexFormat.METHOD_DEFLATED)) {
+                assertArrayEquals(deflated, in.readAllBytes());
+            }
+            assertTrue(Thread.interrupted(), "a DEFLATED stream must leave the interrupt status set");
+
+            Thread.currentThread().interrupt();
+            assertArrayEquals(deflated, source.inflate(deflatedAt, compressed, deflated.length));
+            assertTrue(Thread.interrupted(), "inflate must leave the interrupt status set");
+        } finally {
+            Thread.interrupted();
+        }
+
+        assertArrayEquals(stored, source.readFully(storedAt, stored.length), "an uninterrupted read works too");
+        assertFalse(Thread.currentThread().isInterrupted(), "a read must not set the interrupt status");
+    }
+
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void readsSurviveConcurrentInterrupts(boolean mapped) throws Exception {
+        byte[] content = random(STRESS_FILE_LENGTH, 149);
+        ArchiveSource source = open(content, mapped);
+
+        Stress stress = stress(source, content, STRESS_READS_PER_THREAD, false, STRESS_SECONDS);
+
+        assertEquals(0, stress.failures.get(),
+                () -> "reads failed; the first failure was " + stress.firstFailure.get());
+        assertEquals(0, stress.mismatches.get(), "reads returned the wrong bytes");
+        assertEquals(STRESS_THREADS * STRESS_READS_PER_THREAD, stress.reads.get());
+        assertTrue(stress.interrupts.get() > 0, "the interrupter must have run");
+        assertArrayEquals(Arrays.copyOfRange(content, 0, 4096), source.readFully(0, 4096),
+                "the source still reads after the stress");
+    }
+
+    @Test
+    void closedPositionalSourceNeverReopens() throws IOException {
+        ArchiveSource source = open(HELLO, false);
+        assertFalse(source.mapped());
+        source.close();
+
+        assertThrows(ClosedChannelException.class, () -> source.readFully(0, HELLO.length));
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(ClosedChannelException.class, () -> source.readFully(0, HELLO.length));
+            assertTrue(Thread.currentThread().isInterrupted(),
+                    "a failed read must leave the interrupt status set");
+        } finally {
+            Thread.interrupted();
+        }
+        assertThrows(ClosedChannelException.class, () -> source.readFully(0, HELLO.length),
+                "a closed source must never reopen the file");
+    }
+
+    @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "an open file cannot be replaced by a rename on Windows")
+    void refusesToReopenAReplacedFile() throws Exception {
+        byte[] original = random(STRESS_FILE_LENGTH, 149);
+        File file = write(original);
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, "false");
+        ArchiveSource source = track(ArchiveSource.open(file));
+        assertFalse(source.mapped());
+
+        // A rename-based deployment: the same path and length, but another file.
+        File staged = write(random(STRESS_FILE_LENGTH, 150));
+        Files.move(staged.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING);
+
+        Stress stress = stress(source, original, Integer.MAX_VALUE, true, REPLACED_STRESS_SECONDS);
+
+        assertEquals(0, stress.mismatches.get(), "no read may return bytes of the replacement");
+        Throwable first = stress.firstFailure.get();
+        assertNotNull(first, "an interrupt must have closed the channel within the time limit");
+        assertTrue(String.valueOf(first.getMessage()).contains("was replaced"), first.toString());
+        IOException later = assertThrows(IOException.class, () -> source.readFully(0, 16));
+        assertEquals(first.getMessage(), later.getMessage(), "the refusal is remembered");
+    }
+
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
     void findsTheIndexEntryWhenTheEntryCountCarriesTheMarker(boolean mapped) throws IOException {
         // Exactly 65535 entries: the 16-bit count field of the end record has no value for that number
         // which is not also the ZIP64 marker, and a writer that does not notice leaves no ZIP64 records
@@ -408,6 +558,79 @@ class ArchiveSourceTest {
         try (ZipFile zip = new ZipFile(write(content))) {
             assertEquals(0xFFFF, zip.size(), "the JDK reads the same archive");
         }
+    }
+
+    /**
+     * Runs {@value #STRESS_THREADS} threads that each read random regions of up to {@value #STRESS_MAX_READ}
+     * bytes and compare them with {@code expected}, while another thread interrupts a random reader about
+     * every 20 µs until they finish. Readers stop after {@code readsPerThread} reads, after {@code seconds},
+     * or, when {@code stopAtFailure} is set, once any read fails. Every thread is joined before this returns.
+     */
+    private static Stress stress(ArchiveSource source, byte[] expected, int readsPerThread,
+                                 boolean stopAtFailure, long seconds) throws InterruptedException {
+        Stress stress = new Stress();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
+        AtomicBoolean readersDone = new AtomicBoolean();
+        Thread[] readers = new Thread[STRESS_THREADS];
+        for (int t = 0; t < readers.length; t++) {
+            long seed = 1_000L + t;
+            readers[t] = new Thread(() -> {
+                SplittableRandom random = new SplittableRandom(seed);
+                for (int i = 0; i < readsPerThread && !stress.stop && System.nanoTime() < deadline; i++) {
+                    int length = 1 + random.nextInt(STRESS_MAX_READ);
+                    int offset = random.nextInt(expected.length - length + 1);
+                    try {
+                        byte[] read = source.readFully(offset, length);
+                        if (!Arrays.equals(read, 0, length, expected, offset, offset + length)) {
+                            stress.mismatches.incrementAndGet();
+                        }
+                    } catch (IOException | RuntimeException e) {
+                        stress.failures.incrementAndGet();
+                        stress.firstFailure.compareAndSet(null, e);
+                        if (stopAtFailure) {
+                            stress.stop = true;
+                        }
+                    }
+                    stress.reads.incrementAndGet();
+                }
+            }, "archive-reader-" + t);
+            readers[t].setDaemon(true);
+        }
+        Thread interrupter = new Thread(() -> {
+            SplittableRandom random = new SplittableRandom(7);
+            while (!readersDone.get()) {
+                readers[random.nextInt(readers.length)].interrupt();
+                stress.interrupts.incrementAndGet();
+                long until = System.nanoTime() + INTERRUPT_SPIN_NANOS;
+                while (System.nanoTime() < until) {
+                    Thread.onSpinWait();
+                }
+            }
+        }, "archive-interrupter");
+        interrupter.setDaemon(true);
+        try {
+            for (Thread reader : readers) {
+                reader.start();
+            }
+            interrupter.start();
+        } finally {
+            for (Thread reader : readers) {
+                reader.join(TimeUnit.SECONDS.toMillis(seconds + 30));
+            }
+            readersDone.set(true);
+            interrupter.join(TimeUnit.SECONDS.toMillis(30));
+        }
+        for (Thread reader : readers) {
+            assertFalse(reader.isAlive(), reader.getName() + " must have finished");
+        }
+        assertFalse(interrupter.isAlive(), "the interrupter must have finished");
+        return stress;
+    }
+
+    private static byte[] random(int length, long seed) {
+        byte[] bytes = new byte[length];
+        new Random(seed).nextBytes(bytes);
+        return bytes;
     }
 
     private static byte[] payload(int length) {
@@ -445,5 +668,16 @@ class ArchiveSourceTest {
     private File newFile() {
         files++;
         return temporary.resolve("archive-" + files + ".zip").toFile();
+    }
+
+    /** What {@link #stress} observed. */
+    private static final class Stress {
+
+        private final AtomicInteger reads = new AtomicInteger();
+        private final AtomicInteger failures = new AtomicInteger();
+        private final AtomicInteger mismatches = new AtomicInteger();
+        private final AtomicInteger interrupts = new AtomicInteger();
+        private final AtomicReference<Throwable> firstFailure = new AtomicReference<>();
+        private volatile boolean stop;
     }
 }

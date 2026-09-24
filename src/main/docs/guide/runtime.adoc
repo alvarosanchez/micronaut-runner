@@ -34,8 +34,11 @@ ready, application entered. Use it to separate launcher cost from framework cost
 |`micronaut.runner.mmap`
 |`true`
 |Set to `false` to read the archive with positional file reads instead of a memory mapping. Slower, and
-only needed on a platform or file system where mapping is unavailable or undesirable. Positional mode does
-not make concurrent archive replacement safe.
+only needed on a platform or file system where mapping is unavailable or undesirable. Thread interrupts are
+harmless in this mode: a read that an interrupt cuts short reopens the archive by its path and carries on.
+If that path no longer names the file this JVM opened, class loading fails and asks for a restart, so
+publish new versions under new paths as described in the deployment section below. Positional mode does not
+make concurrent archive replacement safe.
 
 |`micronaut.runner.verify`
 |`false`
