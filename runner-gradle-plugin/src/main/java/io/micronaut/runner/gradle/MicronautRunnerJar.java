@@ -25,10 +25,12 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.java.archives.Manifest;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.CacheableTask;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
@@ -40,6 +42,7 @@ import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
+import org.jspecify.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
@@ -49,17 +52,34 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.jar.Attributes;
 
 /**
  * Packages the application and its dependencies into a runner jar.
  *
- * <p>Every property has a convention taken from the project, so the task normally needs no configuration
- * at all. See the plugin documentation for the properties worth overriding.</p>
+ * <p>The plugin takes the task's inputs from the project: conventions for its properties, and the
+ * {@code jar} task's manifest configuration for the application's own manifest attributes. The task
+ * therefore normally needs no configuration at all. See the plugin documentation for the properties worth
+ * overriding.</p>
  *
  * @since 1.0
  */
 @CacheableTask
 public abstract class MicronautRunnerJar extends DefaultTask {
+
+    /**
+     * The attributes the packaging library reads from the application's manifest, keyed by lower-case name:
+     * the six {@code Specification-*} and {@code Implementation-*} attributes and {@code Sealed}, in the
+     * main section and in package sections. The library ignores every other attribute.
+     */
+    private static final Map<String, String> CONSUMED = consumed(
+            "Specification-Title", "Specification-Version", "Specification-Vendor",
+            "Implementation-Title", "Implementation-Version", "Implementation-Vendor",
+            "Sealed");
+
+    private @Nullable Manifest inheritedManifest;
 
     /**
      * The application main class. Defaults to the main class of the {@code application} plugin.
@@ -79,16 +99,69 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract ConfigurableFileCollection getApplicationOutput();
 
     /**
-     * The jar produced by the {@code jar} task, used only as the source of the application's own manifest
-     * attributes. A directory of classes cannot carry a manifest, so without this the archive would lose
-     * attributes such as {@code Implementation-Version}.
+     * An explicit override: a jar whose manifest supplies the application's own manifest attributes, for a
+     * manifest that the {@code jar} task's configuration cannot describe. It has no default.
      *
-     * @return the application jar
+     * <p>Without it, the six {@code Implementation-*} and {@code Specification-*} attributes, {@code Sealed}
+     * and the package sections come from the {@code jar} task's manifest configuration, including
+     * {@code manifest.from(...)} merges, and this task does not build the thin JAR. When attributes are added
+     * in the {@code jar} task's {@code doFirst} or {@code doLast}, or merged from a file that another task
+     * generates, set it to {@code tasks.named('jar').flatMap { it.archiveFile }}.</p>
+     *
+     * @return the jar whose manifest supplies the application's attributes
      */
     @InputFile
     @Optional
     @PathSensitive(PathSensitivity.NONE)
     public abstract RegularFileProperty getApplicationJar();
+
+    /**
+     * The manifest configuration the application's own manifest attributes are taken from; the plugin sets
+     * the {@code jar} task's. It is read when this task executes, not when it is configured, so an attribute
+     * whose value is a provider, or a merged manifest file, is read as it is then. Only the attributes the
+     * archive carries are inputs: see {@link #getInheritedManifestAttributes()}.
+     *
+     * @return the manifest configuration, or {@code null} when none was set
+     */
+    @Internal
+    public @Nullable Manifest getInheritedManifest() {
+        return inheritedManifest;
+    }
+
+    /**
+     * Sets the manifest configuration the application's own manifest attributes are taken from.
+     *
+     * @param manifest the manifest configuration, or {@code null} for none
+     */
+    public void setInheritedManifest(@Nullable Manifest manifest) {
+        inheritedManifest = manifest;
+    }
+
+    /**
+     * What the packaging library reads from the {@linkplain #getInheritedManifest() inherited manifest}: the
+     * six {@code Specification-*} and {@code Implementation-*} attributes and {@code Sealed}, keyed by
+     * {@code Name} in the main section and by {@code <section>Name} in a package section, whose name ends in
+     * {@code /}. Every other attribute and section is left out, so it cannot invalidate the archive.
+     *
+     * <p>Empty when there is no inherited manifest, or when {@link #getApplicationJar()} overrides it.</p>
+     *
+     * @return the consumed attributes, sorted by key
+     */
+    @Input
+    public SortedMap<String, String> getInheritedManifestAttributes() {
+        SortedMap<String, String> result = new TreeMap<>();
+        if (inheritedManifest == null || getApplicationJar().isPresent()) {
+            return result;
+        }
+        Manifest effective = inheritedManifest.getEffectiveManifest();
+        collect(effective.getAttributes(), "", result);
+        effective.getSections().forEach((section, attributes) -> {
+            if (section.endsWith("/")) {
+                collect(attributes, section, result);
+            }
+        });
+        return result;
+    }
 
     /**
      * The dependencies, in runtime classpath resolution order.
@@ -280,12 +353,80 @@ public abstract class MicronautRunnerJar extends DefaultTask {
                 .timestamp(Instant.parse("1980-02-01T00:00:00Z"));
 
         if (getApplicationJar().isPresent()) {
-            File jar = getApplicationJar().get().getAsFile();
-            if (jar.isFile()) {
-                spec.applicationManifest(jar.toPath());
-            }
+            // @InputFile validation has already established that the file exists.
+            spec.applicationManifest(getApplicationJar().get().getAsFile().toPath());
+        } else if (inheritedManifest != null) {
+            // Passed even when empty, so the builder never falls back to a META-INF/MANIFEST.MF among the
+            // application's resources.
+            spec.applicationManifest(toManifest(getInheritedManifestAttributes()));
         }
         return spec.build();
+    }
+
+    /**
+     * Collects the consumed attributes of one section of a Gradle manifest, resolving each value the way the
+     * {@code jar} task does when it writes the file: a provider is unwrapped and an absent value left out.
+     *
+     * @param attributes the section's attributes
+     * @param prefix     the section name, or the empty string for the main section
+     * @param result     where the attributes are collected
+     */
+    private static void collect(Map<String, Object> attributes, String prefix, SortedMap<String, String> result) {
+        for (Map.Entry<String, Object> attribute : attributes.entrySet()) {
+            String name = consumedName(attribute.getKey());
+            if (name == null) {
+                continue;
+            }
+            Object value = attribute.getValue();
+            if (value instanceof Provider<?> provider) {
+                value = provider.getOrNull();
+            }
+            String text = value == null ? null : value.toString();
+            if (text != null) {
+                result.put(prefix + name, text);
+            }
+        }
+    }
+
+    /**
+     * The canonical spelling of an attribute the packaging library reads from the application's manifest.
+     * Names are compared without regard to case, as {@link Attributes.Name} compares them.
+     *
+     * @param name an attribute name
+     * @return its canonical spelling, or {@code null} when the library does not read it
+     */
+    private static @Nullable String consumedName(String name) {
+        return name == null ? null : CONSUMED.get(name.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Builds the application manifest the packaging library reads from collected attributes: a key without a
+     * {@code /} is a main attribute, and any other key is split at its last {@code /} into a section name,
+     * which keeps the {@code /}, and an attribute name.
+     *
+     * @param attributes the attributes, as {@link #getInheritedManifestAttributes()} collects them
+     * @return the manifest
+     */
+    private static java.util.jar.Manifest toManifest(SortedMap<String, String> attributes) {
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        for (Map.Entry<String, String> attribute : attributes.entrySet()) {
+            String key = attribute.getKey();
+            int slash = key.lastIndexOf('/');
+            Attributes section = slash < 0
+                    ? manifest.getMainAttributes()
+                    : manifest.getEntries().computeIfAbsent(key.substring(0, slash + 1), unused -> new Attributes());
+            section.putValue(key.substring(slash + 1), attribute.getValue());
+        }
+        return manifest;
+    }
+
+    private static Map<String, String> consumed(String... names) {
+        Map<String, String> byLowerCaseName = new TreeMap<>();
+        for (String name : names) {
+            byLowerCaseName.put(name.toLowerCase(Locale.ROOT), name);
+        }
+        return Map.copyOf(byLowerCaseName);
     }
 
     private Compression compression() {
