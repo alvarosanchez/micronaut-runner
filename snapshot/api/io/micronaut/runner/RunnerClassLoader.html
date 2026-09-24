@@ -307,7 +307,10 @@ class path; anything else, including the property being absent, means the platfo
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">VERIFY_PROPERTY</span></div>
 <div class="block">System property that turns on CRC-32 verification of every class and resource read from the
 archive. Verification is off by default: the archive is checked for staleness when it is opened and
-once per jar, and checksumming every class would add a full pass over each class file to startup.</div>
+once per jar, and checksumming every class would add a full pass over each class file to startup.
+
+<p>The property is read once, when the archive's <a href="Index.html" title="class in io.micronaut.runner"><code>Index</code></a> is opened, and the class loader,
+<a href="NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a> and <code>jar:</code> URL streams over that index all follow what it read then.</p></div>
 <dl class="notes">
 <dt>See Also:</dt>
 <dd>
@@ -337,9 +340,10 @@ once per jar, and checksumming every class would add a full pass over each class
 <div class="block">Creates a loader over an open archive.
 
 <p>Everything that does not depend on the classes being loaded is computed here, once: the
-multi-release feature version, the modules of the parent-visible packages, whether boot-module
-packages may bypass the parent, and the verification flag. The archive and the index are <em>not</em>
-owned by the loader and are never closed by it.</p></div>
+multi-release feature version, the modules of the parent-visible packages, and whether boot-module
+packages may bypass the parent. Whether classes and resources are verified is the index's setting,
+read when the index was opened; see <a href="#VERIFY_PROPERTY"><code>VERIFY_PROPERTY</code></a>. The archive and the index are
+<em>not</em> owned by the loader and are never closed by it.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>index</code> - the index of the archive, already validated</dd>

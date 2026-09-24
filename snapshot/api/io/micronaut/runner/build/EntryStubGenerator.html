@@ -109,9 +109,8 @@ public final class AppEntry implements io.micronaut.runner.Entry {
 <p>It is packaged as an ordinary application class, so the launcher's <code>Class.forName</code> on it runs
 the static initialiser, which hands the launcher an instance, on which the launcher calls
 <a href="../Entry.html#run(java.lang.String%5B%5D)"><code>Entry.run(String[])</code></a>. Entering the application is then an <code>invokeinterface</code> followed by an
-<code>invokestatic</code>: neither <code>java.lang.reflect</code> nor <code>java.lang.invoke</code> is pulled onto the
-startup path, and no method handle bootstrap is paid for. <code>run</code> declares <code>Throwable</code> so that
-whatever the application throws travels out of the launcher unchanged.</p>
+<code>invokestatic</code>, which costs no reflection and no method handle invocation. <code>run</code> declares
+<code>Throwable</code> so that whatever the application throws travels out of the launcher unchanged.</p>
 
 <h2 id="class-file-version-heading">Class file version</h2>
 <p>The version is set explicitly to <a href="#CLASS_FILE_MAJOR_VERSION">69</a>.<a href="#CLASS_FILE_MINOR_VERSION">0</a>

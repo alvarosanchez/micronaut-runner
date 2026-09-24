@@ -76,8 +76,8 @@ loadScripts(document, 'script');</script>
 <p>When the packager can prove the application declares a <code>public static void main(String[])</code>
 it generates an implementation of this interface into the application layer and records its name in
 the index. The launcher then initialises that class and calls <a href="#run(java.lang.String%5B%5D)"><code>run(String[])</code></a> through an
-<code>invokeinterface</code>, so starting the application costs no reflection and no method handle, and
-pulls neither <code>java.lang.reflect</code> nor <code>java.lang.invoke</code> onto the startup path.</p>
+<code>invokeinterface</code>, so entering the application costs no reflection and no method handle
+invocation.</p>
 
 <p>The generated class registers itself from its static initialiser by calling
 <code>Launcher.register(Entry)</code>, so the launcher never has to look up a constructor either.</p>

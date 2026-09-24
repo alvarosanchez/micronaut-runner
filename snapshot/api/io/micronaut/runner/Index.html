@@ -516,7 +516,7 @@ classes straight from the mapping.</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#openEntryStream(int)" class="member-name-link">openEntryStream</a><wbr>(int&nbsp;record)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Opens one indexed entry using the runtime verification setting.</div>
+<div class="block">Opens one indexed entry after performing its jar's lazy staleness check.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#outerFileLength()" class="member-name-link">outerFileLength</a>()</code></div>
@@ -1218,7 +1218,12 @@ nothing about the jar and is reported as the I/O failure it is.</p></div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></span>&nbsp;<span class="element-name">openEntryStream</span><wbr><span class="parameters">(int&nbsp;record)</span>
                             throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Opens one indexed entry using the runtime verification setting.</div>
+<div class="block">Opens one indexed entry after performing its jar's lazy staleness check. Every stream of an entry,
+whether for the class loader, a <a href="NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a> or a <code>jar:</code> URL, is opened here.
+
+<p>When <a href="RunnerClassLoader.html#VERIFY_PROPERTY">"micronaut.runner.verify"</a> was <code>"true"</code> as this index was opened, every
+byte returned or skipped contributes to the CRC-32, and the checksum is compared as soon as the
+recorded end of the entry is reached. Closing a partially read stream does not drain or verify it.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>record</code> - the entry record</dd>
