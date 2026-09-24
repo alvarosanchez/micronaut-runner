@@ -104,7 +104,13 @@ public enum RunnerJarOption {
      * How the launcher reads the archive when {@code micronaut.runner.mmap} does not say, an
      * {@link ArchiveReads} name. See {@link RunnerJarSpec.Builder#archiveReads(ArchiveReads)}.
      */
-    ARCHIVE_READS("archiveReads", ArchiveReads.class, "MAPPED", Exposure.PASSTHROUGH, "1.0");
+    ARCHIVE_READS("archiveReads", ArchiveReads.class, "MAPPED", Exposure.PASSTHROUGH, "1.0"),
+
+    /**
+     * Whether to compile the application's {@code logback.xml} into a Logback {@code Configurator} when it is
+     * packaged. See {@link RunnerJarSpec.Builder#precompileLogback(boolean)}.
+     */
+    PRECOMPILE_LOGBACK("precompileLogback", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
 
     private final String optionName;
     private final Class<?> valueType;

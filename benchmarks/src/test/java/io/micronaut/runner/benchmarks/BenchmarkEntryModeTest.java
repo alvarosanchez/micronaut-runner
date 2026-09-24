@@ -61,7 +61,9 @@ class BenchmarkEntryModeTest {
     private static final List<String> OPT_IN_ROWS = List.of(
             "runner-stored-reflection",
             "runner-stored-positional",
-            "runner-stored-positional-aot");
+            "runner-stored-positional-aot",
+            "runner-stored-joran",
+            "runner-stored-joran-aot");
 
     @Test
     void matrixNamesPluginDefaults() {
@@ -83,9 +85,13 @@ class BenchmarkEntryModeTest {
         expected.addAll(expected.indexOf("runner-stored-aot") + 1, OPT_IN_ROWS);
         assertEquals(expected, withOptIn);
         assertEquals(CORE_ROWS.size() + OPT_IN_ROWS.size(), withOptIn.size());
+        assertTrue(core.stream().noneMatch(name -> name.contains("joran")), core.toString());
+        assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("joran")));
         assertEquals(EntryMode.REFLECTION, EntryMode.requestedBy("runner-stored-reflection"));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional"));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional-aot"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran-aot"));
         assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-stored"));
         assertTrue(core.stream().noneMatch(OPT_IN_ROWS::contains), "opt-in rows never gate: " + core);
     }

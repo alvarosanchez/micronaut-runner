@@ -157,6 +157,9 @@ class MavenBasicSampleTest {
         try (JarFile jar = new JarFile(archive.toFile())) {
             assertNotNull(jar.getEntry("MICRONAUT-INF/classes/io/micronaut/runner/generated/AppEntry.class"),
                     () -> "the default configuration did not generate the entry stub:\n" + log);
+            assertNotNull(jar.getEntry(
+                    "MICRONAUT-INF/classes/io/micronaut/runner/generated/logback/LogbackConfigurator.class"),
+                    () -> "the default configuration did not precompile logback.xml:\n" + log);
         }
         assertManifestVersion(original, null, "v1");
         assertManifestVersion(original, "com/example/", "package-v1");

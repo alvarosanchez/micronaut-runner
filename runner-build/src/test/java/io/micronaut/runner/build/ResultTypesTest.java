@@ -87,10 +87,10 @@ class ResultTypesTest {
     @Test
     void aNegativeCountIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> new RunnerJarResult(Path.of("app.jar"), -1, 0, 0, 0,
-                0, List.of(), Map.of()));
+                0, List.of(), Map.of(), false));
     }
 
     private static RunnerJarResult result(List<String> warnings, Map<String, String> options) {
-        return new RunnerJarResult(Path.of("build", "app-all.jar"), 4, 120, 10, 2, 4096, warnings, options);
+        return new RunnerJarResult(Path.of("build", "app-all.jar"), 4, 120, 10, 2, 4096, warnings, options, false);
     }
 }

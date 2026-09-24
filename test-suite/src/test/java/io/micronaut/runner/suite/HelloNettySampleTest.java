@@ -21,6 +21,7 @@ import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -40,6 +41,7 @@ import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -82,6 +84,15 @@ class HelloNettySampleTest {
 
     /** The package of the generated entry stub, whose first class marks the end of the launcher's work. */
     private static final String GENERATED_PACKAGE = "io.micronaut.runner.generated.";
+
+    /** The application layer of a runner jar. */
+    private static final String CLASSES = "MICRONAUT-INF/classes/";
+
+    /** The configurator runner-build compiles logback.xml into. */
+    private static final String LOGBACK_CONFIGURATOR = "io/micronaut/runner/generated/logback/LogbackConfigurator.class";
+
+    /** Loaded whenever Logback reads an XML file with Joran. */
+    private static final String JORAN_CONFIGURATOR = "ch.qos.logback.classic.joran.JoranConfigurator";
 
     /**
      * The launcher classes that load before the entry stub in a default {@code java -jar} start.
@@ -149,6 +160,169 @@ class HelloNettySampleTest {
             application.close();
         }
         assertPreMainClasses(classLoadLog);
+    }
+
+    /**
+     * Packages the sample twice, with the default and with {@code precompileLogback=false} set through an init
+     * script, and holds the precompiled Logback configuration to Joran's behaviour: the same standard output in
+     * every way a user steers logging, the runtime opt-out handing over to Joran, and the extracted layout keeping
+     * the configurator.
+     */
+    @Test
+    void thePrecompiledLogbackConfigurationBehavesLikeJoran(@TempDir Path work) throws Exception {
+        Path sample = Samples.sample("hello-netty");
+        Path archive = sample.resolve(ARCHIVE);
+        gradle(sample, "clean", TASK);
+        Path precompiled = copy(archive, work.resolve("precompiled/hello-netty.jar"));
+        Path init = work.resolve("no-precompile.init.gradle");
+        Files.writeString(init, "allprojects { tasks.matching { it.name == 'micronautRunnerJar' }.configureEach {"
+                + " it.options.put('precompileLogback', 'false') } }\n", StandardCharsets.UTF_8);
+        gradle(sample, "clean", TASK, "--init-script", init.toString());
+        Path joran = copy(archive, work.resolve("joran/hello-netty.jar"));
+
+        assertTrue(hasEntry(precompiled, CLASSES + LOGBACK_CONFIGURATOR), () -> precompiled + " has no configurator");
+        assertFalse(hasEntry(joran, CLASSES + LOGBACK_CONFIGURATOR), () -> joran + " has a configurator");
+
+        // The fast path verifies, and neither links Joran nor loads its fallback.
+        Path classLoads = sample.resolve("build/logback-precompiled-classload.log");
+        Run fast = run(precompiled, sample, Map.of(), List.of("-Xverify:all",
+                "-Xlog:class+load=info:file=build/logback-precompiled-classload.log"));
+        assertEquals("hello from RunnerClassLoader", fast.body(), fast.output());
+        String loaded = Files.readString(classLoads, StandardCharsets.ISO_8859_1);
+        assertTrue(loaded.contains(" io.micronaut.runner.generated.logback.LogbackConfigurator "), fast.output());
+        assertFalse(loaded.contains(" " + JORAN_CONFIGURATOR + " "), "the fast path loaded Joran");
+        assertFalse(loaded.contains(" io.micronaut.runner.generated.logback.JoranFallback "),
+                "the fast path loaded JoranFallback");
+        assertEquals("hello from RunnerClassLoader", run(joran, sample, Map.of(), List.of()).body());
+
+        Path configurationFile = work.resolve("configuration-file.xml");
+        Path loggerConfig = work.resolve("logger-config.xml");
+        writeLogbackXml(configurationFile, "CONFIGURATION-FILE");
+        writeLogbackXml(loggerConfig, "LOGGER-CONFIG");
+        record Scenario(String name, Map<String, String> environment, List<String> jvmArguments, String marker) {
+        }
+        List<Scenario> scenarios = List.of(
+                new Scenario("plain start", Map.of(), List.of(), "Startup completed"),
+                new Scenario("a start that fails", Map.of("SERVER_PORT", "notaport"), List.of(), "notaport"),
+                new Scenario("-Dlogback.configurationFile", Map.of(),
+                        List.of("-Dlogback.configurationFile=" + configurationFile), "CONFIGURATION-FILE INFO"),
+                new Scenario("-Dlogger.config", Map.of(), List.of("-Dlogger.config=" + loggerConfig),
+                        "LOGGER-CONFIG INFO"),
+                new Scenario("LOGGER_CONFIG", Map.of("LOGGER_CONFIG", loggerConfig.toString()), List.of(),
+                        "LOGGER-CONFIG INFO"),
+                new Scenario("-Dlogger.levels", Map.of(), List.of("-Dlogger.levels.com.example=DEBUG"),
+                        "Setting log level 'DEBUG'"),
+                new Scenario("the opt-out with -Dlogger.config", Map.of(),
+                        List.of("-Dmicronaut.runner.logback.precompiled=false", "-Dlogger.config=" + loggerConfig),
+                        "LOGGER-CONFIG INFO"));
+        for (Scenario scenario : scenarios) {
+            Run expected = run(joran, sample, scenario.environment(), scenario.jvmArguments());
+            Run actual = run(precompiled, sample, scenario.environment(), scenario.jvmArguments());
+            assertTrue(expected.output().contains(scenario.marker()),
+                    () -> scenario.name() + " did not do what it is meant to:\n" + expected.output());
+            assertEquals(normalise(expected.output()), normalise(actual.output()),
+                    () -> scenario.name() + ": the precompiled configuration printed something else");
+        }
+
+        // The runtime opt-out hands the configuration to Joran.
+        Path optOutLoads = sample.resolve("build/logback-opt-out-classload.log");
+        run(precompiled, sample, Map.of(), List.of("-Dmicronaut.runner.logback.precompiled=false",
+                "-Xlog:class+load=info:file=build/logback-opt-out-classload.log"));
+        assertTrue(Files.readString(optOutLoads, StandardCharsets.ISO_8859_1).contains(" " + JORAN_CONFIGURATOR + " "),
+                "the opt-out did not reach Joran");
+
+        // The extracted layout keeps the generated support its service file names.
+        Path extracted = work.resolve("extracted");
+        Process extract = new ProcessBuilder(Samples.javaExecutable().toString(), "-Dmicronaut.runner.mode=extract",
+                "-jar", precompiled.toString(), "--destination", extracted.toString())
+                .redirectErrorStream(true).start();
+        String extractOutput = new String(extract.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, extract.waitFor(), extractOutput);
+        Path applicationJar = extracted.resolve("hello-netty.jar");
+        assertTrue(hasEntry(applicationJar, LOGBACK_CONFIGURATOR), extractOutput);
+        assertTrue(hasEntry(applicationJar, "META-INF/services/ch.qos.logback.classic.spi.Configurator"));
+        Run fromExtracted = run(applicationJar, sample, Map.of(), List.of());
+        assertTrue(fromExtracted.body().startsWith("hello from "), fromExtracted.output());
+    }
+
+    private static void writeLogbackXml(Path file, String marker) throws IOException {
+        Files.writeString(file, """
+                <configuration>
+                    <appender name="CUSTOM" class="ch.qos.logback.core.ConsoleAppender">
+                        <encoder>
+                            <pattern>%s %%level %%logger - %%msg%%n</pattern>
+                        </encoder>
+                    </appender>
+                    <root level="INFO">
+                        <appender-ref ref="CUSTOM"/>
+                    </root>
+                </configuration>
+                """.formatted(marker), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Starts an archive, waits until it answers {@code /hello} or exits, stops it and returns everything it
+     * printed.
+     */
+    private static Run run(Path archive, Path sample, Map<String, String> environment, List<String> jvmArguments)
+            throws IOException {
+        Map<String, String> childEnvironment = new java.util.HashMap<>(environment);
+        int port = Samples.freePort();
+        childEnvironment.putIfAbsent("SERVER_PORT", Integer.toString(port));
+        ForkedApplication application = ForkedApplication.start(archive, sample, childEnvironment, jvmArguments);
+        String body = null;
+        try {
+            if (Integer.toString(port).equals(childEnvironment.get("SERVER_PORT"))) {
+                body = application.awaitBody(URI.create("http://localhost:" + port + "/hello"), STARTUP_TIMEOUT);
+            } else {
+                // Expected to fail on its own: let it print everything and exit.
+                application.awaitExit(STARTUP_TIMEOUT);
+            }
+        } finally {
+            application.close();
+        }
+        // Joins the output drain, so the shutdown lines are in.
+        application.awaitExit(STARTUP_TIMEOUT);
+        return new Run(body, application.output());
+    }
+
+    /**
+     * Normalises what differs between any two runs: times, the startup duration, thread names, ports and the
+     * bean path Micronaut prints for a failed injection.
+     */
+    private static String normalise(String output) {
+        StringBuilder normalised = new StringBuilder();
+        for (String line : output.split("\n", -1)) {
+            String trimmed = line.strip();
+            if (trimmed.startsWith("Path Taken:") || trimmed.startsWith("@") || trimmed.startsWith("\\--->")) {
+                continue;
+            }
+            normalised.append(line.replaceAll("\\d{2}:\\d{2}:\\d{2}\\.\\d{3}", "TIME")
+                    .replaceAll("Startup completed in \\d+ms", "Startup completed in Nms")
+                    .replaceAll("localhost:\\d+", "localhost:PORT")
+                    .replaceAll("\\[[\\w-]*-\\d+\\]", "[THREAD]")).append('\n');
+        }
+        return normalised.toString();
+    }
+
+    private static Path copy(Path source, Path target) throws IOException {
+        Files.createDirectories(target.getParent());
+        return Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private static boolean hasEntry(Path jar, String name) throws IOException {
+        try (JarFile file = new JarFile(jar.toFile())) {
+            return file.getEntry(name) != null;
+        }
+    }
+
+    /**
+     * One run of an archive.
+     *
+     * @param body   what {@code /hello} answered, or {@code null} when the run was not expected to serve
+     * @param output everything the process printed
+     */
+    private record Run(String body, String output) {
     }
 
     /**
