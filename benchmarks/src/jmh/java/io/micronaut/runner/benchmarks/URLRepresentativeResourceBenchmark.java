@@ -15,7 +15,11 @@
  */
 package io.micronaut.runner.benchmarks;
 
-/** Steady-state resource workloads over extracted dependency JARs and the JDK URL loader. */
+/**
+ * Steady-state resource workloads over the thin/exploded (multi-JAR) baseline: a JDK
+ * {@link java.net.URLClassLoader} over the application classes directory plus every dependency JAR, the layout
+ * of the {@code thin-jar} and {@code exploded-cp} startup variants.
+ */
 public class URLRepresentativeResourceBenchmark extends RepresentativeResourceBenchmark {
 
     @Override
