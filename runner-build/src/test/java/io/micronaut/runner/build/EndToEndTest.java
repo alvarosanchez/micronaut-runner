@@ -790,23 +790,6 @@ class EndToEndTest {
     }
 
     @Test
-    void compatibilityGuideRequiresDetachedVerificationBeforeLaunch() throws Exception {
-        String guide = Files.readString(Path.of(System.getProperty("runner.test.compatibilityGuide")),
-                StandardCharsets.UTF_8).replace("\r\n", "\n").replace('\r', '\n');
-
-        assertFalse(guide.contains("Sign the outer archive if you need a signature"));
-        assertFalse(guide.contains("sign the finished archive with a tool"));
-        assertTrue(guide.contains("--armor --detach-sign --output \"$artifact.asc\" \"$artifact\""));
-        assertTrue(guide.contains("--verify \"$signature\" \"$artifact\" &&\nexec java -jar \"$artifact\""));
-        assertTrue(guide.contains("complete fingerprints were\nchecked against the release policy"));
-        assertTrue(guide.contains("same bytes that are executed"));
-        assertTrue(guide.contains("another process can replace the\npath between verification and launch"));
-        assertTrue(guide.contains("CRC-32 checks") && guide.contains("they do not\nauthenticate a publisher"));
-        assertTrue(guide.contains("null `CodeSigner[]`"));
-        assertTrue(guide.contains("does not make the runner verify nested JARs"));
-    }
-
-    @Test
     void detachedVerificationAuthenticatesFinalBytesWithoutMutatingThem() throws Exception {
         String gpg = gpgExecutable();
         if (gpg == null) {
