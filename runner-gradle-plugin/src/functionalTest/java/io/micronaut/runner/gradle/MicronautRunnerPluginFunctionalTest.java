@@ -118,6 +118,8 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
                 () -> "the application resources are not in the archive: " + entries);
         assertTrue(entries.contains("io/micronaut/runner/Launcher.class"),
                 () -> "the launcher is not in the archive: " + entries);
+        assertTrue(entries.contains("MICRONAUT-INF/classes/io/micronaut/runner/generated/AppEntry.class"),
+                () -> "the default configuration did not generate the entry stub: " + entries);
 
         // Dependencies keep the order the runtime classpath resolved them, which the fixture declares as
         // beta then alpha precisely because that is not alphabetical.
