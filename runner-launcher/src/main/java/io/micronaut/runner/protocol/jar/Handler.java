@@ -18,6 +18,7 @@ package io.micronaut.runner.protocol.jar;
 import io.micronaut.runner.Handlers;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLStreamHandler;
@@ -29,8 +30,9 @@ import java.net.URLStreamHandler;
  * name {@code <package>.<protocol>.Handler} for every package listed in
  * {@code java.protocol.handler.pkgs}, loads it with the system class loader and instantiates it
  * reflectively, so this class must stay public, must keep this name, and must keep a public no-argument
- * constructor. The JDK's instance and the instance {@link Handlers} keeps for building URLs are different
- * objects; both read the same static registration, so it makes no difference which one parses a URL.</p>
+ * constructor. The JDK's instance, the instance {@link Handlers} keeps for building URLs and the instance
+ * each code-source URL carries (see {@link #withCachedForm(String)}) are different objects; all of them
+ * read the same static registration, so it makes no difference which one parses a URL.</p>
  *
  * <h2>What it parses</h2>
  * <p>{@link #parseURL} follows the JDK's jar handler exactly, because every library that ever built a jar
@@ -56,12 +58,61 @@ public final class Handler extends URLStreamHandler {
     private static final String JAR_PREFIX = "jar:";
     private static final String PROTOCOL = "jar";
 
+    /** The one URL whose string form this handler caches, or {@code null} for a shared handler. */
+    private URL owner;
+
+    /** The string form of {@link #owner}, written before it and computed by this handler's own default. */
+    private String ownerForm;
+
     /**
      * Creates a handler. The JDK calls this reflectively when it resolves the {@code jar} protocol through
      * {@code java.protocol.handler.pkgs}; {@link Handlers#register} also creates one directly, to build
-     * URLs that do not depend on that property having taken effect.
+     * URLs that do not depend on that property having taken effect; and {@link #withCachedForm(String)}
+     * creates one for each URL whose string form it caches.
      */
     public Handler() {
+    }
+
+    /**
+     * Launcher-internal; public only because {@link Handlers} is in another package. Creates a URL with its
+     * own handler instance that computes the URL's string form once. {@link Handlers} uses it for
+     * code-source URLs, whose {@code toString()} the JDK calls on every {@code defineClass}.
+     *
+     * <p>The URL is parsed exactly as {@link Handlers} parses every other URL it builds, with the same
+     * constructor and a single parse; only the handler instance differs. The cached string is this
+     * handler's own default output for the URL, so it cannot differ from what the URL reported before. A
+     * URL derived from this one, such as {@code new URL(codeSource, "a/B.class")}, inherits the handler
+     * but not the cache.</p>
+     *
+     * @param spec a complete {@code jar:} spec
+     * @return the URL
+     * @throws MalformedURLException if the spec is rejected
+     */
+    @SuppressWarnings("deprecation")
+    public static URL withCachedForm(String spec) throws MalformedURLException {
+        Handler handler = new Handler();
+        URL url = new URL((URL) null, spec, handler);
+        // Nothing is cached yet, so this is the default string form.
+        handler.ownerForm = handler.toExternalForm(url);
+        handler.owner = url;
+        return url;
+    }
+
+    /**
+     * The string form of a URL, cached for the one URL {@link #withCachedForm(String)} created this
+     * handler for.
+     *
+     * <p>Both fields are written before that URL leaves the factory, {@link #ownerForm} first. A thread
+     * that reads them through a race reads {@link #ownerForm} first and falls back to the default when it
+     * sees {@code null}, which computes the same string.</p>
+     *
+     * @param url the URL
+     * @return its string form
+     */
+    @Override
+    protected String toExternalForm(URL url) {
+        String form = ownerForm;
+        return form != null && url == owner ? form : super.toExternalForm(url);
     }
 
     /**

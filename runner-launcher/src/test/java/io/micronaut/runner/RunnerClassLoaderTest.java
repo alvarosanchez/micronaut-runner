@@ -52,6 +52,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -100,6 +101,8 @@ class RunnerClassLoaderTest {
     private static final int INTERRUPT_CLASSES_PER_JAR = 256;
     private static final int INTERRUPT_THREADS = 6;
     private static final long INTERRUPT_SPIN_NANOS = 20_000;
+    private static final String AWKWARD = "MICRONAUT-INF/lib/a b-é.jar";
+    private static final String AWKWARD_CLASS = "org.awkward.Awkward";
 
     private static File archive;
     private static File alphaClasspathJar;
@@ -196,6 +199,9 @@ class RunnerClassLoaderTest {
         addEnumerationFixtures(fixture);
         // Appended last so that every jar above keeps its id.
         addInterruptFixtures(fixture);
+        // After the interrupt fixtures, for the same reason.
+        fixture.addJar(AWKWARD).add(AWKWARD_CLASS.replace('.', '/') + ".class",
+                classBytes(AWKWARD_CLASS, "awkward"));
 
         archive = fixture.writeTo(temporary.resolve("runner-classloader-test.jar").toFile());
         TestArchiveBuilder alphaClasspath = new TestArchiveBuilder();
@@ -560,6 +566,90 @@ class RunnerClassLoaderTest {
         ClassNotFoundException failure = assertThrows(ClassNotFoundException.class,
                 () -> loader.loadClass("org.example.Missing"));
         assertEquals("org.example.Missing", failure.getMessage());
+    }
+
+    @Test
+    void rethrowsTheParentsOwnExceptionForAMiss() throws Exception {
+        SentinelParent sentinel = new SentinelParent();
+        RunnerClassLoader loader = new RunnerClassLoader(index, source, sentinel);
+
+        assertSame(sentinel.missing, assertThrows(ClassNotFoundException.class,
+                () -> loader.loadClass("org.example.Missing")),
+                "an index-first miss lets the parent's exception through instead of building a second one");
+        assertSame(sentinel.missing, assertThrows(ClassNotFoundException.class,
+                () -> loader.loadClass("javax.net.Missing")),
+                "a parent-visible miss rethrows the parent's exception once the archive misses too");
+        assertTrue(sentinel.asked.contains("org.example.Missing"), sentinel.asked.toString());
+        assertTrue(sentinel.asked.contains("javax.net.Missing"), sentinel.asked.toString());
+
+        assertSame(String.class, loader.loadClass("java.lang.String"));
+        assertTrue(sentinel.asked.contains("java.lang.String"),
+                "a parent that is not one of the JDK's own loaders keeps being asked for JDK names");
+    }
+
+    @Test
+    void reportsABootPackageMissByItsBinaryName() {
+        RunnerClassLoader loader = newLoader();
+        ClassNotFoundException failure = assertThrows(ClassNotFoundException.class,
+                () -> loader.loadClass("java.lang.Missing"));
+        assertEquals("java.lang.Missing", failure.getMessage(), "the binary name, not the internal one");
+    }
+
+    @Test
+    void resolvesTheSameClassesUnderThePlatformAndTheSystemParent() throws Exception {
+        RunnerClassLoader platform = newLoader();
+        RunnerClassLoader system = new RunnerClassLoader(index, source, ClassLoader.getSystemClassLoader());
+
+        Class<?> driver = Class.forName("java.sql.Driver", false, ClassLoader.getPlatformClassLoader());
+        assertSame(driver, platform.loadClass("java.sql.Driver"), "a platform-module package");
+        assertSame(driver, system.loadClass("java.sql.Driver"));
+        assertSame(String.class, platform.loadClass("java.lang.String"), "a boot-module package");
+        assertSame(String.class, system.loadClass("java.lang.String"));
+
+        for (RunnerClassLoader loader : List.of(platform, system)) {
+            Class<?> shadow = loader.loadClass("javax.net.Shadow");
+            assertSame(loader, shadow.getClassLoader(),
+                    "a boot-module package the boot loader does not have falls back to the archive");
+            assertEquals("shadow", id(shadow));
+            Class<?> application = loader.loadClass("org.example.App");
+            assertSame(loader, application.getClassLoader());
+            assertEquals("app", id(application));
+        }
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void computesTheStringFormOfACodeSourceLocationOnce() throws Exception {
+        assumeHandlersRegistered();
+        RunnerClassLoader loader = newLoader();
+        Class<?> awkward = loader.loadClass(AWKWARD_CLASS);
+        URL location = awkward.getProtectionDomain().getCodeSource().getLocation();
+
+        String expected = "jar:" + archive.toURI() + "!/MICRONAUT-INF/lib/a%20b-%C3%A9.jar!/";
+        assertEquals(expected, location.toString());
+        assertEquals(expected, location.toExternalForm());
+        assertSame(location.toString(), location.toString(), "defineClass asks for it once per class");
+
+        String resource = AWKWARD_CLASS.replace('.', '/') + ".class";
+        URL derived = new URL(location, resource);
+        assertEquals(expected + resource, derived.toString(), "a derived URL does not reuse the cached form");
+        assertEquals(loader.getResource(resource), derived);
+        try (InputStream in = derived.openStream()) {
+            assertArrayEquals(classBytes(AWKWARD_CLASS, "awkward"), in.readAllBytes());
+        }
+    }
+
+    @Test
+    void sharesTheJarsManifestAttributesAcrossItsPackages() throws Exception {
+        RunnerClassLoader loader = newLoader();
+        Package alpha = loader.loadClass("org.alpha.Alpha").getPackage();
+        Package attrs = loader.loadClass("org.alpha.pkg.Attrs").getPackage();
+
+        assertEquals("2.0", alpha.getImplementationVersion());
+        assertSame(alpha.getImplementationVersion(), attrs.getImplementationVersion(),
+                "inherited from the jar, which is decoded once rather than once per package");
+        assertEquals("AlphaSpec", alpha.getSpecificationTitle());
+        assertSame(alpha.getSpecificationTitle(), attrs.getSpecificationTitle());
     }
 
     @Test
@@ -1001,6 +1091,30 @@ class RunnerClassLoaderTest {
                 .withMethodBody("id", MethodTypeDesc.of(ConstantDescs.CD_String),
                         ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC,
                         code -> code.loadConstant(value).areturn()));
+    }
+
+    /**
+     * A parent that is not one of the JDK's own loaders: it records every name it is asked for, throws one
+     * pre-built exception for every name ending in {@code .Missing}, and hands everything else to the
+     * platform loader.
+     */
+    private static final class SentinelParent extends ClassLoader {
+
+        private final ClassNotFoundException missing = new ClassNotFoundException("sentinel");
+        private final List<String> asked = Collections.synchronizedList(new ArrayList<>());
+
+        private SentinelParent() {
+            super(null);
+        }
+
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            asked.add(name);
+            if (name.endsWith(".Missing")) {
+                throw missing;
+            }
+            return ClassLoader.getPlatformClassLoader().loadClass(name);
+        }
     }
 
     /**
