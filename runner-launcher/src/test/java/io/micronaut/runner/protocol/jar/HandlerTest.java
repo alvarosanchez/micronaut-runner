@@ -246,6 +246,43 @@ class HandlerTest {
         assertNull(Handlers.codeSourceUrlFor(-1));
     }
 
+    /**
+     * Pins every field of the URLs the class loader hands out, now that no {@link URI} parse guards their
+     * construction: each shape, reached through the plain-name fast path, a leading slash, the full encoder
+     * and a plain run that stops at an escape, has to be a valid URI and has to equal its own string form
+     * re-parsed.
+     */
+    @Test
+    void buildsEveryUrlShapeWithTheFieldsOfItsReparsedStringForm() throws Exception {
+        String awkward = "odd/a b%c#d?e!f[g]h é😀.txt";
+        String encodedAwkward = "odd/a%20b%25c%23d%3Fe%21f%5Bg%5Dh%20%C3%A9%F0%9F%98%80.txt";
+        String dollar = "a/B$C.class";
+        String encodedDollar = "a/B%24C.class";
+        String classes = IndexFormat.CLASSES_PREFIX;
+        String nested = DEPENDENCY + "!/";
+        int app = IndexFormat.APPLICATION_JAR_ID;
+
+        assertUrlShape(Handlers.urlFor(app, "app.txt"), classes + "app.txt");
+        assertUrlShape(Handlers.urlFor(app, "/app.txt"), classes + "app.txt");
+        assertUrlShape(Handlers.urlFor(app, awkward), classes + encodedAwkward);
+        assertUrlShape(Handlers.urlFor(app, dollar), classes + encodedDollar);
+
+        assertUrlShape(Handlers.urlFor(1, "a/B.class"), nested + "a/B.class");
+        assertUrlShape(Handlers.urlFor(1, "/a/B.class"), nested + "a/B.class");
+        assertUrlShape(Handlers.urlFor(1, awkward), nested + encodedAwkward);
+        assertUrlShape(Handlers.urlFor(1, dollar), nested + encodedDollar);
+
+        // A leading slash defeats urlFor's routing of the merged service directory, so that case has to
+        // go to outerUrlFor directly.
+        assertUrlShape(Handlers.urlFor(app, SERVICE), SERVICE);
+        assertUrlShape(Handlers.outerUrlFor("/" + SERVICE), SERVICE);
+        assertUrlShape(Handlers.outerUrlFor("META-INF/micronaut/" + awkward),
+                "META-INF/micronaut/" + encodedAwkward);
+
+        assertUrlShape(Handlers.codeSourceUrlFor(app), classes);
+        assertUrlShape(Handlers.codeSourceUrlFor(1), nested);
+    }
+
     @Test
     @SuppressWarnings("deprecation")
     void resolvesRelativeAndParentSpecs() throws IOException {
@@ -751,6 +788,39 @@ class HandlerTest {
      */
     private String fileUrl() {
         return archive.toURI().toString();
+    }
+
+    /**
+     * Asserts that a URL of the registered archive has the documented text, is a valid URI, is equal to
+     * the URL re-parsed from its string form, and has the fields the handler's own parse sets.
+     *
+     * @param url          the URL under test
+     * @param expectedPath the encoded part after the archive's {@value Handlers#SEPARATOR}
+     */
+    private void assertUrlShape(URL url, String expectedPath) throws Exception {
+        assertNotNull(url, expectedPath);
+        StringBuilder expected = new StringBuilder();
+        expected.append("jar:").append(fileUrl()).append(Handlers.SEPARATOR).append(expectedPath);
+        String spec = expected.toString();
+        assertEquals(spec, url.toString());
+        assertEquals(spec, url.toExternalForm());
+        assertEquals(spec, url.toURI().toString(), "the URL must be a valid URI that round trips");
+
+        URL reparsed = URI.create(url.toString()).toURL();
+        assertEquals(reparsed, url, spec);
+        assertEquals(url, reparsed, spec);
+        assertEquals(reparsed.hashCode(), url.hashCode(), spec);
+        assertEquals(reparsed.getFile(), url.getFile(), spec);
+        assertEquals(reparsed.getPath(), url.getPath(), spec);
+
+        assertEquals("jar", url.getProtocol(), spec);
+        assertNull(url.getAuthority(), spec);
+        assertEquals("", url.getHost(), spec);
+        assertEquals(-1, url.getPort(), spec);
+        assertNull(url.getUserInfo(), spec);
+        assertNull(url.getQuery(), spec);
+        assertNull(url.getRef(), spec);
+        assertEquals(spec.substring("jar:".length()), url.getFile(), spec);
     }
 
     private List<String> entryNames(URL url) throws IOException {
