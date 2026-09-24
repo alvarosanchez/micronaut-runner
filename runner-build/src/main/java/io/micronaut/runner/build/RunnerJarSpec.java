@@ -19,27 +19,31 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.jar.Manifest;
 
 /**
  * Everything {@link RunnerJarBuilder} needs to know to produce a runner jar.
  *
  * <p>A spec is immutable and is built through {@link #builder()}. Only the main class, the application
- * output and the output file have to be set; every other option has the default the format was designed
- * around, so the plugins can hand over a spec that mirrors their own conventions without deciding anything
- * the user did not ask about.</p>
+ * output and the output file have to be set. Every packaging option has the default that
+ * {@link RunnerJarOption} lists, so a plugin passes only what the user set and decides nothing the user did
+ * not ask about.</p>
  *
  * <pre>{@code
  * RunnerJarSpec spec = RunnerJarSpec.builder()
  *         .mainClass("com.example.Application")
  *         .applicationOutput(List.of(classesDir, resourcesDir))
- *         .dependencies(List.of(new Dependency(nettyJar, "io.netty:netty-common:4.2.1")))
+ *         .dependencies(List.of(Dependency.of(nettyJar, "io.netty:netty-common:4.2.1")))
  *         .output(buildDir.resolve("app-all.jar"))
+ *         .option("compression", "PRESERVE")
  *         .build();
  * }</pre>
  *
@@ -66,6 +70,7 @@ public final class RunnerJarSpec {
     private final List<String> addExports;
     private final boolean enableNativeAccess;
     private final Instant timestamp;
+    private final Map<String, String> effectiveOptions;
 
     private RunnerJarSpec(Builder builder) {
         this.mainClass = builder.mainClass;
@@ -87,6 +92,11 @@ public final class RunnerJarSpec {
         this.addExports = List.copyOf(builder.addExports);
         this.enableNativeAccess = builder.enableNativeAccess;
         this.timestamp = builder.timestamp;
+        Map<String, String> effective = new LinkedHashMap<>();
+        for (RunnerJarOption option : RunnerJarOption.values()) {
+            effective.put(option.optionName(), effectiveValue(option));
+        }
+        this.effectiveOptions = Collections.unmodifiableMap(effective);
     }
 
     /**
@@ -266,10 +276,54 @@ public final class RunnerJarSpec {
     }
 
     /**
+     * The value every {@link RunnerJarOption} has in this spec, whether it was set or defaulted, keyed by
+     * {@linkplain RunnerJarOption#optionName() option name} in table order. Each value is in the grammar
+     * {@link Builder#option(String, String)} reads, so passing the entries back to a fresh builder reproduces
+     * the same options.
+     *
+     * @return the effective options, unmodifiable
+     */
+    public Map<String, String> effectiveOptions() {
+        return effectiveOptions;
+    }
+
+    /**
+     * Writes one option's value in the grammar {@link Builder#option(String, String)} reads. The switch is
+     * exhaustive, so an option added to the table without a case here does not compile.
+     */
+    private String effectiveValue(RunnerJarOption option) {
+        return switch (option) {
+            case COMPRESSION -> compression.name();
+            case ENTRY_STUB -> Boolean.toString(entryStub);
+            case MULTI_RELEASE -> Boolean.toString(multiRelease);
+            case ENABLE_NATIVE_ACCESS -> Boolean.toString(enableNativeAccess);
+            case ADD_OPENS -> String.join(",", addOpens);
+            case ADD_EXPORTS -> String.join(",", addExports);
+            case MANIFEST_ATTRIBUTES -> formatAttributes(manifestAttributes);
+        };
+    }
+
+    private static String formatAttributes(Map<String, String> attributes) {
+        StringBuilder text = new StringBuilder();
+        for (Map.Entry<String, String> attribute : attributes.entrySet()) {
+            if (!text.isEmpty()) {
+                text.append('\n');
+            }
+            text.append(attribute.getKey()).append(": ").append(attribute.getValue());
+        }
+        return text.toString();
+    }
+
+    /**
      * Describes a runner jar step by step.
      *
      * <p>The builder is mutable and is not thread safe; {@link #build()} takes a snapshot of it, so it can
      * be reused afterwards.</p>
+     *
+     * <p>Every packaging option can be set in two ways: through its typed setter, such as
+     * {@link #compression(Compression)}, or by name through {@link #option(String, String)}. Each call
+     * replaces whatever was set before, so the last one wins. A plugin therefore applies its typed values
+     * first and its generic options last.</p>
      */
     public static final class Builder {
 
@@ -279,16 +333,23 @@ public final class RunnerJarSpec {
         private Manifest applicationManifest;
         private List<Dependency> dependencies = new ArrayList<>();
         private Path output;
-        private Compression compression = Compression.STORED;
+        private Compression compression;
         private boolean multiRelease;
-        private boolean entryStub = true;
-        private Map<String, String> manifestAttributes = new LinkedHashMap<>();
-        private List<String> addOpens = new ArrayList<>();
-        private List<String> addExports = new ArrayList<>();
+        private boolean entryStub;
+        private Map<String, String> manifestAttributes;
+        private List<String> addOpens;
+        private List<String> addExports;
         private boolean enableNativeAccess;
         private Instant timestamp = ZipWriter.DEFAULT_TIMESTAMP;
 
+        /**
+         * Starts from the defaults of the option table, so {@link RunnerJarOption#defaultValue()} is the only
+         * place a packaging default is written down.
+         */
         private Builder() {
+            for (RunnerJarOption option : RunnerJarOption.values()) {
+                option.defaultValue().ifPresent(value -> option(option, value));
+            }
         }
 
         /**
@@ -525,6 +586,95 @@ public final class RunnerJarSpec {
         public Builder enableNativeAccess(boolean value) {
             this.enableNativeAccess = value;
             return this;
+        }
+
+        /**
+         * Sets a packaging option by its {@linkplain RunnerJarOption#optionName() name}, whether it has a
+         * typed setter or not. This is how a build plugin passes the options it has no typed property for.
+         *
+         * <p>The value is read according to the option's {@linkplain RunnerJarOption#valueType() type}, in
+         * the grammar {@link RunnerJarOption} documents, and then validated exactly as the typed setter
+         * validates it. The call replaces any earlier value of the option, set by name or by its typed
+         * setter, and a later typed setter call replaces it in turn.</p>
+         *
+         * @param name  the option name, such as {@code compression}
+         * @param value the value, as text
+         * @return this builder
+         * @throws NullPointerException     if {@code name} or {@code value} is {@code null}
+         * @throws IllegalArgumentException if no option has that name, or the value is not valid for it; for
+         *                                  an unknown name, the message lists every known name
+         */
+        public Builder option(String name, String value) {
+            Objects.requireNonNull(name, "name");
+            Objects.requireNonNull(value, "value");
+            RunnerJarOption option = RunnerJarOption.named(name)
+                    .orElseThrow(() -> RunnerJarOption.unknown(name));
+            return option(option, value);
+        }
+
+        /**
+         * Dispatches an option to its typed setter. The switch is exhaustive, so an option added to the table
+         * without a case here does not compile.
+         */
+        private Builder option(RunnerJarOption option, String value) {
+            return switch (option) {
+                case COMPRESSION -> compression(Compression.parse(value));
+                case ENTRY_STUB -> entryStub(parseBoolean(option, value));
+                case MULTI_RELEASE -> multiRelease(parseBoolean(option, value));
+                case ENABLE_NATIVE_ACCESS -> enableNativeAccess(parseBoolean(option, value));
+                case ADD_OPENS -> addOpens(parseList(value));
+                case ADD_EXPORTS -> addExports(parseList(value));
+                case MANIFEST_ATTRIBUTES -> manifestAttributes(parseAttributes(option, value));
+            };
+        }
+
+        /**
+         * Reads {@code true} or {@code false} and nothing else: {@link Boolean#parseBoolean(String)} would
+         * read a typo such as {@code yes} as {@code false}.
+         */
+        private static boolean parseBoolean(RunnerJarOption option, String value) {
+            String text = value.trim();
+            if ("true".equalsIgnoreCase(text)) {
+                return true;
+            }
+            if ("false".equalsIgnoreCase(text)) {
+                return false;
+            }
+            throw new IllegalArgumentException("Option '" + option.optionName()
+                    + "' must be true or false, not '" + value + "'");
+        }
+
+        private static List<String> parseList(String value) {
+            List<String> entries = new ArrayList<>();
+            for (String entry : value.split(",", -1)) {
+                String trimmed = entry.trim();
+                if (!trimmed.isEmpty()) {
+                    entries.add(trimmed);
+                }
+            }
+            return entries;
+        }
+
+        private static Map<String, String> parseAttributes(RunnerJarOption option, String value) {
+            Map<String, String> attributes = new LinkedHashMap<>();
+            Set<String> seen = new HashSet<>();
+            for (String line : value.split("\\R", -1)) {
+                if (line.isBlank()) {
+                    continue;
+                }
+                int colon = line.indexOf(':');
+                String name = colon < 0 ? "" : line.substring(0, colon).trim();
+                if (name.isEmpty()) {
+                    throw new IllegalArgumentException("Option '" + option.optionName() + "' line '" + line
+                            + "' is not a 'Name: value' pair");
+                }
+                if (!seen.add(name.toLowerCase(Locale.ROOT))) {
+                    throw new IllegalArgumentException("Option '" + option.optionName() + "' sets '" + name
+                            + "' more than once");
+                }
+                attributes.put(name, line.substring(colon + 1).strip());
+            }
+            return attributes;
         }
 
         /**

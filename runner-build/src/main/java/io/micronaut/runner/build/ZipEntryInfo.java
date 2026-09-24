@@ -50,7 +50,7 @@ import java.util.Objects;
  * @param directory        whether the entry is a directory
  * @since 1.0
  */
-public record ZipEntryInfo(
+record ZipEntryInfo(
         String name,
         int method,
         long compressedSize,

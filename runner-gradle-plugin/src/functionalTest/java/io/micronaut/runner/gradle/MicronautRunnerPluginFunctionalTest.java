@@ -189,8 +189,8 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
     }
 
     /**
-     * An unusable compression value fails the build with a message that names the value and the alternatives,
-     * rather than with an enum constant error from somewhere inside the packaging library.
+     * An unusable compression value fails the build with the packaging library's message, which names the
+     * value and every supported alternative, rather than with an enum constant error.
      *
      * @param directory a fresh project directory
      * @throws IOException if the fixture cannot be written
@@ -205,10 +205,9 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
 
         String output = buildAndFail(directory, "micronautRunnerJar").getOutput();
 
-        assertTrue(output.contains("Unknown compression 'SQUEEZE'"),
-                () -> "the failure does not name the bad value:\n" + output);
-        assertTrue(output.contains("Supported values are STORED and PRESERVE"),
-                () -> "the failure does not name the alternatives:\n" + output);
+        // Compression.parse's message, which lists every constant of the packaging library under test.
+        assertTrue(output.contains("Unknown compression 'SQUEEZE'. Supported values are STORED, PRESERVE."),
+                () -> "the failure does not name the bad value and the alternatives:\n" + output);
     }
 
     /**

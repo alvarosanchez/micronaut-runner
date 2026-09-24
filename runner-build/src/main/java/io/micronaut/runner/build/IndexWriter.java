@@ -63,7 +63,7 @@ import java.util.TreeSet;
  *
  * @since 1.0
  */
-public final class IndexWriter {
+final class IndexWriter {
 
     /** Largest value a {@code u32} field of the format can hold. */
     private static final long MAX_U32 = 0xFFFFFFFFL;

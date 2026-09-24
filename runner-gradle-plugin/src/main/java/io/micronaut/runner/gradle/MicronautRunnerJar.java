@@ -15,14 +15,15 @@
  */
 package io.micronaut.runner.gradle;
 
+import io.micronaut.runner.build.ApplicationManifest;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
+import io.micronaut.runner.build.RunnerJarOption;
 import io.micronaut.runner.build.RunnerJarResult;
 import io.micronaut.runner.build.RunnerJarSpec;
 import org.gradle.api.DefaultTask;
-import org.gradle.api.GradleException;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.java.archives.Manifest;
@@ -47,14 +48,12 @@ import org.jspecify.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
-import java.util.jar.Attributes;
 
 /**
  * Packages the application and its dependencies into a runner jar.
@@ -64,20 +63,15 @@ import java.util.jar.Attributes;
  * therefore normally needs no configuration at all. See the plugin documentation for the properties worth
  * overriding.</p>
  *
+ * <p>The task is wiring: it hands the project's facts and the options the build sets to the packaging
+ * library, which owns every option's default, parsing and validation. A {@link RunnerJarOption.Exposure#TYPED
+ * typed} option has a property here; every option, typed or not, can also be set by name through
+ * {@link #getOptions()}.</p>
+ *
  * @since 1.0
  */
 @CacheableTask
 public abstract class MicronautRunnerJar extends DefaultTask {
-
-    /**
-     * The attributes the packaging library reads from the application's manifest, keyed by lower-case name:
-     * the six {@code Specification-*} and {@code Implementation-*} attributes and {@code Sealed}, in the
-     * main section and in package sections. The library ignores every other attribute.
-     */
-    private static final Map<String, String> CONSUMED = consumed(
-            "Specification-Title", "Specification-Version", "Specification-Vendor",
-            "Implementation-Title", "Implementation-Version", "Implementation-Vendor",
-            "Sealed");
 
     private @Nullable Manifest inheritedManifest;
 
@@ -138,10 +132,11 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     }
 
     /**
-     * What the packaging library reads from the {@linkplain #getInheritedManifest() inherited manifest}: the
-     * six {@code Specification-*} and {@code Implementation-*} attributes and {@code Sealed}, keyed by
-     * {@code Name} in the main section and by {@code <section>Name} in a package section, whose name ends in
-     * {@code /}. Every other attribute and section is left out, so it cannot invalidate the archive.
+     * What the packaging library reads from the {@linkplain #getInheritedManifest() inherited manifest}, as
+     * {@link ApplicationManifest#filter(Map, Map)} keeps it: the six {@code Specification-*} and
+     * {@code Implementation-*} attributes and {@code Sealed}, keyed by {@code Name} in the main section and by
+     * {@code <section>Name} in a package section, whose name ends in {@code /}. Every other attribute and
+     * section is left out, so it cannot invalidate the archive.
      *
      * <p>Empty when there is no inherited manifest, or when {@link #getApplicationJar()} overrides it.</p>
      *
@@ -149,18 +144,13 @@ public abstract class MicronautRunnerJar extends DefaultTask {
      */
     @Input
     public SortedMap<String, String> getInheritedManifestAttributes() {
-        SortedMap<String, String> result = new TreeMap<>();
         if (inheritedManifest == null || getApplicationJar().isPresent()) {
-            return result;
+            return new TreeMap<>();
         }
         Manifest effective = inheritedManifest.getEffectiveManifest();
-        collect(effective.getAttributes(), "", result);
-        effective.getSections().forEach((section, attributes) -> {
-            if (section.endsWith("/")) {
-                collect(attributes, section, result);
-            }
-        });
-        return result;
+        Map<String, Map<String, String>> sections = new LinkedHashMap<>();
+        effective.getSections().forEach((section, attributes) -> sections.put(section, resolve(attributes)));
+        return ApplicationManifest.filter(resolve(effective.getAttributes()), sections);
     }
 
     /**
@@ -225,28 +215,33 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     /**
      * How the entries of each dependency are stored: {@code STORED} re-packs them uncompressed so classes
      * are defined straight from the memory-mapped archive, {@code PRESERVE} copies each dependency byte
-     * for byte.
+     * for byte. The plugin sets {@link RunnerJarOption#COMPRESSION}'s default as the convention.
      *
      * @return the compression mode
      */
     @Input
+    @Optional
     public abstract Property<String> getCompression();
 
     /**
-     * Whether the application layer itself is multi-release.
+     * Whether the application layer itself is multi-release. The plugin sets
+     * {@link RunnerJarOption#MULTI_RELEASE}'s default as the convention.
      *
      * @return the multi-release flag
      */
     @Input
+    @Optional
     public abstract Property<Boolean> getMultiRelease();
 
     /**
      * Whether to generate the entry stub that lets the launcher call the application main method through
-     * an interface rather than by reflection.
+     * an interface rather than by reflection. The plugin sets {@link RunnerJarOption#ENTRY_STUB}'s default as
+     * the convention.
      *
      * @return the entry stub flag
      */
     @Input
+    @Optional
     public abstract Property<Boolean> getEntryStub();
 
     /**
@@ -257,6 +252,7 @@ public abstract class MicronautRunnerJar extends DefaultTask {
      * @return the packages to open
      */
     @Input
+    @Optional
     public abstract ListProperty<String> getAddOpens();
 
     /**
@@ -267,14 +263,17 @@ public abstract class MicronautRunnerJar extends DefaultTask {
      * @return the packages to export
      */
     @Input
+    @Optional
     public abstract ListProperty<String> getAddExports();
 
     /**
-     * Whether to write {@code Enable-Native-Access: ALL-UNNAMED} into the manifest.
+     * Whether to write {@code Enable-Native-Access: ALL-UNNAMED} into the manifest. The plugin sets
+     * {@link RunnerJarOption#ENABLE_NATIVE_ACCESS}'s default as the convention.
      *
      * @return the native access flag
      */
     @Input
+    @Optional
     public abstract Property<Boolean> getEnableNativeAccess();
 
     /**
@@ -283,16 +282,19 @@ public abstract class MicronautRunnerJar extends DefaultTask {
      * @return the attributes
      */
     @Input
+    @Optional
     public abstract MapProperty<String, String> getManifestAttributes();
 
     /**
-     * The project's target Java version, reported in the build log to make a mismatch between the JDK that
-     * compiled the application and the JDK that will run it easy to spot.
+     * Packaging options by {@linkplain RunnerJarOption#optionName() name}, for the options that have no
+     * typed property here. Each value uses the grammar {@link RunnerJarOption} documents, and the packaging
+     * library parses and validates it; an unknown name fails the task. An entry is applied after the typed
+     * properties, so it wins over a typed property of the same option.
      *
-     * @return the target version
+     * @return the options by name
      */
-    @Internal
-    public abstract Property<String> getJavaLauncherVersion();
+    @Input
+    public abstract MapProperty<String, String> getOptions();
 
     /**
      * Builds the archive.
@@ -303,9 +305,7 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public void packageArchive() throws IOException {
         File output = getArchiveFile().get().getAsFile();
         RunnerJarResult result = RunnerJarBuilder.build(buildSpec(output), new GradleBuildLogger(getLogger()));
-
-        getLogger().lifecycle("Runner jar written to {} ({} dependencies, {} entries, {} bytes)",
-                output, result.dependencyCount(), result.entryCount(), result.archiveSize());
+        getLogger().lifecycle(result.summary());
     }
 
     private RunnerJarSpec buildSpec(File output) {
@@ -319,27 +319,41 @@ public abstract class MicronautRunnerJar extends DefaultTask {
         Map<String, String> coordinates = getCoordinates().get();
         List<Dependency> dependencies = new ArrayList<>();
         for (File file : getClasspath().getFiles()) {
-            // A file dependency resolves to no coordinates at all; Dependency has a constructor for that
-            // case, which also keeps the nullable map lookup out of the two-argument constructor.
+            // A file dependency resolves to no coordinates at all.
             String gav = coordinates.get(file.getAbsolutePath());
-            dependencies.add(gav == null ? new Dependency(file.toPath())
-                    : new Dependency(file.toPath(), gav));
+            dependencies.add(gav == null ? Dependency.of(file.toPath()) : Dependency.of(file.toPath(), gav));
         }
 
         RunnerJarSpec.Builder spec = RunnerJarSpec.builder()
                 .mainClass(getMainClass().get())
                 .applicationOutput(applicationOutput)
                 .dependencies(dependencies)
-                .output(output.toPath())
-                .compression(compression())
-                .multiRelease(getMultiRelease().get())
-                .entryStub(getEntryStub().get())
-                .manifestAttributes(getManifestAttributes().get())
-                .addOpens(getAddOpens().get())
-                .addExports(getAddExports().get())
-                .enableNativeAccess(getEnableNativeAccess().get())
-                // Fixed, so that the same inputs always produce the same bytes.
-                .timestamp(Instant.parse("1980-02-01T00:00:00Z"));
+                .output(output.toPath());
+
+        // Typed values first and the options last, because the last call wins. An absent value leaves the
+        // packaging library's default in place.
+        if (getCompression().isPresent()) {
+            spec.compression(Compression.parse(getCompression().get()));
+        }
+        if (getEntryStub().isPresent()) {
+            spec.entryStub(getEntryStub().get());
+        }
+        if (getMultiRelease().isPresent()) {
+            spec.multiRelease(getMultiRelease().get());
+        }
+        if (getEnableNativeAccess().isPresent()) {
+            spec.enableNativeAccess(getEnableNativeAccess().get());
+        }
+        if (getAddOpens().isPresent()) {
+            spec.addOpens(getAddOpens().get());
+        }
+        if (getAddExports().isPresent()) {
+            spec.addExports(getAddExports().get());
+        }
+        if (getManifestAttributes().isPresent()) {
+            spec.manifestAttributes(getManifestAttributes().get());
+        }
+        getOptions().get().forEach(spec::option);
 
         if (getApplicationJar().isPresent()) {
             // @InputFile validation has already established that the file exists.
@@ -347,85 +361,35 @@ public abstract class MicronautRunnerJar extends DefaultTask {
         } else if (inheritedManifest != null) {
             // Passed even when empty, so the builder never falls back to a META-INF/MANIFEST.MF among the
             // application's resources.
-            spec.applicationManifest(toManifest(getInheritedManifestAttributes()));
+            spec.applicationManifest(ApplicationManifest.toManifest(getInheritedManifestAttributes()));
         }
         return spec.build();
     }
 
     /**
-     * Collects the consumed attributes of one section of a Gradle manifest, resolving each value the way the
-     * {@code jar} task does when it writes the file: a provider is unwrapped and an absent value left out.
+     * Resolves the attributes of one section of a Gradle manifest that the packaging library reads, the way
+     * the {@code jar} task does when it writes the file: a provider is unwrapped and an absent value left
+     * out. An attribute the library does not read is not resolved at all.
      *
      * @param attributes the section's attributes
-     * @param prefix     the section name, or the empty string for the main section
-     * @param result     where the attributes are collected
+     * @return the consumed attributes, as strings
      */
-    private static void collect(Map<String, Object> attributes, String prefix, SortedMap<String, String> result) {
+    private static Map<String, String> resolve(Map<String, Object> attributes) {
+        Map<String, String> resolved = new LinkedHashMap<>();
         for (Map.Entry<String, Object> attribute : attributes.entrySet()) {
-            String name = consumedName(attribute.getKey());
-            if (name == null) {
+            String name = attribute.getKey();
+            if (name == null || !ApplicationManifest.isConsumed(name)) {
                 continue;
             }
             Object value = attribute.getValue();
             if (value instanceof Provider<?> provider) {
                 value = provider.getOrNull();
             }
-            String text = value == null ? null : value.toString();
-            if (text != null) {
-                result.put(prefix + name, text);
+            if (value != null) {
+                resolved.put(name, value.toString());
             }
         }
-    }
-
-    /**
-     * The canonical spelling of an attribute the packaging library reads from the application's manifest.
-     * Names are compared without regard to case, as {@link Attributes.Name} compares them.
-     *
-     * @param name an attribute name
-     * @return its canonical spelling, or {@code null} when the library does not read it
-     */
-    private static @Nullable String consumedName(String name) {
-        return name == null ? null : CONSUMED.get(name.toLowerCase(Locale.ROOT));
-    }
-
-    /**
-     * Builds the application manifest the packaging library reads from collected attributes: a key without a
-     * {@code /} is a main attribute, and any other key is split at its last {@code /} into a section name,
-     * which keeps the {@code /}, and an attribute name.
-     *
-     * @param attributes the attributes, as {@link #getInheritedManifestAttributes()} collects them
-     * @return the manifest
-     */
-    private static java.util.jar.Manifest toManifest(SortedMap<String, String> attributes) {
-        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
-        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        for (Map.Entry<String, String> attribute : attributes.entrySet()) {
-            String key = attribute.getKey();
-            int slash = key.lastIndexOf('/');
-            Attributes section = slash < 0
-                    ? manifest.getMainAttributes()
-                    : manifest.getEntries().computeIfAbsent(key.substring(0, slash + 1), unused -> new Attributes());
-            section.putValue(key.substring(slash + 1), attribute.getValue());
-        }
-        return manifest;
-    }
-
-    private static Map<String, String> consumed(String... names) {
-        Map<String, String> byLowerCaseName = new TreeMap<>();
-        for (String name : names) {
-            byLowerCaseName.put(name.toLowerCase(Locale.ROOT), name);
-        }
-        return Map.copyOf(byLowerCaseName);
-    }
-
-    private Compression compression() {
-        String value = getCompression().get().trim().toUpperCase(Locale.ROOT);
-        try {
-            return Compression.valueOf(value);
-        } catch (IllegalArgumentException e) {
-            throw new GradleException("Unknown compression '" + getCompression().get()
-                    + "'. Supported values are STORED and PRESERVE.", e);
-        }
+        return resolved;
     }
 
     /** One position in the ordered dependency input sequence. */

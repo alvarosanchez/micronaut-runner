@@ -15,6 +15,11 @@
  */
 package io.micronaut.runner.build;
 
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
 /**
  * How a dependency is stored inside the runner jar.
  *
@@ -42,5 +47,30 @@ public enum Compression {
      * what a build that has to reproduce a published jar exactly needs. Classes then have to be inflated
      * when they are loaded.</p>
      */
-    PRESERVE
+    PRESERVE;
+
+    /**
+     * Reads a compression mode the way a build script or a POM spells it: surrounding whitespace is ignored
+     * and so is case, so {@code " Preserve "} is {@link #PRESERVE}.
+     *
+     * <p>Both plugins, and any other caller that takes the mode as text, parse it here, so an unknown value
+     * fails with one message that lists every constant this release supports.</p>
+     *
+     * @param value the mode's name
+     * @return the mode
+     * @throws NullPointerException     if {@code value} is {@code null}
+     * @throws IllegalArgumentException if {@code value} names no mode
+     * @since 1.0
+     */
+    public static Compression parse(String value) {
+        Objects.requireNonNull(value, "compression");
+        String name = value.trim().toUpperCase(Locale.ROOT);
+        for (Compression compression : values()) {
+            if (compression.name().equals(name)) {
+                return compression;
+            }
+        }
+        throw new IllegalArgumentException("Unknown compression '" + value + "'. Supported values are "
+                + Arrays.stream(values()).map(Compression::name).collect(Collectors.joining(", ")) + ".");
+    }
 }

@@ -709,8 +709,8 @@ class EndToEndTest {
         writeJar(second, secondManifest, secondEntries);
 
         List<Dependency> dependencies = List.of(
-                new Dependency(first, "org.example:dep-one:1.2.3"),
-                new Dependency(second, "org.example:dep-two:2.0.0"));
+                Dependency.of(first, "org.example:dep-one:1.2.3"),
+                Dependency.of(second, "org.example:dep-two:2.0.0"));
         RunnerJarSpec.Builder common = RunnerJarSpec.builder()
                 .mainClass("com.example.Application")
                 .applicationOutput(List.of(applicationClasses, applicationResources))

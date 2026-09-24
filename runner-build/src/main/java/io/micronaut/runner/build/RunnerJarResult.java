@@ -16,7 +16,10 @@
 package io.micronaut.runner.build;
 
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -25,33 +28,25 @@ import java.util.Objects;
  * <p>The counts are the ones worth printing at the end of a build or asserting on in a test: how much went
  * in, how much came out, and whether anything was dropped along the way. Every warning was also reported to
  * the {@link BuildLogger} as the build ran; they are collected here so a caller that passed
- * {@link BuildLogger#noOp()} still sees them.</p>
+ * {@link BuildLogger#noOp()} still sees them. A plugin reports the build with {@link #summary()}.</p>
  *
- * @param output                   the archive that was written
- * @param jarCount                 the number of jars in the index, the application layer included, so the
- *                                 number of nested dependencies is one less
- * @param entryCount               the number of index records: physical entries, versioned aliases and
- *                                 synthesised directories of every jar
- * @param applicationEntryCount    the number of distinct entries the application output contributed, which
- *                                 is what ends up under {@code MICRONAUT-INF/classes/}; the merged service
- *                                 entries belong to jar {@code 0} as well but are counted separately
- * @param mergedServiceEntryCount  the number of distinct {@code META-INF/micronaut/<service>/<name>}
- *                                 entries merged into the outer archive root
- * @param archiveSize              the length of the archive in bytes
- * @param warnings                 every warning the build reported, in the order it reported them
+ * <p>Only the builder creates a result, so later releases can add accessors without breaking callers.</p>
+ *
  * @since 1.0
  */
-public record RunnerJarResult(
-        Path output,
-        int jarCount,
-        int entryCount,
-        int applicationEntryCount,
-        int mergedServiceEntryCount,
-        long archiveSize,
-        List<String> warnings) {
+public final class RunnerJarResult {
+
+    private final Path output;
+    private final int jarCount;
+    private final int entryCount;
+    private final int applicationEntryCount;
+    private final int mergedServiceEntryCount;
+    private final long archiveSize;
+    private final List<String> warnings;
+    private final Map<String, String> effectiveOptions;
 
     /**
-     * Validates the result and makes the warning list immutable.
+     * Validates the result and makes its collections immutable.
      *
      * @param output                  the archive that was written
      * @param jarCount                the number of jars in the index
@@ -60,24 +55,130 @@ public record RunnerJarResult(
      * @param mergedServiceEntryCount the number of merged service entries
      * @param archiveSize             the length of the archive
      * @param warnings                the warnings reported during the build
-     * @throws NullPointerException     if {@code output} or {@code warnings} is {@code null}
+     * @param effectiveOptions        the options the archive was built with
+     * @throws NullPointerException     if {@code output}, {@code warnings} or {@code effectiveOptions} is
+     *                                  {@code null}
      * @throws IllegalArgumentException if a count or the size is negative
      */
-    public RunnerJarResult {
-        Objects.requireNonNull(output, "output");
-        warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
+    RunnerJarResult(Path output, int jarCount, int entryCount, int applicationEntryCount,
+            int mergedServiceEntryCount, long archiveSize, List<String> warnings,
+            Map<String, String> effectiveOptions) {
+        this.output = Objects.requireNonNull(output, "output");
+        this.warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
+        this.effectiveOptions = Collections.unmodifiableMap(
+                new LinkedHashMap<>(Objects.requireNonNull(effectiveOptions, "effectiveOptions")));
         if (jarCount < 0 || entryCount < 0 || applicationEntryCount < 0 || mergedServiceEntryCount < 0
                 || archiveSize < 0) {
             throw new IllegalArgumentException("Negative count in the result of packaging " + output);
         }
+        this.jarCount = jarCount;
+        this.entryCount = entryCount;
+        this.applicationEntryCount = applicationEntryCount;
+        this.mergedServiceEntryCount = mergedServiceEntryCount;
+        this.archiveSize = archiveSize;
     }
 
     /**
-     * The number of nested dependency jars, which is every jar but the application layer.
+     * The archive that was written.
+     *
+     * @return the output file
+     */
+    public Path output() {
+        return output;
+    }
+
+    /**
+     * The number of jars in the index, the application layer included, so the number of nested dependencies
+     * is one less.
+     *
+     * @return the jar count
+     */
+    public int jarCount() {
+        return jarCount;
+    }
+
+    /**
+     * The number of index records: physical entries, versioned aliases and synthesised directories of every
+     * jar.
+     *
+     * @return the record count
+     */
+    public int entryCount() {
+        return entryCount;
+    }
+
+    /**
+     * The number of distinct entries the application output contributed, which is what ends up under
+     * {@code MICRONAUT-INF/classes/}. The merged service entries belong to jar {@code 0} as well but are
+     * counted separately.
+     *
+     * @return the application entry count
+     */
+    public int applicationEntryCount() {
+        return applicationEntryCount;
+    }
+
+    /**
+     * The number of distinct {@code META-INF/micronaut/<service>/<name>} entries merged into the outer
+     * archive root.
+     *
+     * @return the merged service entry count
+     */
+    public int mergedServiceEntryCount() {
+        return mergedServiceEntryCount;
+    }
+
+    /**
+     * The length of the archive.
+     *
+     * @return the size in bytes
+     */
+    public long archiveSize() {
+        return archiveSize;
+    }
+
+    /**
+     * Every warning the build reported, in the order it reported them.
+     *
+     * @return the warnings, unmodifiable
+     */
+    public List<String> warnings() {
+        return warnings;
+    }
+
+    /**
+     * The number of nested dependency jars, which is every jar but the application layer. A dependency the
+     * builder skipped because it is not a ZIP archive is not counted.
      *
      * @return the dependency count
      */
     public int dependencyCount() {
         return Math.max(0, jarCount - 1);
+    }
+
+    /**
+     * The value every {@link RunnerJarOption} had in this build, keyed by option name in table order, as
+     * {@link RunnerJarSpec#effectiveOptions()} reports them.
+     *
+     * @return the effective options, unmodifiable
+     */
+    public Map<String, String> effectiveOptions() {
+        return effectiveOptions;
+    }
+
+    /**
+     * One line that reports the build, for a plugin to log:
+     * {@code Runner jar written to <output> (N dependencies, M index records, S bytes)}.
+     *
+     * @return the summary
+     */
+    public String summary() {
+        return "Runner jar written to " + output + " (" + dependencyCount() + " dependencies, " + entryCount
+                + " index records, " + archiveSize + " bytes)";
+    }
+
+    @Override
+    public String toString() {
+        return summary();
     }
 }
