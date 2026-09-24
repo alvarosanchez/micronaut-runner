@@ -885,6 +885,76 @@ class RunnerJarBuilderTest {
     }
 
     @Test
+    void mergesEqualZeroLengthContributorsWithoutWarning() throws IOException {
+        String name = SERVICE_DIRECTORY + "com.example.Shared";
+        Path application = fixtures.resolve("zero-length/application");
+        Files.createDirectories(application.resolve(SERVICE_DIRECTORY));
+        Files.write(application.resolve(name), new byte[0]);
+        Path first = fixtures.resolve("zero-length/first.jar");
+        Path second = fixtures.resolve("zero-length/second.jar");
+        writeJar(first, manifest(attributes -> { }), Map.of(name, new byte[0]));
+        writeJar(second, manifest(attributes -> { }), Map.of(name, new byte[0]));
+
+        for (Compression compression : Compression.values()) {
+            Path output = output();
+            RunnerJarResult result = RunnerJarBuilder.build(spec(output)
+                    .applicationOutput(List.of(applicationClasses, application))
+                    .dependencies(List.of(new Dependency(first, null), new Dependency(second, null)))
+                    .compression(compression)
+                    .build(), BuildLogger.noOp());
+
+            assertTrue(warningsFor(result, name).isEmpty(),
+                    compression + ": equal zero-length contributors are not a conflict");
+            assertEquals(1, result.mergedServiceEntryCount(), compression + ": one name, merged once");
+            try (ZipReader archive = ZipReader.open(output)) {
+                ZipEntryInfo root = archive.entry(name).orElseThrow();
+                assertEquals(0, root.uncompressedSize(), compression + ": the merged copy is empty");
+                assertEquals(0, root.crc32(), compression + ": and records the CRC-32 of nothing");
+                ZipEntryInfo layer = archive.entry(IndexFormat.CLASSES_PREFIX + name).orElseThrow();
+                assertEquals(0, layer.uncompressedSize(), compression + ": so is the application's own copy");
+                assertEquals(0, layer.crc32(), compression + ": with the CRC-32 of nothing");
+            }
+            assertMergedContent(output, name, new byte[0]);
+        }
+    }
+
+    @Test
+    void rejectsAZeroLengthMicronautEntryThatRecordsANonZeroCrc() throws IOException {
+        // A zero-length entry with a CRC-32 other than 0 is damaged. A STORED build finds out while it
+        // repacks the jar; a PRESERVE build copies the jar verbatim and finds out when the entry is merged.
+        String name = SERVICE_DIRECTORY + "com.example.Damaged";
+        Path dependency = fixtures.resolve("libs/zero-length-bad-crc.jar");
+        Files.createDirectories(dependency.getParent());
+        try (ZipWriter writer = ZipWriter.create(dependency, ZipWriter.DEFAULT_TIMESTAMP)) {
+            writer.writeEntry(name, new byte[0]);
+        }
+        byte[] bytes = Files.readAllBytes(dependency);
+        int end = bytes.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = littleEndianInt(bytes, end + 16);
+        putLittleEndianInt(bytes, 14, 0x1234_5678L);
+        putLittleEndianInt(bytes, central + 16, 0x1234_5678L);
+        Files.write(dependency, bytes);
+        try (ZipReader reader = ZipReader.open(dependency)) {
+            ZipEntryInfo entry = reader.entry(name).orElseThrow();
+            assertEquals(0, entry.uncompressedSize());
+            assertEquals(0x1234_5678L, entry.crc32());
+        }
+
+        for (Compression compression : Compression.values()) {
+            IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output())
+                    .applicationOutput(List.of(applicationClasses))
+                    .dependencies(List.of(new Dependency(dependency, null)))
+                    .compression(compression)
+                    .build(), BuildLogger.noOp()));
+
+            assertTrue(failure.getMessage().contains(dependency.toString()),
+                    compression + ": " + failure.getMessage());
+            assertTrue(failure.getMessage().contains(name), compression + ": " + failure.getMessage());
+            assertTrue(failure.getMessage().contains("CRC-32"), compression + ": " + failure.getMessage());
+        }
+    }
+
+    @Test
     void preservesMergedServiceSizeBoundariesAcrossSourceFormsAndCompressionModes() throws IOException {
         String name = "META-INF/micronaut/large.txt";
         int oneMiB = 1 << 20;
