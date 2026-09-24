@@ -24,6 +24,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -34,8 +35,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -47,6 +50,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.zip.CRC32;
@@ -73,6 +83,16 @@ import java.util.zip.CheckedOutputStream;
  * {@link RunnerJarSpec#timestamp()} converted in UTC, and nothing about the machine that ran the build
  * reaches the bytes. Building the same inputs twice, in different time zones, produces identical files.</p>
  *
+ * <h2>Dependency staging</h2>
+ * <p>Each dependency is repacked or copied into its nested jar on up to
+ * {@code min(availableProcessors(), 8)} daemon threads. The threads are created for each build and have
+ * stopped before {@code build} returns; with one processor, or at most one dependency, staging runs on the
+ * calling thread. A staging thread holds one open {@link ZipReader} (its parsed central directory and
+ * manifest), at most one {@code Inflater} at a time and at most four 64 KiB buffers. The archive's bytes do
+ * not depend on the thread count: every nested jar's name and work file are fixed in class-path order
+ * before staging starts, warnings are emitted in that order afterwards, and the outer archive is written on
+ * one thread.</p>
+ *
  * <h2>Path safety</h2>
  * <p>Configured input paths may themselves be symbolic links. The builder resolves their real identities,
  * and resolves a not-yet-created output through its nearest existing ancestor, before comparing them. It
@@ -92,6 +112,9 @@ public final class RunnerJarBuilder {
 
     /** Set to {@code "true"} to checksum every entry of the finished archive instead of a sample. */
     static final String VERIFY_ALL_PROPERTY = "micronaut.runner.build.verifyAll";
+
+    /** The name of every dependency staging thread, followed by its number, starting at 1. */
+    static final String STAGE_THREAD_PREFIX = "micronaut-runner-stage-";
 
     /** The bundled launcher, put on this library's own class path by its build. */
     private static final String LAUNCHER_RESOURCE = "/META-INF/micronaut-runner/launcher.jar";
@@ -114,8 +137,15 @@ public final class RunnerJarBuilder {
     /** The content every zero-length dependency contributor to the merged Micronaut metadata shares. */
     private static final ApplicationEntry EMPTY_CONTENT = ApplicationEntry.ofBytes(EMPTY_BYTES, 0);
 
+    /** The most threads that stage dependencies; beyond it the largest jar is the critical path. */
+    private static final int MAX_STAGE_THREADS = 8;
+
+    /** How long a build waits for its staging threads to stop once it has interrupted them. */
+    private static final Duration STAGE_SHUTDOWN_TIMEOUT = Duration.ofSeconds(30);
+
     private final RunnerJarSpec spec;
     private final BuildLogger logger;
+    private final int parallelism;
     private final List<String> warnings = new ArrayList<>();
     private final List<PlannedEntry> plan = new ArrayList<>();
     private final List<NestedJar> nested = new ArrayList<>();
@@ -138,9 +168,10 @@ public final class RunnerJarBuilder {
     private String entryStubClass;
     private int mergedServiceEntryCount;
 
-    private RunnerJarBuilder(RunnerJarSpec spec, BuildLogger logger) {
+    private RunnerJarBuilder(RunnerJarSpec spec, BuildLogger logger, int parallelism) {
         this.spec = spec;
         this.logger = logger;
+        this.parallelism = parallelism;
         this.output = spec.output().toAbsolutePath().normalize();
         this.dosTime = ZipWriter.toDosTime(spec.timestamp());
     }
@@ -156,9 +187,28 @@ public final class RunnerJarBuilder {
      * @throws NullPointerException if an argument is {@code null}
      */
     public static RunnerJarResult build(RunnerJarSpec spec, BuildLogger logger) throws IOException {
+        return build(spec, logger, Math.min(Runtime.getRuntime().availableProcessors(), MAX_STAGE_THREADS));
+    }
+
+    /**
+     * Packages an application, staging its dependencies on at most {@code parallelism} threads.
+     *
+     * @param spec        what to package and how
+     * @param logger      where to report progress and anything that looked wrong
+     * @param parallelism the most dependencies staged at once; {@code 1} stages them on the calling thread
+     * @return the counts and warnings of the build
+     * @throws IOException              if an input cannot be read, the output cannot be written, or the
+     *                                  archive that was written does not describe itself correctly
+     * @throws NullPointerException     if {@code spec} or {@code logger} is {@code null}
+     * @throws IllegalArgumentException if {@code parallelism} is below {@code 1}
+     */
+    static RunnerJarResult build(RunnerJarSpec spec, BuildLogger logger, int parallelism) throws IOException {
         Objects.requireNonNull(spec, "spec");
         Objects.requireNonNull(logger, "logger");
-        return new RunnerJarBuilder(spec, logger).run();
+        if (parallelism < 1) {
+            throw new IllegalArgumentException("The staging parallelism must be at least 1: " + parallelism);
+        }
+        return new RunnerJarBuilder(spec, logger, parallelism).run();
     }
 
     private static long crc32(Path file) throws IOException {
@@ -655,63 +705,226 @@ public final class RunnerJarBuilder {
      * about it: its manifest attributes, its per-package sections, whether it was signed and where each of
      * its entries ended up inside it.
      *
+     * <p>Every nested jar's entry name and work file are fixed first, in class-path order, so neither
+     * depends on which dependency is staged first. When {@link #parallelism} or the number of dependencies
+     * is at most one, the stages then run on the calling thread, one after the other; otherwise they run on
+     * a pool created for this build, largest dependency first. Either way each stage is joined in class-path
+     * order on the calling thread, which is the only thread that emits a warning or touches the builder.</p>
+     *
      * @param work the directory the nested jars are built in
-     * @throws IOException if a dependency cannot be read or its nested copy cannot be written
+     * @throws IOException if a dependency cannot be read or its nested copy cannot be written; when several
+     *                     cannot, the failure of the first one on the class path
      */
     private void collectDependencies(Path work) throws IOException {
+        List<Dependency> dependencies = spec.dependencies();
+        List<DependencyStage> stages = new ArrayList<>(dependencies.size());
         Set<String> taken = new HashSet<>();
-        int position = 0;
-        for (Dependency dependency : spec.dependencies()) {
-            String entryName = IndexFormat.LIB_PREFIX + uniqueName(taken, fileName(dependency.path()));
-            Path target = work.resolve("lib-" + position + ".jar");
-            position++;
-            CRC32 crc = new CRC32();
-            ZipRepacker.RepackResult result;
-            Manifest manifest;
-            boolean hasManifest;
-            try (ZipReader reader = ZipReader.open(dependency.path())) {
-                manifest = reader.manifest().orElse(null);
-                hasManifest = reader.entry("META-INF/MANIFEST.MF").isPresent();
-                warnAboutClassPath(dependency, manifest);
-                try (OutputStream file = new BufferedOutputStream(Files.newOutputStream(target), BUFFER_SIZE);
-                     CheckedOutputStream checked = new CheckedOutputStream(file, crc)) {
-                    result = spec.compression() == Compression.STORED
-                            ? ZipRepacker.repack(reader, checked)
-                            : ZipRepacker.copy(reader, checked);
-                } catch (IOException e) {
-                    // Without this the message names only the entry, and a build with dozens of
-                    // dependencies says nothing about which jar has to be looked at.
-                    throw new IOException("The dependency " + dependency.path() + " cannot be packaged: "
-                            + e.getMessage(), e);
+        for (int position = 0; position < dependencies.size(); position++) {
+            Dependency dependency = dependencies.get(position);
+            stages.add(new DependencyStage(dependency,
+                    IndexFormat.LIB_PREFIX + uniqueName(taken, fileName(dependency.path())),
+                    work.resolve("lib-" + position + ".jar"), spec.compression()));
+        }
+        int threads = Math.min(parallelism, stages.size());
+        if (threads <= 1) {
+            for (DependencyStage stage : stages) {
+                join(stage.call());
+            }
+        } else {
+            stageInParallel(stages, threads);
+        }
+    }
+
+    /**
+     * Runs the stages on a fixed pool of daemon threads created for this build, never on a shared pool, and
+     * stops that pool before returning, whether the stages succeeded or not.
+     *
+     * @param stages  every stage, in class-path order
+     * @param threads the size of the pool, at least two
+     * @throws IOException if a stage failed, the calling thread was interrupted or the pool did not stop
+     */
+    private void stageInParallel(List<DependencyStage> stages, int threads) throws IOException {
+        Integer[] submissionOrder = largestFirst(stages);
+        StageThreads factory = new StageThreads();
+        ExecutorService pool = Executors.newFixedThreadPool(threads, factory);
+        Throwable failure = null;
+        try {
+            List<Future<StagedDependency>> futures = new ArrayList<>(Collections.nCopies(stages.size(), null));
+            for (int position : submissionOrder) {
+                futures.set(position, pool.submit(stages.get(position)));
+            }
+            for (Future<StagedDependency> future : futures) {
+                join(awaitStage(future));
+            }
+        } catch (Throwable e) {
+            failure = e;
+            throw e;
+        } finally {
+            stopStaging(pool, factory, failure, STAGE_SHUTDOWN_TIMEOUT);
+        }
+    }
+
+    /**
+     * The order in which stages are submitted: largest source first, so the longest stage is not the last
+     * one to start, and in class-path order among sources of the same size.
+     *
+     * <p>A source whose size cannot be read goes last; its stage reports why it cannot be read, exactly as
+     * it would on the calling thread.</p>
+     *
+     * @param stages every stage, in class-path order
+     * @return the class-path positions, in submission order
+     */
+    private static Integer[] largestFirst(List<DependencyStage> stages) {
+        long[] sizes = new long[stages.size()];
+        Integer[] order = new Integer[sizes.length];
+        for (int position = 0; position < sizes.length; position++) {
+            order[position] = position;
+            try {
+                sizes[position] = Files.size(stages.get(position).dependency.path());
+            } catch (IOException e) {
+                sizes[position] = -1;
+            }
+        }
+        Arrays.sort(order, Comparator.<Integer>comparingLong(position -> sizes[position]).reversed()
+                .thenComparingInt(position -> position));
+        return order;
+    }
+
+    /**
+     * Waits for a stage and hands back what it produced.
+     *
+     * @param future the submitted stage
+     * @param <T>    what the stage produces
+     * @return what the stage produced
+     * @throws IOException            what the stage threw, unwrapped; a checked exception other than an
+     *                                {@link IOException} is wrapped in one
+     * @throws InterruptedIOException if the calling thread is interrupted while it waits, which leaves its
+     *                                interrupt flag set
+     */
+    static <T> T awaitStage(Future<T> future) throws IOException {
+        try {
+            return future.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            InterruptedIOException interrupted = new InterruptedIOException(
+                    "Interrupted while waiting for the dependencies to be staged");
+            interrupted.initCause(e);
+            throw interrupted;
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException io) {
+                throw io;
+            }
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new IOException("A dependency could not be staged: " + cause, cause);
+        }
+    }
+
+    /**
+     * Interrupts a staging pool and waits, up to {@code timeout}, until each of its threads has terminated,
+     * so none of them is still writing to the work directory when the build deletes it. The wait happens
+     * even when the calling thread has been interrupted: its flag is cleared for the wait and restored
+     * afterwards.
+     *
+     * @param pool    the pool, which is shut down
+     * @param threads the threads the pool created
+     * @param failure what the build is already failing with, or {@code null}
+     * @param timeout how long to wait
+     * @throws IOException if a thread did not terminate in time and the build is not already failing; when
+     *                     it is, that exception is added to {@code failure} as suppressed instead
+     */
+    static void stopStaging(ExecutorService pool, StageThreads threads, Throwable failure, Duration timeout)
+            throws IOException {
+        pool.shutdownNow();
+        long deadline = System.nanoTime() + timeout.toNanos();
+        boolean interrupted = Thread.interrupted();
+        boolean stopped;
+        try {
+            while (true) {
+                try {
+                    stopped = pool.awaitTermination(deadline - System.nanoTime(), TimeUnit.NANOSECONDS)
+                            && threads.join(deadline);
+                    break;
+                } catch (InterruptedException e) {
+                    interrupted = true;
                 }
             }
-            if (result.hadSignatureFiles()) {
-                warn("The dependency " + dependency.path() + " is signed; its signature files "
-                        + (spec.compression() == Compression.STORED
-                            ? "were removed because a repacked jar cannot verify against them"
-                            : "were kept but no longer verify, because the jar is nested")
-                        + ". The classes it contains are not treated as signed code");
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
             }
-            for (ZipEntryInfo entry : result.entries()) {
-                requireSafeName(entry.name(), dependency.path().toString());
+        }
+        if (!stopped) {
+            IOException stuck = new IOException("The dependency staging threads did not stop within "
+                    + timeout.toMillis() + " ms of being interrupted");
+            if (failure == null) {
+                throw stuck;
             }
-            nested.add(new NestedJar(dependency, entryName, target, result, manifest, hasManifest,
-                    crc.getValue()));
+            failure.addSuppressed(stuck);
         }
     }
 
-    private void warnAboutClassPath(Dependency dependency, Manifest manifest) {
+    /**
+     * Takes one stage's result on the calling thread: its warnings, in the order a sequential build emits
+     * them, then its nested jar.
+     *
+     * @param staged what the stage produced
+     */
+    private void join(StagedDependency staged) {
+        if (staged.classPathWarning() != null) {
+            warn(staged.classPathWarning());
+        }
+        if (staged.signatureWarning() != null) {
+            warn(staged.signatureWarning());
+        }
+        nested.add(staged.jar());
+    }
+
+    /**
+     * The warning for a dependency whose manifest declares {@code Class-Path}.
+     *
+     * @param dependency the dependency
+     * @param manifest   its manifest, or {@code null} when it has none
+     * @return the warning, or {@code null} when there is nothing to warn about
+     */
+    private static String classPathWarning(Dependency dependency, Manifest manifest) {
         if (manifest == null) {
-            return;
+            return null;
         }
         String classPath = attribute(manifest.getMainAttributes(), Attributes.Name.CLASS_PATH);
-        if (classPath != null) {
-            warn("The dependency " + dependency.path() + " declares Class-Path: " + classPath
-                    + ", which a nested jar cannot resolve. Add those jars to the class path instead");
+        if (classPath == null) {
+            return null;
         }
+        return "The dependency " + dependency.path() + " declares Class-Path: " + classPath
+                + ", which a nested jar cannot resolve. Add those jars to the class path instead";
     }
 
-    private String uniqueName(Set<String> taken, String fileName) {
+    /**
+     * The warning for a dependency that carried signature files.
+     *
+     * @param dependency  the dependency
+     * @param compression how it is nested
+     * @param result      what staging it produced
+     * @return the warning, or {@code null} when the dependency was not signed
+     */
+    private static String signatureWarning(Dependency dependency, Compression compression,
+                                           ZipRepacker.RepackResult result) {
+        if (!result.hadSignatureFiles()) {
+            return null;
+        }
+        return "The dependency " + dependency.path() + " is signed; its signature files "
+                + (compression == Compression.STORED
+                    ? "were removed because a repacked jar cannot verify against them"
+                    : "were kept but no longer verify, because the jar is nested")
+                + ". The classes it contains are not treated as signed code";
+    }
+
+    private static String uniqueName(Set<String> taken, String fileName) {
         String candidate = fileName;
         int suffix = 1;
         while (!taken.add(candidate.toLowerCase(Locale.ROOT))) {
@@ -1282,7 +1495,7 @@ public final class RunnerJarBuilder {
         }
     }
 
-    private void requireSafeName(String name, String origin) throws IOException {
+    private static void requireSafeName(String name, String origin) throws IOException {
         if (!ZipReader.isSafeEntryName(name)) {
             throw new IOException("The entry name '" + name + "' from " + origin
                     + " cannot be stored in a runner jar");
@@ -1532,6 +1745,108 @@ public final class RunnerJarBuilder {
             this.manifest = manifest;
             this.hasManifest = hasManifest;
             this.crc32 = crc32;
+        }
+    }
+
+    /**
+     * What one dependency's stage hands back to the calling thread: the nested jar and the texts of the
+     * warnings the calling thread emits for it.
+     *
+     * @param jar              the dependency, written as a nested jar
+     * @param classPathWarning the {@code Class-Path} warning, or {@code null}
+     * @param signatureWarning the signed-dependency warning, or {@code null}
+     */
+    private record StagedDependency(NestedJar jar, String classPathWarning, String signatureWarning) {
+    }
+
+    /**
+     * Stages one dependency: repacks or copies it into its nested jar and describes the result.
+     *
+     * <p>A stage may run on a worker thread, so it reads nothing but its own fields and touches no builder
+     * state. It opens, uses and closes its {@link ZipReader}, streams, {@link CRC32} and buffers on the
+     * thread that runs it; only the {@link StagedDependency} it returns reaches another thread.</p>
+     */
+    private static final class DependencyStage implements Callable<StagedDependency> {
+
+        private final Dependency dependency;
+        private final String entryName;
+        private final Path target;
+        private final Compression compression;
+
+        private DependencyStage(Dependency dependency, String entryName, Path target, Compression compression) {
+            this.dependency = dependency;
+            this.entryName = entryName;
+            this.target = target;
+            this.compression = compression;
+        }
+
+        @Override
+        public StagedDependency call() throws IOException {
+            CRC32 crc = new CRC32();
+            ZipRepacker.RepackResult result;
+            Manifest manifest;
+            boolean hasManifest;
+            try (ZipReader reader = ZipReader.open(dependency.path())) {
+                manifest = reader.manifest().orElse(null);
+                hasManifest = reader.entry("META-INF/MANIFEST.MF").isPresent();
+                try (OutputStream file = new BufferedOutputStream(Files.newOutputStream(target), BUFFER_SIZE);
+                     CheckedOutputStream checked = new CheckedOutputStream(file, crc)) {
+                    result = compression == Compression.STORED
+                            ? ZipRepacker.repack(reader, checked)
+                            : ZipRepacker.copy(reader, checked);
+                } catch (IOException e) {
+                    // Without this the message names only the entry, and a build with dozens of
+                    // dependencies says nothing about which jar has to be looked at.
+                    throw new IOException("The dependency " + dependency.path() + " cannot be packaged: "
+                            + e.getMessage(), e);
+                }
+            }
+            for (ZipEntryInfo entry : result.entries()) {
+                requireSafeName(entry.name(), dependency.path().toString());
+            }
+            return new StagedDependency(
+                    new NestedJar(dependency, entryName, target, result, manifest, hasManifest, crc.getValue()),
+                    classPathWarning(dependency, manifest),
+                    signatureWarning(dependency, compression, result));
+        }
+    }
+
+    /**
+     * Creates one build's staging threads, daemons named {@code micronaut-runner-stage-1} onwards, and
+     * remembers them so the build can wait until each one has terminated.
+     */
+    static final class StageThreads implements ThreadFactory {
+
+        private final List<Thread> threads = new ArrayList<>();
+
+        @Override
+        public synchronized Thread newThread(Runnable task) {
+            Thread thread = new Thread(task, STAGE_THREAD_PREFIX + (threads.size() + 1));
+            thread.setDaemon(true);
+            threads.add(thread);
+            return thread;
+        }
+
+        /**
+         * Waits until every thread created so far has terminated, or the deadline passes.
+         *
+         * @param deadline the {@link System#nanoTime()} to wait until
+         * @return whether every thread has terminated
+         * @throws InterruptedException if the calling thread is interrupted while it waits
+         */
+        boolean join(long deadline) throws InterruptedException {
+            List<Thread> created;
+            synchronized (this) {
+                created = List.copyOf(threads);
+            }
+            for (Thread thread : created) {
+                // A thread the pool failed to start has nothing to wait for, and join would reject it.
+                if (thread.getState() != Thread.State.NEW
+                        && !thread.join(Duration.ofNanos(Math.max(0, deadline - System.nanoTime())))) {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 
