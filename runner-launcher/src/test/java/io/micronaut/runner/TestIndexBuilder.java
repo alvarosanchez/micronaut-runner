@@ -168,6 +168,7 @@ public final class TestIndexBuilder {
     public byte[] build() {
         List<Record> records = records();
         Map<String, List<Record>> chains = chains(records);
+        flagDirectoryTwins(chains);
         link(chains);
         int slots = slots(chains.size());
         int[] table = new int[slots];
@@ -394,6 +395,26 @@ public final class TestIndexBuilder {
             chain.sort(order);
         }
         return chains;
+    }
+
+    /**
+     * Flags every record of a name that the index also holds followed by a slash, in any jar and in any
+     * form, and never a name that ends with a slash itself.
+     */
+    private static void flagDirectoryTwins(Map<String, List<Record>> chains) {
+        for (String directory : chains.keySet()) {
+            if (!directory.endsWith("/")) {
+                continue;
+            }
+            String name = directory.substring(0, directory.length() - 1);
+            if (name.isEmpty() || name.endsWith("/")) {
+                continue;
+            }
+            List<Record> twins = chains.get(name);
+            if (twins != null) {
+                twins.forEach(record -> record.flags |= IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN);
+            }
+        }
     }
 
     private void link(Map<String, List<Record>> chains) {

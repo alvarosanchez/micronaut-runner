@@ -199,7 +199,8 @@ public final class IndexWriter {
 
     /**
      * Lays the index out: expands the aliases and synthetic directories, chains the records that share a
-     * name, sizes and fills the hash table and builds the string table.
+     * name, flags the names that also exist as a directory, sizes and fills the hash table and builds the
+     * string table.
      *
      * <p>Nothing here reads an offset, which is exactly the point: the resulting {@link Layout#length()} is
      * the final length of the index, so the caller can reserve room for it and only then work out where
@@ -212,6 +213,7 @@ public final class IndexWriter {
     public Layout layout() {
         List<Record> records = records();
         Map<String, List<Record>> chains = chains(records);
+        flagDirectoryTwins(chains);
         link(chains);
         int slots = slots(chains.size());
         int[] table = new int[slots];
@@ -553,6 +555,33 @@ public final class IndexWriter {
             chain.sort(CHAIN_ORDER);
         }
         return chains;
+    }
+
+    /**
+     * Sets {@link IndexFormat#ENTRY_FLAG_DIRECTORY_TWIN} on every record of each name that the index also
+     * holds followed by a slash, whichever jar holds either spelling and whether the directory is stored,
+     * a versioned alias or synthesised. The flag is never set on a name that ends with a slash, which is
+     * why a key such as {@code a//} is skipped: what remains after its final slash is a directory itself.
+     *
+     * <p>Only these names need a loader to probe the directory spelling after an exact hit, so every other
+     * resource hit costs a single lookup. The records are rebuilt by every {@link #layout()}, so the flag
+     * never outlives the entries that justified it.</p>
+     *
+     * @param chains the chains, keyed by logical name
+     */
+    private static void flagDirectoryTwins(Map<String, List<Record>> chains) {
+        for (String name : chains.keySet()) {
+            int last = name.length() - 1;
+            if (last <= 0 || name.charAt(last) != '/' || name.charAt(last - 1) == '/') {
+                continue;
+            }
+            List<Record> twins = chains.get(name.substring(0, last));
+            if (twins != null) {
+                for (Record twin : twins) {
+                    twin.flags |= IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN;
+                }
+            }
+        }
     }
 
     /**

@@ -331,6 +331,89 @@ class IndexTest {
         assertEquals(0, index.findClass("a.A"));
     }
 
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void findDirectoryMatchesFindOfTheNameWithATrailingSlash(boolean mapped) throws IOException {
+        TestIndexBuilder builder = new TestIndexBuilder();
+        TestIndexBuilder.Jar application = builder.addJar(IndexFormat.CLASSES_PREFIX);
+        application.addEntry("org/example/A.class").data(100, 1, 1);
+        application.addEntry("org/example/data/").data(0, 0, 0);
+        application.addEntry("org/été/Café.txt").data(120, 1, 1);
+        application.addEntry("中文/").data(0, 0, 0);
+        application.addEntry("emoji😀/").data(0, 0, 0);
+        builder.addJar(DEP).addEntry("org/example").data(200, 1, 1);
+
+        Index index = open(builder, mapped);
+        String[] names = {
+            "org", "org/example", "org/example/data", "org/été", "中文", "emoji😀",
+            "", "org/exampl", "org/examplX", "org/example/A.class", "org/nowhere", "org/ét", "中", "emoji",
+            "emoji\uD83D", "org/example/data/"
+        };
+        for (String name : names) {
+            assertEquals(index.find(name + "/"), index.findDirectory(name), name);
+        }
+        assertNotEquals(IndexFormat.NO_INDEX, index.findDirectory("org/été"), "a synthesised non-ASCII directory");
+        assertNotEquals(IndexFormat.NO_INDEX, index.findDirectory("中文"));
+        assertNotEquals(IndexFormat.NO_INDEX, index.findDirectory("emoji😀"));
+        assertEquals("org/example/", index.entryName(index.findDirectory("org/example")),
+                "the directory, not the dependency's file that has the name without the slash");
+        assertEquals(IndexFormat.NO_INDEX, index.findDirectory("org/example/A.class"));
+    }
+
+    @Test
+    void findDirectoryRejectsACandidateWhoseHashMatchesButWhoseNameDoesNot() throws IOException {
+        TestIndexBuilder builder = new TestIndexBuilder().synthesizeDirectories(false).hashSlots(16).maxProbe(4);
+        TestIndexBuilder.Jar application = builder.addJar(IndexFormat.CLASSES_PREFIX);
+        application.addEntry("a/B/").data(0, 0, 0);
+        application.addEntry("a/Bc").data(100, 1, 1);
+        application.addEntry("é/").data(0, 0, 0);
+        application.addEntry("éc").data(200, 1, 1);
+        byte[] bytes = selfContained(builder);
+
+        // Records 1 and 3 have the same UTF-8 length as the directories 0 and 2 and share their prefix. Give
+        // each the hash of its directory and put it first in that directory's run, so that a lookup meets a
+        // candidate whose hash, length and prefix all match and must reject it by its final byte, both on
+        // the ASCII path and on the decoding path.
+        ByteBuffer view = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+        int entryTable = (int) view.getLong(IndexFormat.H_ENTRY_TABLE_OFFSET);
+        int hashTable = (int) view.getLong(IndexFormat.H_HASH_TABLE_OFFSET);
+        for (int slot = 0; slot < 16; slot++) {
+            view.putInt(hashTable + slot * 4, IndexFormat.NO_INDEX);
+        }
+        int[][] placements = {{1, IndexFormat.hash("a/B/")}, {0, IndexFormat.hash("a/B/")},
+            {3, IndexFormat.hash("é/")}, {2, IndexFormat.hash("é/")}};
+        for (int[] placement : placements) {
+            view.putInt(entryTable + placement[0] * IndexFormat.ENTRY_RECORD_SIZE + IndexFormat.E_NAME_HASH,
+                    placement[1]);
+            int slot = placement[1] & 15;
+            while (view.getInt(hashTable + slot * 4) != IndexFormat.NO_INDEX) {
+                slot = (slot + 1) & 15;
+            }
+            view.putInt(hashTable + slot * 4, placement[0]);
+        }
+
+        Index index = openBytes(bytes, true);
+        assertEquals(0, index.findDirectory("a/B"));
+        assertEquals(index.find("a/B/"), index.findDirectory("a/B"));
+        assertEquals(2, index.findDirectory("é"));
+        assertEquals(index.find("é/"), index.findDirectory("é"));
+    }
+
+    @Test
+    void flagsNamesThatAlsoExistAsADirectory() throws IOException {
+        TestIndexBuilder builder = new TestIndexBuilder();
+        TestIndexBuilder.Jar application = builder.addJar(IndexFormat.CLASSES_PREFIX);
+        application.addEntry("org/example/A.class").data(100, 1, 1);
+        application.addEntry("org/example/data/").data(0, 0, 0);
+        builder.addJar(DEP).addEntry("org/example/data").data(200, 1, 1);
+
+        Index index = open(builder, true);
+
+        assertTrue(index.entryDirectoryTwin(index.find("org/example/data")));
+        assertFalse(index.entryDirectoryTwin(index.find("org/example/data/")), "never on a directory");
+        assertFalse(index.entryDirectoryTwin(index.find("org/example/A.class")));
+    }
+
     @Test
     void stopsProbingAtAnEmptySlot() throws IOException {
         TestIndexBuilder builder = new TestIndexBuilder().hashSlots(16);

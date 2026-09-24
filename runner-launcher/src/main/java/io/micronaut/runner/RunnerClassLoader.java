@@ -228,8 +228,8 @@ public final class RunnerClassLoader extends ClassLoader {
             return Collections.enumeration(urls);
         }
         int exact = index.resolve(index.find(logical), multiReleaseVersion);
-        int directory = namesDirectory(logical) ? IndexFormat.NO_INDEX
-                : index.resolve(index.find(withTrailingSlash(logical)), multiReleaseVersion);
+        int directory = exactIsFinal(logical, exact) ? IndexFormat.NO_INDEX
+                : index.resolve(index.findDirectory(logical), multiReleaseVersion);
         int selected = selectResource(exact, directory);
         int remaining = index.entryCount();
         while (selected != IndexFormat.NO_INDEX && remaining > 0) {
@@ -700,15 +700,45 @@ public final class RunnerClassLoader extends ClassLoader {
      */
     private int resolveResource(String logical) {
         int exact = resolveExact(logical);
-        if (namesDirectory(logical)) {
+        // ZipFile.getEntry and NestedJarFile.getEntry both retry a name within that jar with a trailing
+        // slash, so that a lookup of "some/package" finds its directory entry. That fallback is consulted
+        // only on a miss or for a name the packager flagged as having a directory twin: an unflagged hit is
+        // final after one probe, because no jar holds the directory spelling of its name.
+        if (exactIsFinal(logical, exact)) {
             return exact;
         }
-        // ZipFile.getEntry and NestedJarFile.getEntry both retry a name within that jar with a trailing
-        // slash, so that a lookup of "some/package" finds its directory entry. Compare the first exact and
-        // fallback candidates by jar rather than trying the alternatives globally: an earlier directory
-        // wins over a later exact-name file, while the exact name wins when one jar has both.
-        int directory = resolveExact(withTrailingSlash(logical));
+        return resolveWithDirectoryFallback(logical, exact);
+    }
+
+    /**
+     * Resolves a slashless name that missed, or whose name has a directory twin, against both spellings.
+     *
+     * <p>The first exact and fallback candidates are compared by jar rather than trying the alternatives
+     * globally: an earlier directory wins over a later exact-name file, while the exact name wins when one
+     * jar has both. The directory spelling falls under the same Micronaut service policy as the name,
+     * because a slashless name is at or under {@value IndexFormat#MICRONAUT_SERVICES_PREFIX} exactly when
+     * the same name followed by a slash is.</p>
+     *
+     * @param logical the normalised name, which does not end with a slash
+     * @param exact   the record the exact name resolved to, or {@link IndexFormat#NO_INDEX}
+     * @return the record, or {@link IndexFormat#NO_INDEX} when nothing matches
+     */
+    private int resolveWithDirectoryFallback(String logical, int exact) {
+        int directory = resolveChain(index.findDirectory(logical), logical);
         return selectResource(exact, directory);
+    }
+
+    /**
+     * Whether the exact-name lookup already settles a resource, so that its directory spelling need not be
+     * probed: the name asks for a directory itself, or it resolved to a record whose name has no directory
+     * twin anywhere in the index.
+     *
+     * @param logical the normalised name
+     * @param exact   the record the exact name resolved to, or {@link IndexFormat#NO_INDEX}
+     * @return {@code true} when no directory fallback can change the answer
+     */
+    private boolean exactIsFinal(String logical, int exact) {
+        return namesDirectory(logical) || (exact != IndexFormat.NO_INDEX && !index.entryDirectoryTwin(exact));
     }
 
     /**
@@ -735,7 +765,18 @@ public final class RunnerClassLoader extends ClassLoader {
      * @return the record, or {@link IndexFormat#NO_INDEX} when nothing matches
      */
     private int resolveExact(String logical) {
-        int head = index.find(logical);
+        return resolveChain(index.find(logical), logical);
+    }
+
+    /**
+     * Picks the record a chain resolves to, restricted to the application layer for a name in the merged
+     * Micronaut service tree.
+     *
+     * @param head    the chain head
+     * @param logical the normalised name that selects the policy
+     * @return the record, or {@link IndexFormat#NO_INDEX} when nothing matches
+     */
+    private int resolveChain(int head, String logical) {
         if (namesMicronautServices(logical)) {
             return index.resolveInJar(head, multiReleaseVersion, IndexFormat.APPLICATION_JAR_ID);
         }
@@ -764,18 +805,6 @@ public final class RunnerClassLoader extends ClassLoader {
     private static boolean namesDirectory(String logical) {
         int length = logical.length();
         return length > 0 && logical.charAt(length - 1) == '/';
-    }
-
-    /**
-     * The same name with a trailing slash appended.
-     *
-     * @param logical the normalised name
-     * @return the directory form of the name
-     */
-    private static String withTrailingSlash(String logical) {
-        StringBuilder directory = new StringBuilder(logical.length() + 1);
-        directory.append(logical).append('/');
-        return directory.toString();
     }
 
     private void addUrl(ArrayList<URL> urls, int record) {
