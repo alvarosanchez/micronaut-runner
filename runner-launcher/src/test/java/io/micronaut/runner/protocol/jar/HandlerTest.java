@@ -50,9 +50,8 @@ import java.util.jar.JarFile;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
-import javax.management.JMException;
-import javax.management.ObjectName;
 
+import com.sun.management.UnixOperatingSystemMXBean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -944,21 +943,15 @@ class HandlerTest {
     }
 
     /**
-     * The process's open file descriptor count, which {@code com.sun.management.UnixOperatingSystemMXBean}
-     * reports as the {@code OpenFileDescriptorCount} attribute of the platform's operating system bean. It
-     * is read by attribute name because that interface is not in the JDK on Windows, where this test is also
-     * compiled.
+     * The process's open file descriptor count.
      *
-     * @return the count, or {@code -1} where the platform does not report it
+     * @return the count, or {@code -1} where the operating system bean is not a
+     *         {@link UnixOperatingSystemMXBean}, for example on Windows
      */
     private static long openFileDescriptorCount() {
-        try {
-            Object count = ManagementFactory.getPlatformMBeanServer().getAttribute(
-                    new ObjectName(ManagementFactory.OPERATING_SYSTEM_MXBEAN_NAME), "OpenFileDescriptorCount");
-            return ((Number) count).longValue();
-        } catch (JMException e) {
-            return -1;
-        }
+        return ManagementFactory.getOperatingSystemMXBean() instanceof UnixOperatingSystemMXBean unix
+                ? unix.getOpenFileDescriptorCount()
+                : -1;
     }
 
     private static Path javaExecutable() {
