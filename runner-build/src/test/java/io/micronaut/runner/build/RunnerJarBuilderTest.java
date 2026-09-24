@@ -23,6 +23,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -65,6 +66,7 @@ import javax.tools.ToolProvider;
 
 import static io.micronaut.runner.build.ZipReaderTest.deflated;
 import static io.micronaut.runner.build.ZipReaderTest.deflatedWithTrailingByte;
+import static io.micronaut.runner.build.ZipReaderTest.manifestCrcMismatch;
 import static io.micronaut.runner.build.ZipReaderTest.stored;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -481,6 +483,25 @@ class RunnerJarBuilderTest {
         assertEquals("PRESERVE", result.effectiveOptions().get("compression"));
         assertTrue(info.stream().noneMatch(line -> line.contains("Runner jar written to")),
                 () -> "the plugins log the summary, not the builder: " + info);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Compression.class)
+    void namesTheDependencyWhoseManifestFailsItsCrc(Compression compression) throws IOException {
+        Path dependency = manifestCrcMismatch(fixtures.resolve("libs/manifest-crc-" + compression + ".jar"));
+        Path output = output();
+        Files.createDirectories(output.getParent());
+        Files.write(output, PREVIOUS_OUTPUT);
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .dependencies(List.of(Dependency.of(dependency)))
+                .compression(compression)
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains(dependency.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("META-INF/MANIFEST.MF"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("CRC-32"), failure.getMessage());
+        assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output));
     }
 
     @Test

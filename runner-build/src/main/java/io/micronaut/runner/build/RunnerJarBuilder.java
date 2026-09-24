@@ -88,11 +88,14 @@ import java.util.zip.CheckedOutputStream;
  * <p>Each dependency is repacked or copied into its nested jar on up to
  * {@code min(availableProcessors(), 8)} daemon threads. The threads are created for each build and have
  * stopped before {@code build} returns; with one processor, or at most one dependency, staging runs on the
- * calling thread. A staging thread holds one open {@code ZipReader} (its parsed central directory and
- * manifest), at most one {@code Inflater} at a time and at most four 64 KiB buffers. The archive's bytes do
- * not depend on the thread count: every nested jar's name and work file are fixed in class-path order
- * before staging starts, warnings are emitted in that order afterwards, and the outer archive is written on
- * one thread.</p>
+ * calling thread. A staging thread holds one open {@code ZipReader}: its parsed central directory and
+ * manifest and, outside the heap, a read-only mapping of the dependency, which is released when the stage
+ * closes the reader. It also holds at most one {@code Inflater} at a time and at most three 64 KiB buffers:
+ * the nested jar's output buffer and, in STORED, the reader's two transfer buffers. In PRESERVE the reader
+ * reads the manifest at its exact size and never allocates its transfer buffers, so the stage holds two: the
+ * output buffer and the copy buffer. The archive's bytes do not depend on the thread count: every nested
+ * jar's name and work file are fixed in class-path order before staging starts, warnings are emitted in that
+ * order afterwards, and the outer archive is written on one thread.</p>
  *
  * <h2>Dependency files</h2>
  * <p>A dependency is nested when it is a ZIP archive, which is when its first four bytes are a local file
@@ -162,6 +165,12 @@ public final class RunnerJarBuilder {
     private final Map<String, ApplicationEntry> application = new LinkedHashMap<>();
     private final Set<String> serviceNames = new TreeSet<>();
     private final IndexWriter writer = new IndexWriter();
+    /**
+     * The buffer {@link #crc32(Path)} reads every application file through. It belongs to the calling
+     * thread, which collects the application directories before any dependency is staged; a stage never
+     * calls {@code crc32(Path)} and checksums with its own {@link CRC32} and buffers.
+     */
+    private final byte[] fileBuffer = new byte[BUFFER_SIZE];
     private final Path output;
     private final int dosTime;
     /** The real path of the directory that holds the output and the work directory, set by validation. */
@@ -219,19 +228,6 @@ public final class RunnerJarBuilder {
             throw new IllegalArgumentException("The staging parallelism must be at least 1: " + parallelism);
         }
         return new RunnerJarBuilder(spec, logger, parallelism).run();
-    }
-
-    private static long crc32(Path file) throws IOException {
-        CRC32 crc = new CRC32();
-        byte[] buffer = new byte[BUFFER_SIZE];
-        try (InputStream in = Files.newInputStream(file)) {
-            int read = in.read(buffer);
-            while (read > 0) {
-                crc.update(buffer, 0, read);
-                read = in.read(buffer);
-            }
-        }
-        return crc.getValue();
     }
 
     private static long crc32(byte[] content) {
@@ -549,6 +545,23 @@ public final class RunnerJarBuilder {
                         root);
             }
         }
+    }
+
+    /**
+     * Checksums one application file through {@link #fileBuffer}, so the whole walk shares one buffer.
+     * Only the calling thread may call it.
+     */
+    private long crc32(Path file) throws IOException {
+        CRC32 crc = new CRC32();
+        byte[] buffer = fileBuffer;
+        try (InputStream in = Files.newInputStream(file)) {
+            int read = in.read(buffer);
+            while (read > 0) {
+                crc.update(buffer, 0, read);
+                read = in.read(buffer);
+            }
+        }
+        return crc.getValue();
     }
 
     /**
@@ -1850,7 +1863,8 @@ public final class RunnerJarBuilder {
             } catch (IOException e) {
                 // Without this the message names only the entry, and a build with dozens of dependencies
                 // says nothing about which jar has to be looked at. It covers a file that starts like a ZIP
-                // archive but whose central directory cannot be read, such as a truncated download.
+                // archive but whose central directory cannot be read, such as a truncated download, and a
+                // manifest that fails its CRC-32, which the reader only finds when manifest() first parses it.
                 throw new IOException("The dependency " + dependency.path() + " cannot be packaged: "
                         + e.getMessage(), e);
             }

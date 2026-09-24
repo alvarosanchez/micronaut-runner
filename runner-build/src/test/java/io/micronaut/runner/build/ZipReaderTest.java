@@ -18,6 +18,8 @@ package io.micronaut.runner.build;
 import io.micronaut.runner.IndexFormat;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -26,12 +28,16 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Random;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.zip.CRC32;
@@ -47,6 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -580,6 +587,141 @@ class ZipReaderTest {
     }
 
     @Test
+    void opensAnArchiveWhoseManifestFailsItsCrcAndFailsOnlyWhenTheManifestIsAskedFor() throws IOException {
+        Path jar = manifestCrcMismatch(temp.resolve("manifest-crc-mismatch.jar"));
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            assertEquals(List.of("META-INF/MANIFEST.MF", "a/B.class"),
+                    reader.entries().stream().map(ZipEntryInfo::name).toList(),
+                    "opening an archive neither reads nor parses its manifest");
+            assertArrayEquals(repeat("class-", 50), reader.read(reader.entry("a/B.class").orElseThrow()));
+
+            IOException failure = assertThrows(IOException.class, reader::manifest);
+            assertTrue(failure.getMessage().contains(jar.toString()), failure.getMessage());
+            assertTrue(failure.getMessage().contains("META-INF/MANIFEST.MF"), failure.getMessage());
+            assertTrue(failure.getMessage().contains("CRC-32"), failure.getMessage());
+        }
+    }
+
+    @Test
+    void parsesTheManifestOnceAndRemembersIt() throws IOException {
+        Path jar = temp.resolve("remembered-manifest.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "META-INF/MANIFEST.MF", manifestBytes("Created-By", "test"));
+        }
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            Manifest manifest = reader.manifest().orElseThrow();
+            assertEquals("test", manifest.getMainAttributes().getValue("Created-By"));
+            assertSame(manifest, reader.manifest().orElseThrow(), "the manifest is parsed once");
+        }
+    }
+
+    @Test
+    void readsAnArchiveWithALauncherScriptPrependedToIt() throws IOException {
+        byte[] classBytes = repeat("class-bytes-", 300);
+        byte[] storedBytes = "stored content".getBytes(StandardCharsets.UTF_8);
+        Path plain = temp.resolve("before-the-script.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(plain))) {
+            deflated(zip, "META-INF/MANIFEST.MF", manifestBytes("Main-Class", "org.example.App"));
+            deflated(zip, "org/example/App.class", classBytes);
+            stored(zip, "org/example/data.bin", storedBytes);
+        }
+        // What a self-executing jar looks like: every offset the archive records is still relative to its
+        // own first byte, not to the file's.
+        byte[] script = "#!/bin/sh\nexec java -jar \"$0\" \"$@\"\n".getBytes(StandardCharsets.UTF_8);
+        byte[] archive = Files.readAllBytes(plain);
+        byte[] prefixed = new byte[script.length + archive.length];
+        System.arraycopy(script, 0, prefixed, 0, script.length);
+        System.arraycopy(archive, 0, prefixed, script.length, archive.length);
+        Path jar = temp.resolve("launcher-script.jar");
+        Files.write(jar, prefixed);
+        List<ZipEntryInfo> unprefixed;
+        try (ZipReader reader = ZipReader.open(plain)) {
+            unprefixed = List.copyOf(reader.entries());
+        }
+
+        try (ZipReader reader = ZipReader.open(jar); ZipFile oracle = new ZipFile(jar.toFile())) {
+            assertEquals(names(oracle), reader.entries().stream().map(ZipEntryInfo::name).toList());
+            assertEquals(unprefixed.stream().map(entry -> entry.shift(script.length)).toList(), reader.entries(),
+                    "every offset moves by the length of the script");
+            for (ZipEntryInfo entry : reader.entries()) {
+                byte[] content = readAll(oracle, oracle.getEntry(entry.name()));
+                assertArrayEquals(content, reader.read(entry), entry.name());
+                assertArrayEquals(content, contentAt(jar, entry), entry.name() + " at its reported data offset");
+            }
+            assertArrayEquals(storedBytes, reader.readRaw(reader.entry("org/example/data.bin").orElseThrow()));
+            assertEquals("org.example.App",
+                    reader.manifest().orElseThrow().getMainAttributes().getValue("Main-Class"));
+        }
+    }
+
+    @Test
+    void acceptsLocalEntriesInAnotherOrderThanTheirCentralRecords() throws IOException {
+        Path jar = temp.resolve("reordered.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "one.txt", "1".getBytes(StandardCharsets.UTF_8));
+            deflated(zip, "two.txt", repeat("two-", 30));
+            stored(zip, "three.txt", "333".getBytes(StandardCharsets.UTF_8));
+        }
+        Files.write(jar, withCentralRecordsReversed(Files.readAllBytes(jar)));
+
+        try (ZipReader reader = ZipReader.open(jar); ZipFile oracle = new ZipFile(jar.toFile())) {
+            assertEquals(List.of("three.txt", "two.txt", "one.txt"), names(oracle),
+                    "the fixture lists the entries in the reverse of their order in the file");
+            assertEquals(names(oracle), reader.entries().stream().map(ZipEntryInfo::name).toList());
+            for (ZipEntryInfo entry : reader.entries()) {
+                assertArrayEquals(readAll(oracle, oracle.getEntry(entry.name())), reader.read(entry), entry.name());
+            }
+        }
+    }
+
+    @Test
+    void rejectsOverlappingLocalEntriesWhateverTheOrderOfTheirCentralRecords() throws IOException {
+        Path jar = temp.resolve("reordered-overlap.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "one.txt", new byte[] {'1'});
+            stored(zip, "two.txt", new byte[] {'2'});
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int central = intAt(archive, end + 16);
+        int secondCentral = central + 46 + shortAt(archive, central + 28)
+                + shortAt(archive, central + 30) + shortAt(archive, central + 32);
+        long secondLocal = intAt(archive, secondCentral + 42) & 0xFFFFFFFFL;
+        long overlappingSize = secondLocal - (30L + shortAt(archive, 26) + shortAt(archive, 28)) + 1;
+        putInt(archive, 18, overlappingSize);
+        putInt(archive, 22, overlappingSize);
+        putInt(archive, central + 20, overlappingSize);
+        putInt(archive, central + 24, overlappingSize);
+        Files.write(jar, withCentralRecordsReversed(archive));
+
+        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        assertTrue(failure.getMessage().contains("entry 'one.txt' overlaps entry 'two.txt'"), failure.getMessage());
+    }
+
+    @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "Windows cannot truncate a file that is mapped")
+    void readingAnEntryOfAFileTruncatedWhileItIsOpenFailsWithAnIOException() throws IOException {
+        byte[] content = new byte[256 * 1024];
+        new Random(145).nextBytes(content);
+        Path jar = temp.resolve("truncated-while-open.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "data.bin", content);
+        }
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            ZipEntryInfo entry = reader.entry("data.bin").orElseThrow();
+            try (FileChannel channel = FileChannel.open(jar, StandardOpenOption.WRITE)) {
+                channel.truncate(0);
+            }
+            IOException failure = assertThrows(IOException.class, () -> reader.read(entry));
+            assertTrue(failure.getMessage().contains(jar.toString()), failure.getMessage());
+            assertTrue(failure.getMessage().contains("truncated"), failure.getMessage());
+        }
+    }
+
+    @Test
     void detectsSignatureFiles() throws IOException {
         Path jar = temp.resolve("signed.jar");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
@@ -840,6 +982,43 @@ class ZipReaderTest {
             assertTrue(failure.getMessage().contains(name), failure.getMessage());
             assertTrue(failure.getMessage().contains("CRC-32"), failure.getMessage());
         }
+    }
+
+    /**
+     * Makes an archive whose stored manifest no longer matches its recorded CRC-32, followed by a class
+     * that is intact.
+     */
+    static Path manifestCrcMismatch(Path jar) throws IOException {
+        Files.createDirectories(jar.getParent());
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "META-INF/MANIFEST.MF", manifestBytes("Created-By", "good"));
+            deflated(zip, "a/B.class", repeat("class-", 50));
+        }
+        replaceEntryBytes(jar, "META-INF/MANIFEST.MF", "good".getBytes(StandardCharsets.UTF_8),
+                "evil".getBytes(StandardCharsets.UTF_8));
+        return jar;
+    }
+
+    /** Reverses the order of an archive's central directory records, leaving every local entry where it is. */
+    static byte[] withCentralRecordsReversed(byte[] archive) {
+        int end = archive.length - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE;
+        int count = shortAt(archive, end + 10);
+        int central = intAt(archive, end + 16);
+        List<byte[]> records = new ArrayList<>();
+        int at = central;
+        for (int i = 0; i < count; i++) {
+            int size = 46 + shortAt(archive, at + 28) + shortAt(archive, at + 30) + shortAt(archive, at + 32);
+            records.add(Arrays.copyOfRange(archive, at, at + size));
+            at += size;
+        }
+        byte[] result = archive.clone();
+        int position = central;
+        for (int i = records.size() - 1; i >= 0; i--) {
+            byte[] record = records.get(i);
+            System.arraycopy(record, 0, result, position, record.length);
+            position += record.length;
+        }
+        return result;
     }
 
     static byte[] manifestBytes(String key, String value) throws IOException {
