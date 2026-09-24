@@ -26,14 +26,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -85,17 +82,27 @@ import java.util.zip.CheckedOutputStream;
  * reaches the bytes. Building the same inputs twice, in different time zones, produces identical files.</p>
  *
  * <h2>Dependency staging</h2>
- * <p>Each dependency is repacked or copied into its nested jar on up to
- * {@code min(availableProcessors(), 8)} daemon threads. The threads are created for each build and have
- * stopped before {@code build} returns; with one processor, or at most one dependency, staging runs on the
- * calling thread. A staging thread holds one open {@code ZipReader}: its parsed central directory and
- * manifest and, outside the heap, a read-only mapping of the dependency, which is released when the stage
- * closes the reader. It also holds at most one {@code Inflater} at a time and at most three 64 KiB buffers:
- * the nested jar's output buffer and, in STORED, the reader's two transfer buffers. In PRESERVE the reader
- * reads the manifest at its exact size and never allocates its transfer buffers, so the stage holds two: the
- * output buffer and the copy buffer. The archive's bytes do not depend on the thread count: every nested
- * jar's name and work file are fixed in class-path order before staging starts, warnings are emitted in that
- * order afterwards, and the outer archive is written on one thread.</p>
+ * <p>Each dependency is staged on up to {@code min(availableProcessors(), 8)} daemon threads. In STORED its
+ * stage repacks it into a nested jar in the work directory. In PRESERVE the dependency is nested as it is:
+ * its stage writes nothing and only checksums the file, and the archive is written from the dependency
+ * itself, through a read that fails the build if the file no longer matches that checksum. The threads are
+ * created for each build and have stopped before {@code build} returns; with one processor, or at most one
+ * dependency, staging runs on the calling thread. A staging thread holds one open {@code ZipReader}: its
+ * parsed central directory and manifest and, outside the heap, a read-only mapping of the dependency, which
+ * is released when the stage closes the reader. It also holds at most one {@code Inflater} at a time and at
+ * most three 64 KiB buffers: in STORED, the nested jar's output buffer and the reader's two transfer buffers.
+ * In PRESERVE the reader reads the manifest at its exact size and never allocates its transfer buffers, so
+ * the stage holds one: the buffer it checksums the dependency through. The archive's bytes do not depend on
+ * the thread count: every nested jar's name and work file are fixed in class-path order before staging
+ * starts, warnings are emitted in that order afterwards, and the outer archive is written on one thread.</p>
+ *
+ * <h2>Application jars</h2>
+ * <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
+ * archive has been written. Its entries are streamed from it into the archive, each inflated and checked
+ * against its size, CRC-32 and DEFLATE framing as it is written, so none of them is held in memory or copied
+ * to a work file; only the main class and the application's own manifest, which the build parses, are read
+ * into memory. The calling thread closes every such reader as soon as the archive has been written, before
+ * it is verified, or when the build fails, before the work directory is deleted.</p>
  *
  * <h2>Dependency files</h2>
  * <p>A dependency is nested when it is a ZIP archive, which is when its first four bytes are a local file
@@ -157,7 +164,14 @@ public final class RunnerJarBuilder {
     private final RunnerJarSpec spec;
     private final BuildLogger logger;
     private final int parallelism;
+    /** Runs just before the real archive is written, after the dry pass has fixed the index. */
+    private final Runnable beforeWrite;
     private final List<String> warnings = new ArrayList<>();
+    /**
+     * The reader of every application output that is a jar, open from collection until the archive has been
+     * written. They belong to the calling thread, which opens, reads and closes them; a stage never sees one.
+     */
+    private final List<ZipReader> applicationReaders = new ArrayList<>();
     /** The dependencies that are nested: the spec's, less the files that are not ZIP archives. */
     private final List<Dependency> dependencies = new ArrayList<>();
     private final List<PlannedEntry> plan = new ArrayList<>();
@@ -187,10 +201,11 @@ public final class RunnerJarBuilder {
     private String entryStubClass;
     private int mergedServiceEntryCount;
 
-    private RunnerJarBuilder(RunnerJarSpec spec, BuildLogger logger, int parallelism) {
+    private RunnerJarBuilder(RunnerJarSpec spec, BuildLogger logger, int parallelism, Runnable beforeWrite) {
         this.spec = spec;
         this.logger = logger;
         this.parallelism = parallelism;
+        this.beforeWrite = beforeWrite;
         this.output = spec.output().toAbsolutePath().normalize();
         this.dosTime = ZipWriter.toDosTime(spec.timestamp());
     }
@@ -222,12 +237,32 @@ public final class RunnerJarBuilder {
      * @throws IllegalArgumentException if {@code parallelism} is below {@code 1}
      */
     static RunnerJarResult build(RunnerJarSpec spec, BuildLogger logger, int parallelism) throws IOException {
+        return build(spec, logger, parallelism, () -> { });
+    }
+
+    /**
+     * Packages an application, running a hook between the pass that lays the archive out and the pass that
+     * writes it. Tests use the hook to change an input after it was collected.
+     *
+     * @param spec        what to package and how
+     * @param logger      where to report progress and anything that looked wrong
+     * @param parallelism the most dependencies staged at once; {@code 1} stages them on the calling thread
+     * @param beforeWrite what to run, on the calling thread, just before the archive is written for real
+     * @return the counts and warnings of the build
+     * @throws IOException              if an input cannot be read, the output cannot be written, or the
+     *                                  archive that was written does not describe itself correctly
+     * @throws NullPointerException     if {@code spec}, {@code logger} or {@code beforeWrite} is {@code null}
+     * @throws IllegalArgumentException if {@code parallelism} is below {@code 1}
+     */
+    static RunnerJarResult build(RunnerJarSpec spec, BuildLogger logger, int parallelism, Runnable beforeWrite)
+            throws IOException {
         Objects.requireNonNull(spec, "spec");
         Objects.requireNonNull(logger, "logger");
+        Objects.requireNonNull(beforeWrite, "beforeWrite");
         if (parallelism < 1) {
             throw new IllegalArgumentException("The staging parallelism must be at least 1: " + parallelism);
         }
-        return new RunnerJarBuilder(spec, logger, parallelism).run();
+        return new RunnerJarBuilder(spec, logger, parallelism, beforeWrite).run();
     }
 
     private static long crc32(byte[] content) {
@@ -295,8 +330,9 @@ public final class RunnerJarBuilder {
         Path directory = output.getParent();
         Files.createDirectories(directory);
         Path work = Files.createTempDirectory(directory, ".micronaut-runner-");
+        Throwable failure = null;
         try {
-            collectApplication(work);
+            collectApplication();
             requireMainClass();
             generateEntryStub();
             readApplicationManifest();
@@ -322,7 +358,10 @@ public final class RunnerJarBuilder {
                         + indexEntry.size + " bytes, wrote " + indexEntry.bytes.length);
             }
             Path archive = work.resolve("runner.jar");
+            beforeWrite.run();
             long written = writeArchive(archive);
+            // Before verification, so a reader that cannot be closed fails the build before anything is moved.
+            closeApplicationReaders();
             if (written != archiveSize) {
                 throw new IOException("The archive changed length between the two passes: expected "
                         + archiveSize + " bytes, wrote " + written);
@@ -333,8 +372,48 @@ public final class RunnerJarBuilder {
             // The caller reports the build with the result's summary(), so the builder logs no line of its own.
             return new RunnerJarResult(output, writer.jars().size(), layout.entryCount(),
                     application.size(), mergedServiceEntryCount, archiveSize, warnings, spec.effectiveOptions());
+        } catch (Throwable e) {
+            failure = e;
+            throw e;
         } finally {
-            deleteRecursively(work);
+            try {
+                // A no-op after a successful write; after a failure, the readers are still open.
+                closeApplicationReaders();
+            } catch (IOException e) {
+                if (failure == null) {
+                    throw e;
+                }
+                failure.addSuppressed(e);
+            } finally {
+                deleteRecursively(work);
+            }
+        }
+    }
+
+    /**
+     * Closes the reader of every application jar, on the calling thread that opened it, and forgets it, so
+     * that calling this again does nothing. A reader left open would keep its jar mapped for as long as the
+     * JVM lives, a Gradle daemon's included, and on Windows the jar could then be neither replaced nor
+     * deleted.
+     *
+     * @throws IOException if a reader cannot be closed: the first failure, with the others suppressed
+     */
+    private void closeApplicationReaders() throws IOException {
+        IOException failure = null;
+        for (ZipReader reader : applicationReaders) {
+            try {
+                reader.close();
+            } catch (IOException e) {
+                if (failure == null) {
+                    failure = e;
+                } else {
+                    failure.addSuppressed(e);
+                }
+            }
+        }
+        applicationReaders.clear();
+        if (failure != null) {
+            throw failure;
         }
     }
 
@@ -484,9 +563,8 @@ public final class RunnerJarBuilder {
      *
      * @throws IOException if an input cannot be read or carries an entry name the format cannot store
      */
-    private void collectApplication(Path work) throws IOException {
+    private void collectApplication() throws IOException {
         List<Path> applicationOutput = spec.applicationOutput();
-        int jarPosition = 0;
         for (int i = 0; i < applicationOutput.size(); i++) {
             Path input = applicationOutput.get(i);
             Path realDirectory = applicationDirectories[i];
@@ -495,8 +573,7 @@ public final class RunnerJarBuilder {
                 walking.add(realDirectory);
                 collectDirectory(input, input, realDirectory, walking);
             } else {
-                collectApplicationJar(input, work.resolve("application-" + jarPosition + ".spool"));
-                jarPosition++;
+                collectApplicationJar(input);
             }
         }
     }
@@ -599,24 +676,28 @@ public final class RunnerJarBuilder {
         }
     }
 
-    private void collectApplicationJar(Path jar, Path spool) throws IOException {
-        long spoolOffset = 0;
-        try (ZipReader reader = ZipReader.open(jar);
-             OutputStream target = new BufferedOutputStream(Files.newOutputStream(spool), BUFFER_SIZE)) {
-            for (ZipEntryInfo entry : reader.entries()) {
-                String name = entry.name();
-                if (entry.directory()) {
-                    continue;
-                }
-                if (ZipReader.isSignatureFile(name) || ZipReader.isIndexList(name)) {
-                    continue;
-                }
-                requireSafeName(name, jar.toString());
-                long written = reader.transfer(entry, target);
-                addApplicationEntry(name,
-                        ApplicationEntry.ofFile(spool, spoolOffset, written, entry.crc32()), jar);
-                spoolOffset += written;
+    /**
+     * Adds the entries of an application jar without reading any of their content. The jar's reader stays
+     * open, in {@link #applicationReaders}, until the archive has been written: each entry is then streamed
+     * from it, and verified, exactly once.
+     *
+     * @param jar the application jar
+     * @throws IOException if the jar cannot be read or carries an entry name the format cannot store
+     */
+    private void collectApplicationJar(Path jar) throws IOException {
+        ZipReader reader = ZipReader.open(jar);
+        // Registered at once, so that a failure later in the build still closes it.
+        applicationReaders.add(reader);
+        for (ZipEntryInfo entry : reader.entries()) {
+            String name = entry.name();
+            if (entry.directory()) {
+                continue;
             }
+            if (ZipReader.isSignatureFile(name) || ZipReader.isIndexList(name)) {
+                continue;
+            }
+            requireSafeName(name, jar.toString());
+            addApplicationEntry(name, ApplicationEntry.ofZip(reader, entry), jar);
         }
     }
 
@@ -712,6 +793,10 @@ public final class RunnerJarBuilder {
         if (entry.bytes != null) {
             return entry.bytes;
         }
+        if (entry.reader != null) {
+            // Inflated at its exact size and checked against its CRC-32.
+            return entry.reader.read(entry.zipEntry);
+        }
         byte[] content = new byte[(int) entry.size];
         int offset = 0;
         try (InputStream input = entry.open()) {
@@ -767,9 +852,10 @@ public final class RunnerJarBuilder {
     }
 
     /**
-     * Produces every dependency as a nested jar in the work directory and reads what the index has to know
-     * about it: its manifest attributes, its per-package sections, whether it was signed and where each of
-     * its entries ended up inside it.
+     * Prepares every dependency as a nested jar and reads what the index has to know about it: its manifest
+     * attributes, its per-package sections, whether it was signed and where each of its entries ends up
+     * inside it. In STORED a dependency is repacked into a nested jar in the work directory; in PRESERVE the
+     * dependency itself is the nested jar, and is only checksummed.
      *
      * <p>Every nested jar's entry name and work file are fixed first, in class-path order, so neither
      * depends on which dependency is staged first. When {@link #parallelism} or the number of dependencies
@@ -777,8 +863,8 @@ public final class RunnerJarBuilder {
      * a pool created for this build, largest dependency first. Either way each stage is joined in class-path
      * order on the calling thread, which is the only thread that emits a warning or touches the builder.</p>
      *
-     * @param work the directory the nested jars are built in
-     * @throws IOException if a dependency cannot be read or its nested copy cannot be written; when several
+     * @param work the directory the repacked nested jars are built in
+     * @throws IOException if a dependency cannot be read or its nested jar cannot be written; when several
      *                     cannot, the failure of the first one on the class path
      */
     private void collectDependencies(Path work) throws IOException {
@@ -1079,7 +1165,7 @@ public final class RunnerJarBuilder {
      *                     application contributor cannot be compared with another
      */
     private void planMergedServices() throws IOException {
-        Map<String, ContentSource> contents = new LinkedHashMap<>();
+        Map<String, ApplicationEntry> contents = new LinkedHashMap<>();
         for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
             String name = item.getKey();
             if (!isMergedServiceName(name)) {
@@ -1138,19 +1224,20 @@ public final class RunnerJarBuilder {
      * Adds one dependency's {@code META-INF/micronaut/} entries to the merged set. A zero-length entry is a
      * contributor in its own right: it reserves the name just as an empty class-path resource does.
      *
-     * <p>The entries come from {@link NestedJar#result}, which describes the nested jar that was just
-     * written, so the nested jar is not parsed again. A zero-length entry becomes the shared
-     * {@link #EMPTY_CONTENT} and costs no I/O. An entry with content is read into memory with
-     * {@link ZipReader#read(ZipEntryInfo)}, which inflates it when it is compressed and verifies its CRC-32;
-     * the reader is opened at the first such entry, at most once for the jar, and closed before this
-     * method returns. A jar whose metadata entries are all empty, or that has none, is never opened.</p>
+     * <p>The entries come from {@link NestedJar#result}, which describes the nested jar as it was staged, the
+     * repacked copy in STORED and the dependency itself in PRESERVE, so the nested jar is not parsed again. A
+     * zero-length entry becomes the shared {@link #EMPTY_CONTENT} and costs no I/O. An entry with content is
+     * read into memory with {@link ZipReader#read(ZipEntryInfo)}, which inflates it when it is compressed and
+     * verifies its CRC-32; the reader is opened at the first such entry, at most once for the jar, and closed
+     * before this method returns. A jar whose metadata entries are all empty, or that has none, is never
+     * opened.</p>
      *
-     * @param jar      the dependency, already written as a nested jar
+     * @param jar      the dependency, already staged as a nested jar
      * @param contents the merged content so far, keyed by logical name, in class path order
      * @throws IOException if a non-empty entry cannot be read back out of the nested jar, or does not match
      *                     its recorded size or CRC-32
      */
-    private void collectMergedServices(NestedJar jar, Map<String, ContentSource> contents) throws IOException {
+    private void collectMergedServices(NestedJar jar, Map<String, ApplicationEntry> contents) throws IOException {
         Set<String> contributed = new HashSet<>();
         ZipReader reader = null;
         try {
@@ -1160,7 +1247,7 @@ public final class RunnerJarBuilder {
                     continue;
                 }
                 serviceNames.add(name);
-                ContentSource candidate;
+                ApplicationEntry candidate;
                 if (entry.uncompressedSize() == 0 && entry.crc32() == 0) {
                     candidate = EMPTY_CONTENT;
                 } else {
@@ -1171,7 +1258,7 @@ public final class RunnerJarBuilder {
                     }
                     candidate = ApplicationEntry.ofBytes(readMergedService(jar, reader, entry), entry.crc32());
                 }
-                ContentSource existing = contents.putIfAbsent(name, candidate);
+                ApplicationEntry existing = contents.putIfAbsent(name, candidate);
                 if (existing != null && !sameContent(existing, candidate)) {
                     warn("Two class path entries contribute a different '" + name
                             + "'. The copy merged into the root of the archive is the first on the class path;"
@@ -1191,17 +1278,17 @@ public final class RunnerJarBuilder {
         try {
             return reader.read(entry);
         } catch (IOException e) {
-            // The reader names the nested copy in the work directory; the dependency is what has to be fixed.
+            // In STORED the reader names the repacked copy; the dependency is what has to be fixed.
             throw new IOException("The dependency " + jar.dependency.path() + " cannot be packaged: "
                     + e.getMessage(), e);
         }
     }
 
-    private static boolean sameContent(ContentSource first, ContentSource second) throws IOException {
-        if (first.size() != second.size() || first.crc32() != second.crc32()) {
+    private static boolean sameContent(ApplicationEntry first, ApplicationEntry second) throws IOException {
+        if (first.size != second.size || first.crc32 != second.crc32) {
             return false;
         }
-        if (first.size() == 0) {
+        if (first.size == 0) {
             return true;
         }
         try (InputStream left = first.open(); InputStream right = second.open()) {
@@ -1264,10 +1351,18 @@ public final class RunnerJarBuilder {
         }
     }
 
-    private void planNestedJars() throws IOException {
+    private void planNestedJars() {
+        boolean preserved = spec.compression() == Compression.PRESERVE;
         for (NestedJar jar : nested) {
-            long length = Files.size(jar.file);
-            jar.entry = PlannedEntry.ofFile(jar.entryName, jar.file, length, jar.crc32);
+            // A repacked jar's length is the offset its writer ended at; a preserved one's is its reader's.
+            long length = jar.result.length();
+            // A preserved jar is the dependency itself, which nothing stops from changing after its stage
+            // checksummed it: it is copied through a verified read, which fails the build before the archive
+            // is published unless the bytes it copies are the ones that checksum describes. A repacked jar is
+            // the build's own work file and is copied as it is.
+            jar.entry = preserved
+                    ? PlannedEntry.ofSource(jar.entryName, ApplicationEntry.ofFile(jar.file, length, jar.crc32))
+                    : PlannedEntry.ofFile(jar.entryName, jar.file, length, jar.crc32);
             plan.add(jar.entry);
             Attributes main = jar.manifest == null ? null : jar.manifest.getMainAttributes();
             jar.jar = writer.addJar(jar.entryName).coordinates(jar.dependency.coordinates().orElse(null));
@@ -1406,13 +1501,16 @@ public final class RunnerJarBuilder {
      * every offset against what the dry pass recorded, so a disagreement between the two can never reach an
      * archive.</p>
      *
-     * <p>A zero-length entry is written from a constant in the real pass too, whatever it is backed by, so
-     * it never opens a stream, a channel or a mapping.</p>
+     * <p>An entry of an application jar is streamed from that jar's open reader, which checks its size,
+     * CRC-32 and DEFLATE framing as it goes; an empty one too, because only inflating it checks its framing.
+     * Any other zero-length entry is written from a constant in the real pass too, whatever it is backed by,
+     * so it never opens a stream, a channel or a mapping.</p>
      *
      * @param archive the file to write, or {@code null} for the dry pass
      * @return the length of the archive
-     * @throws IOException if an entry cannot be written, does not land where it was planned to, or is empty
-     *                     but records a non-zero CRC-32
+     * @throws IOException if an entry cannot be written, does not land where it was planned to, is empty but
+     *                     records a non-zero CRC-32, or no longer matches the size or CRC-32 it was collected
+     *                     with
      */
     private long writeArchive(Path archive) throws IOException {
         boolean dry = archive == null;
@@ -1428,9 +1526,13 @@ public final class RunnerJarBuilder {
                     dataOffset = zip.writeDirectoryEntry(entry.name, dosTime);
                 } else if (dry) {
                     dataOffset = zip.layoutEntry(entry.name, entry.size, entry.crc32, dosTime);
+                } else if (entry.source != null && entry.source.reader != null) {
+                    // Before the zero-length branch: an empty deflated entry can still carry a broken stream,
+                    // and its reader is already open.
+                    dataOffset = zip.writeEntry(entry.name, entry.source.reader, entry.source.zipEntry, dosTime);
                 } else if (entry.size == 0) {
                     // Nothing to copy, so nothing to open: no stream, channel or mapping for an empty entry,
-                    // whatever it is backed by. Its recorded CRC-32 is the only thing left to check.
+                    // whatever else it is backed by. Its recorded CRC-32 is the only thing left to check.
                     if (entry.crc32 != 0) {
                         throw new IOException("The empty entry '" + entry.name + "' records CRC-32 "
                                 + Long.toHexString(entry.crc32));
@@ -1582,7 +1684,7 @@ public final class RunnerJarBuilder {
         private final boolean directory;
         private byte[] bytes;
         private Path file;
-        private ContentSource source;
+        private ApplicationEntry source;
         private long size;
         private long crc32;
         private long dataOffset;
@@ -1614,11 +1716,11 @@ public final class RunnerJarBuilder {
             return entry;
         }
 
-        private static PlannedEntry ofSource(String name, ContentSource source) {
+        private static PlannedEntry ofSource(String name, ApplicationEntry source) {
             PlannedEntry entry = new PlannedEntry(name, false);
             entry.source = Objects.requireNonNull(source, "source");
-            entry.size = source.size();
-            entry.crc32 = source.crc32();
+            entry.size = source.size;
+            entry.crc32 = source.crc32;
             return entry;
         }
 
@@ -1632,156 +1734,73 @@ public final class RunnerJarBuilder {
     }
 
     /**
-     * One entry of the application layer, held either in memory (it came out of a jar) or as the file it
-     * still is on disk.
+     * The content of one entry the builder copies rather than generates, with the size and CRC-32 it was
+     * collected with. It is one of three things:
+     * <ul>
+     *     <li>bytes in memory: a generated class, or a dependency's non-empty merged Micronaut metadata;</li>
+     *     <li>an entry of an application jar, read through that jar's {@link ZipReader}, which stays open until
+     *     the archive has been written and inflates and verifies the entry each time it is read;</li>
+     *     <li>a file, read through a {@link VerifiedFileInputStream} that fails unless it reads exactly the
+     *     bytes the CRC-32 describes: a file of an application directory, or, in PRESERVE, the dependency
+     *     that is nested as it is.</li>
+     * </ul>
      */
-    private static final class ApplicationEntry implements ContentSource {
+    private static final class ApplicationEntry {
 
-        private byte[] bytes;
-        private Path file;
-        private long offset;
-        private long size;
-        private long crc32;
+        private final byte[] bytes;
+        private final Path file;
+        private final ZipReader reader;
+        private final ZipEntryInfo zipEntry;
+        private final long size;
+        private final long crc32;
+
+        private ApplicationEntry(byte[] bytes, Path file, ZipReader reader, ZipEntryInfo zipEntry, long size,
+                                 long crc32) {
+            this.bytes = bytes;
+            this.file = file;
+            this.reader = reader;
+            this.zipEntry = zipEntry;
+            this.size = size;
+            this.crc32 = crc32;
+        }
 
         private static ApplicationEntry ofBytes(byte[] content) {
             return ofBytes(content, RunnerJarBuilder.crc32(content));
         }
 
         private static ApplicationEntry ofBytes(byte[] content, long crc32) {
-            ApplicationEntry entry = new ApplicationEntry();
-            entry.bytes = content;
-            entry.size = content.length;
-            entry.crc32 = crc32;
-            return entry;
+            return new ApplicationEntry(content, null, null, null, content.length, crc32);
         }
 
         private static ApplicationEntry ofFile(Path file, long size, long crc32) {
-            return ofFile(file, 0, size, crc32);
+            return new ApplicationEntry(null, file, null, null, size, crc32);
         }
 
-        private static ApplicationEntry ofFile(Path file, long offset, long size, long crc32) {
-            ApplicationEntry entry = new ApplicationEntry();
-            entry.file = file;
-            entry.offset = offset;
-            entry.size = size;
-            entry.crc32 = crc32;
-            return entry;
+        /**
+         * An entry of an application jar, described by its central directory record and read through the
+         * jar's reader, which only the calling thread may use.
+         */
+        private static ApplicationEntry ofZip(ZipReader reader, ZipEntryInfo entry) {
+            return new ApplicationEntry(null, null, reader, entry, entry.uncompressedSize(), entry.crc32());
         }
 
-        @Override
-        public long size() {
-            return size;
-        }
-
-        @Override
-        public long crc32() {
-            return crc32;
-        }
-
-        @Override
-        public InputStream open() throws IOException {
-            return bytes == null
-                    ? new VerifiedFileInputStream(file, offset, size, crc32)
-                    : new ByteArrayInputStream(bytes);
-        }
-    }
-
-    /** A bounded positional file stream that detects same-length source mutation while it is consumed. */
-    private static final class VerifiedFileInputStream extends InputStream {
-
-        private final Path file;
-        private final FileChannel channel;
-        private final CRC32 crc = new CRC32();
-        private final long expectedCrc;
-        private final byte[] one = new byte[1];
-        private long position;
-        private long remaining;
-        private boolean verified;
-
-        private VerifiedFileInputStream(Path file, long offset, long size, long expectedCrc) throws IOException {
-            this.file = file;
-            this.channel = FileChannel.open(file, StandardOpenOption.READ);
-            this.position = offset;
-            this.remaining = size;
-            this.expectedCrc = expectedCrc;
-            if (size == 0) {
-                verify();
+        /**
+         * Opens the content. An entry of an application jar is inflated and verified into memory: only
+         * {@code sameContent} opens one, for a non-empty duplicate Micronaut metadata entry, and
+         * {@code writeArchive} streams it from the reader instead.
+         *
+         * @return the content, which the caller closes
+         * @throws IOException if it cannot be read
+         */
+        private InputStream open() throws IOException {
+            if (bytes != null) {
+                return new ByteArrayInputStream(bytes);
             }
+            if (reader != null) {
+                return new ByteArrayInputStream(reader.read(zipEntry));
+            }
+            return new VerifiedFileInputStream(file, size, crc32);
         }
-
-        @Override
-        public int read() throws IOException {
-            int read = read(one, 0, 1);
-            return read < 0 ? -1 : one[0] & 0xFF;
-        }
-
-        @Override
-        public int read(byte[] destination, int offset, int count) throws IOException {
-            Objects.checkFromIndexSize(offset, count, destination.length);
-            if (count == 0) {
-                return 0;
-            }
-            if (remaining == 0) {
-                return -1;
-            }
-            int wanted = (int) Math.min(count, remaining);
-            ByteBuffer buffer = ByteBuffer.wrap(destination, offset, wanted);
-            int read;
-            do {
-                read = channel.read(buffer, position);
-            } while (read == 0);
-            if (read < 0) {
-                throw new IOException("The source " + file + " ended with " + remaining + " bytes remaining");
-            }
-            crc.update(destination, offset, read);
-            position += read;
-            remaining -= read;
-            if (remaining == 0) {
-                verify();
-            }
-            return read;
-        }
-
-        @Override
-        public long skip(long count) throws IOException {
-            long wanted = Math.min(Math.max(count, 0), remaining);
-            if (wanted == 0) {
-                return 0;
-            }
-            byte[] buffer = new byte[(int) Math.min(BUFFER_SIZE, wanted)];
-            long skipped = 0;
-            while (skipped < wanted) {
-                int read = read(buffer, 0, (int) Math.min(buffer.length, wanted - skipped));
-                if (read < 0) {
-                    break;
-                }
-                skipped += read;
-            }
-            return skipped;
-        }
-
-        @Override
-        public void close() throws IOException {
-            channel.close();
-        }
-
-        private void verify() throws IOException {
-            if (!verified && crc.getValue() != expectedCrc) {
-                throw new IOException("The source " + file + " does not match its recorded CRC-32: expected "
-                        + Long.toHexString(expectedCrc) + ", computed " + Long.toHexString(crc.getValue()));
-            }
-            verified = true;
-        }
-    }
-
-    /** Content selected for the root Micronaut metadata union. */
-    private interface ContentSource {
-
-        long size();
-
-        long crc32();
-
-        InputStream open() throws IOException;
     }
 
     /**
@@ -1825,7 +1844,8 @@ public final class RunnerJarBuilder {
     }
 
     /**
-     * Stages one dependency: repacks or copies it into its nested jar and describes the result.
+     * Stages one dependency: repacks it into its nested jar, or, in PRESERVE, checksums it where it is, and
+     * describes the result.
      *
      * <p>A stage may run on a worker thread, so it reads nothing but its own fields and touches no builder
      * state. It opens, uses and closes its {@link ZipReader}, streams, {@link CRC32} and buffers on the
@@ -1835,6 +1855,7 @@ public final class RunnerJarBuilder {
 
         private final Dependency dependency;
         private final String entryName;
+        /** The work file a repacked nested jar is written to; a preserved dependency leaves it unused. */
         private final Path target;
         private final Compression compression;
 
@@ -1847,18 +1868,29 @@ public final class RunnerJarBuilder {
 
         @Override
         public StagedDependency call() throws IOException {
-            CRC32 crc = new CRC32();
+            Path file;
+            long crc32;
             ZipRepacker.RepackResult result;
             Manifest manifest;
             boolean hasManifest;
             try (ZipReader reader = ZipReader.open(dependency.path())) {
                 manifest = reader.manifest().orElse(null);
                 hasManifest = reader.entry("META-INF/MANIFEST.MF").isPresent();
-                try (OutputStream file = new BufferedOutputStream(Files.newOutputStream(target), BUFFER_SIZE);
-                     CheckedOutputStream checked = new CheckedOutputStream(file, crc)) {
-                    result = compression == Compression.STORED
-                            ? ZipRepacker.repack(reader, checked)
-                            : ZipRepacker.copy(reader, checked);
+                if (compression == Compression.PRESERVE) {
+                    // Nested as it is, so nothing is written: the reader has already resolved every offset
+                    // relative to the dependency's first byte, and the dependency is the nested jar.
+                    file = dependency.path();
+                    result = new ZipRepacker.RepackResult(reader.entries(), reader.fileLength(),
+                            reader.hasSignatureFiles(), List.of());
+                    crc32 = checksum(file, reader.fileLength(), new byte[BUFFER_SIZE]);
+                } else {
+                    file = target;
+                    CRC32 crc = new CRC32();
+                    try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(target), BUFFER_SIZE);
+                         CheckedOutputStream checked = new CheckedOutputStream(out, crc)) {
+                        result = ZipRepacker.repack(reader, checked);
+                    }
+                    crc32 = crc.getValue();
                 }
             } catch (IOException e) {
                 // Without this the message names only the entry, and a build with dozens of dependencies
@@ -1872,9 +1904,37 @@ public final class RunnerJarBuilder {
                 requireSafeName(entry.name(), dependency.path().toString());
             }
             return new StagedDependency(
-                    new NestedJar(dependency, entryName, target, result, manifest, hasManifest, crc.getValue()),
+                    new NestedJar(dependency, entryName, file, result, manifest, hasManifest, crc32),
                     classPathWarning(dependency, manifest),
                     signatureWarning(dependency, compression, result));
+        }
+
+        /**
+         * Computes the CRC-32 of a dependency that is nested as it is, through the stage's own buffer and
+         * {@link CRC32}, never the builder's: stages run on several threads at once.
+         *
+         * @param file   the dependency
+         * @param length its length when its reader opened it
+         * @param buffer the stage's buffer
+         * @return the CRC-32 of its content
+         * @throws IOException if it cannot be read, or its length is no longer {@code length}
+         */
+        private static long checksum(Path file, long length, byte[] buffer) throws IOException {
+            CRC32 crc = new CRC32();
+            long read = 0;
+            try (InputStream in = Files.newInputStream(file)) {
+                int count = in.read(buffer);
+                while (count > 0) {
+                    crc.update(buffer, 0, count);
+                    read += count;
+                    count = in.read(buffer);
+                }
+            }
+            if (read != length) {
+                throw new IOException("Read " + read + " of " + length + " bytes of " + file
+                        + "; it changed while it was being packaged");
+            }
+            return crc.getValue();
         }
     }
 

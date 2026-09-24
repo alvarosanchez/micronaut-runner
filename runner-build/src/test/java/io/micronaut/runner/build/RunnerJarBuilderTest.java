@@ -30,9 +30,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -776,6 +780,30 @@ class RunnerJarBuilderTest {
         assertTrue(failure.getMessage().contains("compressed"), failure.getMessage());
         assertArrayEquals(previous, Files.readAllBytes(output),
                 "a malformed application jar must not replace the previous output");
+    }
+
+    @ParameterizedTest
+    @EnumSource(Compression.class)
+    void rejectsUnusedCompressedBytesInAnEmptyApplicationJarEntry(Compression compression) throws IOException {
+        // Empty, so only streaming it from the jar checks its DEFLATE framing: an entry written from a constant
+        // because it is empty would be packaged without a word.
+        String name = SERVICE_DIRECTORY + "com.example.Empty";
+        Path jar = deflatedWithTrailingByte(fixtures.resolve("empty-entry-trailing-byte-" + compression + ".jar"),
+                name, new byte[0]);
+        Path output = existingOutput();
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .applicationOutput(List.of(applicationClasses, jar))
+                .compression(compression)
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains(name), failure.getMessage());
+        assertTrue(failure.getMessage().contains("unused compressed bytes"), failure.getMessage());
+        assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
+                "a malformed application jar must not replace the previous output");
+        assertNoWorkDirectory(output.getParent());
+        // A reader the failed build left open would keep the jar mapped, and Windows could not delete it.
+        Files.delete(jar);
     }
 
     @Test
@@ -2033,6 +2061,94 @@ class RunnerJarBuilderTest {
             assertEquals(IndexFormat.METHOD_DEFLATED, index.entryMethod(deflated),
                     "the entry keeps the compression it had");
             assertEquals("com.example.dep.Dep\n", new String(reader.read(deflated), StandardCharsets.UTF_8));
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(Compression.class)
+    void writesAWorkFileOnlyForADependencyItRepacks(Compression compression) throws IOException {
+        Path applicationJar = fixtures.resolve("work-files-application-" + compression + ".jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(applicationJar))) {
+            deflated(zip, "com/example/Application.class",
+                    Files.readAllBytes(applicationClasses.resolve("com/example/Application.class")));
+            deflated(zip, "application.yml", "from the jar".getBytes(StandardCharsets.UTF_8));
+        }
+        Path output = Files.createDirectories(fixtures.resolve("work-files-" + compression)).resolve("runner.jar");
+        List<String> workFiles = new ArrayList<>();
+
+        RunnerJarBuilder.build(spec(output)
+                .applicationOutput(List.of(applicationJar))
+                .compression(compression)
+                .build(), BuildLogger.noOp(), 1, () -> workFiles.addAll(workFiles(output.getParent())));
+
+        // What the work directory holds just before the archive is written: no copy of a preserved
+        // dependency and nothing for the application jar, whose entries are streamed from the jar itself.
+        assertEquals(compression == Compression.PRESERVE
+                        ? List.of("launcher.jar")
+                        : List.of("launcher.jar", "lib-0.jar", "lib-1.jar", "lib-2.jar"),
+                workFiles);
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            Index index = reader.index();
+            assertEquals("from the jar",
+                    new String(reader.read(index.find("application.yml")), StandardCharsets.UTF_8));
+        }
+        assertNoWorkDirectory(output.getParent());
+        // A reader the build left open would keep the jar mapped, and Windows could not delete it.
+        Files.delete(applicationJar);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void aPreservedDependencyThatChangesDuringTheBuildFailsIt(boolean truncate) throws IOException {
+        Path directory = Files.createDirectories(fixtures.resolve("changing-dependency-" + truncate));
+        Path copy = directory.resolve("changing-lib.jar");
+        Files.copy(plainDependency, copy);
+        Path output = Files.createDirectories(directory.resolve("out")).resolve("runner.jar");
+        Files.write(output, PREVIOUS_OUTPUT);
+        // After the dependency was checksummed and laid out, before it is copied: a staged copy would hide
+        // the change, so this also shows that the dependency itself is what gets nested.
+        Runnable change = () -> {
+            try (FileChannel channel = FileChannel.open(copy, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+                if (truncate) {
+                    channel.truncate(channel.size() - 1);
+                } else {
+                    long at = channel.size() / 2;
+                    ByteBuffer one = ByteBuffer.allocate(1);
+                    channel.read(one, at);
+                    one.put(0, (byte) ~one.get(0)).rewind();
+                    channel.write(one, at);
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        };
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .compression(Compression.PRESERVE)
+                .dependencies(List.of(Dependency.of(copy)))
+                .build(), BuildLogger.noOp(), 1, change));
+
+        assertTrue(failure.getMessage().contains(copy.toString()), failure.getMessage());
+        if (!truncate) {
+            assertTrue(failure.getMessage().contains("CRC-32"), failure.getMessage());
+        }
+        assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
+                "a dependency that changed must not reach the output");
+        assertNoWorkDirectory(output.getParent());
+    }
+
+    /** The names of the files in the one work directory under {@code directory}, sorted. */
+    private static List<String> workFiles(Path directory) {
+        try (Stream<Path> children = Files.list(directory)) {
+            List<Path> work = children
+                    .filter(child -> child.getFileName().toString().startsWith(".micronaut-runner-"))
+                    .toList();
+            assertEquals(1, work.size(), "one work directory: " + work);
+            try (Stream<Path> files = Files.list(work.get(0))) {
+                return files.map(file -> file.getFileName().toString()).sorted().toList();
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 
