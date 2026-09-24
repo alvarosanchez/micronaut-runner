@@ -65,6 +65,12 @@ repositories {
 }
 ```
 
+## Benchmarks
+
+Never commit raw benchmark output (JMH JSON, startup or packaging reports). Summarise the results in the pull request description; the `benchmark-results` artifact of the Benchmarks workflow holds the raw files (run it with `workflow_dispatch`, or label the pull request `relates-to: benchmarks`).
+
+Quote startup comparisons as paired-difference medians with their 95% confidence intervals from one interleaved run. With fewer than 10 measured samples per variant, label the result descriptive.
+
 ## Creating a pull request
 
 Once you are satisfied with your changes:

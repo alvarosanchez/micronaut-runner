@@ -76,15 +76,38 @@ final class ForkedApplication implements AutoCloseable {
      */
     static ForkedApplication start(Path archive, Path workingDirectory, Map<String, String> environment)
             throws IOException {
+        return start(archive, workingDirectory, environment, List.of());
+    }
+
+    /**
+     * Starts {@code java <jvmArguments> -jar archive} and returns immediately.
+     *
+     * <p>The child does not inherit {@code JAVA_TOOL_OPTIONS}, {@code JDK_JAVA_OPTIONS} or
+     * {@code _JAVA_OPTIONS}, so the JVM options it runs with are exactly the ones passed here.</p>
+     *
+     * @param archive          the runner jar to start
+     * @param workingDirectory the directory to start it in
+     * @param environment      extra environment variables, such as {@code SERVER_PORT}
+     * @param jvmArguments     JVM options, inserted before {@code -jar}
+     * @return the running application
+     * @throws IOException if the process could not be started
+     */
+    static ForkedApplication start(Path archive, Path workingDirectory, Map<String, String> environment,
+                                   List<String> jvmArguments) throws IOException {
         List<String> command = new ArrayList<>();
         command.add(Samples.javaExecutable().toString());
+        command.addAll(jvmArguments);
         command.add("-jar");
         command.add(archive.toAbsolutePath().toString());
 
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(workingDirectory.toFile())
                 .redirectErrorStream(true);
-        builder.environment().putAll(environment);
+        Map<String, String> childEnvironment = builder.environment();
+        childEnvironment.remove("JAVA_TOOL_OPTIONS");
+        childEnvironment.remove("JDK_JAVA_OPTIONS");
+        childEnvironment.remove("_JAVA_OPTIONS");
+        childEnvironment.putAll(environment);
         return new ForkedApplication(builder.start(), command);
     }
 

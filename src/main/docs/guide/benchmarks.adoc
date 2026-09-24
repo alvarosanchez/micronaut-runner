@@ -145,11 +145,12 @@ Run it locally with:
 `-Pbenchmarks.packagingIterations=2` changes the number of independent packaging workers. The JMH resource
 benchmarks expose the same `workload` parameter. The startup task defaults to the larger
 `test-suite/samples/benchmark-large` application; use `-Pbenchmarks.sample=<sample-directory-name>` for an
-explicit sample. Short smoke runs and retained issue investigations must remain labelled descriptive rather
-than being promoted to release claims.
+explicit sample. Short smoke runs must remain labelled descriptive rather than being promoted to release
+claims.
 
-Reports are written to `benchmarks/build/reports/`. In CI the benchmarks run weekly and on demand rather
-than on every pull request, because shared runners are too noisy to gate a build on.
+Reports are written to `benchmarks/build/reports/`. The startup task builds its variants and trains its caches
+in `benchmarks/build/tmp/startupBenchmark`. In CI the benchmarks run weekly and on demand rather than on every
+pull request, because shared runners are too noisy to gate a build on.
 
 The startup harness uses a required, fail-closed matrix by default. Every required packaging variant must
 be built and complete every requested measured iteration; otherwise the task exits nonzero _after_ writing

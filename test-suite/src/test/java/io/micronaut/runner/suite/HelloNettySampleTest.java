@@ -22,8 +22,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -31,6 +33,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -48,6 +52,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * launcher installed its own class loader, that bean discovery found a bean inside a nested jar, and that
  * Netty bound a port - none of which a build that merely produced a file would prove.</p>
  *
+ * <p>The same launch logs its class loads, and the test pins which launcher classes load before the entry
+ * stub, so that a class that drifts onto the pre-{@code main} path fails here rather than going unnoticed.</p>
+ *
  * <p>The sample is built in place rather than in a temporary directory because its {@code settings.gradle}
  * reads the version catalog by a relative path. Its outputs are declared as build outputs of the sample,
  * not of this test.</p>
@@ -63,6 +70,42 @@ class HelloNettySampleTest {
 
     /** How long the server is given to come up. Generous: a cold JIT on a loaded CI agent is slow. */
     private static final Duration STARTUP_TIMEOUT = Duration.ofMinutes(2);
+
+    /**
+     * Where the launch logs its class loads, relative to the sample, which is the child's working directory.
+     * It contains no colon and no space, so {@code -Xlog} parses it as a plain file name.
+     */
+    private static final String CLASS_LOAD_LOG = "build/runner-classload.log";
+
+    /** What precedes the class name on a {@code -Xlog:class+load} line. */
+    private static final String CLASS_LOAD_TAG = "[class,load] ";
+
+    /** The package of the generated entry stub, whose first class marks the end of the launcher's work. */
+    private static final String GENERATED_PACKAGE = "io.micronaut.runner.generated.";
+
+    /**
+     * The launcher classes that load before the entry stub in a default {@code java -jar} start.
+     *
+     * <p>Every class on this list is read, parsed and verified on every launch without a cache, so a new
+     * entry is a startup cost. Keep a new class off the link path, for example behind a static factory
+     * declared to return its supertype, so that verifying its caller does not load it; or justify it here,
+     * next to the list.</p>
+     */
+    private static final Set<String> PRE_MAIN_LAUNCHER_CLASSES = Set.of(
+            "io.micronaut.runner.Launcher",
+            "io.micronaut.runner.RunnerClassLoader",
+            "io.micronaut.runner.Entry",
+            "io.micronaut.runner.ArchiveSource",
+            // Every resource stream uses these two, so deferring them would save nothing.
+            "io.micronaut.runner.ArchiveSource$RegionInputStream",
+            "io.micronaut.runner.ArchiveSource$EntryInputStream",
+            "io.micronaut.runner.Index",
+            "io.micronaut.runner.IndexFormat",
+            "io.micronaut.runner.Handlers",
+            // The handler has to exist before main to build CodeSource URLs. Verifying it loads, without
+            // linking, the connection its openConnection returns.
+            "io.micronaut.runner.protocol.jar.Handler",
+            "io.micronaut.runner.protocol.jar.RunnerJarURLConnection");
 
     @BeforeAll
     static void assumeTheSuiteCanRun() {
@@ -89,9 +132,12 @@ class HelloNettySampleTest {
         Files.copy(archive, unicodeArchive, StandardCopyOption.REPLACE_EXISTING);
         assertStartsTheApplication(unicodeArchive);
 
+        Path classLoadLog = sample.resolve(CLASS_LOAD_LOG);
+        Files.deleteIfExists(classLoadLog);
         int port = Samples.freePort();
         ForkedApplication application = ForkedApplication.start(unicodeArchive, sample, Map.of(
-                "SERVER_PORT", Integer.toString(port)));
+                "SERVER_PORT", Integer.toString(port)),
+                List.of("-Xlog:class+load=info:file=" + CLASS_LOAD_LOG));
         try {
             String body = application.awaitBody(
                     URI.create("http://localhost:" + port + "/hello"), STARTUP_TIMEOUT);
@@ -101,6 +147,58 @@ class HelloNettySampleTest {
         } finally {
             application.close();
         }
+        assertPreMainClasses(classLoadLog);
+    }
+
+    /**
+     * Pins what the launcher loads before it enters the application: exactly
+     * {@link #PRE_MAIN_LAUNCHER_CLASSES} of its own classes, and none of the JDK classes that a pattern
+     * switch or the foreign-memory value layouts would bring in.
+     *
+     * @param log the {@code -Xlog:class+load} output of a launch that has exited
+     */
+    private static void assertPreMainClasses(Path log) throws IOException {
+        List<String> beforeStub = new ArrayList<>();
+        boolean stubSeen = false;
+        // Class names are ASCII; Latin-1 decodes any byte, whatever encoding a source path was written in.
+        try (BufferedReader reader = Files.newBufferedReader(log, StandardCharsets.ISO_8859_1)) {
+            for (String line = reader.readLine(); line != null; line = reader.readLine()) {
+                int tag = line.indexOf(CLASS_LOAD_TAG);
+                if (tag < 0) {
+                    continue;
+                }
+                int start = tag + CLASS_LOAD_TAG.length();
+                int end = line.indexOf(' ', start);
+                String name = end < 0 ? line.substring(start) : line.substring(start, end);
+                if (name.startsWith(GENERATED_PACKAGE)) {
+                    stubSeen = true;
+                    break;
+                }
+                beforeStub.add(name);
+            }
+        }
+        assertTrue(stubSeen, () -> log + " has no " + GENERATED_PACKAGE + " class, so the pre-main set is unknown");
+
+        Set<String> launcher = new TreeSet<>();
+        List<String> forbidden = new ArrayList<>();
+        for (String name : beforeStub) {
+            if (name.startsWith("io.micronaut.runner.")) {
+                launcher.add(name);
+            }
+            if (name.startsWith("java.lang.runtime.SwitchBootstraps") || name.contains("$$TypeSwitch")
+                    || name.startsWith("java.lang.foreign.ValueLayout$Of")
+                    || name.startsWith("jdk.internal.foreign.layout.ValueLayouts$Of")) {
+                forbidden.add(name);
+            }
+        }
+        Set<String> added = new TreeSet<>(launcher);
+        added.removeAll(PRE_MAIN_LAUNCHER_CLASSES);
+        Set<String> missing = new TreeSet<>(PRE_MAIN_LAUNCHER_CLASSES);
+        missing.removeAll(launcher);
+        assertTrue(added.isEmpty() && missing.isEmpty(),
+                () -> "the launcher classes loaded before the entry stub changed; added " + added
+                        + ", missing " + missing + ". See PRE_MAIN_LAUNCHER_CLASSES.");
+        assertTrue(forbidden.isEmpty(), () -> "loaded before the entry stub: " + forbidden);
     }
 
     /** Checks the manifest the JVM will read before anything is started, so a failure names the cause. */

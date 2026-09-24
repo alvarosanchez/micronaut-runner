@@ -803,10 +803,6 @@ final class Reports {
         String redacted = value.replace(context.repository(), "<redacted:repository-location>")
                 .replace(context.sample().toAbsolutePath().normalize().toString(), "${sample}")
                 .replace(context.outputDirectory().toAbsolutePath().normalize().toString(), "${output}");
-        String home = System.getProperty("user.home", "");
-        if (!home.isEmpty()) {
-            redacted = redacted.replace(home, "${user-home-redacted}");
-        }
         if (variant != null) {
             if (variant.workingDirectory() != null) {
                 redacted = redacted.replace(variant.workingDirectory().toAbsolutePath().normalize().toString(),
@@ -816,6 +812,11 @@ final class Reports {
                 redacted = redacted.replace(variant.launchInputs().get(i).toAbsolutePath().normalize().toString(),
                         "${input:" + i + "}");
             }
+        }
+        // Last, as in BenchmarkProvenance.relocatableCommand: variant paths are usually under the home directory.
+        String home = System.getProperty("user.home", "");
+        if (!home.isEmpty()) {
+            redacted = redacted.replace(home, "${user-home-redacted}");
         }
         return redacted;
     }

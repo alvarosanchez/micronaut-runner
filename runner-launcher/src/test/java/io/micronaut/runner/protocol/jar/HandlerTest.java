@@ -28,6 +28,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.lang.management.ManagementFactory;
 import java.net.JarURLConnection;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -50,6 +51,7 @@ import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import com.sun.management.UnixOperatingSystemMXBean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,7 +63,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -542,18 +543,6 @@ class HandlerTest {
     }
 
     @Test
-    void uncachedOuterStreamsReleaseTheirOwnedJarFiles() throws IOException {
-        for (int i = 0; i < 3; i++) {
-            JarURLConnection connection = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
-                    .openConnection();
-            connection.setUseCaches(false);
-            try (InputStream in = connection.getInputStream()) {
-                assertArrayEquals(OUTER_MANIFEST, in.readAllBytes());
-            }
-        }
-    }
-
-    @Test
     void uncachedOuterStreamsHaveIndependentLifetimesOnOneConnection() throws IOException {
         JarURLConnection connection = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
                 .openConnection();
@@ -570,38 +559,7 @@ class HandlerTest {
     }
 
     @Test
-    void anOwnedOuterJarRemainsOwnedAfterTheCacheFlagChanges() throws IOException {
-        JarURLConnection connection = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
-                .openConnection();
-        connection.setUseCaches(false);
-        JarFile jar = connection.getJarFile();
-        connection.setUseCaches(true);
-
-        try (InputStream in = connection.getInputStream()) {
-            assertArrayEquals(OUTER_MANIFEST, in.readAllBytes());
-        }
-
-        assertTrue(jar.size() > 0, "the explicitly requested handle remains caller-owned");
-        jar.close();
-    }
-
-    @Test
-    void anUncachedIndexedStreamDoesNotCloseTheCallerOwnedOuterJar() throws IOException {
-        JarURLConnection connection = (JarURLConnection) Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")
-                .openConnection();
-        connection.setUseCaches(false);
-        JarFile jar = connection.getJarFile();
-
-        try (InputStream in = connection.getInputStream()) {
-            assertArrayEquals(APP_TEXT, in.readAllBytes());
-        }
-
-        assertTrue(jar.size() > 0, "the explicitly requested handle remains caller-owned");
-        jar.close();
-    }
-
-    @Test
-    void protocolDefaultDisablesOuterJarSharing() throws IOException {
+    void protocolDefaultWithoutCachesStillSharesTheOuterJar() throws IOException {
         boolean previous = URLConnection.getDefaultUseCaches("jar");
         URLConnection.setDefaultUseCaches("jar", false);
         try {
@@ -611,17 +569,72 @@ class HandlerTest {
                     .openConnection();
             assertFalse(first.getUseCaches());
             assertFalse(second.getUseCaches());
-            JarFile firstJar = first.getJarFile();
-            JarFile secondJar = second.getJarFile();
-            assertNotSame(firstJar, secondJar);
+            assertSame(first.getJarFile(), second.getJarFile());
 
-            firstJar.close();
+            first.getJarFile().close();
 
             assertEquals("io.micronaut.runner.Launcher", second.getMainAttributes().getValue("Main-Class"));
-            secondJar.close();
         } finally {
             URLConnection.setDefaultUseCaches("jar", previous);
         }
+    }
+
+    /**
+     * The outer archive is one close-protected handle for every caller, so the scanner pattern of
+     * {@code setUseCaches(false)}, {@code getJarFile()} and {@code close()} neither opens a jar per call nor
+     * breaks a later read. The descriptor count is compared only where the platform reports it.
+     */
+    @Test
+    void getJarFileIsOneCloseProtectedHandleWhateverTheCacheFlag() throws IOException {
+        URL application = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt");
+        URL manifest = Handlers.outerUrlFor("META-INF/MANIFEST.MF");
+        JarFile shared = Handlers.outerJarFile();
+        boolean previous = URLConnection.getDefaultUseCaches("jar");
+        try {
+            for (URL url : List.of(application, manifest)) {
+                for (boolean caches : List.of(true, false)) {
+                    JarURLConnection connection = (JarURLConnection) url.openConnection();
+                    connection.setUseCaches(caches);
+                    assertSame(shared, connection.getJarFile(), url + " with useCaches=" + caches);
+                }
+                URLConnection.setDefaultUseCaches("jar", false);
+                JarURLConnection byDefault = (JarURLConnection) url.openConnection();
+                assertFalse(byDefault.getUseCaches());
+                assertSame(shared, byDefault.getJarFile(), url + " with the jar default off");
+                URLConnection.setDefaultUseCaches("jar", previous);
+            }
+        } finally {
+            URLConnection.setDefaultUseCaches("jar", previous);
+        }
+
+        long before = openFileDescriptorCount();
+        for (int i = 0; i < 1_000; i++) {
+            URLConnection scanned = (i % 2 == 0 ? application : manifest).openConnection();
+            scanned.setUseCaches(false);
+            ((JarURLConnection) scanned).getJarFile().close();
+
+            URLConnection read = manifest.openConnection();
+            read.setUseCaches(false);
+            try (InputStream in = read.getInputStream()) {
+                assertArrayEquals(OUTER_MANIFEST, in.readAllBytes(), "cycle " + i);
+            }
+        }
+        long after = openFileDescriptorCount();
+        if (before >= 0 && after >= 0) {
+            assertTrue(after <= before + 2, "open descriptors went from " + before + " to " + after);
+        }
+    }
+
+    @Test
+    void nestedJarFileWorksWhileRegisteredAndFailsAfterUnregistering() throws IOException {
+        NestedJarFile jar = Handlers.nestedJarFile(1);
+        assertEquals(1, jar.jarId());
+        assertSame(jar, Handlers.nestedJarFile(1));
+        assertNotNull(jar.getJarEntry("a/B.class"));
+
+        Handlers.unregister();
+
+        assertThrows(IOException.class, () -> Handlers.nestedJarFile(1));
     }
 
     @Test
@@ -721,26 +734,41 @@ class HandlerTest {
         assertFalse(url.sameFile(other));
     }
 
+    /**
+     * In a fresh JVM with the launcher on the system class loader and no handler property, a URL re-parsed
+     * from its string form opens our connection. That is what {@code Handlers} no longer re-checks on every
+     * launch, so the default registration must print no warning.
+     */
     @Test
     void interoperatesWithJdkUrlsCreatedBeforeRegistration() throws Exception {
-        Path java = javaExecutable();
-        assertNotNull(java, "no JDK to fork; set runner.test.javaHome");
-        String testClasses = Path.of(HandlerInteroperability.class.getProtectionDomain()
-                .getCodeSource().getLocation().toURI()).toString();
-        String mainClasses = Path.of(Handler.class.getProtectionDomain()
-                .getCodeSource().getLocation().toURI()).toString();
-        Process process = new ProcessBuilder(java.toString(), "-cp",
-                testClasses + File.pathSeparator + mainClasses,
-                HandlerInteroperability.class.getName(), archive.getAbsolutePath())
-                .redirectErrorStream(true)
-                .start();
-        assertTrue(process.waitFor(30, TimeUnit.SECONDS), "forked equality test timed out");
-        String output;
-        try (InputStream in = process.getInputStream()) {
-            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
-        assertEquals(0, process.exitValue(), output);
+        String output = forkInteroperability(List.of());
         assertTrue(output.contains("INTEROPERABLE"), output);
+        assertEquals(List.of(), runnerWarnings(output), output);
+    }
+
+    @Test
+    void reportsAnInstalledFactoryOnceAndStillServesItsOwnUrls() throws Exception {
+        String output = forkInteroperability(List.of(), "factory");
+        assertTrue(output.contains("FACTORY-REPORTED"), output);
+        List<String> warnings = runnerWarnings(output);
+        assertEquals(1, warnings.size(), output);
+        assertTrue(warnings.get(0).contains("a URLStreamHandlerFactory is already installed"), output);
+    }
+
+    /**
+     * A package already in {@value Handlers#HANDLER_PACKAGES_PROPERTY} is tried first, so the test-only
+     * {@code io.micronaut.runner.testprotocol.jar.Handler} wins over ours. The warning is the one a failed
+     * string-parse check prints, which proves the check still runs in that case.
+     */
+    @Test
+    void verifiesWhenTheHandlerPropertyAlreadyNamedAnotherPackage() throws Exception {
+        String output = forkInteroperability(
+                List.of("-D" + Handlers.HANDLER_PACKAGES_PROPERTY + "=io.micronaut.runner.testprotocol"),
+                "property");
+        assertTrue(output.contains("PROPERTY-REGISTERED"), output);
+        List<String> warnings = runnerWarnings(output);
+        assertEquals(1, warnings.size(), output);
+        assertTrue(warnings.get(0).contains("the jar: protocol handler could not be installed"), output);
     }
 
     @Test
@@ -869,6 +897,61 @@ class HandlerTest {
         StringBuilder unique = new StringBuilder();
         unique.append(files).append('-').append(name);
         return temporary.resolve(unique.toString()).toFile();
+    }
+
+    /**
+     * Runs {@link HandlerInteroperability} over this test's archive in a fresh JVM, with the test and main
+     * classes on its class path, and asserts that it exits normally.
+     *
+     * @param jvmArguments options placed before the main class
+     * @param mode         the optional mode argument after the archive path
+     * @return everything the child wrote to either stream
+     */
+    private String forkInteroperability(List<String> jvmArguments, String... mode) throws Exception {
+        Path java = javaExecutable();
+        assertNotNull(java, "no JDK to fork; set runner.test.javaHome");
+        String testClasses = Path.of(HandlerInteroperability.class.getProtectionDomain()
+                .getCodeSource().getLocation().toURI()).toString();
+        String mainClasses = Path.of(Handler.class.getProtectionDomain()
+                .getCodeSource().getLocation().toURI()).toString();
+        List<String> command = new ArrayList<>();
+        command.add(java.toString());
+        command.addAll(jvmArguments);
+        command.add("-cp");
+        command.add(testClasses + File.pathSeparator + mainClasses);
+        command.add(HandlerInteroperability.class.getName());
+        command.add(archive.getAbsolutePath());
+        command.addAll(List.of(mode));
+        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        assertTrue(process.waitFor(30, TimeUnit.SECONDS), "forked interoperability test timed out");
+        String output;
+        try (InputStream in = process.getInputStream()) {
+            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        assertEquals(0, process.exitValue(), output);
+        return output;
+    }
+
+    private static List<String> runnerWarnings(String output) {
+        List<String> warnings = new ArrayList<>();
+        for (String line : output.split("\\R")) {
+            if (line.startsWith("micronaut-runner:")) {
+                warnings.add(line);
+            }
+        }
+        return warnings;
+    }
+
+    /**
+     * The process's open file descriptor count.
+     *
+     * @return the count, or {@code -1} where the operating system bean is not a
+     *         {@link UnixOperatingSystemMXBean}, for example on Windows
+     */
+    private static long openFileDescriptorCount() {
+        return ManagementFactory.getOperatingSystemMXBean() instanceof UnixOperatingSystemMXBean unix
+                ? unix.getOpenFileDescriptorCount()
+                : -1;
     }
 
     private static Path javaExecutable() {
