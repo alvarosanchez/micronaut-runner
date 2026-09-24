@@ -16,6 +16,7 @@
 package io.micronaut.runner.benchmarks;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
@@ -25,7 +26,9 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -63,18 +66,28 @@ class StartupHarnessTest {
         assertStopped(lifecycle);
     }
 
+    /**
+     * The 150 ms timeout can fire before the child JVM reaches {@code main}, so neither its PID file nor its
+     * shutdown hook is guaranteed. What the timeout path does guarantee is that {@code run} returns only after
+     * the child is gone.
+     */
     @Test
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void timeoutCleansUpTheHungChild(@TempDir Path directory) throws Exception {
-        Path lifecycle = directory.resolve("timeout.pid");
+        Set<Long> before = childPids();
 
         StartupHarness.RunFailure failure;
         try (StartupHarness harness = harness(Duration.ofMillis(150), Map.of())) {
             failure = assertThrows(StartupHarness.RunFailure.class,
-                    () -> harness.run(fixture("hang", lifecycle), 0, false));
+                    () -> harness.run(fixture("hang", directory.resolve("timeout.pid")), 0, false));
         }
 
-        assertTrue(failure.getMessage().contains("did not answer"));
-        assertStopped(lifecycle);
+        assertTrue(failure.getMessage().contains("did not answer"), failure.getMessage());
+        List<ProcessHandle> alive = ProcessHandle.current().children()
+                .filter(child -> !before.contains(child.pid()))
+                .filter(ProcessHandle::isAlive)
+                .toList();
+        assertTrue(alive.isEmpty(), "timed-out child still alive: " + alive);
     }
 
     @Test
@@ -146,6 +159,10 @@ class StartupHarnessTest {
         return new StartupHarness("/ready", startupTimeout, new StartupHarness.Settings(
                 Duration.ofMillis(2), Duration.ofMillis(100), Duration.ofMillis(250),
                 Duration.ofSeconds(2), Duration.ofMillis(50), StartupHarness::freePort, environment));
+    }
+
+    private static Set<Long> childPids() {
+        return ProcessHandle.current().children().map(ProcessHandle::pid).collect(Collectors.toSet());
     }
 
     private static void assertStopped(Path lifecycle) throws Exception {

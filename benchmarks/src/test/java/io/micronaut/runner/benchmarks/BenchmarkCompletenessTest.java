@@ -210,21 +210,20 @@ class BenchmarkCompletenessTest {
     }
 
     @Test
-    void cliFixtureReturnsFailureAfterSavingBothReports(@TempDir Path output) throws Exception {
-        Process process = new ProcessBuilder(
-                SampleBuild.javaExecutable().toString(),
-                "-cp", System.getProperty("java.class.path"),
-                BenchmarkCliFixture.class.getName(),
-                output.toString(),
-                "required")
-                .redirectErrorStream(true)
-                .start();
-        String console = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int exit = process.waitFor();
+    void finishReturnsFailureAfterSavingBothReports(@TempDir Path output) throws Exception {
+        StartupBenchmark.Options options = options(output, 2, 0, CompletenessPolicy.REQUIRED);
+        List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
+            if (variant.name().equals("a") && iteration == 1) {
+                throw new StartupHarness.RunFailure("fixture timeout", null);
+            }
+            return sample(iteration, warmup);
+        }), variants(), options, log());
 
-        assertEquals(1, exit, console);
-        assertTrue(Files.isRegularFile(output.resolve(Reports.RESULTS_FILE)), console);
-        assertTrue(Files.isRegularFile(output.resolve(Reports.SUMMARY_FILE)), console);
+        int exit = StartupBenchmark.finish(context(output, options), results, List.of(), log());
+
+        assertEquals(1, exit);
+        assertTrue(Files.isRegularFile(output.resolve(Reports.RESULTS_FILE)));
+        assertTrue(Files.isRegularFile(output.resolve(Reports.SUMMARY_FILE)));
         assertTrue(Files.readString(output.resolve(Reports.RESULTS_FILE)).contains("\"complete\": false"));
     }
 

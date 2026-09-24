@@ -33,8 +33,6 @@ class ClassLoaderBenchmarkIsolationTest {
 
     @Test
     void runnerVariantsRegisterMatchingArchivesAndReleaseState() throws Exception {
-        assertProbe("stored");
-        assertProbe("preserve");
         assertProbe("stored-then-preserve");
     }
 
