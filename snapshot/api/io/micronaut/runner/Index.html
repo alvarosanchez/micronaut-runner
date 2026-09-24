@@ -176,9 +176,7 @@ table, a sane probe limit, and that the recorded outer file length still matches
 would cost time proportional to the entry table, such as verifying every string reference, is checked
 when the record is touched instead, so that opening the index faults in only the pages it needs.
 Failures throw <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalStateException.html" title="class or interface in java.lang" class="external-link"><code>IllegalStateException</code></a> carrying <a href="#REBUILD_MESSAGE"><code>REBUILD_MESSAGE</code></a>, because in practice they
-all mean the same thing: the jar was edited, truncated or rebuilt after it was packaged. The source is
-assumed to remain immutable after it opens. The length comparison uses the source's cached opening length,
-and each local-header check is cached after its first success; neither is ongoing mutation monitoring.</p>
+all mean the same thing: the jar was edited, truncated or rebuilt after it was packaged.</p>
 
 <h2 id="thread-safety-heading">Thread safety</h2>
 <p>Accessors use absolute <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html" title="class or interface in java.nio" class="external-link"><code>ByteBuffer</code></a> reads, which do not touch the buffer position, so an instance
@@ -1196,12 +1194,10 @@ original central directory order, then versioned aliases, then synthetic directo
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">void</span>&nbsp;<span class="element-name">validateJar</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
 <div class="block">Checks, once per jar, that the nested jar still starts where the index says it does.
 
-<p>This is the second half of the packaged-artifact staleness diagnostic: the recorded length catches
-a rebuild whose size differed before the source opened, and the local file header signature can catch
-a same-length rewrite before this jar's first access. It costs a single four byte read the first time
-a jar is touched; a successful result is then cached. It does not monitor later changes or make reads
-safe while another process mutates the archive. The application layer is not a nested jar and is never
-checked.</p>
+<p>This is the second half of the staleness check: the file length caught a rebuild that changed the
+size, and the local file header signature can catch one that did not but moved this jar. It costs a
+single four byte read the first time a jar is touched, and a successful result is cached. The
+application layer is not a nested jar and is never checked.</p>
 
 <p>A header offset outside the archive means the index does not describe this file, so it is reported
 as a stale jar. A read that fails for any other reason, for example because the source was closed, says

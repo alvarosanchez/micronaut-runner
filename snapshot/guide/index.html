@@ -577,18 +577,12 @@ manifest&#8217;s main attributes attribute by attribute when a package is define
 <h3 id="_detecting_a_stale_archive">Detecting a stale archive</h3>
 <div class="paragraph">
 <p>The index stores the outer file&#8217;s length, and every jar record stores the offset of the local file header
-that introduces it. The recorded length is compared with the length captured when the archive opens. The
-header is checked lazily on the JAR&#8217;s first use, then a successful result is cached. A mismatch fails with a
-message telling you to rebuild. These checks diagnose some archives that were appended to, truncated or
-re-zipped between packaging and the relevant check, which would otherwise mean reading from wrong offsets.</p>
-</div>
-<div class="paragraph">
-<p>They are staleness diagnostics, not ongoing monitoring or an integrity boundary. A modification that
-preserves the length and header positions passes them, and a modification after a successful check is not
-checked again. CRC verification with <code>-Dmicronaut.runner.verify=true</code> covers complete entry contents as they
-are read, but does not authenticate the artifact or make concurrent mutation safe. The running archive must
-remain immutable for the JVM lifetime; see <a href="#runtime">archive lifetime and deployment</a> for supported
-replacement procedures.</p>
+that introduces it. The length is checked when the archive opens and each header once, on the JAR&#8217;s first
+use; a mismatch fails with a message telling you to rebuild. This detects an archive that was appended
+to, truncated or re-zipped after packaging, which would otherwise mean reading from wrong offsets. It is
+a staleness check, not an integrity check: a modification that preserves the length and the header
+positions passes it. Full CRC verification on every read is available with
+<code>-Dmicronaut.runner.verify=true</code>. See <a href="#archiveLifetime">archive lifetime</a>.</p>
 </div>
 </div>
 </div>
@@ -690,8 +684,7 @@ ready, application entered. Use it to separate launcher cost from framework cost
 only needed on a platform or file system where mapping is unavailable or undesirable. Thread interrupts are
 harmless in this mode: a read that an interrupt cuts short reopens the archive by its path and carries on.
 If that path no longer names the file this JVM opened, class loading fails and asks for a restart, so
-publish new versions under new paths as described in the deployment section below. Positional mode does not
-make concurrent archive replacement safe.</p></td>
+publish new versions under new paths as described in the archive lifetime section below.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.verify</code></p></td>
@@ -742,34 +735,15 @@ its format version is not supported.</p></td>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_archive_lifetime_and_deployment">Archive lifetime and deployment</h2>
+<h2 id="archiveLifetime">Archive lifetime</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Treat a runner JAR as immutable from the moment its JVM opens it until that JVM terminates. Do not overwrite,
-truncate, append to, sign, re-zip or otherwise modify a running archive. This requirement applies both to the
-default memory-mapped mode and to <code>-Dmicronaut.runner.mmap=false</code> positional reads.</p>
-</div>
-<div class="paragraph">
-<p>The format&#8217;s length comparison happens against the file length captured when the archive opens. A nested
-JAR&#8217;s local-header signature is checked only on its first use, and a successful check is cached. These checks
-are diagnostics for some stale packaging outputs, not ongoing file monitoring. CRC-32 verification with
-<code>micronaut.runner.verify</code> can diagnose accidental byte corruption as complete entries are read; it is neither
-authentication nor protection against concurrent mutation. The JDK leaves the visibility of changes to a
-mapped file, and failures after truncation, dependent on the operating system and file system. Disabling mmap
-can change the observed failure, but does not establish a supported live-mutation procedure.</p>
-</div>
-<div class="paragraph">
-<p>Publish each version under a new path, preferably a versioned or content-addressed name. Verify the final
-bytes, start a new JVM from that path, direct new work to it, and remove the old artifact only after the old
-JVM has stopped. An atomic rename or symlink/pointer update may select the new path for <em>new</em> launches without
-changing the file already open by an existing POSIX process. It does not update that process, which must keep
-using its original immutable file. On Windows, an open mapping commonly prevents deleting or replacing its
-file, so distinct versioned filenames are required. If deployment requires reusing one filename, stop every
-JVM using it before replacement and start them again afterwards.</p>
-</div>
-<div class="paragraph">
-<p>The launcher deliberately keeps the archive open after the application <code>main</code> method returns because
-background threads may still load classes. Returning from <code>main</code> is therefore not a replacement boundary.</p>
+<p>As with any JAR a running JVM reads, a Shadow JAR included, do not modify, truncate or overwrite a runner
+JAR while a JVM runs from it: publish each version under a new path. In the default mmap mode, STORED
+classes are defined straight from the mapping, so truncating the file under a running JVM can terminate
+the JVM instead of raising an exception; the JDK&#8217;s own <code>ZipFile</code> does not memory-map the archive. The
+recorded length (checked when the archive opens) and each nested JAR&#8217;s local header (checked once, on
+first use) are stale-archive diagnostics, not integrity protection or live-mutation detection.</p>
 </div>
 </div>
 </div>
@@ -962,51 +936,12 @@ not prevent a library from doing so.</p>
 <h2 id="authenticating">Authenticating a deployment artifact</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Authenticate the final runner JAR as an immutable deployment artifact, and keep it immutable for every JVM&#8217;s
-complete lifetime as described in <a href="#runtime">archive lifetime and deployment</a>. Do not run <code>jarsigner</code>, update the
-manifest, re-zip the file or otherwise mutate it after packaging: those operations change the bytes and can
-invalidate both the precomputed runner index and any signature or checksum made over the previous bytes.</p>
-</div>
-<div class="paragraph">
-<p>The publisher can create an armored detached signature after the runner JAR is final. The sidecar remains
-outside the JAR, so signing does not alter the indexed artifact:</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">artifact=my-app-0.1-all.jar
-gpg --batch --local-user "$RELEASE_KEY_FINGERPRINT" \
-    --armor --detach-sign --output "$artifact.asc" "$artifact"</code></pre>
-</div>
-</div>
-<div class="paragraph">
-<p>Provision the verifier&#8217;s GnuPG home separately with only public keys whose complete fingerprints were
-checked against the release policy. Merely accepting any cryptographically valid signature, or importing a
-key delivered beside an untrusted artifact, does not establish the publisher&#8217;s identity. Then make successful
-verification a precondition of launch:</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">artifact=/opt/my-app/my-app-0.1-all.jar
-signature="$artifact.asc"
-verifier_home=/etc/my-app/gnupg
-gpg --batch --homedir "$verifier_home" --verify "$signature" "$artifact" &amp;&amp;
-exec java -jar "$artifact"</code></pre>
-</div>
-</div>
-<div class="paragraph">
-<p>The verifier must authenticate the same bytes that are executed. Keep the artifact, signature, verifier
-keyring and their parent directories read-only to untrusted principals, or use a deployment system that
-binds verification to an immutable, content-addressed object. Otherwise another process can replace the
-path between verification and launch. Any mutation requires producing and distributing a new detached
-signature.</p>
-</div>
-<div class="paragraph">
-<p>CRC-32 checks, including <code>-Dmicronaut.runner.verify=true</code>, detect accidental corruption; they do not
-authenticate a publisher. A SHA-256 checksum has the same trust boundary when it is delivered unsigned from
-the same source as the artifact. When enabled for the <code>micronaut-projects</code> organization, the repository&#8217;s
-<a href="https://github.com/micronaut-projects/micronaut-runner/blob/master/.github/workflows/release.yml">release workflow</a> computes SHA-256
-subjects for its published library JAR and POM files and binds them into SLSA provenance. That release
-behavior does not authenticate an application runner JAR and does not make the runner verify nested JARs.</p>
+<p>Do not run <code>jarsigner</code>, edit the manifest, re-zip or append to the runner JAR after packaging: the launcher
+rejects the rewritten file, whose length and entry offsets no longer match its index. To authenticate the JAR,
+sign the finished file externally, for example with a detached signature, and verify it against a pinned key
+before launch: <code>gpg --verify app.jar.asc app.jar &amp;&amp; exec java -jar app.jar</code>. The runner still does not verify
+nested JAR signatures (see <em>Signatures are not verified</em> above), and <code>-Dmicronaut.runner.verify=true</code> CRC
+checks detect corruption, not authorship. See <a href="#archiveLifetime">archive lifetime</a>.</p>
 </div>
 </div>
 </div>
@@ -1548,14 +1483,10 @@ environment of interest and treat its output as local descriptive evidence rathe
 <h2 id="_runner_jar_was_modified_after_packaging">"runner jar was modified after packaging"</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>The index records the archive&#8217;s length and the position of every nested JAR. The length is compared when the
-archive opens and each nested-JAR header is checked on first use. One of those checks failed, which means the
-file changed after it was built: something appended to it, re-zipped it, or signed it in place. These checks
-are not ongoing monitoring and do not make a live rewrite safe. Rebuild the archive; do not sign or otherwise
-rewrite it in place. Stop the JVM before replacing this path, or deploy the replacement under a new versioned
-path as described in <a href="#runtime">archive lifetime and deployment</a>. To authenticate a deployment,
-create a detached signature over the final bytes and require successful verification before launch, as
-described in <a href="#authenticating">authenticating a deployment artifact</a>.</p>
+<p>The archive&#8217;s length or a nested JAR&#8217;s header position no longer matches its index: something appended
+to, re-zipped or signed the file after it was built. Rebuild it and do not rewrite it in place; see
+<a href="#archiveLifetime">archive lifetime</a>. To authenticate a deployment, sign the finished file externally and
+verify it before launch, as described in <a href="#authenticating">authenticating a deployment artifact</a>.</p>
 </div>
 </div>
 </div>
