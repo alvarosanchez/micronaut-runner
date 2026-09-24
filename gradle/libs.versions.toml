@@ -18,6 +18,7 @@ jmh = "1.37"
 maven = "3.9.16"                    # maven-plugin-api / maven-core
 maven-plugin-tools = "3.16.0"       # maven-plugin-annotations
 maven-invoker = "3.3.0"
+maven-archiver = "3.6.6"            # MavenArchiver.parseBuildOutputTimestamp, as maven-jar-plugin applies it
 bouncycastle = "1.84"
 h2 = "2.4.240"
 
@@ -40,6 +41,7 @@ maven-plugin-api = { module = "org.apache.maven:maven-plugin-api", version.ref =
 maven-core = { module = "org.apache.maven:maven-core", version.ref = "maven" }
 maven-plugin-annotations = { module = "org.apache.maven.plugin-tools:maven-plugin-annotations", version.ref = "maven-plugin-tools" }
 maven-invoker = { module = "org.apache.maven.shared:maven-invoker", version.ref = "maven-invoker" }
+maven-archiver = { module = "org.apache.maven:maven-archiver", version.ref = "maven-archiver" }
 bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 h2 = { module = "com.h2database:h2", version.ref = "h2" }
 

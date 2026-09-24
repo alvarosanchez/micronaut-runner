@@ -17,7 +17,10 @@ package io.micronaut.runner.build;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -65,6 +68,120 @@ class RunnerJarSpecTest {
             assertMalformed("addOpens", entry,
                     () -> RunnerJarSpec.builder().addOpens(List.of(entry)));
         }
+    }
+
+    // ------------------------------------------------------------------ option()
+
+    @Test
+    void everyTypedOptionReachesItsGetterByName() {
+        RunnerJarSpec spec = complete(RunnerJarSpec.builder()
+                .option("compression", "PRESERVE")
+                .option("entryStub", "false")
+                .option("multiRelease", "TRUE")
+                .option("enableNativeAccess", " true ")
+                .option("addOpens", "java.base/java.lang,java.base/java.util")
+                .option("addExports", "java.base/sun.nio.ch")
+                .option("manifestAttributes", "Implementation-Vendor: Example Ltd\nBuilt-By: ci"))
+                .build();
+
+        assertEquals(Compression.PRESERVE, spec.compression());
+        assertFalse(spec.entryStub());
+        assertTrue(spec.multiRelease());
+        assertTrue(spec.enableNativeAccess());
+        assertEquals(List.of("java.base/java.lang", "java.base/java.util"), spec.addOpens());
+        assertEquals(List.of("java.base/sun.nio.ch"), spec.addExports());
+        assertEquals(Map.of("Implementation-Vendor", "Example Ltd", "Built-By", "ci"), spec.manifestAttributes());
+        assertEquals(List.of("Implementation-Vendor", "Built-By"), List.copyOf(spec.manifestAttributes().keySet()),
+                "attributes keep the order of their lines");
+    }
+
+    @Test
+    void aBooleanOptionAcceptsOnlyTrueOrFalse() {
+        for (String name : List.of("entryStub", "multiRelease", "enableNativeAccess")) {
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> RunnerJarSpec.builder().option(name, "yes"));
+            assertTrue(failure.getMessage().contains(name), failure::getMessage);
+            assertTrue(failure.getMessage().contains("'yes'"), failure::getMessage);
+        }
+    }
+
+    @Test
+    void aListOptionIsSplitTrimmedAndValidated() {
+        RunnerJarSpec spec = complete(RunnerJarSpec.builder()
+                .option("addOpens", " java.base/java.lang , ,java.base/java.util,"))
+                .build();
+        assertEquals(List.of("java.base/java.lang", "java.base/java.util"), spec.addOpens());
+        assertEquals(List.of(), complete(RunnerJarSpec.builder().option("addExports", " , ")).build().addExports());
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> RunnerJarSpec.builder().option("addOpens", "java.base/java.lang=ALL-UNNAMED"));
+        assertTrue(failure.getMessage().contains("Use 'java.base/java.lang' in the JAR manifest"),
+                failure::getMessage);
+        assertTrue(failure.getMessage().contains("--add-opens java.base/java.lang=ALL-UNNAMED"),
+                failure::getMessage);
+    }
+
+    @Test
+    void aMapOptionReadsManifestLinesAndRejectsReservedNames() {
+        RunnerJarSpec spec = complete(RunnerJarSpec.builder()
+                .option("manifestAttributes", "\n  Implementation-Vendor:   Example Ltd  \r\n\nX-Empty:\n"))
+                .build();
+        assertEquals(Map.of("Implementation-Vendor", "Example Ltd", "X-Empty", ""), spec.manifestAttributes());
+
+        IllegalArgumentException reserved = assertThrows(IllegalArgumentException.class,
+                () -> RunnerJarSpec.builder().option("manifestAttributes", "Main-Class: x"));
+        assertTrue(reserved.getMessage().contains("'Main-Class' is reserved"), reserved::getMessage);
+
+        IllegalArgumentException noColon = assertThrows(IllegalArgumentException.class,
+                () -> RunnerJarSpec.builder().option("manifestAttributes", "Implementation-Vendor Example"));
+        assertTrue(noColon.getMessage().contains("'Name: value'"), noColon::getMessage);
+
+        IllegalArgumentException twice = assertThrows(IllegalArgumentException.class,
+                () -> RunnerJarSpec.builder().option("manifestAttributes", "X-A: 1\nx-a: 2"));
+        assertTrue(twice.getMessage().contains("more than once"), twice::getMessage);
+    }
+
+    @Test
+    void anUnknownOptionFailsListingEveryKnownName() {
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> RunnerJarSpec.builder().option("desugarLambda", "true"));
+
+        String message = failure.getMessage();
+        assertTrue(message.startsWith("Unknown Micronaut Runner option 'desugarLambda'. micronaut-runner-build "),
+                message);
+        String known = Arrays.stream(RunnerJarOption.values()).map(RunnerJarOption::optionName)
+                .collect(Collectors.joining(", "));
+        assertTrue(message.endsWith(" knows: " + known), message);
+        // Tests run from a classes directory, which carries no Implementation-Version.
+        assertTrue(message.contains("micronaut-runner-build unknown knows"), message);
+    }
+
+    @Test
+    void theLastCallWinsWhetherItIsTypedOrByName() {
+        assertEquals(Compression.PRESERVE, complete(RunnerJarSpec.builder()
+                .compression(Compression.STORED)
+                .option("compression", "PRESERVE")).build().compression());
+        assertEquals(Compression.STORED, complete(RunnerJarSpec.builder()
+                .option("compression", "PRESERVE")
+                .compression(Compression.STORED)).build().compression());
+        assertEquals(List.of("java.base/java.util"), complete(RunnerJarSpec.builder()
+                .option("addOpens", "java.base/java.lang")
+                .addOpens(List.of("java.base/java.util"))).build().addOpens());
+        assertFalse(complete(RunnerJarSpec.builder()
+                .entryStub(true)
+                .option("entryStub", "false")).build().entryStub());
+    }
+
+    @Test
+    void aNullNameOrValueIsRejected() {
+        assertThrows(NullPointerException.class, () -> RunnerJarSpec.builder().option(null, "true"));
+        assertThrows(NullPointerException.class, () -> RunnerJarSpec.builder().option("entryStub", null));
+    }
+
+    @Test
+    void theEffectiveOptionsAreUnmodifiable() {
+        Map<String, String> effective = complete(RunnerJarSpec.builder()).build().effectiveOptions();
+        assertThrows(UnsupportedOperationException.class, () -> effective.put("compression", "PRESERVE"));
     }
 
     private static void assertMalformed(String property, String entry, Runnable action) {

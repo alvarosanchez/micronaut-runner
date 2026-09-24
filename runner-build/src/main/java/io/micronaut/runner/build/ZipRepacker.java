@@ -58,7 +58,7 @@ import java.util.Objects;
  *
  * @since 1.0
  */
-public final class ZipRepacker {
+final class ZipRepacker {
 
     /** Buffer size used when copying a jar verbatim. */
     private static final int COPY_BUFFER_SIZE = 64 * 1024;

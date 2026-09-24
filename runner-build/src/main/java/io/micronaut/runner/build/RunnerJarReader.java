@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.runner.ArchiveSource;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
@@ -25,14 +26,20 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.zip.ZipFile;
 
 /**
- * Opens a finished runner jar with the launcher's own reader.
+ * Recognises a runner jar, and opens one with the launcher's own reader.
  *
- * <p>This is deliberately thin. The index reader and the archive primitives live in the launcher and are
- * shared with this module as source, so a test, the {@code inspect} tool and the verification pass at the
- * end of a build all look at an archive through exactly the code that will read it at startup. A second
- * reader written for build time would be a second set of bugs.</p>
+ * <p>{@link #isRunnerJar(Path)} is the stable part of this class: a build plugin that replaces a project's
+ * main artifact uses it to tell a runner jar it wrote earlier from the thin jar it has to keep. The reader
+ * itself exposes the launcher's {@link ArchiveSource} and {@link Index}, so its members are internal: tests,
+ * benchmarks and the verification pass use them, and they may change in any release.</p>
+ *
+ * <p>The reader is deliberately thin. The index reader and the archive primitives live in the launcher, so a
+ * test, the {@code inspect} tool and the verification pass at the end of a build all look at an archive
+ * through exactly the code that will read it at startup. A second reader written for build time would be a
+ * second set of bugs.</p>
  *
  * <p>A reader holds a memory mapping and a file handle and must be closed. On Windows an open mapping keeps
  * the file locked, so a build that forgets to close one cannot overwrite the archive it just wrote.</p>
@@ -50,6 +57,22 @@ public final class RunnerJarReader implements Closeable {
     }
 
     /**
+     * Whether a file is a runner jar, which is whether it carries the runner index entry. Nothing else about
+     * the archive is checked, so this is cheap enough to call on every build.
+     *
+     * @param file a ZIP archive
+     * @return whether the archive carries the runner index
+     * @throws IOException          if the file cannot be read or is not a ZIP archive
+     * @throws NullPointerException if {@code file} is {@code null}
+     */
+    public static boolean isRunnerJar(Path file) throws IOException {
+        Objects.requireNonNull(file, "file");
+        try (ZipFile jar = new ZipFile(file.toFile())) {
+            return jar.getEntry(IndexFormat.INDEX_ENTRY_NAME) != null;
+        }
+    }
+
+    /**
      * Opens a runner jar.
      *
      * @param file the archive
@@ -58,6 +81,7 @@ public final class RunnerJarReader implements Closeable {
      * @throws IllegalStateException if the index is not one this release understands, or no longer
      *                               describes the file it sits in
      */
+    @Internal
     public static RunnerJarReader open(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
         return open(file.toFile());
@@ -72,6 +96,7 @@ public final class RunnerJarReader implements Closeable {
      * @throws IllegalStateException if the index is not one this release understands, or no longer
      *                               describes the file it sits in
      */
+    @Internal
     public static RunnerJarReader open(File file) throws IOException {
         Objects.requireNonNull(file, "file");
         ArchiveSource source = ArchiveSource.open(file);
@@ -88,6 +113,7 @@ public final class RunnerJarReader implements Closeable {
      *
      * @return the path of the open file
      */
+    @Internal
     public Path path() {
         return source.file().toPath();
     }
@@ -97,6 +123,7 @@ public final class RunnerJarReader implements Closeable {
      *
      * @return the source
      */
+    @Internal
     public ArchiveSource source() {
         return source;
     }
@@ -106,6 +133,7 @@ public final class RunnerJarReader implements Closeable {
      *
      * @return the index reader
      */
+    @Internal
     public Index index() {
         return index;
     }
@@ -117,6 +145,7 @@ public final class RunnerJarReader implements Closeable {
      * @return the entry content, empty for a directory or a synthesised record
      * @throws IOException if the entry is larger than a Java array, or its data cannot be read
      */
+    @Internal
     public byte[] read(int record) throws IOException {
         long compressed = index.entryCompressedSize(record);
         long uncompressed = index.entryUncompressedSize(record);
@@ -139,6 +168,7 @@ public final class RunnerJarReader implements Closeable {
      * @return the entry stream, which the caller closes
      * @throws IOException if the indexed region or compression metadata is invalid
      */
+    @Internal
     public InputStream stream(int record) throws IOException {
         return source.stream(index.entryDataOffset(record), index.entryCompressedSize(record),
                 index.entryUncompressedSize(record), index.entryMethod(record));

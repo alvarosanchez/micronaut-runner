@@ -330,7 +330,7 @@ public final class PackagingProfile {
             RunnerJarSpec spec = RunnerJarSpec.builder()
                     .mainClass(SyntheticArchive.MAIN_CLASS)
                     .applicationOutput(List.of(application))
-                    .dependencies(dependencies.stream().map(Dependency::new).toList())
+                    .dependencies(dependencies.stream().map(Dependency::of).toList())
                     .output(output)
                     .compression(compression)
                     .build();

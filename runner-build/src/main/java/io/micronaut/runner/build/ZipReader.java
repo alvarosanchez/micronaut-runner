@@ -68,7 +68,7 @@ import java.util.zip.Inflater;
  *
  * @since 1.0
  */
-public final class ZipReader implements Closeable {
+final class ZipReader implements Closeable {
 
     private static final int TRANSFER_BUFFER_SIZE = 64 * 1024;
 

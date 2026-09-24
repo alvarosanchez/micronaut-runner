@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.gradle;
 
+import io.micronaut.runner.build.RunnerJarOption;
 import org.gradle.api.Action;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
@@ -25,7 +26,6 @@ import org.gradle.api.plugins.AppliedPlugin;
 import org.gradle.api.plugins.BasePluginExtension;
 import org.gradle.api.plugins.JavaApplication;
 import org.gradle.api.plugins.JavaPlugin;
-import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
@@ -94,10 +94,12 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
                     task.getClasspath().from(runtimeClasspath);
                     task.getCoordinates().set(coordinatesOf(runtimeClasspath));
 
-                    task.getCompression().convention("STORED");
-                    task.getEntryStub().convention(Boolean.TRUE);
-                    task.getMultiRelease().convention(Boolean.FALSE);
-                    task.getEnableNativeAccess().convention(Boolean.FALSE);
+                    // The packaging library owns the defaults; the conventions only show them on the task.
+                    task.getCompression().convention(defaultOf(RunnerJarOption.COMPRESSION));
+                    task.getEntryStub().convention(Boolean.valueOf(defaultOf(RunnerJarOption.ENTRY_STUB)));
+                    task.getMultiRelease().convention(Boolean.valueOf(defaultOf(RunnerJarOption.MULTI_RELEASE)));
+                    task.getEnableNativeAccess().convention(
+                            Boolean.valueOf(defaultOf(RunnerJarOption.ENABLE_NATIVE_ACCESS)));
                     task.getArchiveClassifier().convention(DEFAULT_CLASSIFIER);
                     task.getArchiveFile().convention(defaultArchiveFile(project, task));
 
@@ -114,11 +116,6 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
                     if (application != null) {
                         task.getMainClass().convention(application.getMainClass());
                     }
-
-                    task.getJavaLauncherVersion().convention(project.provider(() -> {
-                        JavaPluginExtension java = project.getExtensions().findByType(JavaPluginExtension.class);
-                        return java == null ? null : java.getTargetCompatibility().toString();
-                    }));
                 });
 
         project.getTasks().named(LifecycleBasePlugin.ASSEMBLE_TASK_NAME, task -> task.dependsOn(runnerJar));
@@ -142,6 +139,17 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
         };
         project.getPluginManager().withPlugin(SHADOW_PLUGIN, forbidCollisionWithShadow);
         project.getPluginManager().withPlugin(LEGACY_SHADOW_PLUGIN, forbidCollisionWithShadow);
+    }
+
+    /**
+     * The default of an option with an unconditional default, in the grammar the packaging library reads.
+     *
+     * @param option the option
+     * @return its default
+     */
+    private static String defaultOf(RunnerJarOption option) {
+        return option.defaultValue().orElseThrow(
+                () -> new IllegalStateException(option.optionName() + " has no unconditional default"));
     }
 
     private Provider<RegularFile> defaultArchiveFile(Project project, MicronautRunnerJar task) {

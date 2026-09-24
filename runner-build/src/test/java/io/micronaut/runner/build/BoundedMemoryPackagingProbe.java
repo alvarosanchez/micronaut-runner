@@ -73,7 +73,7 @@ public final class BoundedMemoryPackagingProbe {
                 zip.setLevel(Deflater.BEST_SPEED);
                 writeGenerated(zip, "zeros-" + i + ".bin", DEPENDENCY_RESOURCE_SIZE, zeros);
             }
-            dependencies.add(new Dependency(dependency, null));
+            dependencies.add(Dependency.of(dependency));
         }
 
         Path output = workspace.resolve("runner.jar");

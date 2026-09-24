@@ -58,8 +58,33 @@ micronautRunnerJar {
     enableNativeAccess = true
 
     manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
+
+    // Options without a typed property, by name (see the table below):
+    // options.put('<name>', '<value>')
 }
 ----
+
+Micronaut Runner's packaging library owns every option, its default and its validation; the plugins only pass
+what you set. Every option can be set by name, with the value as text: `true` or `false` for a boolean, a
+comma-separated list, or one `Name: value` line per manifest attribute. An option set by name wins over its
+typed property, and an unknown name fails the build.
+
+[cols="2,1,1,1,1",options="header"]
+|===
+|Option |Type |Default |Exposure |Since
+
+|`compression` |`STORED` or `PRESERVE` |`STORED` |typed |1.0
+|`entryStub` |boolean |`true` |typed |1.0
+|`multiRelease` |boolean |`false` |typed |1.0
+|`enableNativeAccess` |boolean |`false` |typed |1.0
+|`addOpens` |list |empty |typed |1.0
+|`addExports` |list |empty |typed |1.0
+|`manifestAttributes` |map |empty |typed |1.0
+|===
+
+A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,
+through `options` in Gradle and `<runnerOptions>` or `-Dmicronaut.runner.<name>` in Maven, and needs no plugin
+release.
 
 The entry stub is generated only when the main class is a public, non-abstract class in a named package that
 declares its own `public static void main(String[])`, in every selectable version of a multi-release application.
@@ -75,6 +100,9 @@ set `applicationJar = tasks.named('jar').flatMap { it.archiveFile }`.
 
 `manifestAttributes` may override attributes imported from the application's manifest, but `Manifest-Version`,
 `Main-Class` and `Micronaut-Runner-*` attributes are reserved and rejected.
+
+Dependencies that are JAR files are nested, a dependency that is a directory fails the build, and any other
+file, such as a POM, is skipped with a warning.
 
 == Maven
 
@@ -121,6 +149,10 @@ In Maven, each `addExports`/`addOpens` entry is its own element:
     </addOpens>
 </configuration>
 ----
+
+The typed options are parameters of the same names, except that `manifestAttributes` is `<manifestEntries>`; the
+scalar ones also read `-Dmicronaut.runner.<name>`. `<runnerOptions>` and `-Dmicronaut.runner.<name>` set the same
+options by name, `-Dmicronaut.runner.<name>` only for passthrough options, and a `<runnerOptions>` entry wins.
 
 == What to check first
 

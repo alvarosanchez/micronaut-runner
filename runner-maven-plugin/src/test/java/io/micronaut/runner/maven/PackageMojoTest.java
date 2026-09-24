@@ -16,10 +16,16 @@
 package io.micronaut.runner.maven;
 
 import io.micronaut.runner.IndexFormat;
-import io.micronaut.runner.build.Compression;
+import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
+import io.micronaut.runner.build.RunnerJarOption;
+import io.micronaut.runner.build.RunnerJarSpec;
+import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.artifact.handler.DefaultArtifactHandler;
+import org.apache.maven.execution.DefaultMavenExecutionRequest;
+import org.apache.maven.execution.DefaultMavenExecutionResult;
+import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.SystemStreamLog;
@@ -30,22 +36,41 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.lang.classfile.Annotation;
+import java.lang.classfile.AnnotationElement;
+import java.lang.classfile.AnnotationValue;
+import java.lang.classfile.Attribute;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.CodeBuilder;
+import java.lang.classfile.FieldModel;
+import java.lang.classfile.attribute.RuntimeInvisibleAnnotationsAttribute;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDescs;
+import java.lang.constant.MethodTypeDesc;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -63,16 +88,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * reactor - dependency resolution, the lifecycle ordering that puts {@code maven-jar-plugin} first - are
  * covered by the sample builds under {@code test-suite}, not here.</p>
  *
- * <p>Three things are pinned down. The reproducible timestamp parser, which follows the Maven reproducible
- * build specification and must fall back rather than fail on an unresolved property. The compression
- * parameter, which must name the values it accepts when it is given something else. And the artifact
- * decision, which is the one piece of behaviour a user notices immediately: whether the runner jar becomes
- * the main artifact and where the jar plugin's own output ends up.</p>
+ * <p>Four things are pinned down. The reproducible timestamp, which is read exactly as maven-jar-plugin reads
+ * it. The goal's parameters, which are wiring for the packaging library's option table: a typed option is a
+ * boxed parameter without a default, and every option can be set by name. The failures, which are
+ * {@code MojoFailureException}s with the packaging library's message. And the artifact decision, which is
+ * the one piece of behaviour a user notices immediately: whether the runner jar becomes the main artifact
+ * and where the jar plugin's own output ends up.</p>
  */
 class PackageMojoTest {
 
     /** The default the format itself uses when no reproducible timestamp is configured. */
     private static final Instant DEFAULT_TIMESTAMP = Instant.parse("1980-02-01T00:00:00Z");
+
+    /** The descriptor of Maven's {@code @Parameter}. */
+    private static final ClassDesc PARAMETER = ClassDesc.of("org.apache.maven.plugins.annotations.Parameter");
+
+    /** Typed options whose parameter keeps the name maven-archiver gave it. */
+    private static final Map<String, String> FIELD_ALIASES = Map.of("manifestAttributes", "manifestEntries");
+
+    /** The parameters that carry build-tool facts rather than packaging options. */
+    private static final Set<String> BUILD_TOOL_PARAMETERS = Set.of(
+            "project", "session", "mainClass", "outputDirectory", "finalName", "classifier", "outputTimestamp",
+            "skip", "runnerOptions");
 
     /** The entry that marks the jar produced by {@code maven-jar-plugin} in these fixtures. */
     private static final String JAR_PLUGIN_MARKER = "com/example/marker.txt";
@@ -110,94 +147,198 @@ class PackageMojoTest {
         mojo = new PackageMojo();
         mojo.setLog(log);
         set("project", project);
+        set("session", new MavenSession(null, null, new DefaultMavenExecutionRequest(),
+                new DefaultMavenExecutionResult()));
         set("projectHelper", projectHelper);
         set("mainClass", MAIN_CLASS);
         set("outputDirectory", buildDirectory.toFile());
         set("finalName", "demo-1.0");
-        set("compression", "STORED");
-        set("multiRelease", false);
-        set("entryStub", true);
-        set("enableNativeAccess", false);
-        set("skip", false);
+        // The option parameters stay null, which is what Maven leaves in them when nothing sets them.
     }
 
     // ---------------------------------------------------------------- timestamp
 
     @Test
-    void readsAnIso8601Timestamp() {
-        set("outputTimestamp", "2024-03-01T10:20:30Z");
-        assertEquals(Instant.parse("2024-03-01T10:20:30Z"), timestamp());
+    void readsAnIso8601TimestampWithAnOffset() throws MojoFailureException {
+        set("outputTimestamp", "2024-01-01T00:00:00+01:00");
+        assertEquals(Instant.parse("2023-12-31T23:00:00Z"), spec().timestamp());
     }
 
     @Test
-    void readsATimestampGivenAsSecondsSinceTheEpoch() {
-        set("outputTimestamp", "1709288430");
-        assertEquals(Instant.ofEpochSecond(1709288430L), timestamp());
+    void readsATimestampGivenAsSecondsSinceTheEpoch() throws MojoFailureException {
+        set("outputTimestamp", "1704067200");
+        assertEquals(Instant.ofEpochSecond(1704067200L), spec().timestamp());
     }
 
     @Test
-    void readsATimestampWithSurroundingWhitespace() {
-        set("outputTimestamp", "  2024-03-01T10:20:30Z  ");
-        assertEquals(Instant.parse("2024-03-01T10:20:30Z"), timestamp());
+    void aDisabledTimestampPassesNothingAndDoesNotWarn() throws MojoFailureException {
+        assumeNoSourceDateEpoch();
+        // One non-digit character is how maven-jar-plugin's documentation disables the timestamp.
+        set("outputTimestamp", "x");
+        assertEquals(DEFAULT_TIMESTAMP, spec().timestamp());
+        assertTrue(log.warnings.isEmpty(), () -> "a disabled timestamp must not warn: " + log.warnings);
     }
 
     @Test
-    void fallsBackWhenTheTimestampIsUnsetOrBlank() {
+    void anUnsetTimestampPassesNothing() throws MojoFailureException {
+        assumeNoSourceDateEpoch();
+        // Maven hands a parameter whose default names an unset property null, not the placeholder.
         set("outputTimestamp", null);
-        assertEquals(DEFAULT_TIMESTAMP, timestamp());
-        set("outputTimestamp", "   ");
-        assertEquals(DEFAULT_TIMESTAMP, timestamp());
+        assertEquals(DEFAULT_TIMESTAMP, spec().timestamp());
         assertTrue(log.warnings.isEmpty(), () -> "an unset timestamp is normal, it must not warn: " + log.warnings);
     }
 
     @Test
-    void fallsBackSilentlyWhenThePropertyWasNotResolved() {
-        // A POM that never sets project.build.outputTimestamp leaves the literal placeholder behind. That is
-        // the common case, not a mistake, so it must not produce a warning on every build.
-        set("outputTimestamp", "${project.build.outputTimestamp}");
-        assertEquals(DEFAULT_TIMESTAMP, timestamp());
-        assertTrue(log.warnings.isEmpty(), () -> "an unresolved placeholder must not warn: " + log.warnings);
-    }
-
-    @Test
-    void fallsBackAndWarnsWhenTheTimestampIsGarbage() {
-        set("outputTimestamp", "last tuesday");
-        assertEquals(DEFAULT_TIMESTAMP, timestamp());
-        assertEquals(1, log.warnings.size(), () -> "expected exactly one warning, got " + log.warnings);
-        String warning = log.warnings.get(0);
-        assertTrue(warning.contains("last tuesday"),
-                () -> "the warning must quote the value that could not be parsed: " + warning);
-        assertTrue(warning.contains("1980-02-01T00:00:00Z"),
-                () -> "the warning must name the value used instead: " + warning);
-    }
-
-    @Test
-    void treatsASingleDigitAsAnInstantRatherThanAnEpochSecond() {
-        // The specification's epoch form is a full second count; a lone digit is not one, so it takes the
-        // ISO-8601 path and fails there. Asserted because the guard that draws that line is easy to lose.
+    void aSingleDigitIsAnEpochSecondThatMsDosTimeCannotRepresent() {
+        // maven-archiver reads "7" as 1970-01-01T00:00:07Z, as maven-jar-plugin does in the same build.
         set("outputTimestamp", "7");
-        assertEquals(DEFAULT_TIMESTAMP, timestamp());
-        assertEquals(1, log.warnings.size(), () -> "expected exactly one warning, got " + log.warnings);
-    }
-
-    // -------------------------------------------------------------- compression
-
-    @Test
-    void parsesCompressionCaseInsensitivelyAndIgnoringWhitespace() {
-        set("compression", "stored");
-        assertEquals(Compression.STORED, compression());
-        set("compression", "  Preserve ");
-        assertEquals(Compression.PRESERVE, compression());
+        MojoFailureException failure = assertThrows(MojoFailureException.class, this::spec);
+        assertTrue(failure.getMessage().contains("MS-DOS time cannot represent 1970-01-01T00:00:07Z"),
+                failure::getMessage);
     }
 
     @Test
-    void rejectsAnUnknownCompressionNamingTheSupportedValues() {
+    void anUnparsableTimestampFailsQuotingTheValue() {
+        set("outputTimestamp", "last tuesday");
+        MojoFailureException failure = assertThrows(MojoFailureException.class, this::spec);
+        assertTrue(failure.getMessage().contains("last tuesday"),
+                () -> "the failure must quote the value that could not be parsed: " + failure.getMessage());
+    }
+
+    // ---------------------------------------------------------- typed options
+
+    @Test
+    void everyTypedOptionHasAConformingParameter() throws IOException {
+        Map<String, ParameterField> parameters = parameterFields();
+        Set<String> optionFields = new HashSet<>();
+        for (RunnerJarOption option : RunnerJarOption.values()) {
+            if (option.exposure() != RunnerJarOption.Exposure.TYPED) {
+                continue;
+            }
+            String name = FIELD_ALIASES.getOrDefault(option.optionName(), option.optionName());
+            optionFields.add(name);
+            ParameterField field = parameters.get(name);
+            assertNotNull(field, () -> "no @Parameter field for the typed option " + option.optionName());
+            if (option.valueType() == List.class || option.valueType() == Map.class) {
+                continue;
+            }
+            assertTrue(field.descriptor().startsWith("L"),
+                    () -> name + " must be boxed, so that unset is null: " + field.descriptor());
+            assertEquals("micronaut.runner." + option.optionName(), field.elements().get("property"), name);
+            assertFalse(field.elements().containsKey("defaultValue"),
+                    () -> name + " must leave its default to the packaging library: " + field.elements());
+        }
+        for (String name : parameters.keySet()) {
+            if (!optionFields.contains(name)) {
+                assertTrue(BUILD_TOOL_PARAMETERS.contains(name),
+                        () -> name + " is neither a typed option nor a listed build-tool parameter. A packaging"
+                                + " option belongs in RunnerJarOption and is set through runnerOptions until it"
+                                + " is typed.");
+            }
+        }
+        for (String name : List.of("mainClass", "classifier", "skip")) {
+            assertTrue(RunnerJarOption.named(name).isEmpty(),
+                    () -> name + " is a parameter of the goal and cannot be an option name");
+        }
+    }
+
+    @Test
+    void anUnknownCompressionFailsWithThePackagingLibrarysMessage() {
         set("compression", "DEFLATED");
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, this::compression);
-        assertTrue(failure.getMessage().contains("DEFLATED"),
-                () -> "the failure must quote the rejected value: " + failure.getMessage());
-        assertTrue(failure.getMessage().contains("STORED") && failure.getMessage().contains("PRESERVE"),
-                () -> "the failure must name what is accepted instead: " + failure.getMessage());
+        MojoFailureException failure = assertThrows(MojoFailureException.class, this::spec);
+        assertEquals("Unknown compression 'DEFLATED'. Supported values are STORED, PRESERVE.", failure.getMessage());
+    }
+
+    @Test
+    void aBuildWithEveryOptionUnsetPackagesTheDefaults() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        Path library = writeDependency("lib-1.0.jar");
+        project.setArtifacts(Set.of(artifact("lib", library)));
+
+        Map<String, String> effective = spec().effectiveOptions();
+        for (RunnerJarOption option : RunnerJarOption.values()) {
+            option.defaultValue().ifPresent(value -> assertEquals(value, effective.get(option.optionName()),
+                    () -> option.optionName() + " is not the packaging library's default"));
+        }
+
+        mojo.execute();
+
+        Path archive = buildDirectory.resolve("demo-1.0.jar");
+        assertTrue(contains(archive, "MICRONAUT-INF/classes/io/micronaut/runner/generated/AppEntry.class"),
+                "the default configuration must generate the entry stub");
+        assertEquals(Set.of(ZipEntry.STORED), nestedEntryMethods(archive, "MICRONAUT-INF/lib/lib-1.0.jar"),
+                "STORED is the default compression");
+        assertNull(manifest(archive).getMainAttributes().getValue("Enable-Native-Access"));
+    }
+
+    // --------------------------------------------------------- passthrough options
+
+    @Test
+    void aRunnerOptionsEntryWinsOverTheTypedParameter() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        Path library = writeDependency("lib-1.0.jar");
+        project.setArtifacts(Set.of(artifact("lib", library)));
+        set("compression", "STORED");
+        set("runnerOptions", Map.of("compression", "PRESERVE"));
+
+        mojo.execute();
+
+        assertEquals(Set.of(ZipEntry.DEFLATED),
+                nestedEntryMethods(buildDirectory.resolve("demo-1.0.jar"), "MICRONAUT-INF/lib/lib-1.0.jar"),
+                "<runnerOptions> must win over -Dmicronaut.runner.compression");
+    }
+
+    @Test
+    void collectsPassthroughOptionsFromUserThenProjectPropertiesThenRunnerOptions() {
+        Properties user = new Properties();
+        Properties projectProperties = new Properties();
+        projectProperties.setProperty("micronaut.runner.x", "project");
+        projectProperties.setProperty("micronaut.runner.y", "project");
+        assertEquals(Map.of("x", "project"),
+                PackageMojo.options(user, projectProperties, null, List.of("x")),
+                "a project property sets a passthrough option; a name outside the table is not read");
+
+        user.setProperty("micronaut.runner.x", "user");
+        assertEquals(Map.of("x", "user"), PackageMojo.options(user, projectProperties, null, List.of("x")),
+                "a user property wins over the project property");
+
+        Map<String, String> configured = new HashMap<>();
+        configured.put("x", "configured");
+        configured.put("addOpens", null);
+        assertEquals(Map.of("x", "configured", "addOpens", ""),
+                PackageMojo.options(user, projectProperties, configured, List.of("x")),
+                "a <runnerOptions> entry wins over both, and an empty element is the empty value");
+    }
+
+    @Test
+    void anUnknownRunnerOptionFailsTheBuild() {
+        set("runnerOptions", Map.of("desugarLambda", "true"));
+        MojoFailureException failure = assertThrows(MojoFailureException.class, this::spec);
+        assertTrue(failure.getMessage().startsWith("Unknown Micronaut Runner option 'desugarLambda'"),
+                failure::getMessage);
+    }
+
+    // ------------------------------------------------------------- dependency files
+
+    @Test
+    void anArtifactWithoutAFileFailsNamingItsCoordinates() {
+        DefaultArtifact unresolved = new DefaultArtifact("com.example", "unresolved", "1.0", "runtime", "jar", null,
+                new DefaultArtifactHandler("jar"));
+        project.setArtifacts(Set.of(unresolved));
+
+        MojoFailureException failure = assertThrows(MojoFailureException.class, this::spec);
+        assertTrue(failure.getMessage().contains("com.example:unresolved:1.0"), failure::getMessage);
+    }
+
+    @Test
+    void passesEveryResolvedFileToThePackagingLibrary() throws MojoFailureException {
+        // The packaging library applies one file rule on every build tool; the goal no longer filters.
+        Path pom = temp.resolve("repository/parent-1.0.pom");
+        project.setArtifacts(Set.of(artifact("parent", pom)));
+
+        assertEquals(List.of(Dependency.of(pom, "com.example:parent:1.0")), spec().dependencies());
     }
 
     // -------------------------------------------------- manifest module access
@@ -220,7 +361,7 @@ class PackageMojoTest {
     @Test
     void rejectsCommandLineSyntaxForExportsAndOpensWithCorrections() {
         set("addExports", List.of("java.base/sun.nio.ch=ALL-UNNAMED"));
-        IllegalArgumentException badExport = assertThrows(IllegalArgumentException.class, mojo::execute);
+        MojoFailureException badExport = assertThrows(MojoFailureException.class, mojo::execute);
         assertTrue(badExport.getMessage().contains("Use 'java.base/sun.nio.ch' in the JAR manifest"),
                 badExport::getMessage);
         assertTrue(badExport.getMessage().contains("--add-exports java.base/sun.nio.ch=ALL-UNNAMED"),
@@ -228,7 +369,7 @@ class PackageMojoTest {
 
         set("addExports", List.of("java.base/sun.nio.ch"));
         set("addOpens", List.of("java.base/java.lang=ALL-UNNAMED"));
-        IllegalArgumentException badOpen = assertThrows(IllegalArgumentException.class, mojo::execute);
+        MojoFailureException badOpen = assertThrows(MojoFailureException.class, mojo::execute);
         assertTrue(badOpen.getMessage().contains("Use 'java.base/java.lang' in the JAR manifest"),
                 badOpen::getMessage);
         assertTrue(badOpen.getMessage().contains("--add-opens java.base/java.lang=ALL-UNNAMED"),
@@ -412,35 +553,50 @@ class PackageMojoTest {
                 "the bundled launcher jar is not on the test class path");
     }
 
-    private Instant timestamp() {
-        return (Instant) invoke("timestamp");
+    private static void assumeNoSourceDateEpoch() {
+        Assumptions.assumeTrue(System.getenv("SOURCE_DATE_EPOCH") == null,
+                "SOURCE_DATE_EPOCH is set, so maven-archiver takes the timestamp from it");
     }
 
-    private Compression compression() {
-        return (Compression) invoke("compression");
+    /** The spec the goal hands to the packaging library, without packaging anything. */
+    private RunnerJarSpec spec() throws MojoFailureException {
+        return mojo.buildSpec(classes.toFile(), buildDirectory.resolve("demo-1.0.jar").toFile(), null);
     }
 
     /**
-     * Calls a private no-argument method of the mojo, rethrowing whatever it threw so that
-     * {@code assertThrows} sees the real failure rather than an {@link InvocationTargetException}.
+     * Reads every {@code @Parameter} field of the goal. The annotation has {@code CLASS} retention, so it is
+     * read from the class file rather than by reflection.
      */
-    private Object invoke(String name) {
-        try {
-            Method method = PackageMojo.class.getDeclaredMethod(name);
-            method.setAccessible(true);
-            return method.invoke(mojo);
-        } catch (InvocationTargetException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException runtime) {
-                throw runtime;
-            }
-            if (cause instanceof Error error) {
-                throw error;
-            }
-            throw new IllegalStateException(cause);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Could not call PackageMojo." + name + "()", e);
+    private static Map<String, ParameterField> parameterFields() throws IOException {
+        byte[] bytes;
+        try (InputStream in = PackageMojo.class.getResourceAsStream("PackageMojo.class")) {
+            assertNotNull(in, "PackageMojo.class is not on the test class path");
+            bytes = in.readAllBytes();
         }
+        Map<String, ParameterField> fields = new TreeMap<>();
+        for (FieldModel field : ClassFile.of().parse(bytes).fields()) {
+            for (Attribute<?> attribute : field.attributes()) {
+                if (!(attribute instanceof RuntimeInvisibleAnnotationsAttribute annotations)) {
+                    continue;
+                }
+                for (Annotation annotation : annotations.annotations()) {
+                    if (!annotation.classSymbol().equals(PARAMETER)) {
+                        continue;
+                    }
+                    Map<String, String> elements = new TreeMap<>();
+                    for (AnnotationElement element : annotation.elements()) {
+                        elements.put(element.name().stringValue(), switch (element.value()) {
+                            case AnnotationValue.OfString text -> text.stringValue();
+                            case AnnotationValue.OfBoolean flag -> String.valueOf(flag.booleanValue());
+                            default -> element.value().toString();
+                        });
+                    }
+                    fields.put(field.fieldName().stringValue(),
+                            new ParameterField(field.fieldType().stringValue(), elements));
+                }
+            }
+        }
+        return fields;
     }
 
     private void set(String name, Object value) {
@@ -454,13 +610,56 @@ class PackageMojoTest {
     }
 
     /**
-     * Writes the class file the main class points at. Its bytes are never executed here, only located: the
-     * builder refuses to package an application whose main class is not in its own output.
+     * Writes the class file the main class points at: a public class with an empty
+     * {@code public static void main(String[])}, which is all the entry stub needs. It is never executed here.
      */
     private void writeApplicationClass() throws IOException {
         Path file = classes.resolve(MAIN_CLASS.replace('.', '/') + ".class");
         Files.createDirectories(file.getParent());
-        Files.write(file, new byte[] {(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE});
+        Files.write(file, ClassFile.of().build(ClassDesc.of(MAIN_CLASS), type -> type
+                .withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER)
+                .withMethodBody("main", MethodTypeDesc.of(ConstantDescs.CD_void, ConstantDescs.CD_String.arrayType()),
+                        ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, CodeBuilder::return_)));
+    }
+
+    /** Writes a dependency jar whose one class is deflated, as a published jar's classes are. */
+    private Path writeDependency(String name) throws IOException {
+        Path file = temp.resolve("repository").resolve(name);
+        Files.createDirectories(file.getParent());
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(file))) {
+            out.putNextEntry(new ZipEntry("com/example/lib/Library.class"));
+            out.write(new byte[512]);
+            out.closeEntry();
+        }
+        return file;
+    }
+
+    private static Artifact artifact(String artifactId, Path file) {
+        DefaultArtifact artifact = new DefaultArtifact("com.example", artifactId, "1.0", "runtime", "jar", null,
+                new DefaultArtifactHandler("jar"));
+        artifact.setFile(file.toFile());
+        return artifact;
+    }
+
+    /** The compression methods of the entries of a jar nested in a runner jar. */
+    private static Set<Integer> nestedEntryMethods(Path archive, String name) throws IOException {
+        byte[] nested;
+        try (ZipFile zip = new ZipFile(archive.toFile())) {
+            ZipEntry entry = zip.getEntry(name);
+            assertNotNull(entry, () -> name + " is not in " + archive);
+            try (InputStream in = zip.getInputStream(entry)) {
+                nested = in.readAllBytes();
+            }
+        }
+        Set<Integer> methods = new HashSet<>();
+        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(nested))) {
+            for (ZipEntry entry = in.getNextEntry(); entry != null; entry = in.getNextEntry()) {
+                if (!entry.isDirectory()) {
+                    methods.add(entry.getMethod());
+                }
+            }
+        }
+        return methods;
     }
 
     /** Writes a stand-in for the jar {@code maven-jar-plugin} produces, with a manifest and one marker entry. */
@@ -536,6 +735,15 @@ class PackageMojoTest {
 
     /** One recorded call to {@link MavenProjectHelper#attachArtifact}. */
     private record Attachment(String type, String classifier, File file) {
+    }
+
+    /**
+     * A field annotated {@code @Parameter}.
+     *
+     * @param descriptor the field's type descriptor
+     * @param elements   the annotation's elements, as text
+     */
+    private record ParameterField(String descriptor, Map<String, String> elements) {
     }
 
     /** Records attachments instead of touching a real artifact set. */

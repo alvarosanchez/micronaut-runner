@@ -29,6 +29,11 @@ dependencies {
     api projects.micronautRunnerLauncher
     launcher projects.micronautRunnerLauncher
 
+    // Only for io.micronaut.core.annotation.Internal, which japicmp's rules read from the class files. It is
+    // compileOnly, so neither micronaut-core nor its BOM reaches the published POM.
+    compileOnly platform(libs.micronaut.core)
+    compileOnly 'io.micronaut:micronaut-core'
+
     // micronaut-core is only needed by the service-discovery tests, never at packaging runtime.
     testImplementation platform(libs.micronaut.core)
     testImplementation 'io.micronaut:micronaut-inject'

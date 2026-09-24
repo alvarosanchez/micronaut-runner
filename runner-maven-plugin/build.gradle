@@ -6,4 +6,8 @@ description = 'Maven plugin that packages Micronaut applications as fast-startin
 
 dependencies {
     implementation projects.micronautRunnerBuild
+
+    // Reads project.build.outputTimestamp exactly as maven-jar-plugin does in the same build. It needs
+    // plexus-archiver and plexus-interpolation at runtime, which it brings along.
+    implementation libs.maven.archiver
 }

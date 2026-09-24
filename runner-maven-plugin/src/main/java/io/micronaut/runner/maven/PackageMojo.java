@@ -15,14 +15,17 @@
  */
 package io.micronaut.runner.maven;
 
-import io.micronaut.runner.IndexFormat;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
+import io.micronaut.runner.build.RunnerJarOption;
+import io.micronaut.runner.build.RunnerJarReader;
 import io.micronaut.runner.build.RunnerJarResult;
 import io.micronaut.runner.build.RunnerJarSpec;
+import org.apache.maven.archiver.MavenArchiver;
 import org.apache.maven.artifact.Artifact;
+import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -40,14 +43,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.zip.ZipFile;
+import java.util.Properties;
 
 /**
  * Packages a Micronaut application as a runner jar: one executable archive in which every dependency
@@ -57,6 +59,13 @@ import java.util.zip.ZipFile;
  * replaces the project's main artifact, exactly as the Shade plugin does, keeping the original jar as
  * {@code original-<finalName>.jar}.</p>
  *
+ * <p>The goal is wiring: it hands the project's facts and the options the build sets to the packaging
+ * library, which owns every option's default, parsing and validation. A
+ * {@link RunnerJarOption.Exposure#TYPED typed} option has a parameter here that is passed only when it is set;
+ * every option can also be set by name through {@code <runnerOptions>}, and a
+ * {@link RunnerJarOption.Exposure#PASSTHROUGH passthrough} option through the
+ * {@code micronaut.runner.<name>} user or project property.</p>
+ *
  * @since 1.0
  */
 @Mojo(name = "package",
@@ -65,11 +74,16 @@ import java.util.zip.ZipFile;
         threadSafe = true)
 public class PackageMojo extends AbstractMojo {
 
-    private static final String DEFAULT_TIMESTAMP = "1980-02-01T00:00:00Z";
+    /** The prefix of the properties that set a packaging option by name. */
+    private static final String PROPERTY_PREFIX = "micronaut.runner.";
 
     /** The project being built. */
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
+
+    /** The build session, whose user properties ({@code -D}) set passthrough options. */
+    @Parameter(defaultValue = "${session}", readonly = true, required = true)
+    private MavenSession session;
 
     /** Attaches the archive when a classifier is set. */
     @Component
@@ -100,20 +114,26 @@ public class PackageMojo extends AbstractMojo {
     /**
      * How the entries of each dependency are stored: {@code STORED} re-packs them uncompressed so classes
      * are defined straight from the memory-mapped archive, {@code PRESERVE} copies each dependency byte
-     * for byte.
+     * for byte. Unset, the packaging library's default applies ({@code STORED}).
      */
-    @Parameter(property = "micronaut.runner.compression", defaultValue = "STORED")
+    @Parameter(property = "micronaut.runner.compression")
     private String compression;
 
-    /** Whether the application layer itself is multi-release. */
-    @Parameter(property = "micronaut.runner.multiRelease", defaultValue = "false")
-    private boolean multiRelease;
+    /**
+     * Whether the application layer itself is multi-release. Unset, the packaging library's default applies
+     * ({@code false}).
+     */
+    @Parameter(property = "micronaut.runner.multiRelease")
+    private Boolean multiRelease;
 
-    /** Whether to generate the entry stub that avoids reflection when entering the application. */
-    @Parameter(property = "micronaut.runner.entryStub", defaultValue = "true")
-    private boolean entryStub;
+    /**
+     * Whether to generate the entry stub that avoids reflection when entering the application. Unset, the
+     * packaging library's default applies ({@code true}).
+     */
+    @Parameter(property = "micronaut.runner.entryStub")
+    private Boolean entryStub;
 
-    /** Extra main manifest attributes. */
+    /** Extra main manifest attributes: the {@code manifestAttributes} option. */
     @Parameter
     private Map<String, String> manifestEntries;
 
@@ -131,19 +151,31 @@ public class PackageMojo extends AbstractMojo {
     @Parameter
     private List<String> addExports;
 
-    /** Whether to write {@code Enable-Native-Access: ALL-UNNAMED} into the manifest. */
-    @Parameter(property = "micronaut.runner.enableNativeAccess", defaultValue = "false")
-    private boolean enableNativeAccess;
+    /**
+     * Whether to write {@code Enable-Native-Access: ALL-UNNAMED} into the manifest. Unset, the packaging
+     * library's default applies ({@code false}).
+     */
+    @Parameter(property = "micronaut.runner.enableNativeAccess")
+    private Boolean enableNativeAccess;
 
     /**
-     * The reproducible build timestamp, as an ISO-8601 instant or as seconds since the epoch. Defaults to
-     * the project's {@code project.build.outputTimestamp}.
+     * Packaging options by name, with values in the grammar {@link RunnerJarOption} documents. An entry wins
+     * over the typed parameter and over the {@code micronaut.runner.<name>} property of the same option; an
+     * unknown name fails the build.
+     */
+    @Parameter
+    private Map<String, String> runnerOptions;
+
+    /**
+     * The reproducible build timestamp, read exactly as {@code maven-jar-plugin} reads it: an ISO-8601
+     * instant or seconds since the epoch, with {@code SOURCE_DATE_EPOCH} applying when it is unset or
+     * disabled. Defaults to the project's {@code project.build.outputTimestamp}.
      */
     @Parameter(defaultValue = "${project.build.outputTimestamp}")
     private String outputTimestamp;
 
     /** Skips the goal. */
-    @Parameter(property = "micronaut.runner.skip", defaultValue = "false")
+    @Parameter(property = "micronaut.runner.skip")
     private boolean skip;
 
     @Override
@@ -171,7 +203,7 @@ public class PackageMojo extends AbstractMojo {
             // a previously written runner jar into the "original".
             File manifestSource = null;
             if (replaceMainArtifact) {
-                if (mainArtifact.isFile() && !isRunnerJar(mainArtifact)) {
+                if (mainArtifact.isFile() && !RunnerJarReader.isRunnerJar(mainArtifact.toPath())) {
                     Files.createDirectories(outputDirectory.toPath());
                     savedThinArtifact = Files.createTempFile(outputDirectory.toPath(),
                             ".micronaut-runner-original-", ".jar");
@@ -197,8 +229,7 @@ public class PackageMojo extends AbstractMojo {
             } else {
                 projectHelper.attachArtifact(project, "jar", classifier, target);
             }
-            getLog().info("Runner jar written to " + target + " (" + (result.dependencyCount())
-                    + " dependencies, " + result.entryCount() + " entries)");
+            getLog().info(result.summary());
         } catch (IOException e) {
             if (mainArtifactReplaced && savedThinArtifact != null && Files.isRegularFile(savedThinArtifact)) {
                 getLog().warn("Could not update " + original + "; the thin jar is preserved at "
@@ -216,12 +247,6 @@ public class PackageMojo extends AbstractMojo {
         }
     }
 
-    private static boolean isRunnerJar(File file) throws IOException {
-        try (ZipFile jar = new ZipFile(file)) {
-            return jar.getEntry(IndexFormat.INDEX_ENTRY_NAME) != null;
-        }
-    }
-
     private static void replace(Path source, Path target) throws IOException {
         try {
             Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -230,78 +255,112 @@ public class PackageMojo extends AbstractMojo {
         }
     }
 
-    private RunnerJarSpec buildSpec(File classes, File target, File manifestSource) {
+    /**
+     * Hands the project's facts and the configured options to the packaging library.
+     *
+     * @param classes        the application's classes directory
+     * @param target         where the archive is written
+     * @param manifestSource the jar whose manifest describes the application, or {@code null}
+     * @return the spec
+     * @throws MojoFailureException if an option, the timestamp or a dependency is not usable, with the
+     *                              packaging library's or maven-archiver's message
+     */
+    RunnerJarSpec buildSpec(File classes, File target, File manifestSource) throws MojoFailureException {
         List<Dependency> dependencies = new ArrayList<>();
         for (Artifact artifact : project.getArtifacts()) {
             if (!Artifact.SCOPE_COMPILE.equals(artifact.getScope())
                     && !Artifact.SCOPE_RUNTIME.equals(artifact.getScope())) {
                 continue;
             }
+            String coordinates = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":"
+                    + artifact.getVersion();
             File file = artifact.getFile();
-            if (file == null || !file.isFile()) {
-                getLog().warn("Skipping " + artifact + ": it has no resolved file");
-                continue;
+            if (file == null) {
+                // Runtime resolution never produces this; it is a broken reactor or extension.
+                throw new MojoFailureException("The dependency " + coordinates + " has no resolved file");
             }
-            if (!file.getName().endsWith(".jar")) {
-                getLog().warn("Skipping " + artifact + ": only jar dependencies can be nested");
-                continue;
-            }
-            dependencies.add(new Dependency(file.toPath(), artifact.getGroupId() + ":"
-                    + artifact.getArtifactId() + ":" + artifact.getVersion()));
+            dependencies.add(Dependency.of(file.toPath(), coordinates));
         }
 
-        Map<String, String> attributes = manifestEntries == null
-                ? new LinkedHashMap<>() : new LinkedHashMap<>(manifestEntries);
-
-        RunnerJarSpec.Builder spec = RunnerJarSpec.builder()
-                .mainClass(mainClass)
-                .applicationOutput(List.of(classes.toPath()))
-                .dependencies(dependencies)
-                .output(target.toPath())
-                .compression(compression())
-                .multiRelease(multiRelease)
-                .entryStub(entryStub)
-                .manifestAttributes(attributes)
-                .addOpens(addOpens == null ? List.of() : addOpens)
-                .addExports(addExports == null ? List.of() : addExports)
-                .enableNativeAccess(enableNativeAccess)
-                .timestamp(timestamp());
-
-        if (manifestSource != null) {
-            spec.applicationManifest(manifestSource.toPath());
-        }
-        return spec.build();
-    }
-
-    private Compression compression() {
         try {
-            return Compression.valueOf(compression.trim().toUpperCase(Locale.ROOT));
+            RunnerJarSpec.Builder spec = RunnerJarSpec.builder()
+                    .mainClass(mainClass)
+                    .applicationOutput(List.of(classes.toPath()))
+                    .dependencies(dependencies)
+                    .output(target.toPath());
+
+            // Typed values first and the options last, because the last call wins. An unset parameter leaves
+            // the packaging library's default in place.
+            if (compression != null) {
+                spec.compression(Compression.parse(compression));
+            }
+            if (multiRelease != null) {
+                spec.multiRelease(multiRelease);
+            }
+            if (entryStub != null) {
+                spec.entryStub(entryStub);
+            }
+            if (enableNativeAccess != null) {
+                spec.enableNativeAccess(enableNativeAccess);
+            }
+            if (addOpens != null) {
+                spec.addOpens(addOpens);
+            }
+            if (addExports != null) {
+                spec.addExports(addExports);
+            }
+            if (manifestEntries != null) {
+                spec.manifestAttributes(new LinkedHashMap<>(manifestEntries));
+            }
+            List<String> passthrough = Arrays.stream(RunnerJarOption.values())
+                    .filter(option -> option.exposure() == RunnerJarOption.Exposure.PASSTHROUGH)
+                    .map(RunnerJarOption::optionName)
+                    .toList();
+            options(session.getUserProperties(), project.getProperties(), runnerOptions, passthrough)
+                    .forEach(spec::option);
+
+            // Empty when the property is unset or disabled and SOURCE_DATE_EPOCH is not set, so the packaging
+            // library's own fixed timestamp applies.
+            MavenArchiver.parseBuildOutputTimestamp(outputTimestamp).ifPresent(spec::timestamp);
+
+            if (manifestSource != null) {
+                spec.applicationManifest(manifestSource.toPath());
+            }
+            return spec.build();
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Unknown compression '" + compression
-                    + "'. Supported values are STORED and PRESERVE.", e);
+            throw new MojoFailureException(e.getMessage(), e);
         }
     }
 
     /**
-     * Resolves the reproducible timestamp the way the Maven reproducible build specification defines it:
-     * either an ISO-8601 instant or seconds since the epoch. An unset or unresolved property falls back to
-     * the format's own fixed default.
+     * Collects the options set by name. A passthrough option is read from the user property
+     * {@code micronaut.runner.<name>}, or else from the project property of that name, as {@code -D} wins over
+     * {@code <properties>}. A {@code <runnerOptions>} entry, for any option, wins over both, as POM
+     * configuration wins over {@code -D} for any parameter.
+     *
+     * @param userProperties    the session's user properties
+     * @param projectProperties the project's properties
+     * @param configured        the {@code <runnerOptions>} entries, or {@code null} when there are none
+     * @param passthroughNames  the names of the passthrough options, in table order
+     * @return the options by name, in the order they are applied
      */
-    private Instant timestamp() {
-        if (outputTimestamp == null || outputTimestamp.isBlank() || outputTimestamp.startsWith("${")) {
-            return Instant.parse(DEFAULT_TIMESTAMP);
+    static Map<String, String> options(Properties userProperties, Properties projectProperties,
+            Map<String, String> configured, Collection<String> passthroughNames) {
+        Map<String, String> options = new LinkedHashMap<>();
+        for (String name : passthroughNames) {
+            String value = userProperties.getProperty(PROPERTY_PREFIX + name);
+            if (value == null) {
+                value = projectProperties.getProperty(PROPERTY_PREFIX + name);
+            }
+            if (value != null) {
+                options.put(name, value);
+            }
         }
-        String value = outputTimestamp.trim();
-        if (value.length() > 1 && value.chars().allMatch(Character::isDigit)) {
-            return Instant.ofEpochSecond(Long.parseLong(value));
+        if (configured != null) {
+            // An empty element, such as <addOpens/>, reaches the map as null: the empty value.
+            configured.forEach((name, value) -> options.put(name, value == null ? "" : value));
         }
-        try {
-            return Instant.parse(value);
-        } catch (DateTimeParseException e) {
-            getLog().warn("Could not parse project.build.outputTimestamp '" + value
-                    + "', falling back to " + DEFAULT_TIMESTAMP);
-            return Instant.parse(DEFAULT_TIMESTAMP);
-        }
+        return options;
     }
 
     /** Bridges the packaging library's log calls to Maven's logger. */

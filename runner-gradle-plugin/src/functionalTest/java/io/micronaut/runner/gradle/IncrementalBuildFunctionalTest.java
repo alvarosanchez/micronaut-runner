@@ -47,10 +47,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
 
     /**
-     * The task re-runs when something it reads changes, and only then.
+     * The task re-runs when something it reads changes, and only then. That includes an option passed by
+     * name, which also reaches the archive: the passthrough test of the option table.
      *
      * @param directory a fresh project directory
-     * @throws IOException if the fixture cannot be written
+     * @throws IOException if the fixture cannot be written or the archive cannot be read
      */
     @Test
     void reRunsOnlyWhenItsInputsChange(@TempDir Path directory) throws IOException {
@@ -71,6 +72,20 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
         BuildResult changed = build(directory, "micronautRunnerJar");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(changed, RUNNER_JAR_TASK),
                 () -> "a changed source file must rebuild the archive:\n" + changed.getOutput());
+
+        Path buildFile = directory.resolve("build.gradle");
+        write(buildFile, Files.readString(buildFile)
+                + "\nmicronautRunnerJar { options.put('compression', 'PRESERVE') }\n");
+        BuildResult option = build(directory, "micronautRunnerJar");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(option, RUNNER_JAR_TASK),
+                () -> "an option set by name must rebuild the archive:\n" + option.getOutput());
+        assertEquals(ZipEntry.DEFLATED, nestedEntryMethods(directory.resolve(DEFAULT_ARCHIVE),
+                        "MICRONAUT-INF/lib/alpha.jar").get("com/example/lib/Greeter.class"),
+                "the compression option set by name did not reach the packaging library");
+
+        BuildResult optionUnchanged = build(directory, "micronautRunnerJar");
+        assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(optionUnchanged, RUNNER_JAR_TASK),
+                () -> "the options map must be a stable input:\n" + optionUnchanged.getOutput());
     }
 
     /**

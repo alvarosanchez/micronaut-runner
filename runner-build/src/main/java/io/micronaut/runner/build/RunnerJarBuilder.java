@@ -59,6 +59,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
+import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 import java.util.zip.CheckedOutputStream;
 
@@ -73,9 +74,9 @@ import java.util.zip.CheckedOutputStream;
  * <h2>Two passes, one archive</h2>
  * <p>The index stores the absolute offset of every entry's data, and the index is itself the second entry
  * of the archive, so its own length shifts everything it describes. The way out is that an index's length
- * depends only on names and counts, never on offsets: {@link IndexWriter#layout()} reports it before
+ * depends only on names and counts, never on offsets: {@code IndexWriter.layout()} reports it before
  * anything is written. The builder therefore lays the index out, runs the whole archive through a
- * {@link ZipWriter} that discards its output to learn where every entry will land, fills those offsets into
+ * {@code ZipWriter} that discards its output to learn where every entry will land, fills those offsets into
  * the index and only then writes the file for real, checking as it goes that every entry landed exactly
  * where the dry run said it would.</p>
  *
@@ -87,11 +88,18 @@ import java.util.zip.CheckedOutputStream;
  * <p>Each dependency is repacked or copied into its nested jar on up to
  * {@code min(availableProcessors(), 8)} daemon threads. The threads are created for each build and have
  * stopped before {@code build} returns; with one processor, or at most one dependency, staging runs on the
- * calling thread. A staging thread holds one open {@link ZipReader} (its parsed central directory and
+ * calling thread. A staging thread holds one open {@code ZipReader} (its parsed central directory and
  * manifest), at most one {@code Inflater} at a time and at most four 64 KiB buffers. The archive's bytes do
  * not depend on the thread count: every nested jar's name and work file are fixed in class-path order
  * before staging starts, warnings are emitted in that order afterwards, and the outer archive is written on
  * one thread.</p>
+ *
+ * <h2>Dependency files</h2>
+ * <p>A dependency is nested when it is a ZIP archive, which is when its first four bytes are a local file
+ * header ({@code PK\3\4}) or, for an empty archive, an end of central directory record ({@code PK\5\6}). A
+ * directory fails the build before anything is written, because a runner jar nests only JAR files. Any other
+ * file, such as a POM, is skipped with a warning: it contributes nothing to a {@code java -cp} class path
+ * either. A dependency that does not exist fails the build.</p>
  *
  * <h2>Path safety</h2>
  * <p>Configured input paths may themselves be symbolic links. The builder resolves their real identities,
@@ -147,6 +155,8 @@ public final class RunnerJarBuilder {
     private final BuildLogger logger;
     private final int parallelism;
     private final List<String> warnings = new ArrayList<>();
+    /** The dependencies that are nested: the spec's, less the files that are not ZIP archives. */
+    private final List<Dependency> dependencies = new ArrayList<>();
     private final List<PlannedEntry> plan = new ArrayList<>();
     private final List<NestedJar> nested = new ArrayList<>();
     private final Map<String, ApplicationEntry> application = new LinkedHashMap<>();
@@ -282,6 +292,9 @@ public final class RunnerJarBuilder {
     }
 
     private RunnerJarResult run() throws IOException {
+        logger.info(spec.effectiveOptions().entrySet().stream()
+                .map(option -> option.getKey() + "=" + option.getValue())
+                .collect(Collectors.joining(", ", "Runner options: ", "")));
         validate();
         Path directory = output.getParent();
         Files.createDirectories(directory);
@@ -321,14 +334,9 @@ public final class RunnerJarBuilder {
             verify(archive, layout);
             move(archive);
 
-            StringBuilder message = new StringBuilder();
-            message.append("Packaged ").append(spec.mainClass()).append(" into ").append(output)
-                    .append(" (").append(nested.size()).append(" dependencies, ")
-                    .append(layout.entryCount()).append(" index records, ")
-                    .append(archiveSize).append(" bytes)");
-            logger.info(message.toString());
+            // The caller reports the build with the result's summary(), so the builder logs no line of its own.
             return new RunnerJarResult(output, writer.jars().size(), layout.entryCount(),
-                    application.size(), mergedServiceEntryCount, archiveSize, warnings);
+                    application.size(), mergedServiceEntryCount, archiveSize, warnings, spec.effectiveOptions());
         } finally {
             deleteRecursively(work);
         }
@@ -340,12 +348,14 @@ public final class RunnerJarBuilder {
     }
 
     /**
-     * Checks everything that can be checked before any work is done: that the inputs exist, that the output
-     * is not one of them, and that neither the output nor the directory that will hold it sits inside an
-     * application directory. It runs once per build, before the work directory is created, and keeps the
-     * real paths the application walk compares against.
+     * Checks everything that can be checked before any work is done: that the inputs exist, which
+     * dependencies are nested, that the output is not one of the inputs, and that neither the output nor the
+     * directory that will hold it sits inside an application directory. It runs once per build, before the
+     * work directory is created, and keeps the real paths the application walk compares against and the
+     * dependencies that are nested.
      *
-     * @throws IOException if an input is missing or the output would destroy an input
+     * @throws IOException if an input is missing, a dependency is a directory, or the output would destroy an
+     *                     input
      */
     private void validate() throws IOException {
         List<Path> applicationOutput = spec.applicationOutput();
@@ -355,8 +365,8 @@ public final class RunnerJarBuilder {
             }
         }
         for (Dependency dependency : spec.dependencies()) {
-            if (!Files.isRegularFile(dependency.path())) {
-                throw new IOException("The dependency " + dependency.path() + " does not exist");
+            if (isNestable(dependency.path())) {
+                dependencies.add(dependency);
             }
         }
         Optional<Path> manifestSource = spec.applicationManifest().isPresent()
@@ -387,7 +397,7 @@ public final class RunnerJarBuilder {
                         + resolvedInput + "; packaging it would read what it is writing");
             }
         }
-        for (Dependency dependency : spec.dependencies()) {
+        for (Dependency dependency : dependencies) {
             Path dependencyPath = dependency.path();
             if (isOutput(dependencyPath, dependencyPath.toRealPath(), resolvedOutput, outputExists)) {
                 throw new IOException("The output " + output + " is also a dependency of the application");
@@ -409,6 +419,49 @@ public final class RunnerJarBuilder {
     private boolean isOutput(Path input, Path resolvedInput, Path resolvedOutput, boolean outputExists)
             throws IOException {
         return resolvedOutput.equals(resolvedInput) || outputExists && Files.isSameFile(output, input);
+    }
+
+    /**
+     * Applies the dependency file rule: a ZIP archive is nested, a directory fails the build, and any other
+     * file is skipped with one warning. Build tools resolve the same class path to different kinds of files
+     * (Maven resolves a reactor module that was not packaged to its classes directory, and a {@code pom}
+     * dependency to its POM), so the rule lives here rather than in each plugin.
+     *
+     * @param dependency the dependency's path
+     * @return whether the dependency is nested
+     * @throws IOException if the dependency does not exist or is a directory, or its first bytes cannot be
+     *                     read
+     */
+    private boolean isNestable(Path dependency) throws IOException {
+        if (!Files.exists(dependency)) {
+            throw new IOException("The dependency " + dependency + " does not exist");
+        }
+        if (Files.isDirectory(dependency)) {
+            throw new IOException("The dependency " + dependency + " is a directory, and Micronaut Runner nests"
+                    + " only JAR files. Package it as a JAR first (for a reactor module, run the reactor through"
+                    + " the package phase), or add it to the application output instead");
+        }
+        if (Files.isRegularFile(dependency) && isZip(dependency)) {
+            return true;
+        }
+        warn("The dependency " + dependency + " is not a JAR file and was skipped; it contributes nothing to"
+                + " a class path");
+        return false;
+    }
+
+    /**
+     * Whether a file starts the way every ZIP archive does: with a local file header, or with the end of
+     * central directory record of an archive that has no entries.
+     */
+    private static boolean isZip(Path file) throws IOException {
+        byte[] signature = new byte[4];
+        try (InputStream in = Files.newInputStream(file)) {
+            if (in.readNBytes(signature, 0, signature.length) < signature.length) {
+                return false;
+            }
+        }
+        return signature[0] == 'P' && signature[1] == 'K'
+                && (signature[2] == 3 && signature[3] == 4 || signature[2] == 5 && signature[3] == 6);
     }
 
     private static Path resolveExistingAncestor(Path path) throws IOException {
@@ -716,7 +769,6 @@ public final class RunnerJarBuilder {
      *                     cannot, the failure of the first one on the class path
      */
     private void collectDependencies(Path work) throws IOException {
-        List<Dependency> dependencies = spec.dependencies();
         List<DependencyStage> stages = new ArrayList<>(dependencies.size());
         Set<String> taken = new HashSet<>();
         for (int position = 0; position < dependencies.size(); position++) {
@@ -1205,7 +1257,7 @@ public final class RunnerJarBuilder {
             jar.entry = PlannedEntry.ofFile(jar.entryName, jar.file, length, jar.crc32);
             plan.add(jar.entry);
             Attributes main = jar.manifest == null ? null : jar.manifest.getMainAttributes();
-            jar.jar = writer.addJar(jar.entryName).coordinates(jar.dependency.coordinates());
+            jar.jar = writer.addJar(jar.entryName).coordinates(jar.dependency.coordinates().orElse(null));
             if (jar.hasManifest) {
                 jar.jar.addFlags(IndexFormat.JAR_FLAG_HAS_MANIFEST);
             }
@@ -1794,12 +1846,13 @@ public final class RunnerJarBuilder {
                     result = compression == Compression.STORED
                             ? ZipRepacker.repack(reader, checked)
                             : ZipRepacker.copy(reader, checked);
-                } catch (IOException e) {
-                    // Without this the message names only the entry, and a build with dozens of
-                    // dependencies says nothing about which jar has to be looked at.
-                    throw new IOException("The dependency " + dependency.path() + " cannot be packaged: "
-                            + e.getMessage(), e);
                 }
+            } catch (IOException e) {
+                // Without this the message names only the entry, and a build with dozens of dependencies
+                // says nothing about which jar has to be looked at. It covers a file that starts like a ZIP
+                // archive but whose central directory cannot be read, such as a truncated download.
+                throw new IOException("The dependency " + dependency.path() + " cannot be packaged: "
+                        + e.getMessage(), e);
             }
             for (ZipEntryInfo entry : result.entries()) {
                 requireSafeName(entry.name(), dependency.path().toString());
