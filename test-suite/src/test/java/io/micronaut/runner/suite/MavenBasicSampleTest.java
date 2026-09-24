@@ -176,6 +176,8 @@ class MavenBasicSampleTest {
             assertEquals("java.base/sun.nio.ch java.base/jdk.internal.misc",
                     attributes.getValue("Add-Exports"));
             assertEquals("java.base/java.lang java.base/java.util", attributes.getValue("Add-Opens"));
+            assertNotNull(jar.getEntry("MICRONAUT-INF/classes/io/micronaut/runner/generated/AppEntry.class"),
+                    () -> "the default configuration did not generate the entry stub:\n" + log);
         }
 
         ForkedApplication application = ForkedApplication.start(archive, sample, Map.of());

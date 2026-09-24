@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.build;
 
-import io.micronaut.runner.ArchiveSource;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
 
@@ -23,11 +22,9 @@ import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.DirectoryStream;
@@ -36,6 +33,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -78,15 +76,15 @@ import java.util.zip.CheckedOutputStream;
  * <h2>Path safety</h2>
  * <p>Configured input paths may themselves be symbolic links. The builder resolves their real identities,
  * and resolves a not-yet-created output through its nearest existing ancestor, before comparing them. It
- * rejects an output that aliases an application jar, dependency or manifest source, or is canonically below
- * an application directory. The same checks run again immediately before publication. Symbolic links found
- * inside an application directory are rejected rather than followed; this also rejects directory-link
- * cycles and prevents the scan from escaping the configured tree.</p>
+ * rejects an output that aliases an application jar, dependency or manifest source, or whose directory is
+ * canonically at or below an application directory. Symbolic links found inside an application directory
+ * are followed, as they are on a class path, and packaged under the link's own name. Three kinds are
+ * rejected: a link that does not resolve, a directory link that leads back into a directory the walk is
+ * already inside (a cycle), and a directory link to the directory that holds the output and the work
+ * directory, or to one of its ancestors.</p>
  *
- * <p>These checks protect normal builds from accidental aliases. The standard {@link Path} API cannot make
- * checking and replacement one indivisible operation, so a hostile process that can replace path components
- * concurrently can still race them. Output and input directories must therefore be writable only by trusted
- * build participants.</p>
+ * <p>These checks guard against accidental aliases, not against concurrent replacement of path
+ * components.</p>
  *
  * @since 1.0
  */
@@ -110,6 +108,12 @@ public final class RunnerJarBuilder {
     /** Classes and manifests are the only application entries intentionally materialised. */
     private static final int MAX_IN_MEMORY_METADATA_SIZE = 16 * 1024 * 1024;
 
+    /** The content of every zero-length entry, which is written without opening anything. */
+    private static final byte[] EMPTY_BYTES = new byte[0];
+
+    /** The content every zero-length dependency contributor to the merged Micronaut metadata shares. */
+    private static final ApplicationEntry EMPTY_CONTENT = ApplicationEntry.ofBytes(EMPTY_BYTES, 0);
+
     private final RunnerJarSpec spec;
     private final BuildLogger logger;
     private final List<String> warnings = new ArrayList<>();
@@ -120,6 +124,13 @@ public final class RunnerJarBuilder {
     private final IndexWriter writer = new IndexWriter();
     private final Path output;
     private final int dosTime;
+    /** The real path of the directory that holds the output and the work directory, set by validation. */
+    private Path outputDirectory;
+    /**
+     * The real path of each application output that is a directory, parallel to
+     * {@link RunnerJarSpec#applicationOutput()}; {@code null} where the output is a jar. Set by validation.
+     */
+    private Path[] applicationDirectories;
     private IndexWriter.JarSpec applicationJar;
     private PlannedEntry indexEntry;
     private Manifest applicationManifest;
@@ -223,9 +234,6 @@ public final class RunnerJarBuilder {
     private RunnerJarResult run() throws IOException {
         validate();
         Path directory = output.getParent();
-        if (directory == null) {
-            throw new IOException("The output " + output + " has no parent directory");
-        }
         Files.createDirectories(directory);
         Path work = Files.createTempDirectory(directory, ".micronaut-runner-");
         try {
@@ -283,13 +291,15 @@ public final class RunnerJarBuilder {
 
     /**
      * Checks everything that can be checked before any work is done: that the inputs exist, that the output
-     * is not one of them and does not sit inside one of them, and that the compression mode is one this
-     * release implements.
+     * is not one of them, and that neither the output nor the directory that will hold it sits inside an
+     * application directory. It runs once per build, before the work directory is created, and keeps the
+     * real paths the application walk compares against.
      *
      * @throws IOException if an input is missing or the output would destroy an input
      */
     private void validate() throws IOException {
-        for (Path input : spec.applicationOutput()) {
+        List<Path> applicationOutput = spec.applicationOutput();
+        for (Path input : applicationOutput) {
             if (!Files.exists(input)) {
                 throw new IOException("The application output " + input + " does not exist");
             }
@@ -302,13 +312,26 @@ public final class RunnerJarBuilder {
         Optional<Path> manifestSource = spec.applicationManifest().isPresent()
                 ? Optional.empty()
                 : spec.applicationManifestSource();
+        Path directory = output.getParent();
+        if (directory == null) {
+            throw new IOException("The output " + output + " has no parent directory");
+        }
+        // The output's own directory, not the directory of what an existing output links to: the work
+        // directory and the published file both go here, and Files.move replaces a link, not its target.
+        outputDirectory = resolveExistingAncestor(directory);
         Path resolvedOutput = resolveExistingAncestor(output);
-        for (Path input : spec.applicationOutput()) {
+        boolean outputExists = Files.exists(output);
+        applicationDirectories = new Path[applicationOutput.size()];
+        for (int i = 0; i < applicationOutput.size(); i++) {
+            Path input = applicationOutput.get(i);
             Path resolvedInput = input.toRealPath();
-            boolean directory = Files.isDirectory(input);
-            boolean collision = directory
-                    ? resolvedOutput.startsWith(resolvedInput)
-                    : sameFile(output, input, resolvedOutput, resolvedInput);
+            boolean collision;
+            if (Files.isDirectory(resolvedInput)) {
+                applicationDirectories[i] = resolvedInput;
+                collision = resolvedOutput.startsWith(resolvedInput) || outputDirectory.startsWith(resolvedInput);
+            } else {
+                collision = isOutput(input, resolvedInput, resolvedOutput, outputExists);
+            }
             if (collision) {
                 throw new IOException("The output " + output + " is inside the application output "
                         + resolvedInput + "; packaging it would read what it is writing");
@@ -316,23 +339,26 @@ public final class RunnerJarBuilder {
         }
         for (Dependency dependency : spec.dependencies()) {
             Path dependencyPath = dependency.path();
-            if (sameFile(output, dependencyPath, resolvedOutput, dependencyPath.toRealPath())) {
+            if (isOutput(dependencyPath, dependencyPath.toRealPath(), resolvedOutput, outputExists)) {
                 throw new IOException("The output " + output + " is also a dependency of the application");
             }
         }
         if (manifestSource.isPresent()) {
             Path manifest = manifestSource.get();
             if (Files.isRegularFile(manifest)
-                    && sameFile(output, manifest, resolvedOutput, manifest.toRealPath())) {
+                    && isOutput(manifest, manifest.toRealPath(), resolvedOutput, outputExists)) {
                 throw new IOException("The output " + output + " is also the application manifest source");
             }
         }
     }
 
-    private static boolean sameFile(Path candidate, Path input, Path resolvedCandidate, Path resolvedInput)
+    /**
+     * Whether a file input is the output: the same real path, or, when the output already exists, the same
+     * file under another name, such as a hard link or a case alias.
+     */
+    private boolean isOutput(Path input, Path resolvedInput, Path resolvedOutput, boolean outputExists)
             throws IOException {
-        return Files.exists(candidate) && Files.isSameFile(candidate, input)
-                || resolvedCandidate.equals(resolvedInput);
+        return resolvedOutput.equals(resolvedInput) || outputExists && Files.isSameFile(output, input);
     }
 
     private static Path resolveExistingAncestor(Path path) throws IOException {
@@ -360,10 +386,15 @@ public final class RunnerJarBuilder {
      * @throws IOException if an input cannot be read or carries an entry name the format cannot store
      */
     private void collectApplication(Path work) throws IOException {
+        List<Path> applicationOutput = spec.applicationOutput();
         int jarPosition = 0;
-        for (Path input : spec.applicationOutput()) {
-            if (Files.isDirectory(input)) {
-                collectDirectory(input, input);
+        for (int i = 0; i < applicationOutput.size(); i++) {
+            Path input = applicationOutput.get(i);
+            Path realDirectory = applicationDirectories[i];
+            if (realDirectory != null) {
+                Set<Path> walking = new HashSet<>();
+                walking.add(realDirectory);
+                collectDirectory(input, input, realDirectory, walking);
             } else {
                 collectApplicationJar(input, work.resolve("application-" + jarPosition + ".spool"));
                 jarPosition++;
@@ -371,7 +402,18 @@ public final class RunnerJarBuilder {
         }
     }
 
-    private void collectDirectory(Path root, Path directory) throws IOException {
+    /**
+     * Adds the files below one directory of an application directory, following symbolic links as a class
+     * path does: an entry reached through a link keeps the link's own name.
+     *
+     * @param root      the application directory, which entry names are relative to
+     * @param directory the directory to list, named through any links that led to it
+     * @param real      the real path of {@code directory}
+     * @param walking   the real paths of {@code directory} and of every directory above it up to {@code root}
+     * @throws IOException if an entry cannot be read, a link does not resolve, leads into a directory the walk
+     *                     is already inside, or reaches the directory that holds the output
+     */
+    private void collectDirectory(Path root, Path directory, Path real, Set<Path> walking) throws IOException {
         List<Path> children = new ArrayList<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
             for (Path child : stream) {
@@ -381,18 +423,63 @@ public final class RunnerJarBuilder {
         // Sorted, so that the archive does not depend on the order the file system happens to report.
         children.sort(Comparator.comparing(RunnerJarBuilder::fileName));
         for (Path child : children) {
-            if (Files.isSymbolicLink(child)) {
-                throw new IOException("The application output " + root + " contains the symbolic link " + child
-                        + "; symbolic links inside application directories are not supported");
+            BasicFileAttributes attributes =
+                    Files.readAttributes(child, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            boolean link = attributes.isSymbolicLink();
+            if (link) {
+                attributes = followLink(root, child);
             }
-            if (Files.isDirectory(child)) {
-                collectDirectory(root, child);
-            } else if (Files.isRegularFile(child)) {
+            if (attributes.isDirectory()) {
+                // A plain subdirectory's real path follows from its parent's without a system call.
+                Path childReal = link ? linkedDirectory(root, child) : real.resolve(child.getFileName());
+                if (!walking.add(childReal)) {
+                    throw new IOException("The application output " + root + " reaches " + child
+                            + ", which leads back to " + childReal
+                            + "; symbolic-link cycles are not supported");
+                }
+                collectDirectory(root, child, childReal, walking);
+                walking.remove(childReal);
+            } else if (attributes.isRegularFile()) {
                 String name = root.relativize(child).toString().replace(File.separatorChar, '/');
                 requireSafeName(name, root.toString());
-                addApplicationEntry(name, ApplicationEntry.ofFile(child, Files.size(child), crc32(child)),
+                addApplicationEntry(name, ApplicationEntry.ofFile(child, attributes.size(), crc32(child)),
                         root);
             }
+        }
+    }
+
+    /**
+     * Resolves a symbolic link to a directory inside an application directory, refusing one that leads to
+     * the directory that holds the output or to one of its ancestors. Validation has already refused an
+     * output directory below an application directory, so every other directory the walk enters is below
+     * the root or below a link checked here.
+     *
+     * @throws IOException if the link reaches the directory where the work directory and the output go
+     */
+    private Path linkedDirectory(Path root, Path link) throws IOException {
+        Path real = link.toRealPath();
+        if (outputDirectory.startsWith(real)) {
+            throw new IOException("The application output " + root + " contains the symbolic link " + link
+                    + " to " + real + ", which is or contains the directory of the output " + output
+                    + "; packaging it would read what it is writing");
+        }
+        return real;
+    }
+
+    /**
+     * Reads the attributes of what a symbolic link inside an application directory leads to.
+     *
+     * @throws IOException if the link does not resolve, including a link that leads back to itself
+     */
+    private static BasicFileAttributes followLink(Path root, Path link) throws IOException {
+        try {
+            return Files.readAttributes(link, BasicFileAttributes.class);
+        } catch (IOException e) {
+            throw new IOException("The application output " + root + " contains the symbolic link " + link
+                    + " to " + Files.readSymbolicLink(link) + ", which does not resolve"
+                    + "; maven-resources-plugin 3.3.1 copies symbolic links into target/classes verbatim, so a"
+                    + " relative link that works from src/main/resources can dangle there. Use an absolute"
+                    + " link, a copy, or maven-resources-plugin 3.4.0 or later", e);
         }
     }
 
@@ -705,7 +792,13 @@ public final class RunnerJarBuilder {
      * loader answers every lookup under that prefix from the merged copy, so a merged copy written empty
      * would serve zero bytes for a file that is not empty, without a word in the build log.</p>
      *
-     * @throws IOException if a contributed entry cannot be read back out of the jar that holds it
+     * <p>The first contributor on the class path wins, even when it is empty, and there is no size limit.
+     * A zero-length entry costs no I/O at all, here or when the archive is written: every one of them shares
+     * a single in-memory empty content. The rare dependency entry that has content is read once, through the
+     * build's own {@link ZipReader}, while its nested jar's entries are collected.</p>
+     *
+     * @throws IOException if a non-empty entry cannot be read back out of the nested jar that holds it, or an
+     *                     application contributor cannot be compared with another
      */
     private void planMergedServices() throws IOException {
         Map<String, ContentSource> contents = new LinkedHashMap<>();
@@ -767,20 +860,39 @@ public final class RunnerJarBuilder {
      * Adds one dependency's {@code META-INF/micronaut/} entries to the merged set. A zero-length entry is a
      * contributor in its own right: it reserves the name just as an empty class-path resource does.
      *
+     * <p>The entries come from {@link NestedJar#result}, which describes the nested jar that was just
+     * written, so the nested jar is not parsed again. A zero-length entry becomes the shared
+     * {@link #EMPTY_CONTENT} and costs no I/O. An entry with content is read into memory with
+     * {@link ZipReader#read(ZipEntryInfo)}, which inflates it when it is compressed and verifies its CRC-32;
+     * the reader is opened at the first such entry, at most once for the jar, and closed before this
+     * method returns. A jar whose metadata entries are all empty, or that has none, is never opened.</p>
+     *
      * @param jar      the dependency, already written as a nested jar
      * @param contents the merged content so far, keyed by logical name, in class path order
-     * @throws IOException if a candidate cannot be compared with the selected contributor
+     * @throws IOException if a non-empty entry cannot be read back out of the nested jar, or does not match
+     *                     its recorded size or CRC-32
      */
     private void collectMergedServices(NestedJar jar, Map<String, ContentSource> contents) throws IOException {
         Set<String> contributed = new HashSet<>();
-        try (ZipReader reader = ZipReader.open(jar.file)) {
-            for (ZipEntryInfo entry : reader.entries()) {
+        ZipReader reader = null;
+        try {
+            for (ZipEntryInfo entry : jar.result.entries()) {
                 String name = entry.name();
                 if (entry.directory() || !isMergedServiceName(name) || !contributed.add(name)) {
                     continue;
                 }
                 serviceNames.add(name);
-                ContentSource candidate = new ArchiveEntrySource(jar.file, entry);
+                ContentSource candidate;
+                if (entry.uncompressedSize() == 0 && entry.crc32() == 0) {
+                    candidate = EMPTY_CONTENT;
+                } else {
+                    // Also the path for a zero-length entry that records a non-zero CRC-32, which only
+                    // a damaged PRESERVE input can carry: reading it verifies the CRC and fails loudly.
+                    if (reader == null) {
+                        reader = ZipReader.open(jar.file);
+                    }
+                    candidate = ApplicationEntry.ofBytes(readMergedService(jar, reader, entry), entry.crc32());
+                }
                 ContentSource existing = contents.putIfAbsent(name, candidate);
                 if (existing != null && !sameContent(existing, candidate)) {
                     warn("Two class path entries contribute a different '" + name
@@ -789,12 +901,30 @@ public final class RunnerJarBuilder {
                             + " is reachable only through that jar");
                 }
             }
+        } finally {
+            if (reader != null) {
+                reader.close();
+            }
+        }
+    }
+
+    private static byte[] readMergedService(NestedJar jar, ZipReader reader, ZipEntryInfo entry)
+            throws IOException {
+        try {
+            return reader.read(entry);
+        } catch (IOException e) {
+            // The reader names the nested copy in the work directory; the dependency is what has to be fixed.
+            throw new IOException("The dependency " + jar.dependency.path() + " cannot be packaged: "
+                    + e.getMessage(), e);
         }
     }
 
     private static boolean sameContent(ContentSource first, ContentSource second) throws IOException {
         if (first.size() != second.size() || first.crc32() != second.crc32()) {
             return false;
+        }
+        if (first.size() == 0) {
+            return true;
         }
         try (InputStream left = first.open(); InputStream right = second.open()) {
             byte[] leftBuffer = new byte[BUFFER_SIZE];
@@ -998,9 +1128,13 @@ public final class RunnerJarBuilder {
      * every offset against what the dry pass recorded, so a disagreement between the two can never reach an
      * archive.</p>
      *
+     * <p>A zero-length entry is written from a constant in the real pass too, whatever it is backed by, so
+     * it never opens a stream, a channel or a mapping.</p>
+     *
      * @param archive the file to write, or {@code null} for the dry pass
      * @return the length of the archive
-     * @throws IOException if an entry cannot be written or does not land where it was planned to
+     * @throws IOException if an entry cannot be written, does not land where it was planned to, or is empty
+     *                     but records a non-zero CRC-32
      */
     private long writeArchive(Path archive) throws IOException {
         boolean dry = archive == null;
@@ -1016,6 +1150,14 @@ public final class RunnerJarBuilder {
                     dataOffset = zip.writeDirectoryEntry(entry.name, dosTime);
                 } else if (dry) {
                     dataOffset = zip.layoutEntry(entry.name, entry.size, entry.crc32, dosTime);
+                } else if (entry.size == 0) {
+                    // Nothing to copy, so nothing to open: no stream, channel or mapping for an empty entry,
+                    // whatever it is backed by. Its recorded CRC-32 is the only thing left to check.
+                    if (entry.crc32 != 0) {
+                        throw new IOException("The empty entry '" + entry.name + "' records CRC-32 "
+                                + Long.toHexString(entry.crc32));
+                    }
+                    dataOffset = zip.writeEntry(entry.name, EMPTY_BYTES, 0, 0, dosTime);
                 } else if (entry.bytes != null) {
                     dataOffset = zip.writeEntry(entry.name, entry.bytes, 0, entry.bytes.length, dosTime);
                 } else if (entry.source != null) {
@@ -1063,9 +1205,6 @@ public final class RunnerJarBuilder {
     }
 
     private void move(Path archive) throws IOException {
-        // Inputs and path components may have changed while the archive was assembled. This narrows the
-        // accidental race window; see the class documentation for the remaining hostile-race boundary.
-        validate();
         try {
             Files.move(archive, output, StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
@@ -1365,67 +1504,6 @@ public final class RunnerJarBuilder {
         long crc32();
 
         InputStream open() throws IOException;
-    }
-
-    /** A range in a prepared nested jar, inflated lazily when its original entry was compressed. */
-    private static final class ArchiveEntrySource implements ContentSource {
-
-        private final Path archive;
-        private final ZipEntryInfo entry;
-
-        private ArchiveEntrySource(Path archive, ZipEntryInfo entry) {
-            this.archive = archive;
-            this.entry = entry;
-        }
-
-        @Override
-        public long size() {
-            return entry.uncompressedSize();
-        }
-
-        @Override
-        public long crc32() {
-            return entry.crc32();
-        }
-
-        @Override
-        public InputStream open() throws IOException {
-            ArchiveSource source = ArchiveSource.open(archive.toFile());
-            try {
-                InputStream stream = source.stream(entry.dataOffset(), entry.compressedSize(),
-                        entry.uncompressedSize(), entry.method());
-                return new FilterInputStream(stream) {
-                    @Override
-                    public void close() throws IOException {
-                        IOException failure = null;
-                        try {
-                            super.close();
-                        } catch (IOException e) {
-                            failure = e;
-                        }
-                        try {
-                            source.close();
-                        } catch (UncheckedIOException e) {
-                            if (failure == null) {
-                                failure = e.getCause();
-                            } else {
-                                failure.addSuppressed(e.getCause());
-                            }
-                        }
-                        if (failure != null) {
-                            throw failure;
-                        }
-                    }
-                };
-            } catch (IOException | RuntimeException | Error e) {
-                try {
-                    source.close();
-                } catch (UncheckedIOException closeFailure) {
-                    e.addSuppressed(closeFailure.getCause());
-                }
-                throw e;
-            }
-        }
     }
 
     /**
