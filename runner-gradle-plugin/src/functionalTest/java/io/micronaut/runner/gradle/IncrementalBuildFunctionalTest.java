@@ -102,11 +102,13 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
 
         BuildResult stored = build(first, "micronautRunnerJar", "--build-cache");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(stored, RUNNER_JAR_TASK));
+        assertNoPackagingState(first);
 
         BuildResult reused = build(second, "micronautRunnerJar", "--build-cache");
         assertEquals(TaskOutcome.FROM_CACHE, outcomeOf(reused, RUNNER_JAR_TASK),
                 () -> "the task is not relocatable: an identical project in another directory missed the"
                         + " cache\n" + reused.getOutput());
+        assertNoPackagingState(second);
 
         runJarSuccessfully(second.resolve(DEFAULT_ARCHIVE));
     }
@@ -250,6 +252,17 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
         assertTrue(output.contains("marker=from the configuration cache"),
                 () -> "the archive was not rebuilt from the reused configuration:\n" + output);
         assertIndexContains(directory, "com.example:alpha:configuration-cache");
+    }
+
+    /**
+     * The archive is the task's only output: no packaging state is kept between executions or carried in
+     * its build-cache entry, so {@code --rerun} always takes the cold packaging path.
+     *
+     * @param project the project directory the task ran in
+     */
+    private static void assertNoPackagingState(Path project) {
+        Path state = project.resolve("build/micronaut-runner");
+        assertFalse(Files.exists(state), () -> "the task left packaging state behind in " + state);
     }
 
     private static void assertCacheTracksDependencyOrder(Path root, String settings)
