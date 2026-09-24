@@ -100,10 +100,6 @@ class ManifestModuleAccessTest {
                 .addOpens(List.of("java.base/java.lang"))
                 .build(), BuildLogger.noOp());
 
-        Attributes attributes = manifest(archive).getMainAttributes();
-        assertEquals("java.base/sun.nio.ch", attributes.getValue("Add-Exports"));
-        assertEquals("java.base/java.lang", attributes.getValue("Add-Opens"));
-
         ProcessBuilder builder = new ProcessBuilder(javaExecutable().toString(), "-jar",
                 archive.toAbsolutePath().toString())
                 .directory(workspace.toFile())
@@ -119,6 +115,10 @@ class ManifestModuleAccessTest {
         assertEquals(0, process.waitFor(), output);
         assertTrue(output.contains("EXPORT OK"), output);
         assertTrue(output.contains("OPEN OK"), output);
+
+        Attributes attributes = manifest(archive).getMainAttributes();
+        assertEquals("java.base/sun.nio.ch", attributes.getValue("Add-Exports"));
+        assertEquals("java.base/java.lang", attributes.getValue("Add-Opens"));
     }
 
     private static Manifest manifest(Path archive) throws IOException {
