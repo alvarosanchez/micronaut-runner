@@ -316,7 +316,8 @@ archives under one name. The plugin fails the build if it detects that.
         enabled = true
 
         // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
-        // PRESERVE copies each dependency byte for byte, producing a smaller archive that loads more slowly.
+        // PRESERVE copies each dependency byte for byte: smaller on disk only (its gzip size is about 1.4x
+        // STORED's), and it loads more slowly.
         compression = 'STORED'
 
         // Enter main through a generated direct call instead of reflection.
@@ -1274,7 +1275,7 @@ re-verifies an existing keyed cache before reuse. It also removes <code>JAVA_TOO
 values in the key.</p>
 </div>
 <div class="paragraph">
-<p>Report the extracted runtime deployment bytes without folding in the optional AOT file. Report cache bytes,
+<p>Count the AOT file in the deployment bytes of a cached launch, which cannot start without it, and report
 training cost and total preparation/verification cost separately from deployment bytes and HTTP readiness, as
 the benchmark&#8217;s <code>results.json</code> and <code>summary.md</code> do.</p>
 </div>
@@ -1484,12 +1485,11 @@ protocol on Linux, macOS or Windows and therefore reports neither a warm-cache n
 measurement.</p>
 </div>
 <div class="paragraph">
-<p>Pairwise readiness comparisons predeclare the median iteration-level difference (left minus right) as their
-estimator. Bootstrap resampling uses complete measured iteration pairs as its unit, preserving the shared
-iteration conditions. A failed, missing or unavailable attempt excludes that iteration and remains visible in
-the pair and exclusion counts; successful values from later iterations are never shifted into the gap. Paired
-intervals use the same minimum of ten complete pairs, retain the seed and method in <code>results.json</code>, and do not
-by themselves establish a startup speedup or statistical significance.</p>
+<p>Readiness comparisons are a predeclared list of candidate minus baseline pairs, led by <code>runner-stored</code> minus
+<code>shadow</code>, so a negative difference means the candidate is faster. Each reports the median per-iteration
+difference and a relative change, the median per-iteration candidate/baseline ratio minus one, over complete
+measured iterations only; an incomplete iteration is excluded and listed, never re-paired. A bootstrap interval
+over complete iteration pairs appears only with at least ten complete pairs.</p>
 </div>
 <div class="paragraph">
 <p>Timing runs carry no diagnostic flags: <code>-Xlog</code> changes what is being measured, so class-load counts are
@@ -1519,8 +1519,9 @@ final JAR (and therefore its embedded application and dependency bytes), exact J
 launch options and workload paths. A changed input selects a different cache. A cached variant is measured only
 after a nonempty completed cache and a successful application-class verification launch; an unsupported JDK or
 any failed phase makes the variant unavailable, and the benchmark never silently substitutes a no-cache process.
-The reports keep cache bytes, training cost and total preparation cost separate from complete runtime
-deployment bytes and readiness measurements. The cached variants require JDK 25 or later: training
+The launch cannot start without the trained cache file, so its bytes count toward the complete deployment;
+training cost and total preparation cost are reported separately from deployment bytes and readiness
+measurements. The cached variants require JDK 25 or later: training
 uses <code>-XX:AOTCacheOutput=&lt;cache&gt;</code> and measured use adds <code>-XX:AOTMode=on -XX:AOTCache=&lt;cache&gt;</code>, so a missing or
 unusable cache fails the launch. They launch the actual Shadow JAR, Runner JAR or extracted application JAR,
 with no helper or wrapper added to either paired class path. See <a href="#cdsAndAot">[cdsAndAot]</a> for the reproducible extraction
@@ -1579,11 +1580,17 @@ turns a timeout into a zero duration or retries until a favorable sample appears
 <div class="paragraph">
 <p>The size column is the complete deployment boundary, not just the process&#8217;s launch artifact. It sums the
 logical lengths of every required regular file: the application and dependency components for thin and
-exploded layouts, the whole extracted layout, or the single complete archive for Shadow and Runner variants.
-Both reports expose component bytes and the reconciled total in bytes. Repeated normalized paths are counted
-once and attributed to the first component that names them. Symbolic links are not followed or counted;
-distinct hard-linked paths are counted separately. Build workspaces, logs, reports and neighboring variants
-are outside the explicitly declared inputs and are never included.</p>
+exploded layouts, the whole extracted layout, or the single complete archive for Shadow and Runner variants,
+plus the trained cache file for every cached variant. Both reports give two metrics for each component and for
+the reconciled total: raw logical bytes, and gzip -6 bytes, the sum of per-file gzip -6 lengths, an
+approximation of image-layer transfer size (tar headers and cross-file dictionary effects excluded). The gzip
+lengths are computed while variants are prepared, never during timed launches. Repeated normalized paths are
+counted once and attributed to the first component that names them. Symbolic links are not followed or
+counted, except that a required cache file which is a link is an error; distinct hard-linked paths are counted
+separately. Build workspaces, logs, reports and neighboring variants are outside the explicitly declared inputs
+and are never included. STORED stays the default and no resources-only deflate mode is planned: STORED&#8217;s raw
+archive is the larger one, but classes are about 94% of the benchmark sample&#8217;s uncompressed content, so
+compressing only resources could not close that gap.</p>
 </div>
 </div>
 </div>
