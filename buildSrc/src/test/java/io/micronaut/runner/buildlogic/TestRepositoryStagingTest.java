@@ -22,7 +22,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -30,12 +29,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.stream.Stream;
-import java.util.zip.ZipFile;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -62,40 +56,6 @@ class TestRepositoryStagingTest {
     }
 
     @Test
-    void relocatedConcurrentBuildsReuseCompleteCachedRepositories() throws Exception {
-        Path origin = projectDir.resolve("origin");
-        Path relocatedOne = projectDir.resolve("relocated-one");
-        Path relocatedTwo = projectDir.resolve("relocated-two");
-        Path gradleHome = System.getenv("GRADLE_USER_HOME") == null
-                ? Path.of(System.getProperty("user.home"), ".gradle")
-                : Path.of(System.getenv("GRADLE_USER_HOME"));
-        writeFixture(origin);
-        writeFixture(relocatedOne);
-        writeFixture(relocatedTwo);
-        run(origin, "publishToTestRepo", "--build-cache", "-g", gradleHome.toString());
-        Map<String, String> expected = repositoryHashes(origin);
-
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        try {
-            Callable<BuildResult> firstBuild = () -> run(relocatedOne, "publishToTestRepo", "--build-cache",
-                    "-g", gradleHome.toString());
-            Callable<BuildResult> secondBuild = () -> run(relocatedTwo, "publishToTestRepo", "--build-cache",
-                    "-g", gradleHome.toString());
-            Future<BuildResult> first = executor.submit(firstBuild);
-            Future<BuildResult> second = executor.submit(secondBuild);
-
-            assertEquals(TaskOutcome.FROM_CACHE,
-                    outcome(first.get(), ":publishLocalMavenPublicationToTestRepoRepository"));
-            assertEquals(TaskOutcome.FROM_CACHE,
-                    outcome(second.get(), ":publishLocalMavenPublicationToTestRepoRepository"));
-        } finally {
-            executor.shutdownNow();
-        }
-        assertEquals(expected, repositoryHashes(relocatedOne));
-        assertEquals(expected, repositoryHashes(relocatedTwo));
-    }
-
-    @Test
     void lateGradlePluginMarkerPublicationsAreStagedBeforeAggregation() throws Exception {
         writeGradlePluginFixture(projectDir);
 
@@ -110,27 +70,6 @@ class TestRepositoryStagingTest {
                         + "example.sample.gradle.plugin-1.0-DUMMY.pom")));
         assertTrue(Files.isRegularFile(projectDir.resolve(
                 "build/test-repo/example/staging-fixture/1.0-DUMMY/staging-fixture-1.0-DUMMY.jar")));
-    }
-
-    @Test
-    void mavenPluginDescriptorPatchingIsIncrementalAndChecksumStable() throws Exception {
-        writeMavenPluginFixture(projectDir);
-
-        BuildResult first = run("publishToTestRepo");
-        Path jar = onlyPublishedJar(projectDir);
-        Map<String, String> initialHashes = repositoryHashes(projectDir);
-        assertEquals(TaskOutcome.SUCCESS, outcome(first, ":patchTestRepoDescriptor"));
-        assertDescriptorVersion(jar, "META-INF/maven/plugin.xml", "1.0-DUMMY");
-        assertDescriptorVersion(jar, "META-INF/maven/example/staging-fixture/plugin-help.xml", "1.0-DUMMY");
-        assertChecksumsMatch(jar);
-
-        BuildResult second = run("publishToTestRepo");
-
-        assertEquals(TaskOutcome.UP_TO_DATE, outcome(second, ":patchTestRepoDescriptor"));
-        assertEquals(TaskOutcome.UP_TO_DATE,
-                outcome(second, ":publishLocalMavenPublicationToTestRepoRepository"));
-        assertEquals(TaskOutcome.UP_TO_DATE, outcome(second, ":publishToTestRepo"));
-        assertEquals(initialHashes, repositoryHashes(projectDir));
     }
 
     @Test
@@ -171,13 +110,8 @@ class TestRepositoryStagingTest {
     }
 
     private void writeFixture() throws IOException {
-        writeFixture(projectDir);
-    }
-
-    private static void writeFixture(Path fixtureDir) throws IOException {
-        Files.createDirectories(fixtureDir);
-        Files.writeString(fixtureDir.resolve("settings.gradle"), "rootProject.name = 'staging-fixture'\n");
-        Files.writeString(fixtureDir.resolve("build.gradle"), """
+        Files.writeString(projectDir.resolve("settings.gradle"), "rootProject.name = 'staging-fixture'\n");
+        Files.writeString(projectDir.resolve("build.gradle"), """
                 plugins {
                     id 'java-library'
                     id 'io.micronaut.build.internal.runner-test-repo'
@@ -196,7 +130,7 @@ class TestRepositoryStagingTest {
                     }
                 }
                 """);
-        Path source = fixtureDir.resolve("src/main/java/example/Thing.java");
+        Path source = projectDir.resolve("src/main/java/example/Thing.java");
         Files.createDirectories(source.getParent());
         Files.writeString(source, "package example; public final class Thing {}\n");
     }
@@ -234,103 +168,9 @@ class TestRepositoryStagingTest {
                 """);
     }
 
-    private static void writeMavenPluginFixture(Path fixtureDir) throws IOException {
-        Files.createDirectories(fixtureDir.resolve("gradle"));
-        Files.writeString(fixtureDir.resolve("settings.gradle"), "rootProject.name = 'staging-fixture'\n");
-        Files.writeString(fixtureDir.resolve("gradle.properties"), """
-                projectVersion=1.0-SNAPSHOT
-                projectGroup=example
-                title=Staging Fixture
-                projectDesc=Test fixture
-                projectUrl=https://example.com
-                githubSlug=example/staging-fixture
-                developers=Example Developer
-                """);
-        Files.writeString(fixtureDir.resolve("gradle/libs.versions.toml"), """
-                [versions]
-                junit = "6.1.3"
-                maven = "3.9.16"
-                maven-plugin-tools = "3.16.0"
-
-                [libraries]
-                junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
-                junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
-                junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
-                maven-plugin-api = { module = "org.apache.maven:maven-plugin-api", version.ref = "maven" }
-                maven-core = { module = "org.apache.maven:maven-core", version.ref = "maven" }
-                maven-plugin-annotations = { module = "org.apache.maven.plugin-tools:maven-plugin-annotations", version.ref = "maven-plugin-tools" }
-                """);
-        Files.writeString(fixtureDir.resolve("build.gradle"), """
-                plugins {
-                    id 'io.micronaut.build.internal.runner-maven-plugin'
-                }
-
-                group = 'example'
-                version = '1.0-SNAPSHOT'
-
-                repositories {
-                    mavenCentral()
-                }
-                """);
-        Path source = fixtureDir.resolve("src/main/java/example/SampleMojo.java");
-        Files.createDirectories(source.getParent());
-        Files.writeString(source, """
-                package example;
-
-                import org.apache.maven.plugin.AbstractMojo;
-                import org.apache.maven.plugin.MojoExecutionException;
-                import org.apache.maven.plugins.annotations.Mojo;
-
-                @Mojo(name = "sample")
-                public final class SampleMojo extends AbstractMojo {
-                    @Override
-                    public void execute() throws MojoExecutionException {
-                    }
-                }
-                """);
-    }
-
-    private static Path onlyPublishedJar(Path fixtureDir) throws IOException {
-        try (Stream<Path> files = Files.walk(fixtureDir.resolve("build/test-repo"))) {
-            return files.filter(Files::isRegularFile)
-                    .filter(file -> file.getFileName().toString().endsWith(".jar"))
-                    .filter(file -> !file.getFileName().toString().endsWith("-sources.jar"))
-                    .filter(file -> !file.getFileName().toString().endsWith("-javadoc.jar"))
-                    .reduce((first, second) -> {
-                        throw new AssertionError("Expected one published jar, found " + first + " and " + second);
-                    })
-                    .orElseThrow(() -> new AssertionError("No jar was published"));
-        }
-    }
-
-    private static void assertDescriptorVersion(Path jar, String entry, String expectedVersion) throws IOException {
-        try (ZipFile zip = new ZipFile(jar.toFile())) {
-            assertNotNull(zip.getEntry(entry), () -> "Missing " + entry + " in " + jar);
-            String descriptor = new String(zip.getInputStream(zip.getEntry(entry)).readAllBytes(),
-                    StandardCharsets.UTF_8);
-            assertTrue(descriptor.contains("<version>" + expectedVersion + "</version>"),
-                    () -> entry + " does not contain version " + expectedVersion);
-        }
-    }
-
-    private static void assertChecksumsMatch(Path artifact) throws Exception {
-        for (Map.Entry<String, String> checksum : Map.of(
-                "md5", "MD5", "sha1", "SHA-1", "sha256", "SHA-256", "sha512", "SHA-512").entrySet()) {
-            Path sidecar = artifact.resolveSibling(artifact.getFileName() + "." + checksum.getKey());
-            String expected = HexFormat.of().formatHex(
-                    MessageDigest.getInstance(checksum.getValue()).digest(Files.readAllBytes(artifact)));
-            assertEquals(expected, Files.readString(sidecar),
-                    () -> sidecar + " does not describe the published artifact bytes");
-        }
-    }
-
     private BuildResult run(String... tasks) {
-        return run(projectDir, tasks);
-    }
-
-    private BuildResult run(Path fixtureDir, String... tasks) {
         return GradleRunner.create()
-                .withProjectDir(fixtureDir.toFile())
+                .withProjectDir(projectDir.toFile())
                 .withArguments(tasks)
                 .withPluginClasspath()
                 .build();

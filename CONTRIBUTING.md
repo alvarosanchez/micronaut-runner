@@ -34,6 +34,8 @@ RUNNER_TEST_OFFLINE=true ./gradlew check
 
 Combining `-Prunner.integration=required` with `RUNNER_TEST_OFFLINE=true` is an error.
 
+`check` does not run the build-logic tests; after changing `buildSrc/`, run `./gradlew :buildSrc:test`.
+
 ## Building Documentation
 
 The documentation sources are located at `src/main/docs/guide`.
