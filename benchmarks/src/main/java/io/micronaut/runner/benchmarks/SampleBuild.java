@@ -55,10 +55,15 @@ import java.util.zip.ZipEntry;
  * shaded jar were built from one compilation and the runner jar from another, any difference could be a
  * difference in the application rather than in the format.</p>
  *
- * <p>The two runner jars are built here by calling {@link RunnerJarBuilder} directly rather than by asking
+ * <p>The runner jars are built here by calling {@link RunnerJarBuilder} directly rather than by asking
  * the Gradle plugin for them. Not because the plugin is in doubt - the end-to-end test suite covers that -
- * but because the plugin produces one compression mode per build and the benchmark needs two, from bytes
- * that are identical to the other four variants'.</p>
+ * but because the plugin produces one compression mode per build and the benchmark needs both, from bytes
+ * that are identical to every other variant's. The two Shadow jars come from the sample's own
+ * {@code shadowJar} and {@code shadowJarStored} tasks, which differ only in entry compression.</p>
+ *
+ * <h2>Core and opt-in rows</h2>
+ * <p>Core rows are always built and are the run's required variants. Opt-in rows, such as the reflection
+ * ablation, are built only on request and never gate the exit code; see {@link #variantNames()}.</p>
  *
  * <h2>Failure is data</h2>
  * <p>Every variant is built inside its own try/catch. One that fails becomes an unavailable
@@ -66,7 +71,7 @@ import java.util.zip.ZipEntry;
  *
  * <h2>Every variant is self-contained</h2>
  * <p>Nothing that gets measured is read out of the sample's own {@code build} directory. The class files,
- * the dependency jars and the shaded jar are all copied into the harness's artifacts directory first, and
+ * the dependency jars and the shaded jars are all copied into the harness's artifacts directory first, and
  * the commands point only at those copies. The reason is not tidiness: a benchmark run takes minutes, and
  * anything else that builds the sample in that window - a developer, the end-to-end test suite, a second
  * agent - runs {@code clean} and takes the artifacts out from under a run in flight. That failure mode is
@@ -78,14 +83,18 @@ final class SampleBuild {
     private static final String EXPLODED_CLASSPATH = "exploded-cp";
     private static final String THIN_JAR = "thin-jar";
     private static final String SHADOW = "shadow";
+    private static final String SHADOW_STORED = "shadow-stored";
     private static final String SHADOW_AOT = "shadow-aot";
     private static final String RUNNER_STORED = "runner-stored";
     private static final String RUNNER_STORED_AOT = "runner-stored-aot";
     private static final String RUNNER_STORED_REFLECTION = "runner-stored-reflection";
     private static final String RUNNER_PRESERVE = "runner-preserve";
-    private static final String RUNNER_PRESERVE_REFLECTION = "runner-preserve-reflection";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
     private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
+
+    private static final String SHADOW_DESCRIPTION = "Everything flattened into one jar by the Shadow plugin";
+    private static final String SHADOW_STORED_DESCRIPTION =
+            "The same Shadow inputs written with STORED entries (compression-matched control)";
 
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
@@ -115,6 +124,7 @@ final class SampleBuild {
     private final List<Path> applicationOutput;
     private final List<Path> dependencies;
     private final Path shadowJar;
+    private final Path shadowStoredJar;
 
     private SampleBuild(Path sample,
                         Path artifacts,
@@ -128,6 +138,7 @@ final class SampleBuild {
         this.applicationOutput = metadata.applicationOutput();
         this.dependencies = metadata.dependencies();
         this.shadowJar = metadata.shadowJar();
+        this.shadowStoredJar = metadata.shadowStoredJar();
     }
 
     /**
@@ -207,14 +218,20 @@ final class SampleBuild {
     }
 
     /**
-     * Names every variant in report order without building their artifacts.
+     * Names every core variant in report order without building their artifacts.
      *
-     * @return the canonical variant names
+     * <p>A row is either core or opt-in. Core rows are always built and scheduled, and they are the run's
+     * required variants: under the required policy each one gates the exit code. Opt-in rows (diagnostic
+     * ablations and experiments) are built and scheduled only when {@link #variants(boolean)} or
+     * {@link #unavailableVariants(String, boolean)} is asked for them, are never named here, and so are
+     * reported with their failure counts but never change the exit code.</p>
+     *
+     * @return the core variant names
      */
     static List<String> variantNames() {
-        return List.of(EXPLODED_CLASSPATH, THIN_JAR, SHADOW, SHADOW_AOT,
-                RUNNER_STORED, RUNNER_STORED_AOT, RUNNER_STORED_REFLECTION,
-                RUNNER_PRESERVE, RUNNER_PRESERVE_REFLECTION,
+        return List.of(EXPLODED_CLASSPATH, THIN_JAR, SHADOW, SHADOW_STORED, SHADOW_AOT,
+                RUNNER_STORED, RUNNER_STORED_AOT,
+                RUNNER_PRESERVE,
                 RUNNER_EXTRACTED, RUNNER_EXTRACTED_AOT);
     }
 
@@ -252,53 +269,66 @@ final class SampleBuild {
                 new ComparisonSpec(RUNNER_EXTRACTED_AOT, SHADOW_AOT,
                         "Extracted Runner + AOT cache vs Shadow + AOT cache"),
                 new ComparisonSpec(RUNNER_STORED, RUNNER_PRESERVE, "STORED vs PRESERVE"),
-                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_REFLECTION, "Entry stub vs reflection"));
-    }
-
-    /** Keeps the complete required matrix visible when the shared sample build fails. */
-    static List<Variant> unavailableVariants(String reason) {
-        return List.of(
-                Variant.unavailable(EXPLODED_CLASSPATH,
-                        "Class files and dependency jars on an explicit, ordered -cp", reason),
-                Variant.unavailable(THIN_JAR,
-                        "Application jar with a Class-Path manifest pointing at lib/", reason),
-                Variant.unavailable(SHADOW,
-                        "Everything flattened into one jar by the Shadow plugin", reason),
-                Variant.unavailable(SHADOW_AOT,
-                        "The same Shadow jar with a verified JDK AOT cache", reason),
-                Variant.unavailable(RUNNER_STORED,
-                        "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub", reason),
-                Variant.unavailable(RUNNER_STORED_AOT,
-                        "The same default-entry Runner jar with a verified JDK AOT cache", reason),
-                Variant.unavailable(RUNNER_STORED_REFLECTION,
-                        "Runner jar, nested dependencies re-packed uncompressed; reflection ablation", reason),
-                Variant.unavailable(RUNNER_PRESERVE,
-                        "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub", reason),
-                Variant.unavailable(RUNNER_PRESERVE_REFLECTION,
-                        "Runner jar, nested dependencies copied byte for byte; reflection ablation", reason),
-                Variant.unavailable(RUNNER_EXTRACTED,
-                        "Runner jar unpacked and run by the JDK's own loader", reason),
-                Variant.unavailable(RUNNER_EXTRACTED_AOT,
-                        "The same extracted layout with a verified JDK AOT cache", reason));
+                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_REFLECTION, "Entry stub vs reflection"),
+                new ComparisonSpec(RUNNER_STORED, SHADOW_STORED,
+                        "Runner default vs Shadow STORED (compression-matched)"),
+                new ComparisonSpec(SHADOW_STORED, SHADOW,
+                        "Shadow-only control: Shadow STORED vs Shadow default (compression only)"));
     }
 
     /**
-     * Builds every variant, in report order.
+     * Keeps the complete matrix visible when the shared sample build fails.
      *
+     * @param reason       why nothing could be built
+     * @param optionalRows whether the opt-in rows were requested as well as the core rows
+     * @return one unavailable variant per scheduled row, in report order
+     */
+    static List<Variant> unavailableVariants(String reason, boolean optionalRows) {
+        List<Variant> variants = new ArrayList<>(variantNames().size() + 1);
+        variants.add(Variant.unavailable(EXPLODED_CLASSPATH,
+                "Class files and dependency jars on an explicit, ordered -cp", reason));
+        variants.add(Variant.unavailable(THIN_JAR,
+                "Application jar with a Class-Path manifest pointing at lib/", reason));
+        variants.add(Variant.unavailable(SHADOW, SHADOW_DESCRIPTION, reason));
+        variants.add(Variant.unavailable(SHADOW_STORED, SHADOW_STORED_DESCRIPTION, reason));
+        variants.add(Variant.unavailable(SHADOW_AOT,
+                "The same Shadow jar with a verified JDK AOT cache", reason));
+        variants.add(Variant.unavailable(RUNNER_STORED,
+                "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub", reason));
+        variants.add(Variant.unavailable(RUNNER_STORED_AOT,
+                "The same default-entry Runner jar with a verified JDK AOT cache", reason));
+        if (optionalRows) {
+            variants.add(Variant.unavailable(RUNNER_STORED_REFLECTION,
+                    "Runner jar, nested dependencies re-packed uncompressed; reflection ablation", reason));
+        }
+        variants.add(Variant.unavailable(RUNNER_PRESERVE,
+                "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub", reason));
+        variants.add(Variant.unavailable(RUNNER_EXTRACTED,
+                "Runner jar unpacked and run by the JDK's own loader", reason));
+        variants.add(Variant.unavailable(RUNNER_EXTRACTED_AOT,
+                "The same extracted layout with a verified JDK AOT cache", reason));
+        return List.copyOf(variants);
+    }
+
+    /**
+     * Builds every scheduled variant, in report order.
+     *
+     * @param optionalRows whether to build the opt-in rows as well as the core rows
      * @return the variants, available and unavailable alike
      */
-    List<Variant> variants() {
-        List<Variant> variants = new ArrayList<>(variantNames().size());
+    List<Variant> variants(boolean optionalRows) {
+        List<Variant> variants = new ArrayList<>(variantNames().size() + 1);
         variants.add(attempt(EXPLODED_CLASSPATH,
                 "Class files and dependency jars on an explicit, ordered -cp",
                 this::explodedClasspath));
         variants.add(attempt(THIN_JAR,
                 "Application jar with a Class-Path manifest pointing at lib/",
                 this::thinJar));
-        Variant shadow = attempt(SHADOW,
-                "Everything flattened into one jar by the Shadow plugin",
-                this::shadowJar);
+        Variant shadow = attempt(SHADOW, SHADOW_DESCRIPTION,
+                () -> shadowJar(SHADOW, SHADOW_DESCRIPTION, "shadowJar", shadowJar));
         variants.add(shadow);
+        variants.add(attempt(SHADOW_STORED, SHADOW_STORED_DESCRIPTION,
+                () -> shadowJar(SHADOW_STORED, SHADOW_STORED_DESCRIPTION, "shadowJarStored", shadowStoredJar)));
         variants.add(attempt(SHADOW_AOT,
                 "The same Shadow jar with a verified JDK AOT cache",
                 () -> AotCache.prepare(shadow, SHADOW_AOT, aotRequest())));
@@ -309,15 +339,14 @@ final class SampleBuild {
         variants.add(attempt(RUNNER_STORED_AOT,
                 "The same default-entry Runner jar with a verified JDK AOT cache",
                 () -> AotCache.prepare(stored, RUNNER_STORED_AOT, aotRequest())));
-        variants.add(attempt(RUNNER_STORED_REFLECTION,
-                "Runner jar, nested dependencies re-packed uncompressed; reflection ablation",
-                () -> runnerJar(RUNNER_STORED_REFLECTION, Compression.STORED, EntryMode.REFLECTION)));
+        if (optionalRows) {
+            variants.add(attempt(RUNNER_STORED_REFLECTION,
+                    "Runner jar, nested dependencies re-packed uncompressed; reflection ablation",
+                    () -> runnerJar(RUNNER_STORED_REFLECTION, Compression.STORED, EntryMode.REFLECTION)));
+        }
         variants.add(attempt(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
                 () -> runnerJar(RUNNER_PRESERVE, Compression.PRESERVE, EntryMode.STUB)));
-        variants.add(attempt(RUNNER_PRESERVE_REFLECTION,
-                "Runner jar, nested dependencies copied byte for byte; reflection ablation",
-                () -> runnerJar(RUNNER_PRESERVE_REFLECTION, Compression.PRESERVE, EntryMode.REFLECTION)));
         Variant extracted = attempt(RUNNER_EXTRACTED,
                 "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
                 () -> extracted(stored));
@@ -410,22 +439,30 @@ final class SampleBuild {
                 command, directory, jar, deploymentSize, launchInputs);
     }
 
-    private Variant shadowJar() throws IOException {
-        if (shadowJar == null) {
-            throw new IOException("The sample's build declares no shadowJar task");
+    /**
+     * Copies a jar that one of the sample's Shadow tasks built into {@code <artifacts>/<name>/}.
+     *
+     * @param name        the variant, which also names its directory
+     * @param description what the variant is, for the report
+     * @param task        the sample task that should have built the jar
+     * @param jar         the jar the metadata names, or {@code null} when the sample has no such task
+     * @return the variant
+     * @throws IOException if the sample declares no such task, it produced no jar, or the copy fails
+     */
+    private Variant shadowJar(String name, String description, String task, Path jar) throws IOException {
+        if (jar == null) {
+            throw new IOException("The sample's build declares no " + task + " task");
         }
-        if (!Files.isRegularFile(shadowJar)) {
-            throw new IOException("The Shadow plugin produced no " + shadowJar);
+        if (!Files.isRegularFile(jar)) {
+            throw new IOException("The Shadow plugin produced no " + jar);
         }
-        Path directory = recreate(artifacts.resolve("shadow"));
-        Path copy = directory.resolve(shadowJar.getFileName().toString());
-        Files.copy(shadowJar, copy, StandardCopyOption.REPLACE_EXISTING);
+        Path directory = recreate(artifacts.resolve(name));
+        Path copy = directory.resolve(jar.getFileName().toString());
+        Files.copy(jar, copy, StandardCopyOption.REPLACE_EXISTING);
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 copy.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", copy));
-        return Variant.available(SHADOW,
-                "Everything flattened into one jar by the Shadow plugin",
-                command, directory, copy, deploymentSize);
+        return Variant.available(name, description, command, directory, copy, deploymentSize);
     }
 
     private Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode) throws IOException {
@@ -765,7 +802,8 @@ final class SampleBuild {
                             String mainClass,
                             List<Path> applicationOutput,
                             List<Path> dependencies,
-                            Path shadowJar) {
+                            Path shadowJar,
+                            Path shadowStoredJar) {
 
         static Metadata read(Path file) throws IOException {
             String projectName = "application";
@@ -774,6 +812,7 @@ final class SampleBuild {
             List<Path> applicationOutput = new ArrayList<>();
             List<Path> dependencies = new ArrayList<>();
             Path shadowJar = null;
+            Path shadowStoredJar = null;
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 int separator = line.indexOf('=');
                 if (separator < 0) {
@@ -788,6 +827,7 @@ final class SampleBuild {
                     case "classes", "resources" -> applicationOutput.add(Path.of(value));
                     case "dependency" -> dependencies.add(Path.of(value));
                     case "shadowJar" -> shadowJar = Path.of(value);
+                    case "shadowStoredJar" -> shadowStoredJar = Path.of(value);
                     default -> {
                     }
                 }
@@ -803,7 +843,7 @@ final class SampleBuild {
                 throw new IOException(file + " names no dependencies");
             }
             return new Metadata(projectName, projectVersion, mainClass, existing,
-                    List.copyOf(dependencies), shadowJar);
+                    List.copyOf(dependencies), shadowJar, shadowStoredJar);
         }
     }
 }

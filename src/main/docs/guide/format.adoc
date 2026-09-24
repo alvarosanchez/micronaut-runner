@@ -44,6 +44,9 @@ decompression from class loading at the cost of a larger archive. Re-packing als
 never rewritten, so package metadata and sealing survive intact. The `PRESERVE` option copies each
 dependency byte for byte instead.
 
+Shadow can also write `STORED` entries (`entryCompression = ZipEntryCompression.STORED`), so the gain from not
+inflating is not specific to this format; <<benchmarks>> measures the two effects separately.
+
 == The index
 
 `MICRONAUT-INF/index.bin` is a little-endian binary structure designed to be used directly from the memory
