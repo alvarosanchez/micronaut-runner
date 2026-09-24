@@ -1188,12 +1188,17 @@ a rebuild whose size differed before the source opened, and the local file heade
 a same-length rewrite before this jar's first access. It costs a single four byte read the first time
 a jar is touched; a successful result is then cached. It does not monitor later changes or make reads
 safe while another process mutates the archive. The application layer is not a nested jar and is never
-checked.</p></div>
+checked.</p>
+
+<p>A header offset outside the archive means the index does not describe this file, so it is reported
+as a stale jar. A read that fails for any other reason, for example because the source was closed, says
+nothing about the jar and is reported as the I/O failure it is.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>jarId</code> - the jar index</dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalStateException.html" title="class or interface in java.lang" class="external-link">IllegalStateException</a></code> - if the archive no longer agrees with the index</dd>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/UncheckedIOException.html" title="class or interface in java.io" class="external-link">UncheckedIOException</a></code> - if the local file header cannot be read</dd>
 </dl>
 </div>
 </section>

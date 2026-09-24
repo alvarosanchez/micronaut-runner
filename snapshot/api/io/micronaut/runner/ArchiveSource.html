@@ -117,9 +117,18 @@ Every accessor takes an <em>absolute offset in the outer file</em>, which is exa
 stores, so no per-entry bookkeeping is needed.</p>
 
 <p>Setting the system property <a href="#MMAP_PROPERTY">"micronaut.runner.mmap"</a> to exactly <code>"false"</code> selects a fallback mode
-that maps nothing and serves every read with a positional <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/channels/FileChannel.html#read(java.nio.ByteBuffer,long)" title="class or interface in java.nio.channels" class="external-link"><code>FileChannel.read(ByteBuffer, long)</code></a> into
-a heap buffer. The fallback exists for platforms or containers where a large mapping is unwelcome. It
-reads the same immutable archive format, but it does not make concurrent changes to that archive safe.</p>
+that maps nothing and serves every read with positional <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/channels/FileChannel.html#read(java.nio.ByteBuffer,long)" title="class or interface in java.nio.channels" class="external-link"><code>FileChannel.read(ByteBuffer, long)</code></a> calls
+into a heap buffer, at most 64 KiB per call so that no thread keeps a large temporary native buffer. The
+fallback exists for platforms or containers where a large mapping is unwelcome. It reads the same immutable
+archive format, but it does not make concurrent changes to that archive safe.</p>
+
+<p>A <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/channels/FileChannel.html" title="class or interface in java.nio.channels" class="external-link"><code>FileChannel</code></a> is interruptible: a read by a thread whose interrupt status is set, or that is
+interrupted during the read, closes the channel for every thread. Positional reads therefore clear the
+caller's interrupt status before each attempt and restore it afterwards, and a read that finds the channel
+closed by an interrupt reopens the archive by its path and continues from the bytes it already has. The
+reopened file is used only if it still has the length, and where the file system reports one the file key,
+captured when this source opened; otherwise every later read fails and asks for a restart. Nothing reopens
+after <a href="#close()"><code>close()</code></a>.</p>
 
 <h2 id="lifetime-heading">Lifetime</h2>
 <p>The instance is <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/AutoCloseable.html" title="class or interface in java.lang" class="external-link"><code>AutoCloseable</code></a>, but the launcher never closes it: application threads keep
@@ -145,8 +154,10 @@ mutation.</p>
 <h2 id="thread-safety-heading">Thread safety</h2>
 <p>Everything after <a href="#open(java.io.File)"><code>open(File)</code></a> is safe for concurrent use by any number of class-loading
 threads when the archive obeys the immutability requirement: the segment is read-only, positional channel
-reads do not touch the channel position, and the
-inflater pool is guarded by its own lock. Only <a href="#close()"><code>close()</code></a> must not race with readers.</p></div>
+reads do not touch the channel position, and the inflater pool is guarded by this instance's lock. Thread
+interrupts are harmless in both modes: mapped reads are not interruptible, and positional reads clear and
+restore the caller's interrupt status and reopen, under the same lock, a channel that an interrupt closed.
+Only <a href="#close()"><code>close()</code></a> must not race with readers; a read that does fails and never reopens.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -240,7 +251,7 @@ inflater pool is guarded by its own lock. Only <a href="#close()"><code>close()<
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#slice(long,int)" class="member-name-link">slice</a><wbr>(long&nbsp;offset,
  int&nbsp;length)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">A read-only view of a region of the archive.</div>
+<div class="block">A buffer over a region of the archive.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stream(long,long,long,int)" class="member-name-link">stream</a><wbr>(long&nbsp;dataOffset,
@@ -493,9 +504,12 @@ the signed result is the value.</div>
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html" title="class or interface in java.nio" class="external-link">ByteBuffer</a></span>&nbsp;<span class="element-name">slice</span><wbr><span class="parameters">(long&nbsp;offset,
  int&nbsp;length)</span>
                  throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">A read-only view of a region of the archive. In the mapped mode this copies nothing: the buffer is a
-window onto the mapping, which is what lets the class loader define a STORED class without ever
-materialising a <code>byte[]</code>. In the fallback mode the region is read into a heap array first.
+<div class="block">A buffer over a region of the archive. In the mapped mode this copies nothing: the buffer is a
+read-only window onto the mapping, which is what lets the class loader define a STORED class without
+ever materialising a <code>byte[]</code>. In the fallback mode the region is read into a new heap array, and
+the buffer wraps that array, writable and with <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html#hasArray()" title="class or interface in java.nio" class="external-link"><code>an accessible array</code></a>, so
+that <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html" title="class or interface in java.lang" class="external-link"><code>ClassLoader</code></a> defines a class straight from it instead of copying it again. Every call
+returns a fresh array that the caller owns, so writing to it changes no shared state.
 
 <p>The returned buffer's byte order is the <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html" title="class or interface in java.nio" class="external-link"><code>ByteBuffer</code></a> default, big-endian; callers reading
 little-endian structures out of it must set the order themselves.</p></div>
@@ -504,7 +518,8 @@ little-endian structures out of it must set the order themselves.</p></div>
 <dd><code>offset</code> - absolute offset in the archive</dd>
 <dd><code>length</code> - number of bytes, at most <a href="#MAX_SLICE_LENGTH"><code>MAX_SLICE_LENGTH</code></a></dd>
 <dt>Returns:</dt>
-<dd>a read-only buffer positioned at zero with the region as its content</dd>
+<dd>a buffer positioned at zero with the region as its content: read-only in the mapped mode, and a
+        new array owned by the caller in the fallback mode</dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the region is outside the archive, the length is negative or too large, or
                     the read fails</dd>

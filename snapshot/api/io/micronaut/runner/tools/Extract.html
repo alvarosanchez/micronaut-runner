@@ -150,24 +150,14 @@ because the JDK's loader honours it.</p>
 
 <h2 id="safety-heading">Safety</h2>
 <p>Everything is written into a temporary directory beside the destination and renamed into place, so an
-interrupted extraction leaves no half-written tree. Without <code>--force</code>, destination occupancy is
-checked again after staging and the final move is conditional: an occupant that arrives before either
-check or wins the final move is preserved. With <code>--force</code>, an old destination is first renamed to
-a sibling backup. A failed publication restores it when possible; if restoration or post-commit cleanup
-fails, the error identifies the retained backup. A destination that contains the runner jar itself is
-always refused, and every name is checked to resolve inside the destination before anything is written.
-All timestamps are fixed, so extracting one archive twice produces the same tree and an AOT training run
-matches the production copy.</p>
-
-<p>The source-containment check resolves the archive's real path and a destination that does not yet
-exist through its nearest existing ancestor, so symbolic-link and case aliases cannot hide the source.
-The check runs again immediately before publication. Forced backup and publication moves request
-<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/StandardCopyOption.html#ATOMIC_MOVE" title="class or interface in java.nio.file" class="external-link"><code>StandardCopyOption.ATOMIC_MOVE</code></a> and fall back to ordinary same-filesystem moves only when the
-provider reports that atomic moves are unsupported. The standard <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a> API offers neither an
-atomic directory exchange nor a move conditioned on previously checked path identities, so publishing
-over an existing empty destination or performing a forced replacement can briefly expose an absent
-destination. A hostile process can also replace path components between checks and moves. Source and
-destination directories must be writable only by trusted participants.</p>
+interrupted extraction leaves no half-written tree. Without <code>--force</code>, a destination that exists
+and is not an empty directory, a symbolic link included, is refused and left untouched, also when it
+appears while extraction runs. With <code>--force</code>, the old destination (only the link itself, when it
+is a symbolic link) is renamed to a sibling backup until the new tree is in place, and a failed
+publication restores it or names it in the error. A destination that contains the runner jar is always
+refused, also through symbolic-link and case aliases, and every name is checked to resolve inside the
+destination before anything is written. All timestamps are fixed, so extracting one archive twice
+produces the same tree and an AOT training run matches the production copy.</p>
 
 <p>This class is loaded only when the mode selects it, so it is written in ordinary Java: the rules that
 keep <code>io.micronaut.runner</code> free of lambdas, streams and <code>String.format</code> do not apply to
