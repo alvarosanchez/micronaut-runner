@@ -16,18 +16,29 @@
 package io.micronaut.runner.benchmarks;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.InputStream;
 import java.io.IOException;
+import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.jar.Attributes;
 import java.util.jar.JarFile;
+import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RepresentativeWorkloadTest {
@@ -146,7 +157,111 @@ class RepresentativeWorkloadTest {
             assertEquals(16, workload.spreadLookupCount());
             assertEquals(archive.shape().jarCount(), workload.serviceDiscoveryCount());
             assertEquals(archive.shape().jarCount(), workload.duplicateResourceCount());
+            assertEquals(archive.shape().jarCount(), workload.serviceProviderCount());
+            assertEquals("library-0", workload.duplicateResourceValue());
             assertEquals(archive.shape().streamResourceBytes(), workload.streamBytes());
+            assertEquals("version-25", workload.multiReleaseValue());
+        }
+    }
+
+    @Test
+    void shadedJarFlattensTheSameInputsTheWayShadowDoes(@TempDir Path tempDir) throws Exception {
+        SyntheticArchive archive = SyntheticArchive.forWorkload("small");
+        WorkloadShape shape = archive.shape();
+        Path shaded = archive.shadedJar();
+
+        assertEquals(archive.storedRunnerJar().resolveSibling("shaded.jar"), shaded,
+                "the flat JAR lives in the fixture root, where the shutdown hook deletes it");
+        assertEquals(shaded, archive.shadedJar(), "the flat JAR is built once per fixture");
+        assertArrayEquals(new URL[] {shaded.toUri().toURL()}, archive.shadedClassPathUrls());
+
+        try (ZipFile zip = new ZipFile(shaded.toFile())) {
+            List<ZipEntry> entries = Collections.list(zip.entries()).stream().map(ZipEntry.class::cast).toList();
+            List<String> names = entries.stream().map(ZipEntry::getName).toList();
+
+            assertEquals(1, names.stream().filter("META-INF/MANIFEST.MF"::equals).count());
+            assertEquals("META-INF/MANIFEST.MF", names.getFirst());
+            assertEquals(List.of(
+                            "META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/"
+                                    + "org.synthetic.app.$Main$Definition",
+                            "application.properties",
+                            "org/synthetic/app/Main.class"),
+                    names.subList(1, 4), "application files come first, in sorted order");
+            List<String> libraryOrder = names.stream()
+                    .filter(name -> name.startsWith("org/synthetic/lib") && name.endsWith(".class"))
+                    .map(name -> name.substring("org/synthetic/lib".length(), "org/synthetic/lib".length() + 3))
+                    .distinct()
+                    .toList();
+            assertEquals(libraryOrder.stream().sorted().toList(), libraryOrder,
+                    "libraries follow in class-path order");
+            assertEquals(shape.jarCount(), libraryOrder.size());
+
+            for (ZipEntry entry : entries) {
+                assertEquals(ZipEntry.DEFLATED, entry.getMethod(), entry.getName());
+                assertEquals(315532800000L, entry.getTime(), entry.getName());
+            }
+            int firstDirectory = names.indexOf(names.stream().filter(name -> name.endsWith("/")).findFirst()
+                    .orElseThrow());
+            assertTrue(names.subList(firstDirectory, names.size()).stream().allMatch(name -> name.endsWith("/")),
+                    "directory entries follow every file");
+            for (String name : names.subList(0, firstDirectory)) {
+                for (int slash = name.indexOf('/'); slash >= 0; slash = name.indexOf('/', slash + 1)) {
+                    ZipEntry directory = zip.getEntry(name.substring(0, slash + 1));
+                    assertNotNull(directory, "no directory entry for the parent of " + name);
+                    assertTrue(directory.isDirectory(), directory.getName());
+                }
+            }
+
+            List<String> classes = new ArrayList<>(archive.classNames());
+            classes.add(SyntheticArchive.MAIN_CLASS);
+            for (String className : classes) {
+                assertNotNull(zip.getEntry(className.replace('.', '/') + ".class"), className);
+            }
+            for (Path library : archive.libraryJars()) {
+                try (ZipFile source = new ZipFile(library.toFile())) {
+                    for (ZipEntry entry : Collections.list(source.entries())) {
+                        if (entry.getName().endsWith(".class")) {
+                            assertArrayEquals(read(source, entry), read(zip, zip.getEntry(entry.getName())),
+                                    "class bytes are copied unchanged: " + entry.getName());
+                        }
+                    }
+                }
+            }
+
+            List<String> providers = new String(read(zip, zip.getEntry(SyntheticArchive.SERVICE_RESOURCE)),
+                    StandardCharsets.UTF_8).lines().filter(line -> !line.isBlank()).toList();
+            assertEquals(shape.jarCount(), providers.size());
+            assertEquals("org.synthetic.lib000.Provider00", providers.getFirst());
+            assertEquals("org.synthetic.lib015.Provider00", providers.getLast());
+        }
+
+        try (JarFile jar = new JarFile(shaded.toFile())) {
+            Manifest manifest = jar.getManifest();
+            Attributes main = manifest.getMainAttributes();
+            assertEquals(SyntheticArchive.MAIN_CLASS, main.getValue(Attributes.Name.MAIN_CLASS));
+            assertEquals("true", main.getValue(Attributes.Name.MULTI_RELEASE));
+            assertNull(main.getValue(Attributes.Name.IMPLEMENTATION_TITLE), "no dependency manifest survives");
+            assertEquals(Map.of(), manifest.getEntries(), "no Name: section survives");
+
+            assertEquals("library-0", text(jar, SyntheticArchive.DUPLICATE_RESOURCE));
+            assertEquals("base", text(jar, SyntheticArchive.VERSIONED_RESOURCE));
+            assertEquals("version-25", text(jar, "META-INF/versions/25/" + SyntheticArchive.VERSIONED_RESOURCE));
+        }
+
+        Path copy = tempDir.resolve("copy.jar");
+        archive.writeShadedJar(copy);
+        assertArrayEquals(Files.readAllBytes(shaded), Files.readAllBytes(copy), "the flat JAR is reproducible");
+
+        try (RepresentativeResourceWorkload workload =
+                     RepresentativeResourceWorkload.url(archive, archive.shadedClassPathUrls())) {
+            assertEquals(16, workload.localLookupCount());
+            assertEquals(16, workload.spreadLookupCount());
+            assertEquals(0, workload.missingLookupCount());
+            assertEquals(1, workload.serviceDiscoveryCount());
+            assertEquals(1, workload.duplicateResourceCount());
+            assertEquals(shape.jarCount(), workload.serviceProviderCount());
+            assertEquals("library-0", workload.duplicateResourceValue());
+            assertEquals(shape.streamResourceBytes(), workload.streamBytes());
             assertEquals("version-25", workload.multiReleaseValue());
         }
     }
@@ -205,6 +320,17 @@ class RepresentativeWorkloadTest {
         } catch (java.io.UncheckedIOException e) {
             throw e.getCause();
         }
+    }
+
+    private static byte[] read(ZipFile zip, ZipEntry entry) throws IOException {
+        assertNotNull(entry);
+        try (InputStream input = zip.getInputStream(entry)) {
+            return input.readAllBytes();
+        }
+    }
+
+    private static String text(JarFile jar, String name) throws IOException {
+        return new String(read(jar, jar.getEntry(name)), StandardCharsets.UTF_8);
     }
 
     private static String libraryOf(String className) {

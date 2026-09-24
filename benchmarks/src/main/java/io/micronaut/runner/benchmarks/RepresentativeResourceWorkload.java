@@ -23,12 +23,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.Enumeration;
 
 /**
- * Reusable steady-state resource workload shared by the three class-loader JMH forks.
+ * Reusable steady-state resource workload shared by the four class-loader JMH forks: Runner
+ * STORED, Runner PRESERVE, the thin/exploded {@link URLClassLoader} layout and the flat single-JAR
+ * (Shadow/Shade) {@link URLClassLoader} layout.
  *
  * <p>Fixture construction, archive registration and loader construction happen outside measurement. Each
  * operation therefore measures repeated lookup/enumeration/stream behavior, while the existing loader
@@ -60,9 +64,24 @@ final class RepresentativeResourceWorkload implements AutoCloseable {
         this.spreadNames = archive.spreadSample(LOOKUPS);
     }
 
-    /** Opens the JDK URL class-path baseline without registering runner global state. */
+    /**
+     * Opens the thin/exploded JDK baseline, the classes directory plus every dependency JAR, without
+     * registering runner global state.
+     */
     static RepresentativeResourceWorkload url(SyntheticArchive archive) {
-        URLClassLoader loader = new URLClassLoader("representative-resources", archive.classPathUrls(),
+        return url(archive, archive.classPathUrls());
+    }
+
+    /**
+     * Opens a JDK {@link URLClassLoader} baseline over the given layout of the archive's inputs, without
+     * registering runner global state.
+     *
+     * @param archive the fixture whose samples are looked up
+     * @param classPath the layout to load from, for example {@link SyntheticArchive#shadedClassPathUrls()}
+     * @return the workload
+     */
+    static RepresentativeResourceWorkload url(SyntheticArchive archive, URL[] classPath) {
+        URLClassLoader loader = new URLClassLoader("representative-resources", classPath,
                 ClassLoader.getPlatformClassLoader());
         return new RepresentativeResourceWorkload(archive, loader, loader, null, null);
     }
@@ -117,6 +136,30 @@ final class RepresentativeResourceWorkload implements AutoCloseable {
         return Collections.list(loader.getResources(SyntheticArchive.DUPLICATE_RESOURCE)).size();
     }
 
+    /**
+     * Counts the providers named by every service descriptor the loader returns. Unlike
+     * {@link #serviceDiscoveryCount()} the answer does not depend on the layout: one merged descriptor and
+     * one descriptor per dependency both name every provider. Only fixture verification uses it.
+     */
+    int serviceProviderCount() throws IOException {
+        int providers = 0;
+        Enumeration<URL> descriptors = loader.getResources(SyntheticArchive.SERVICE_RESOURCE);
+        while (descriptors.hasMoreElements()) {
+            providers += (int) read(descriptors.nextElement()).lines().filter(line -> !line.isBlank()).count();
+        }
+        return providers;
+    }
+
+    /** Reads the effective duplicate same-name resource; only fixture verification uses it. */
+    String duplicateResourceValue() throws IOException {
+        URL resource = loader.getResource(SyntheticArchive.DUPLICATE_RESOURCE);
+        if (resource == null) {
+            throw new IOException("Representative fixture has no " + SyntheticArchive.DUPLICATE_RESOURCE
+                    + " for " + archive.shape().name());
+        }
+        return read(resource);
+    }
+
     /** Streams the complete deterministic payload and returns its byte count. */
     int streamBytes() throws IOException {
         try (InputStream stream = requiredStream(SyntheticArchive.STREAM_RESOURCE)) {
@@ -154,6 +197,15 @@ final class RepresentativeResourceWorkload implements AutoCloseable {
             throw new IOException("Representative fixture has no " + name + " for " + archive.shape().name());
         }
         return stream;
+    }
+
+    private static String read(URL resource) throws IOException {
+        URLConnection connection = resource.openConnection();
+        // Keep a JarURLConnection from parking the JAR in the JDK's global cache after the loader closes.
+        connection.setUseCaches(false);
+        try (InputStream stream = connection.getInputStream()) {
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     private static String resourceName(String binaryName) {

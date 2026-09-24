@@ -21,7 +21,9 @@ import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
 import io.micronaut.runner.build.RunnerJarSpec;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.lang.classfile.ClassFile;
@@ -37,11 +39,15 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
+import java.util.stream.Stream;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 /**
@@ -77,6 +83,9 @@ final class SyntheticArchive {
     /** The main class of the synthetic application layer. */
     static final String MAIN_CLASS = "org.synthetic.app.Main";
 
+    private static final String MANIFEST_NAME = "META-INF/MANIFEST.MF";
+    private static final String SERVICES_PREFIX = "META-INF/services/";
+
     /** Package segments the generated packages cycle through, modelled on a Micronaut dependency. */
     private static final String[] SEGMENTS = {
         "core.util", "http.server.netty", "inject.annotation", "runtime.context.scope"
@@ -99,6 +108,7 @@ final class SyntheticArchive {
     private final List<String> classNames;
     private final Path storedRunnerJar;
     private final Path preserveRunnerJar;
+    private Path shadedJar;
 
     private SyntheticArchive(WorkloadShape shape,
                              Path root,
@@ -212,8 +222,8 @@ final class SyntheticArchive {
     }
 
     /**
-     * The same class path a runner jar carries, as URLs, for a {@link java.net.URLClassLoader} baseline:
-     * the application's classes directory first, then every dependency jar in order.
+     * The same class path a runner jar carries, as URLs, for the thin/exploded {@link java.net.URLClassLoader}
+     * baseline: the application's classes directory first, then every dependency jar in order.
      *
      * @return the class path URLs
      */
@@ -228,6 +238,133 @@ final class SyntheticArchive {
             throw new IllegalStateException("A generated path is not a URL", e);
         }
         return urls.toArray(new URL[0]);
+    }
+
+    /**
+     * The same inputs flattened into one JAR the way Gradle Shadow and Maven Shade lay them out, built on
+     * first use so that forks which never measure the flat layout never pay for writing it.
+     *
+     * <p>See {@link #writeShadedJar(Path)} for the layout. The file lives in the fixture root, so the
+     * shutdown hook that deletes the fixture deletes it too.</p>
+     *
+     * @return the flat single-JAR (Shadow/Shade layout) archive
+     */
+    synchronized Path shadedJar() {
+        if (shadedJar == null) {
+            Path output = root.resolve("shaded.jar");
+            try {
+                writeShadedJar(output);
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not build the shaded benchmark fixture", e);
+            }
+            shadedJar = output;
+        }
+        return shadedJar;
+    }
+
+    /**
+     * The flat single-JAR class path, as a one-element URL array, for a {@link java.net.URLClassLoader}
+     * baseline over the Shadow/Shade layout.
+     *
+     * @return the class path URL of {@link #shadedJar()}
+     */
+    URL[] shadedClassPathUrls() {
+        try {
+            return new URL[] {shadedJar().toUri().toURL()};
+        } catch (MalformedURLException e) {
+            throw new IllegalStateException("A generated path is not a URL", e);
+        }
+    }
+
+    /**
+     * Writes the fixture's application classes and every dependency JAR as one flattened JAR, modelled on
+     * the output of the Micronaut application plugin's default Shadow setup.
+     *
+     * <ul>
+     *     <li>{@code META-INF/MANIFEST.MF} comes first and carries only {@code Manifest-Version},
+     *     {@code Main-Class} and, for multi-release shapes, {@code Multi-Release: true}. No dependency
+     *     manifest and none of its {@code Name:} sections survive.</li>
+     *     <li>The application's files come first, in sorted order, then every dependency's entries in
+     *     class-path order.</li>
+     *     <li>{@code META-INF/services/*} descriptors are concatenated in class-path order, each
+     *     contribution starting on a new line.</li>
+     *     <li>Every other duplicate name, {@code META-INF/versions/**} included, keeps its first
+     *     contribution, so every layout serves the same bytes.</li>
+     *     <li>A directory entry for every distinct parent directory follows the files, in sorted order.</li>
+     *     <li>Every entry is DEFLATED at the default level with a fixed time, so the output is
+     *     reproducible.</li>
+     * </ul>
+     *
+     * @param output where to write the JAR
+     * @throws IOException if an input cannot be read or the output cannot be written
+     */
+    void writeShadedJar(Path output) throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        StringBuilder manifest = new StringBuilder("Manifest-Version: 1.0\r\n")
+                .append("Main-Class: ").append(MAIN_CLASS).append("\r\n");
+        if (shape.multiReleaseEntries()) {
+            manifest.append("Multi-Release: true\r\n");
+        }
+        manifest.append("\r\n");
+        entries.put(MANIFEST_NAME, manifest.toString().getBytes(StandardCharsets.UTF_8));
+
+        String separator = applicationClasses.getFileSystem().getSeparator();
+        List<String> applicationFiles;
+        try (Stream<Path> walk = Files.walk(applicationClasses)) {
+            applicationFiles = walk.filter(Files::isRegularFile)
+                    .map(file -> applicationClasses.relativize(file).toString().replace(separator, "/"))
+                    .sorted()
+                    .toList();
+        }
+        for (String name : applicationFiles) {
+            addShaded(entries, name, Files.readAllBytes(applicationClasses.resolve(name)));
+        }
+        for (Path jar : libraryJars) {
+            try (ZipFile zip = new ZipFile(jar.toFile())) {
+                Enumeration<? extends ZipEntry> jarEntries = zip.entries();
+                while (jarEntries.hasMoreElements()) {
+                    ZipEntry entry = jarEntries.nextElement();
+                    if (entry.isDirectory()) {
+                        continue;
+                    }
+                    try (InputStream input = zip.getInputStream(entry)) {
+                        addShaded(entries, entry.getName(), input.readAllBytes());
+                    }
+                }
+            }
+        }
+
+        TreeSet<String> directories = new TreeSet<>();
+        for (String name : entries.keySet()) {
+            for (int slash = name.indexOf('/'); slash >= 0; slash = name.indexOf('/', slash + 1)) {
+                directories.add(name.substring(0, slash + 1));
+            }
+        }
+        for (String directory : directories) {
+            entries.put(directory, new byte[0]);
+        }
+        writeJar(output, entries);
+    }
+
+    private static void addShaded(Map<String, byte[]> entries, String name, byte[] content) {
+        if (name.equals(MANIFEST_NAME)) {
+            return;
+        }
+        if (name.startsWith(SERVICES_PREFIX)) {
+            entries.merge(name, content, SyntheticArchive::appendServiceDescriptor);
+        } else {
+            entries.putIfAbsent(name, content);
+        }
+    }
+
+    private static byte[] appendServiceDescriptor(byte[] accumulated, byte[] contribution) {
+        ByteArrayOutputStream merged = new ByteArrayOutputStream(accumulated.length + contribution.length + 1);
+        merged.writeBytes(accumulated);
+        if (accumulated.length > 0 && accumulated[accumulated.length - 1] != '\n') {
+            merged.write('\n');
+        }
+        merged.writeBytes(contribution);
+        return merged.toByteArray();
     }
 
     /**

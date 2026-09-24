@@ -111,11 +111,27 @@ public abstract class RepresentativeResourceBenchmark {
     /** Opens the loader/layout owned by one concrete benchmark fork. */
     protected abstract RepresentativeResourceWorkload open(SyntheticArchive archive) throws Exception;
 
+    /**
+     * How many URLs {@code getResources} returns for a name every dependency contributes in this layout:
+     * one per dependency JAR unless the layout merges them.
+     *
+     * @param archive the fixture
+     * @return the expected number of contributing URLs
+     */
+    protected int expectedContributors(SyntheticArchive archive) {
+        return archive.shape().jarCount();
+    }
+
     private void verifyFixture(SyntheticArchive archive) throws Exception {
+        int contributors = expectedContributors(archive);
+        // The provider count and the effective duplicate are the same in every layout, so a broken merge or
+        // a wrong duplicate policy fails here even when the per-layout URL count happens to match.
         if (operations.localLookupCount() != 16 || operations.spreadLookupCount() != 16
                 || operations.missingLookupCount() != 0
-                || operations.serviceDiscoveryCount() != archive.shape().jarCount()
-                || operations.duplicateResourceCount() != archive.shape().jarCount()
+                || operations.serviceDiscoveryCount() != contributors
+                || operations.duplicateResourceCount() != contributors
+                || operations.serviceProviderCount() != archive.shape().jarCount()
+                || !"library-0".equals(operations.duplicateResourceValue())
                 || operations.streamBytes() != archive.shape().streamResourceBytes()
                 || !"version-25".equals(operations.multiReleaseValue())) {
             throw new IllegalStateException("Representative fixture verification failed for " + workload);
