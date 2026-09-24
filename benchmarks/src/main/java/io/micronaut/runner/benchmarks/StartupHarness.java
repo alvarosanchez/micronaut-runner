@@ -97,8 +97,15 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
     /** How long a single poll may take before it counts as "not yet". */
     private static final Duration POLL_TIMEOUT = Duration.ofSeconds(2);
 
-    /** How long to keep waiting for the framework's own startup line after readiness. */
-    private static final Duration LOG_LINE_GRACE = Duration.ofSeconds(2);
+    /**
+     * How long to keep waiting for the framework's own startup line after readiness.
+     *
+     * <p>The line normally arrives before readiness, because serving the first request on a cold JVM costs
+     * more than logging it, so the wait usually ends at once. The grace only covers the race between the
+     * first HTTP response and the console appender flushing the line. It also bounds the idle cost of every
+     * run when a sample chosen with {@code -Pbenchmarks.sample=...} never prints the line.</p>
+     */
+    private static final Duration LOG_LINE_GRACE = Duration.ofMillis(500);
 
     /** How long a destroyed process is given to die before it is killed. */
     private static final Duration SHUTDOWN_GRACE = Duration.ofSeconds(10);
