@@ -168,6 +168,43 @@ final class Samples {
     }
 
     /**
+     * Copies a Maven sample project, leaving out the {@code target} directory of an earlier build.
+     *
+     * @param source the sample to copy
+     * @param target where to copy it to
+     * @return {@code target}
+     * @throws IOException if the sample cannot be copied
+     */
+    static Path copySample(Path source, Path target) throws IOException {
+        try (var files = Files.walk(source)) {
+            for (Path file : files.toList()) {
+                Path relative = source.relativize(file);
+                if (relative.getNameCount() > 0 && relative.getName(0).toString().equals("target")) {
+                    continue;
+                }
+                Path destination = target.resolve(relative);
+                if (Files.isDirectory(file)) {
+                    Files.createDirectories(destination);
+                } else {
+                    Files.copy(file, destination);
+                }
+            }
+        }
+        return target;
+    }
+
+    /**
+     * This suite's own Maven local repository, beside the other outputs of the test-suite build. Callers
+     * purge {@code io/micronaut/runner} from it before every Maven invocation; everything else stays cached.
+     *
+     * @return the local repository directory
+     */
+    static Path mavenLocalRepository() {
+        return Path.of(System.getProperty("runner.test.samplesDir"))
+                .getParent().resolve("build").resolve("maven-local-repo");
+    }
+
+    /**
      * The {@code java} of the JDK the build runs on, or {@code null} when there is none.
      *
      * @return the executable, or {@code null}

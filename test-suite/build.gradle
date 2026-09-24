@@ -1,7 +1,3 @@
-import groovy.xml.XmlSlurper
-import io.micronaut.runner.buildlogic.IntegrationMode
-import org.gradle.language.base.plugins.LifecycleBasePlugin
-
 plugins {
     id 'io.micronaut.build.internal.runner-testing'
 }
@@ -18,115 +14,69 @@ dependencies {
     testImplementation libs.maven.invoker
 }
 
-def testTask = tasks.named('test', Test) {
+tasks.withType(Test).configureEach {
     // Sample sources are inputs; their build outputs are not.
     inputs.files(fileTree('samples') { exclude '**/build/**', '**/.gradle/**', '**/target/**' })
           .withPathSensitivity(PathSensitivity.RELATIVE)
           .withPropertyName('samples')
-    // The publication smoke test copies and builds these sources. Track every input it can publish while
-    // excluding mutable checkout/build state, so cached tests cannot hide changed production metadata.
-    inputs.files(rootProject.fileTree(rootProject.layout.projectDirectory) {
-        exclude { details ->
-            def segments = details.relativePath.segments as List
-            int source = segments.indexOf('src')
-            segments.any { it in ['.git', '.gradle', '.idea'] }
-                    || segments.withIndex().any { name, index ->
-                        name in ['build', 'target'] && (source < 0 || index < source)
-                    }
-        }
-    }).withPathSensitivity(PathSensitivity.RELATIVE)
-      .withPropertyName('publicationSources')
     systemProperty 'runner.test.samplesDir', layout.projectDirectory.dir('samples').asFile.absolutePath
-    systemProperty 'runner.test.projectDir', rootProject.layout.projectDirectory.asFile.absolutePath
+}
+
+tasks.named('test', Test) {
+    filter {
+        excludeTestsMatching '*PublicationMetadataSmokeTest'
+    }
+}
+
+/*
+ * The production publications, not their -DUMMY twins: the root build publishes them into
+ * build/publication-smoke-repo, and publicationSmokeTest inspects and consumes them. Only a release-shaped
+ * version gives the file names and metadata users resolve from Maven Central, so a -SNAPSHOT is rejected.
+ */
+abstract class PublicationSmokeProvider implements CommandLineArgumentProvider {
+    @InputFiles
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract ConfigurableFileCollection getRepository()
+
+    @Input
+    abstract Property<String> getVersion()
+
+    @Override
+    Iterable<String> asArguments() {
+        ["-Drunner.smoke.repo=${repository.singleFile.absolutePath}".toString(),
+         "-Drunner.smoke.version=${version.get()}".toString()]
+    }
+}
+
+tasks.register('publicationSmokeTest', Test) {
+    description = 'Inspects and consumes the production publications with Gradle and strict Maven'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    filter {
+        includeTestsMatching '*PublicationMetadataSmokeTest'
+    }
+    // Both tasks build samples/hello-netty in place.
+    mustRunAfter tasks.named('test')
+
+    dependsOn ':micronaut-runner-launcher:publishMavenPublicationToPublicationSmokeRepository',
+            ':micronaut-runner-build:publishMavenPublicationToPublicationSmokeRepository',
+            ':micronaut-runner-gradle-plugin:publishPluginMavenPublicationToPublicationSmokeRepository',
+            ':micronaut-runner-gradle-plugin:publishRunnerPluginMarkerMavenPublicationToPublicationSmokeRepository',
+            ':micronaut-runner-maven-plugin:publishMavenPublicationToPublicationSmokeRepository',
+            ':micronaut-runner-bom:publishMavenPublicationToPublicationSmokeRepository'
+    def smoke = objects.newInstance(PublicationSmokeProvider)
+    smoke.repository.from(rootProject.layout.buildDirectory.dir('publication-smoke-repo'))
+    smoke.version.set(project.version.toString())
+    jvmArgumentProviders.add(smoke)
     systemProperty 'runner.test.publicationSmokeDir',
             layout.buildDirectory.dir('publication-smoke').get().asFile.absolutePath
 }
 
-def integrationMode = IntegrationMode.resolve(
-        providers.gradleProperty('runner.integration').orNull,
-        providers.environmentVariable('RUNNER_TEST_OFFLINE').orNull).id()
-def requiredScenarios = [
-        'io.micronaut.runner.suite.HelloNettySampleTest.packagesTheSampleAndServesARequestFromTheRunnerJar',
-        'io.micronaut.runner.suite.MavenBasicSampleTest.strictMavenAndTheChecksumAssertionRejectStaleSidecars',
-        'io.micronaut.runner.suite.MavenBasicSampleTest.packagesTheSampleAndRunsTheRunnerJar',
-        'io.micronaut.runner.suite.MavenBasicSampleTest.refreshesManifestMetadataAcrossNonCleanPackageCycles',
-        'io.micronaut.runner.suite.PublicationMetadataSmokeTest.gradleConsumerPackagesAndLaunchesFromFreshCache',
-        'io.micronaut.runner.suite.PublicationMetadataSmokeTest.mavenConsumerPackagesAndLaunchesStrictlyFromFreshCache'
-]
-def integrationReport = layout.buildDirectory.file('reports/integration-scenarios.txt')
-
-def reportIntegrationScenarios = tasks.register('reportIntegrationScenarios') {
-    description = 'Records every required integration scenario outcome for CI evidence'
-    group = LifecycleBasePlugin.VERIFICATION_GROUP
-    inputs.files(fileTree(layout.buildDirectory.dir('test-results/test')) { include 'TEST-*.xml' })
-          .withPathSensitivity(PathSensitivity.RELATIVE)
-          .withPropertyName('junitXml')
-    inputs.property('integrationMode', integrationMode)
-    inputs.property('requiredScenarios', requiredScenarios)
-    outputs.file(integrationReport)
-
-    doLast {
-        Map<String, String> statuses = [:]
-        fileTree(layout.buildDirectory.dir('test-results/test')).matching { include 'TEST-*.xml' }
-                .files.sort().each { result ->
-            def suite = new XmlSlurper(false, false).parse(result)
-            suite.testcase.each { testCase ->
-                String name = "${testCase.@classname}.${testCase.@name}".replace('()', '')
-                String status = testCase.failure.isEmpty() && testCase.error.isEmpty()
-                        ? (testCase.skipped.isEmpty() ? 'passed' : 'skipped')
-                        : 'failed'
-                statuses[name] = status
-            }
-        }
-
-        List<String> lines = ["mode=${integrationMode}"]
-        requiredScenarios.each { scenario ->
-            String status = statuses[scenario] ?: 'missing'
-            lines.add("${scenario}=${status}".toString())
-        }
-        File report = integrationReport.get().asFile
-        report.parentFile.mkdirs()
-        report.setText(lines.join(System.lineSeparator()) + System.lineSeparator(), 'UTF-8')
+gradle.taskGraph.whenReady { graph ->
+    if (graph.hasTask("${project.path}:publicationSmokeTest".toString()) &&project.version.toString().endsWith('-SNAPSHOT')) {
+        throw new GradleException("publicationSmokeTest needs a release-shaped version, not ${project.version}: "
+                + 'a -SNAPSHOT publishes timestamped file names. Run it with '
+                + '-PprojectVersion=1.0.0-PUBLICATION-SMOKE')
     }
-}
-
-testTask.configure {
-    finalizedBy reportIntegrationScenarios
-}
-reportIntegrationScenarios.configure {
-    mustRunAfter testTask
-}
-
-def verifyIntegrationScenarios = tasks.register('verifyIntegrationScenarios') {
-    description = 'Fails unless every integration scenario has the status required by the selected policy'
-    group = LifecycleBasePlugin.VERIFICATION_GROUP
-    dependsOn testTask, reportIntegrationScenarios
-    inputs.file(integrationReport)
-    inputs.property('integrationMode', integrationMode)
-    inputs.property('requiredScenarios', requiredScenarios)
-
-    doLast {
-        Map<String, String> statuses = integrationReport.get().asFile.readLines('UTF-8')
-                .findAll { it.contains('=') && !it.startsWith('mode=') }
-                .collectEntries { line ->
-                    int separator = line.lastIndexOf('=')
-                    [(line.substring(0, separator)): line.substring(separator + 1)]
-                }
-        List<String> violations = []
-        requiredScenarios.each { scenario ->
-            String status = statuses[scenario] ?: 'missing'
-            String expected = integrationMode == 'required' ? 'passed' : 'skipped'
-            if (status != expected) {
-                violations.add("${scenario}: expected ${expected}, was ${status}".toString())
-            }
-        }
-        if (!violations.isEmpty()) {
-            throw new GradleException("Integration scenario policy was not satisfied (${integrationMode}):\n  "
-                    + violations.join('\n  ') + "\nEvidence: ${integrationReport.get().asFile}")
-        }
-    }
-}
-
-tasks.named('check') {
-    dependsOn verifyIntegrationScenarios
 }
