@@ -6,7 +6,7 @@ pluginManagement {
         }
     }
     plugins {
-        id 'io.micronaut.runner' version providers.gradleProperty('runner.version').get()
+        id 'io.micronaut.runner.standalone' version providers.gradleProperty('runner.version').get()
     }
 }
 

@@ -55,10 +55,13 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -68,6 +71,7 @@ import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
@@ -531,6 +535,25 @@ class PackageMojoTest {
     }
 
     @Test
+    void failsInRunnerPackagingEvenWhenSkippedAndWritesNothing() throws Exception {
+        // In runner packaging, micronaut-maven-plugin has already replaced the main artifact with a Runner JAR.
+        writeApplicationClass();
+        writeJarPluginOutput(buildDirectory.resolve("demo-1.0.jar"));
+        project.setPackaging("runner");
+        Map<Path, String> before = snapshot(buildDirectory);
+
+        for (boolean skip : new boolean[] {false, true}) {
+            set("skip", skip);
+            MojoFailureException failure = assertThrows(MojoFailureException.class, mojo::execute);
+            assertEquals("micronaut-maven-plugin builds the Runner JAR in runner packaging; remove this plugin's"
+                    + " execution", failure.getMessage(), () -> "skip=" + skip);
+            assertEquals(before, snapshot(buildDirectory), () -> "skip=" + skip + " changed the build directory");
+        }
+        assertNull(project.getArtifact().getFile(), "the main artifact must not be touched");
+        assertTrue(projectHelper.attached.isEmpty(), () -> "nothing may be attached: " + projectHelper.attached);
+    }
+
+    @Test
     void failsWithAnActionableMessageWhenThereAreNoClasses() {
         Path missing = temp.resolve("nowhere");
         project.getBuild().setOutputDirectory(missing.toString());
@@ -551,6 +574,20 @@ class PackageMojoTest {
         Assumptions.assumeTrue(
                 RunnerJarBuilder.class.getResource("/META-INF/micronaut-runner/launcher.jar") != null,
                 "the bundled launcher jar is not on the test class path");
+    }
+
+    /** Every regular file under a directory, with a digest of its content. */
+    private static Map<Path, String> snapshot(Path directory) throws IOException {
+        Map<Path, String> files = new TreeMap<>();
+        try (Stream<Path> walk = Files.walk(directory)) {
+            for (Path file : walk.filter(Files::isRegularFile).toList()) {
+                files.put(directory.relativize(file), HexFormat.of().formatHex(
+                        MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))));
+            }
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        return files;
     }
 
     private static void assumeNoSourceDateEpoch() {

@@ -25,6 +25,8 @@ import io.micronaut.runner.build.RunnerJarResult;
 import io.micronaut.runner.build.RunnerJarSpec;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.file.ConfigurableFileCollection;
+import org.gradle.api.file.DirectoryProperty;
+import org.gradle.api.file.RegularFile;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.java.archives.Manifest;
 import org.gradle.api.logging.Logger;
@@ -66,14 +68,30 @@ import java.util.TreeMap;
  * <p>The task is wiring: it hands the project's facts and the options the build sets to the packaging
  * library, which owns every option's default, parsing and validation. A {@link RunnerJarOption.Exposure#TYPED
  * typed} option has a property here; every option, typed or not, can also be set by name through
- * {@link #getOptions()}.</p>
+ * {@link #getOptions()}. Each option property takes the {@link MicronautRunnerExtension}'s value as its
+ * convention, so a value set here wins for this task only. The archive is named as an archive task names
+ * it, from {@link #getArchiveBaseName()}, {@link #getArchiveVersion()}, {@link #getArchiveClassifier()} and
+ * {@link #getDestinationDirectory()}.</p>
  *
  * @since 1.0
  */
 @CacheableTask
 public abstract class MicronautRunnerJar extends DefaultTask {
 
+    private final RegularFileProperty archiveFile;
+
     private @Nullable Manifest inheritedManifest;
+
+    /** Creates the task, deriving the archive's location from its naming properties. */
+    public MicronautRunnerJar() {
+        // A property rather than a derived provider, so that Gradle records this task as its producer.
+        archiveFile = getProject().getObjects().fileProperty();
+        archiveFile.set(getDestinationDirectory().file(getArchiveBaseName()
+                .zip(getArchiveVersion().orElse(""), MicronautRunnerJar::appendNamePart)
+                .zip(getArchiveClassifier().orElse(""), MicronautRunnerJar::appendNamePart)
+                .map(name -> name + ".jar")));
+        archiveFile.disallowChanges();
+    }
 
     /**
      * The application main class. Defaults to the main class of the {@code application} plugin.
@@ -197,25 +215,55 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     }
 
     /**
-     * Where the archive is written.
+     * Where the archive is written: {@code <destinationDirectory>/<archiveBaseName>[-<archiveVersion>]
+     * [-<archiveClassifier>].jar}, as an archive task names it. It is derived from the naming properties and
+     * cannot be set.
      *
      * @return the output file
      */
     @OutputFile
-    public abstract RegularFileProperty getArchiveFile();
+    public Provider<RegularFile> getArchiveFile() {
+        return archiveFile;
+    }
 
     /**
-     * The archive classifier used to build the default output file name. Defaults to {@code all}.
+     * The base name of the archive. The plugin sets {@code base.archivesName} as the convention.
+     *
+     * @return the base name
+     */
+    @Internal("Represented as part of archiveFile")
+    public abstract Property<String> getArchiveBaseName();
+
+    /**
+     * The version in the archive name, left out when absent. The plugin sets the project version as the
+     * convention, absent when it is empty or {@code unspecified}.
+     *
+     * @return the version
+     */
+    @Internal("Represented as part of archiveFile")
+    public abstract Property<String> getArchiveVersion();
+
+    /**
+     * The classifier in the archive name, left out when absent or empty. The plugin sets {@code all} as the
+     * convention.
      *
      * @return the classifier
      */
-    @Input
+    @Internal("Represented as part of archiveFile")
     public abstract Property<String> getArchiveClassifier();
+
+    /**
+     * The directory the archive is written to. The plugin sets {@code base.libsDirectory} as the convention.
+     *
+     * @return the directory
+     */
+    @Internal("Represented as part of archiveFile")
+    public abstract DirectoryProperty getDestinationDirectory();
 
     /**
      * How the entries of each dependency are stored: {@code STORED} re-packs them uncompressed so classes
      * are defined straight from the memory-mapped archive, {@code PRESERVE} copies each dependency byte
-     * for byte. The plugin sets {@link RunnerJarOption#COMPRESSION}'s default as the convention.
+     * for byte. The plugin sets the extension's value as the convention.
      *
      * @return the compression mode
      */
@@ -224,8 +272,8 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract Property<String> getCompression();
 
     /**
-     * Whether the application layer itself is multi-release. The plugin sets
-     * {@link RunnerJarOption#MULTI_RELEASE}'s default as the convention.
+     * Whether the application layer itself is multi-release. The plugin sets the extension's value as the
+     * convention.
      *
      * @return the multi-release flag
      */
@@ -235,8 +283,7 @@ public abstract class MicronautRunnerJar extends DefaultTask {
 
     /**
      * Whether to generate the entry stub that lets the launcher call the application main method through
-     * an interface rather than by reflection. The plugin sets {@link RunnerJarOption#ENTRY_STUB}'s default as
-     * the convention.
+     * an interface rather than by reflection. The plugin sets the extension's value as the convention.
      *
      * @return the entry stub flag
      */
@@ -247,7 +294,7 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     /**
      * Module/package pairs to open, written into the manifest as {@code Add-Opens} so users need not pass
      * the flag. Each entry uses JAR manifest syntax, for example {@code java.base/java.lang}, without the
-     * command-line-only {@code =ALL-UNNAMED} suffix.
+     * command-line-only {@code =ALL-UNNAMED} suffix. The plugin sets the extension's value as the convention.
      *
      * @return the packages to open
      */
@@ -258,7 +305,7 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     /**
      * Module/package pairs to export, written into the manifest as {@code Add-Exports}. Each entry uses JAR
      * manifest syntax, for example {@code java.base/sun.nio.ch}, without the command-line-only
-     * {@code =ALL-UNNAMED} suffix.
+     * {@code =ALL-UNNAMED} suffix. The plugin sets the extension's value as the convention.
      *
      * @return the packages to export
      */
@@ -267,8 +314,8 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract ListProperty<String> getAddExports();
 
     /**
-     * Whether to write {@code Enable-Native-Access: ALL-UNNAMED} into the manifest. The plugin sets
-     * {@link RunnerJarOption#ENABLE_NATIVE_ACCESS}'s default as the convention.
+     * Whether to write {@code Enable-Native-Access: ALL-UNNAMED} into the manifest. The plugin sets the
+     * extension's value as the convention.
      *
      * @return the native access flag
      */
@@ -277,7 +324,7 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract Property<Boolean> getEnableNativeAccess();
 
     /**
-     * Extra main manifest attributes.
+     * Extra main manifest attributes. The plugin sets the extension's value as the convention.
      *
      * @return the attributes
      */
@@ -289,7 +336,8 @@ public abstract class MicronautRunnerJar extends DefaultTask {
      * Packaging options by {@linkplain RunnerJarOption#optionName() name}, for the options that have no
      * typed property here. Each value uses the grammar {@link RunnerJarOption} documents, and the packaging
      * library parses and validates it; an unknown name fails the task. An entry is applied after the typed
-     * properties, so it wins over a typed property of the same option.
+     * properties, so it wins over a typed property of the same option. The plugin sets the extension's value
+     * as the convention.
      *
      * @return the options by name
      */
@@ -364,6 +412,17 @@ public abstract class MicronautRunnerJar extends DefaultTask {
             spec.applicationManifest(ApplicationManifest.toManifest(getInheritedManifestAttributes()));
         }
         return spec.build();
+    }
+
+    /**
+     * Appends one part of an archive name, as an archive task does: after a dash, and not at all when empty.
+     *
+     * @param name the name so far
+     * @param part the part, possibly empty
+     * @return the name with the part
+     */
+    private static String appendNamePart(String name, String part) {
+        return part.isEmpty() ? name : name + "-" + part;
     }
 
     /**

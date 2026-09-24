@@ -66,6 +66,9 @@ import java.util.Properties;
  * {@link RunnerJarOption.Exposure#PASSTHROUGH passthrough} option through the
  * {@code micronaut.runner.<name>} user or project property.</p>
  *
+ * <p>This is the interim plugin. micronaut-maven-plugin's {@code runner} packaging replaces it, and in a
+ * project with that packaging the goal fails, even when skipped.</p>
+ *
  * @since 1.0
  */
 @Mojo(name = "package",
@@ -76,6 +79,9 @@ public class PackageMojo extends AbstractMojo {
 
     /** The prefix of the properties that set a packaging option by name. */
     private static final String PROPERTY_PREFIX = "micronaut.runner.";
+
+    /** The packaging with which micronaut-maven-plugin builds the Runner JAR itself. */
+    private static final String RUNNER_PACKAGING = "runner";
 
     /** The project being built. */
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
@@ -180,6 +186,13 @@ public class PackageMojo extends AbstractMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
+        // micronaut-maven-plugin's runner packaging has already replaced the main artifact with a Runner JAR.
+        // Running here too would package it again over the same file. skip does not help: the fix is to remove
+        // the execution.
+        if (RUNNER_PACKAGING.equals(project.getPackaging())) {
+            throw new MojoFailureException("micronaut-maven-plugin builds the Runner JAR in runner packaging;"
+                    + " remove this plugin's execution");
+        }
         if (skip) {
             getLog().info("Skipping runner jar packaging");
             return;

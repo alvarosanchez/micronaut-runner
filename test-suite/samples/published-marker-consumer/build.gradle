@@ -1,11 +1,11 @@
 plugins {
     id 'java'
-    id 'io.micronaut.runner'
+    id 'io.micronaut.runner.standalone'
 }
 
 tasks.register('verifyMarker') {
     doLast {
-        assert plugins.hasPlugin('io.micronaut.runner')
+        assert plugins.hasPlugin('io.micronaut.runner.standalone')
         assert tasks.findByName('micronautRunnerJar') != null
     }
 }

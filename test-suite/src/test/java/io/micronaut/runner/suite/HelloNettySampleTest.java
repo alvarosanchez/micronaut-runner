@@ -111,8 +111,9 @@ class HelloNettySampleTest {
     static void assumeTheSuiteCanRun() {
         Samples.assumeTheBuildProvidedItsProperties();
         Samples.requireIntegrationScenario();
-        Samples.requirePublishedArtifact("io/micronaut/runner/io.micronaut.runner.gradle.plugin/"
-                + Samples.VERSION + "/io.micronaut.runner.gradle.plugin-" + Samples.VERSION + ".pom");
+        Samples.requirePublishedArtifact("io/micronaut/runner/standalone/"
+                + "io.micronaut.runner.standalone.gradle.plugin/" + Samples.VERSION
+                + "/io.micronaut.runner.standalone.gradle.plugin-" + Samples.VERSION + ".pom");
     }
 
     @Test

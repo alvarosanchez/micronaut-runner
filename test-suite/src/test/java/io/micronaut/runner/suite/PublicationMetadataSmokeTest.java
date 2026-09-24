@@ -74,7 +74,10 @@ class PublicationMetadataSmokeTest {
     private static final String GROUP = "io.micronaut.runner";
     private static final String GROUP_PATH = "io/micronaut/runner";
     private static final String VERSION = System.getProperty("runner.smoke.version");
-    private static final String MARKER = "io.micronaut.runner.gradle.plugin";
+    /** The plugin id, and so the group of its marker, which is not Runner's group. */
+    private static final String PLUGIN_ID = "io.micronaut.runner.standalone";
+    private static final String MARKER_GROUP = PLUGIN_ID;
+    private static final String MARKER = PLUGIN_ID + ".gradle.plugin";
     private static final String GRADLE_PLUGIN = "micronaut-runner-gradle-plugin";
     private static final String MAVEN_PLUGIN = "micronaut-runner-maven-plugin";
     private static final String BUILD = "micronaut-runner-build";
@@ -96,7 +99,7 @@ class PublicationMetadataSmokeTest {
         assertFalse(VERSION.endsWith("-SNAPSHOT"), () -> "runner.smoke.version must be release-shaped, not "
                 + VERSION + "; run with -PprojectVersion=1.0.0-PUBLICATION-SMOKE");
         repository = requiredPathProperty("runner.smoke.repo");
-        assertTrue(Files.isDirectory(artifactDirectory(repository, BOM)),
+        assertTrue(Files.isDirectory(artifactDirectory(repository, GROUP, BOM)),
                 () -> "the main build published nothing at " + VERSION + " into " + repository);
         requiredPathProperty("runner.test.samplesDir");
         MavenBasicSampleTest.mavenHome();
@@ -115,7 +118,7 @@ class PublicationMetadataSmokeTest {
                 GRADLE_PLUGIN, coordinate(BUILD),
                 MAVEN_PLUGIN, coordinate(BUILD));
         for (Map.Entry<String, String> entry : pomDependencies.entrySet()) {
-            Document pom = parseXml(artifact(entry.getKey(), "pom"));
+            Document pom = parseXml(artifact(GROUP, entry.getKey(), "pom"));
             assertCoordinates(pom, GROUP, entry.getKey(), VERSION);
             if (entry.getValue().isEmpty()) {
                 assertTrue(directDependencies(pom).isEmpty(), entry.getKey() + " must have no POM dependencies");
@@ -125,19 +128,19 @@ class PublicationMetadataSmokeTest {
             }
         }
 
-        Document marker = parseXml(artifact(MARKER, "pom"));
-        assertCoordinates(marker, GROUP, MARKER, VERSION);
+        Document marker = parseXml(artifact(MARKER_GROUP, MARKER, "pom"));
+        assertCoordinates(marker, MARKER_GROUP, MARKER, VERSION);
         assertEquals("pom", childText(marker.getDocumentElement(), "packaging"));
         assertEquals(Set.of(coordinate(GRADLE_PLUGIN)), directDependencies(marker),
                 "the plugin marker must point at the implementation publication");
 
-        Document mavenPluginPom = parseXml(artifact(MAVEN_PLUGIN, "pom"));
+        Document mavenPluginPom = parseXml(artifact(GROUP, MAVEN_PLUGIN, "pom"));
         assertEquals("maven-plugin", childText(mavenPluginPom.getDocumentElement(), "packaging"));
         assertDependencyScope(mavenPluginPom, BUILD, "runtime");
-        assertDependencyScope(parseXml(artifact(GRADLE_PLUGIN, "pom")), BUILD, "runtime");
-        assertDependencyScope(parseXml(artifact(BUILD, "pom")), LAUNCHER, "compile");
+        assertDependencyScope(parseXml(artifact(GROUP, GRADLE_PLUGIN, "pom")), BUILD, "runtime");
+        assertDependencyScope(parseXml(artifact(GROUP, BUILD, "pom")), LAUNCHER, "compile");
 
-        Document bom = parseXml(artifact(BOM, "pom"));
+        Document bom = parseXml(artifact(GROUP, BOM, "pom"));
         assertCoordinates(bom, GROUP, BOM, VERSION);
         Element properties = directChild(bom.getDocumentElement(), "properties");
         assertNotNull(properties, "the BOM must publish its Runner version property");
@@ -245,7 +248,7 @@ class PublicationMetadataSmokeTest {
     }
 
     private static void assertModuleMetadata(String artifactId, Set<String> expectedDependencies) throws Exception {
-        Path module = artifact(artifactId, "module");
+        Path module = artifact(GROUP, artifactId, "module");
         assertTrue(Files.isRegularFile(module), () -> "component publication has no Gradle metadata: " + module);
         @SuppressWarnings("unchecked")
         Map<String, Object> metadata = (Map<String, Object>) new JsonSlurper().parse(module.toFile());
@@ -290,18 +293,18 @@ class PublicationMetadataSmokeTest {
     }
 
     private static void assertJarDescriptors() throws Exception {
-        Path gradleJar = artifact(GRADLE_PLUGIN, "jar");
+        Path gradleJar = artifact(GROUP, GRADLE_PLUGIN, "jar");
         try (JarFile jar = new JarFile(gradleJar.toFile())) {
             Properties descriptor = new Properties();
             try (InputStream input = jar.getInputStream(
-                    jar.getEntry("META-INF/gradle-plugins/io.micronaut.runner.properties"))) {
+                    jar.getEntry("META-INF/gradle-plugins/" + PLUGIN_ID + ".properties"))) {
                 descriptor.load(input);
             }
             assertEquals("io.micronaut.runner.gradle.MicronautRunnerPlugin",
                     descriptor.getProperty("implementation-class"));
         }
 
-        Path mavenJar = artifact(MAVEN_PLUGIN, "jar");
+        Path mavenJar = artifact(GROUP, MAVEN_PLUGIN, "jar");
         try (JarFile jar = new JarFile(mavenJar.toFile())) {
             assertDescriptorCoordinates(jar, "META-INF/maven/plugin.xml");
             assertDescriptorCoordinates(jar,
@@ -327,8 +330,11 @@ class PublicationMetadataSmokeTest {
     }
 
     private static void assertPublishedFileNamesMatchCoordinates() throws IOException {
-        for (String artifactId : List.of(LAUNCHER, BUILD, GRADLE_PLUGIN, MAVEN_PLUGIN, BOM, MARKER)) {
-            Path directory = artifactDirectory(repository, artifactId);
+        Map<String, String> groups = Map.of(LAUNCHER, GROUP, BUILD, GROUP, GRADLE_PLUGIN, GROUP,
+                MAVEN_PLUGIN, GROUP, BOM, GROUP, MARKER, MARKER_GROUP);
+        for (Map.Entry<String, String> coordinates : groups.entrySet()) {
+            String artifactId = coordinates.getKey();
+            Path directory = artifactDirectory(repository, coordinates.getValue(), artifactId);
             assertTrue(Files.isDirectory(directory), () -> "missing coordinate directory " + directory);
             try (Stream<Path> files = Files.list(directory)) {
                 List<String> wrong = files.filter(Files::isRegularFile)
@@ -472,12 +478,13 @@ class PublicationMetadataSmokeTest {
                 .build();
     }
 
-    private static Path artifact(String artifactId, String extension) {
-        return artifactDirectory(repository, artifactId).resolve(artifactId + "-" + VERSION + "." + extension);
+    private static Path artifact(String group, String artifactId, String extension) {
+        return artifactDirectory(repository, group, artifactId)
+                .resolve(artifactId + "-" + VERSION + "." + extension);
     }
 
-    private static Path artifactDirectory(Path root, String artifactId) {
-        return root.resolve(GROUP_PATH).resolve(artifactId).resolve(VERSION);
+    private static Path artifactDirectory(Path root, String group, String artifactId) {
+        return root.resolve(group.replace('.', '/')).resolve(artifactId).resolve(VERSION);
     }
 
     private static String coordinate(String artifactId) {
