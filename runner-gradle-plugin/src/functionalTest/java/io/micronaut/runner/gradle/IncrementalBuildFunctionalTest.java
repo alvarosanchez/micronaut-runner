@@ -39,6 +39,7 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -79,6 +80,42 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
     }
 
     /**
+     * Of the {@code jar} task's manifest, only the attributes the archive carries are inputs, and they are
+     * taken from its configuration: a thin JAR left over from an earlier build is never read.
+     *
+     * @param directory a fresh project directory
+     * @throws IOException if the fixture cannot be written or the archive cannot be read
+     */
+    @Test
+    void readsOnlyTheConsumedManifestAttributesFromTheJarConfiguration(@TempDir Path directory)
+            throws IOException {
+        writeFixture(directory, """
+                jar {
+                    enabled = !providers.gradleProperty('noThinJar').present
+                    manifest {
+                        attributes('Build-Time': providers.gradleProperty('bt').getOrElse('a'),
+                                'Implementation-Version': providers.gradleProperty('iv').getOrElse('1'))
+                    }
+                }
+                """, "");
+
+        BuildResult first = build(directory, "jar", "micronautRunnerJar");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(first, RUNNER_JAR_TASK));
+        Path thinJar = directory.resolve("build/libs/" + PROJECT_NAME + "-" + PROJECT_VERSION + ".jar");
+        assertTrue(Files.isRegularFile(thinJar), () -> "the thin JAR was not built:\n" + first.getOutput());
+
+        BuildResult unconsumed = build(directory, "micronautRunnerJar", "-Pbt=b");
+        assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(unconsumed, RUNNER_JAR_TASK),
+                () -> "an attribute the archive does not carry invalidated it:\n" + unconsumed.getOutput());
+
+        BuildResult consumed = build(directory, "micronautRunnerJar", "-Pbt=b", "-PnoThinJar", "-Piv=2");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(consumed, RUNNER_JAR_TASK),
+                () -> "a changed Implementation-Version did not rebuild the archive:\n" + consumed.getOutput());
+        assertEquals("2", manifestOf(directory.resolve(DEFAULT_ARCHIVE)).getValue("Implementation-Version"),
+                "the archive took its manifest from the stale thin JAR");
+    }
+
+    /**
      * The same project built in two different directories produces the same cache key, so the second build
      * takes its archive from the cache instead of packaging it again — and the archive it took still runs.
      *
@@ -97,17 +134,21 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
                 }
                 """.replace("@cache@", cache.toAbsolutePath().toString().replace('\\', '/'));
 
-        Path first = writeFixture(root.resolve("first"), "", settings);
-        Path second = writeFixture(root.resolve("second"), "", settings);
+        // A non-empty inherited manifest, so that input has to be relocatable too.
+        String jarManifest = "jar { manifest { attributes('Implementation-Version': '1.2.3') } }\n";
+        Path first = writeFixture(root.resolve("first"), jarManifest, settings);
+        Path second = writeFixture(root.resolve("second"), jarManifest, settings);
 
         BuildResult stored = build(first, "micronautRunnerJar", "--build-cache");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(stored, RUNNER_JAR_TASK));
+        assertNull(stored.task(":jar"), () -> "micronautRunnerJar built the thin JAR:\n" + stored.getOutput());
         assertNoPackagingState(first);
 
         BuildResult reused = build(second, "micronautRunnerJar", "--build-cache");
         assertEquals(TaskOutcome.FROM_CACHE, outcomeOf(reused, RUNNER_JAR_TASK),
                 () -> "the task is not relocatable: an identical project in another directory missed the"
                         + " cache\n" + reused.getOutput());
+        assertNull(reused.task(":jar"), () -> "micronautRunnerJar built the thin JAR:\n" + reused.getOutput());
         assertNoPackagingState(second);
 
         runJarSuccessfully(second.resolve(DEFAULT_ARCHIVE));
@@ -223,6 +264,9 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
      * captured at configuration time that cannot be serialised — a {@code Project}, a {@code Configuration},
      * a {@code Task} — fails one of these two runs.</p>
      *
+     * <p>The {@code jar} task's manifest merges a file that also changes between the runs. The archive must
+     * carry the new value, which a manifest snapshot taken when the entry was stored would miss.</p>
+     *
      * @param directory a fresh project directory
      * @throws IOException          if the fixture cannot be written
      * @throws InterruptedException if the forked application is interrupted
@@ -233,20 +277,31 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
                 tasks.named('micronautRunnerJar') {
                     coordinates.put(file('libs/alpha.jar').absolutePath, 'com.example:alpha:configuration-cache')
                 }
+                jar {
+                    manifest {
+                        from('extra.mf')
+                    }
+                }
                 """, "");
+        write(directory.resolve("extra.mf"), "Manifest-Version: 1.0\nImplementation-Vendor: first\n");
 
         BuildResult stored = build(directory, "micronautRunnerJar", "--configuration-cache");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(stored, RUNNER_JAR_TASK));
         assertTrue(stored.getOutput().contains("Configuration cache entry stored"),
                 () -> "the first run did not store a configuration cache entry:\n" + stored.getOutput());
+        assertNull(stored.task(":jar"), () -> "micronautRunnerJar built the thin JAR:\n" + stored.getOutput());
 
         addMarker(directory, "from the configuration cache");
+        write(directory.resolve("extra.mf"), "Manifest-Version: 1.0\nImplementation-Vendor: second\n");
 
         BuildResult reused = build(directory, "micronautRunnerJar", "--configuration-cache");
         assertTrue(reused.getOutput().contains("Configuration cache entry reused"),
                 () -> "the second run did not reuse the configuration cache entry:\n" + reused.getOutput());
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(reused, RUNNER_JAR_TASK),
                 () -> "the task did not execute from the reused entry:\n" + reused.getOutput());
+        assertNull(reused.task(":jar"), () -> "micronautRunnerJar built the thin JAR:\n" + reused.getOutput());
+        assertEquals("second", manifestOf(directory.resolve(DEFAULT_ARCHIVE)).getValue("Implementation-Vendor"),
+                "the merged manifest file was read when the entry was stored, not when the task ran");
 
         String output = runJarSuccessfully(directory.resolve(DEFAULT_ARCHIVE));
         assertTrue(output.contains("marker=from the configuration cache"),

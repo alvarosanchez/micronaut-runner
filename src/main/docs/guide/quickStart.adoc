@@ -83,6 +83,11 @@ micronautRunnerJar {
 }
 ----
 
+The application's `Implementation-*`, `Specification-*` and `Sealed` attributes and package sections come from the
+`jar` task's manifest configuration, including `manifest.from(...)` merges; `micronautRunnerJar` does not build the
+thin JAR. If the `jar` task adds attributes in `doFirst` or `doLast`, or merges a file that another task generates,
+set `applicationJar = tasks.named('jar').flatMap { it.archiveFile }`.
+
 `manifestAttributes` may override attributes imported from the application's manifest. `Manifest-Version`,
 `Main-Class` and every attribute whose name begins with `Micronaut-Runner-` are reserved for the runner
 format and are rejected case-insensitively.

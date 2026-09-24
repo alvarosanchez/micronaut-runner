@@ -94,10 +94,14 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
                     task.getArchiveClassifier().convention(DEFAULT_CLASSIFIER);
                     task.getArchiveFile().convention(defaultArchiveFile(project, task));
 
-                    // The jar task's manifest is the source of the application's own manifest attributes,
-                    // such as Implementation-Version, which a directory input cannot carry.
-                    task.getApplicationJar().convention(
-                            project.getTasks().named(JavaPlugin.JAR_TASK_NAME, Jar.class).flatMap(Jar::getArchiveFile));
+                    // The application's own manifest attributes, such as Implementation-Version, which a
+                    // directory input cannot carry, come from the jar task's manifest configuration, as Shadow
+                    // takes them. The task holds the manifest object and reads it when it executes: wiring it
+                    // to the jar task's output would run :jar, and a snapshot taken at configuration time would
+                    // go stale under the configuration cache. get() realizes the jar task only when this task
+                    // is realized.
+                    task.setInheritedManifest(
+                            project.getTasks().named(JavaPlugin.JAR_TASK_NAME, Jar.class).get().getManifest());
 
                     JavaApplication application = project.getExtensions().findByType(JavaApplication.class);
                     if (application != null) {
