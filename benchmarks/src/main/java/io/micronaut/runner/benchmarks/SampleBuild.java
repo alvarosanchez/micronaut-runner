@@ -412,7 +412,7 @@ final class SampleBuild {
         RunnerJarSpec spec = RunnerJarSpec.builder()
                 .mainClass(mainClass)
                 .applicationOutput(applicationOutput)
-                .dependencies(dependencies.stream().map(Dependency::new).toList())
+                .dependencies(dependencies.stream().map(Dependency::of).toList())
                 .output(output)
                 .compression(compression)
                 .entryStub(requestedEntryMode == EntryMode.STUB)

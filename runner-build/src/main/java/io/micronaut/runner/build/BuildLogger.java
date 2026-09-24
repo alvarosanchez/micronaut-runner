@@ -49,7 +49,7 @@ public interface BuildLogger {
      * @return the shared no-op logger
      */
     static BuildLogger noOp() {
-        return NoOp.INSTANCE;
+        return NoOpBuildLogger.INSTANCE;
     }
 
     /**
@@ -58,47 +58,6 @@ public interface BuildLogger {
      * @return the shared standard error logger
      */
     static BuildLogger systemErr() {
-        return SystemErr.INSTANCE;
-    }
-
-    /**
-     * The logger {@link #noOp()} hands out.
-     */
-    final class NoOp implements BuildLogger {
-
-        private static final NoOp INSTANCE = new NoOp();
-
-        private NoOp() {
-        }
-
-        @Override
-        public void info(String message) {
-        }
-
-        @Override
-        public void warn(String message) {
-        }
-    }
-
-    /**
-     * The logger {@link #systemErr()} hands out, which prefixes every line so that the origin of a message
-     * is obvious in a build log it shares with everything else.
-     */
-    final class SystemErr implements BuildLogger {
-
-        private static final SystemErr INSTANCE = new SystemErr();
-
-        private SystemErr() {
-        }
-
-        @Override
-        public void info(String message) {
-            System.err.println("[micronaut-runner] " + message);
-        }
-
-        @Override
-        public void warn(String message) {
-            System.err.println("[micronaut-runner] WARNING: " + message);
-        }
+        return SystemErrBuildLogger.INSTANCE;
     }
 }

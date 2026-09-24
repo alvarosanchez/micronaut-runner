@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -53,6 +54,7 @@ import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -310,7 +312,7 @@ class RunnerJarBuilderTest {
         for (Compression compression : new Compression[] {Compression.STORED, Compression.PRESERVE}) {
             Path output = output();
             RunnerJarBuilder.build(spec(output)
-                    .dependencies(List.of(new Dependency(dependency, null)))
+                    .dependencies(List.of(Dependency.of(dependency)))
                     .compression(compression)
                     .build(), BuildLogger.noOp());
 
@@ -347,11 +349,138 @@ class RunnerJarBuilderTest {
         Path dependency = corruptedDependency("libs/corrupt-stored.jar");
 
         IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output())
-                .dependencies(List.of(new Dependency(dependency, null)))
+                .dependencies(List.of(Dependency.of(dependency)))
                 .build(), BuildLogger.noOp()));
 
         assertTrue(failure.getMessage().contains(dependency.toString()),
                 "a build with dozens of dependencies has to say which one: " + failure.getMessage());
+    }
+
+    // ------------------------------------------------------ the dependency file rule
+
+    @Test
+    void failsOnADirectoryDependencyBeforeWritingAnything() throws IOException {
+        // What Maven resolves a reactor module to when the reactor did not run through package.
+        Path module = Files.createDirectories(fixtures.resolve("file-rule/module/target/classes"));
+        Path output = Files.createDirectories(fixtures.resolve("file-rule/directory-output")).resolve("app.jar");
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .addDependency(Dependency.of(module, "com.example:module:1.0"))
+                .build(), BuildLogger.noOp()));
+
+        String message = failure.getMessage();
+        assertTrue(message.contains(module.toString()), message);
+        assertTrue(message.contains("nests only JAR files"), message);
+        assertTrue(message.contains("Package it as a JAR first"), message);
+        assertTrue(message.contains("add it to the application output"), message);
+        assertFalse(Files.exists(output), "a directory dependency must fail before anything is written");
+        assertNoWorkDirectory(output.getParent());
+    }
+
+    @Test
+    void skipsADependencyThatIsNotAZipArchiveWithOneWarning() throws IOException {
+        Path pom = fixtures.resolve("file-rule/dep-lib-2.0.1.pom");
+        Files.createDirectories(pom.getParent());
+        Files.writeString(pom, "<project/>\n");
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(spec(output)
+                .addDependency(Dependency.of(pom, "com.example:dep-lib:pom:2.0.1"))
+                .build(), BuildLogger.noOp());
+
+        assertEquals(3, result.dependencyCount(), "the three JAR dependencies are nested and the POM is not");
+        List<String> mentions = result.warnings().stream()
+                .filter(warning -> warning.contains(pom.toString()))
+                .toList();
+        assertEquals(1, mentions.size(), () -> "the POM must be reported exactly once: " + result.warnings());
+        assertTrue(mentions.get(0).contains("is not a JAR file and was skipped"), mentions::toString);
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            assertEquals(4, reader.index().jarCount());
+        }
+    }
+
+    @Test
+    void nestsAnEmptyZipArchive() throws IOException {
+        // An end of central directory record and nothing else, which is how an archive with no entries starts.
+        byte[] endOfCentralDirectory = new byte[22];
+        endOfCentralDirectory[0] = 'P';
+        endOfCentralDirectory[1] = 'K';
+        endOfCentralDirectory[2] = 5;
+        endOfCentralDirectory[3] = 6;
+        Path empty = fixtures.resolve("file-rule/empty.jar");
+        Files.createDirectories(empty.getParent());
+        Files.write(empty, endOfCentralDirectory);
+
+        for (Compression compression : Compression.values()) {
+            Path output = output();
+            RunnerJarResult result = RunnerJarBuilder.build(spec(output)
+                    .dependencies(List.of(Dependency.of(empty)))
+                    .compression(compression)
+                    .build(), BuildLogger.noOp());
+
+            assertEquals(1, result.dependencyCount(), compression::toString);
+            assertTrue(result.warnings().isEmpty(), () -> compression + ": " + result.warnings());
+            try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+                assertEquals("MICRONAUT-INF/lib/empty.jar", reader.index().jarName(1), compression::toString);
+                assertEquals(0, reader.index().jarEntryCount(1), compression::toString);
+            }
+        }
+    }
+
+    @Test
+    void aTruncatedZipArchiveCannotBePackaged() throws IOException {
+        byte[] whole = Files.readAllBytes(plainDependency);
+        assertEquals("PK\u0003\u0004", new String(whole, 0, 4, StandardCharsets.ISO_8859_1));
+        Path truncated = fixtures.resolve("file-rule/truncated.jar");
+        Files.createDirectories(truncated.getParent());
+        Files.write(truncated, Arrays.copyOf(whole, whole.length / 2));
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output())
+                .dependencies(List.of(Dependency.of(truncated)))
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains("The dependency " + truncated + " cannot be packaged"),
+                failure.getMessage());
+    }
+
+    @Test
+    void aMissingDependencyStillDoesNotExist() {
+        Path missing = fixtures.resolve("file-rule/missing.jar");
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output())
+                .addDependency(Dependency.of(missing))
+                .build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains(missing + " does not exist"), failure.getMessage());
+    }
+
+    @Test
+    void logsTheEffectiveOptionsOnceAndNoSummary() throws IOException {
+        List<String> info = new ArrayList<>();
+        BuildLogger logger = new BuildLogger() {
+            @Override
+            public void info(String message) {
+                info.add(message);
+            }
+
+            @Override
+            public void warn(String message) {
+            }
+        };
+
+        RunnerJarResult result = RunnerJarBuilder.build(spec(output()).option("compression", "PRESERVE").build(),
+                logger);
+
+        List<String> options = info.stream().filter(line -> line.startsWith("Runner options: ")).toList();
+        assertEquals(1, options.size(), () -> "the options are logged once: " + info);
+        assertTrue(options.get(0).startsWith("Runner options: compression=PRESERVE, entryStub=true, "),
+                options::toString);
+        assertEquals(Arrays.stream(RunnerJarOption.values()).map(option -> option.optionName() + "="
+                        + result.effectiveOptions().get(option.optionName())).collect(Collectors.joining(", ",
+                        "Runner options: ", "")), options.get(0), "every option, in table order");
+        assertEquals("PRESERVE", result.effectiveOptions().get("compression"));
+        assertTrue(info.stream().noneMatch(line -> line.contains("Runner jar written to")),
+                () -> "the plugins log the summary, not the builder: " + info);
     }
 
     @Test
@@ -381,7 +510,7 @@ class RunnerJarBuilderTest {
         }
         List<Dependency> dependencies = Stream.of(classPath, plainDependency, multiReleaseDependency,
                         signedDependency, noManifest, duplicate, sameFileName, large)
-                .map(path -> new Dependency(path, null))
+                .map(Dependency::of)
                 .toList();
 
         for (Compression compression : Compression.values()) {
@@ -424,7 +553,7 @@ class RunnerJarBuilderTest {
 
         IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
                 .dependencies(Stream.of(plainDependency, corruptA, multiReleaseDependency, corruptB)
-                        .map(path -> new Dependency(path, null))
+                        .map(Dependency::of)
                         .toList())
                 .compression(Compression.STORED)
                 .build(), BuildLogger.noOp(), 4));
@@ -522,7 +651,7 @@ class RunnerJarBuilderTest {
         System.setProperty(RunnerJarBuilder.VERIFY_ALL_PROPERTY, "true");
         try {
             assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
-                    .dependencies(List.of(new Dependency(dependency, null)))
+                    .dependencies(List.of(Dependency.of(dependency)))
                     .compression(Compression.PRESERVE)
                     .build(), BuildLogger.noOp()));
         } finally {
@@ -638,7 +767,7 @@ class RunnerJarBuilderTest {
         Files.write(output, previous);
 
         IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
-                .dependencies(List.of(new Dependency(dependency, null)))
+                .dependencies(List.of(Dependency.of(dependency)))
                 .build(), BuildLogger.noOp()));
 
         assertTrue(failure.getMessage().contains(dependency.toString()), failure.getMessage());
@@ -693,7 +822,7 @@ class RunnerJarBuilderTest {
         Path alias = createSymbolicLink(fixtures.resolve("dependency-alias"), source);
 
         IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(alias.resolve("dep.jar"))
-                .dependencies(List.of(new Dependency(dependency, null)))
+                .dependencies(List.of(Dependency.of(dependency)))
                 .build(), BuildLogger.noOp()));
 
         assertTrue(failure.getMessage().contains("also a dependency"), failure.getMessage());
@@ -709,7 +838,7 @@ class RunnerJarBuilderTest {
         Path output = createHardLink(fixtures.resolve("hard-link-output.jar"), dependency);
 
         IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
-                .dependencies(List.of(new Dependency(dependency, null)))
+                .dependencies(List.of(Dependency.of(dependency)))
                 .build(), BuildLogger.noOp()));
 
         assertTrue(failure.getMessage().contains("also a dependency"), failure.getMessage());
@@ -727,7 +856,7 @@ class RunnerJarBuilderTest {
         byte[] original = Files.readAllBytes(dependency);
 
         IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
-                .dependencies(List.of(new Dependency(dependency, null)))
+                .dependencies(List.of(Dependency.of(dependency)))
                 .build(), BuildLogger.noOp()));
 
         assertTrue(failure.getMessage().contains("also a dependency"), failure.getMessage());
@@ -974,7 +1103,7 @@ class RunnerJarBuilderTest {
         Path output = output();
         RunnerJarResult result = RunnerJarBuilder.build(spec(output)
                 .applicationOutput(List.of(applicationClasses))
-                .dependencies(List.of(new Dependency(first, null), new Dependency(second, null)))
+                .dependencies(List.of(Dependency.of(first), Dependency.of(second)))
                 .build(), BuildLogger.noOp());
 
         assertEquals(2, result.mergedServiceEntryCount());
@@ -1000,7 +1129,7 @@ class RunnerJarBuilderTest {
         Path output = output();
         RunnerJarBuilder.build(spec(output)
                 .applicationOutput(List.of(applicationClasses, resources))
-                .dependencies(List.of(new Dependency(dependency, null)))
+                .dependencies(List.of(Dependency.of(dependency)))
                 .build(), BuildLogger.noOp());
 
         try (ZipReader archive = ZipReader.open(output)) {
@@ -1037,8 +1166,8 @@ class RunnerJarBuilderTest {
             RunnerJarResult result = RunnerJarBuilder.build(spec(output)
                     .applicationOutput(List.of(applicationClasses))
                     .dependencies(List.of(
-                            new Dependency(emptyDependency, null),
-                            new Dependency(secondDependency, null)))
+                            Dependency.of(emptyDependency),
+                            Dependency.of(secondDependency)))
                     .compression(compression)
                     .build(), BuildLogger.noOp());
 
@@ -1050,8 +1179,8 @@ class RunnerJarBuilderTest {
             RunnerJarResult reversedResult = RunnerJarBuilder.build(spec(reversed)
                     .applicationOutput(List.of(applicationClasses))
                     .dependencies(List.of(
-                            new Dependency(secondDependency, null),
-                            new Dependency(emptyDependency, null)))
+                            Dependency.of(secondDependency),
+                            Dependency.of(emptyDependency)))
                     .compression(compression)
                     .build(), BuildLogger.noOp());
 
@@ -1063,8 +1192,8 @@ class RunnerJarBuilderTest {
             RunnerJarResult equalResult = RunnerJarBuilder.build(spec(equal)
                     .applicationOutput(List.of(applicationClasses))
                     .dependencies(List.of(
-                            new Dependency(emptyDependency, null),
-                            new Dependency(emptyDependency, null)))
+                            Dependency.of(emptyDependency),
+                            Dependency.of(emptyDependency)))
                     .compression(compression)
                     .build(), BuildLogger.noOp());
 
@@ -1093,7 +1222,7 @@ class RunnerJarBuilderTest {
             Path different = output();
             RunnerJarResult differentResult = RunnerJarBuilder.build(spec(different)
                     .applicationOutput(List.of(applicationClasses, emptyApplication))
-                    .dependencies(List.of(new Dependency(dependency, null)))
+                    .dependencies(List.of(Dependency.of(dependency)))
                     .compression(compression)
                     .build(), BuildLogger.noOp());
             assertMergedContent(different, name, empty);
@@ -1103,7 +1232,7 @@ class RunnerJarBuilderTest {
             Path equal = output();
             RunnerJarResult equalResult = RunnerJarBuilder.build(spec(equal)
                     .applicationOutput(List.of(applicationClasses, nonEmptyApplication))
-                    .dependencies(List.of(new Dependency(dependency, null)))
+                    .dependencies(List.of(Dependency.of(dependency)))
                     .compression(compression)
                     .build(), BuildLogger.noOp());
             assertMergedContent(equal, name, second);
@@ -1127,7 +1256,7 @@ class RunnerJarBuilderTest {
             Path output = output();
             RunnerJarResult result = RunnerJarBuilder.build(spec(output)
                     .applicationOutput(List.of(applicationClasses, application))
-                    .dependencies(List.of(new Dependency(first, null), new Dependency(second, null)))
+                    .dependencies(List.of(Dependency.of(first), Dependency.of(second)))
                     .compression(compression)
                     .build(), BuildLogger.noOp());
 
@@ -1171,7 +1300,7 @@ class RunnerJarBuilderTest {
         for (Compression compression : Compression.values()) {
             IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output())
                     .applicationOutput(List.of(applicationClasses))
-                    .dependencies(List.of(new Dependency(dependency, null)))
+                    .dependencies(List.of(Dependency.of(dependency)))
                     .compression(compression)
                     .build(), BuildLogger.noOp()));
 
@@ -1225,7 +1354,7 @@ class RunnerJarBuilderTest {
                 Path fromDependency = output();
                 RunnerJarBuilder.build(spec(fromDependency)
                         .applicationOutput(List.of(applicationClasses))
-                        .dependencies(List.of(new Dependency(dependency, null)))
+                        .dependencies(List.of(Dependency.of(dependency)))
                         .compression(compression)
                         .build(), BuildLogger.noOp());
                 assertMergedContent(fromDependency, name, content);
@@ -1247,7 +1376,7 @@ class RunnerJarBuilderTest {
 
         Path output = output();
         RunnerJarBuilder.build(spec(output)
-                .dependencies(List.of(new Dependency(dependency, null)))
+                .dependencies(List.of(Dependency.of(dependency)))
                 .build(), BuildLogger.noOp());
 
         try (RunnerJarReader reader = RunnerJarReader.open(output)) {
@@ -1282,7 +1411,7 @@ class RunnerJarBuilderTest {
 
         Path output = output();
         RunnerJarBuilder.build(spec(output)
-                .dependencies(List.of(new Dependency(dependency, null)))
+                .dependencies(List.of(Dependency.of(dependency)))
                 .build(), BuildLogger.noOp());
 
         try (RunnerJarReader reader = RunnerJarReader.open(output)) {
@@ -1339,7 +1468,7 @@ class RunnerJarBuilderTest {
         }
         try {
             IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
-                    .dependencies(List.of(new Dependency(dependency, null)))
+                    .dependencies(List.of(Dependency.of(dependency)))
                     .compression(Compression.PRESERVE)
                     .build(), BuildLogger.noOp()));
             assertArrayEquals(previous, Files.readAllBytes(output),
@@ -1564,9 +1693,9 @@ class RunnerJarBuilderTest {
                 .mainClass("com.example.Application")
                 .applicationOutput(List.of(applicationClasses, applicationResources))
                 .dependencies(List.of(
-                        new Dependency(plainDependency, "com.example:dep-lib:2.0.1"),
-                        new Dependency(multiReleaseDependency, "com.example:mr-lib:1.0"),
-                        new Dependency(signedDependency, null)))
+                        Dependency.of(plainDependency, "com.example:dep-lib:2.0.1"),
+                        Dependency.of(multiReleaseDependency, "com.example:mr-lib:1.0"),
+                        Dependency.of(signedDependency)))
                 .output(output);
     }
 

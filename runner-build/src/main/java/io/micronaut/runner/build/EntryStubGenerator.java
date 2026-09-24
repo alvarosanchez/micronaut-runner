@@ -72,7 +72,7 @@ import java.util.function.Consumer;
  *
  * @since 1.0
  */
-public final class EntryStubGenerator {
+final class EntryStubGenerator {
 
     /** Binary name of the generated class, which the index header records for the launcher. */
     public static final String STUB_CLASS = IndexFormat.GENERATED_PACKAGE + ".AppEntry";

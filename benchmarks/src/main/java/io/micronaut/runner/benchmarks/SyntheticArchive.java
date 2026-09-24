@@ -468,7 +468,7 @@ final class SyntheticArchive {
         RunnerJarSpec spec = RunnerJarSpec.builder()
                 .mainClass(MAIN_CLASS)
                 .applicationOutput(List.of(applicationClasses))
-                .dependencies(libraryJars.stream().map(Dependency::new).toList())
+                .dependencies(libraryJars.stream().map(Dependency::of).toList())
                 .output(output)
                 .compression(compression)
                 .build();

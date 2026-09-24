@@ -41,6 +41,10 @@ configurations.named('functionalTestRuntimeOnly') { extendsFrom(configurations.t
 gradlePlugin.testSourceSets(functionalTest)
 
 dependencies {
+    // Plain JUnit tests of the plugin's own classes (ProjectBuilder) run in the test JVM, which needs the
+    // Gradle API at runtime as well; java-gradle-plugin only puts it on the compile classpath.
+    testImplementation gradleApi()
+
     functionalTestImplementation gradleTestKit()
     functionalTestImplementation platform(libs.junit.bom)
     functionalTestImplementation libs.junit.jupiter

@@ -64,7 +64,7 @@ import java.util.zip.CRC32;
  *
  * @since 1.0
  */
-public final class ZipWriter implements Closeable {
+final class ZipWriter implements Closeable {
 
     /**
      * The timestamp given to every entry unless the caller supplies another one: 1980-02-01T00:00:00Z.
