@@ -557,8 +557,9 @@ class IndexTest {
         }
     }
 
-    @Test
-    void validatesNestedJarsLazily() throws IOException {
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void validatesNestedJarsLazily(boolean mapped) throws IOException {
         byte[] payload = "nested".getBytes("UTF-8");
         TestIndexBuilder builder = new TestIndexBuilder();
         builder.addJar(IndexFormat.CLASSES_PREFIX);
@@ -575,7 +576,7 @@ class IndexTest {
 
         File file = newFile();
         archive.writeTo(file);
-        ArchiveSource source = openSource(file, true);
+        ArchiveSource source = openSource(file, mapped);
         Index index = Index.open(source);
         index.validateJar(0);
         index.validateJar(1);
@@ -588,7 +589,7 @@ class IndexTest {
         try (OutputStream out = new FileOutputStream(brokenFile)) {
             out.write(broken);
         }
-        Index brokenIndex = Index.open(openSource(brokenFile, true));
+        Index brokenIndex = Index.open(openSource(brokenFile, mapped));
         brokenIndex.validateJar(0);
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> brokenIndex.validateJar(1));

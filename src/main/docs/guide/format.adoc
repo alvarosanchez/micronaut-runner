@@ -81,17 +81,12 @@ manifest's main attributes attribute by attribute when a package is defined.
 === Detecting a stale archive
 
 The index stores the outer file's length, and every jar record stores the offset of the local file header
-that introduces it. The recorded length is compared with the length captured when the archive opens. The
-header is checked lazily on the JAR's first use, then a successful result is cached. A mismatch fails with a
-message telling you to rebuild. These checks diagnose some archives that were appended to, truncated or
-re-zipped between packaging and the relevant check, which would otherwise mean reading from wrong offsets.
-
-They are staleness diagnostics, not ongoing monitoring or an integrity boundary. A modification that
-preserves the length and header positions passes them, and a modification after a successful check is not
-checked again. CRC verification with `-Dmicronaut.runner.verify=true` covers complete entry contents as they
-are read, but does not authenticate the artifact or make concurrent mutation safe. The running archive must
-remain immutable for the JVM lifetime; see <<runtime,archive lifetime and deployment>> for supported
-replacement procedures.
+that introduces it. The length is checked when the archive opens and each header once, on the JAR's first
+use; a mismatch fails with a message telling you to rebuild. This detects an archive that was appended
+to, truncated or re-zipped after packaging, which would otherwise mean reading from wrong offsets. It is
+a staleness check, not an integrity check: a modification that preserves the length and the header
+positions passes it. Full CRC verification on every read is available with
+`-Dmicronaut.runner.verify=true`. See <<archiveLifetime,archive lifetime>>.
 
 [[serviceDiscovery]]
 == Micronaut service discovery
