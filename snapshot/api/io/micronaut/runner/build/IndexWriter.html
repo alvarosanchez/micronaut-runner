@@ -216,7 +216,8 @@ built, waiting only for the offsets.</div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#layout()" class="member-name-link">layout</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Lays the index out: expands the aliases and synthetic directories, chains the records that share a
-name, sizes and fills the hash table and builds the string table.</div>
+name, flags the names that also exist as a directory, sizes and fills the hash table and builds the
+string table.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="IndexWriter.html" title="class in io.micronaut.runner.build">IndexWriter</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#startClass(java.lang.String)" class="member-name-link">startClass</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
@@ -362,7 +363,8 @@ name, sizes and fills the hash table and builds the string table.</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="IndexWriter.Layout.html" title="class in io.micronaut.runner.build">IndexWriter.Layout</a></span>&nbsp;<span class="element-name">layout</span>()</div>
 <div class="block">Lays the index out: expands the aliases and synthetic directories, chains the records that share a
-name, sizes and fills the hash table and builds the string table.
+name, flags the names that also exist as a directory, sizes and fills the hash table and builds the
+string table.
 
 <p>Nothing here reads an offset, which is exactly the point: the resulting <a href="IndexWriter.Layout.html#length()"><code>IndexWriter.Layout.length()</code></a> is
 the final length of the index, so the caller can reserve room for it and only then work out where

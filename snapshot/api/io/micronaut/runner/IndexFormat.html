@@ -156,6 +156,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#ENTRY_FLAG_SYNTHETIC_DIR" tabindex="0">ENTRY_FLAG_SYNTHETIC_DIR</a></li>
 <li><a href="#ENTRY_FLAG_VERSIONED_ALIAS" tabindex="0">ENTRY_FLAG_VERSIONED_ALIAS</a></li>
 <li><a href="#ENTRY_FLAG_PHYSICAL" tabindex="0">ENTRY_FLAG_PHYSICAL</a></li>
+<li><a href="#ENTRY_FLAG_DIRECTORY_TWIN" tabindex="0">ENTRY_FLAG_DIRECTORY_TWIN</a></li>
 <li><a href="#METHOD_STORED" tabindex="0">METHOD_STORED</a></li>
 <li><a href="#METHOD_DEFLATED" tabindex="0">METHOD_DEFLATED</a></li>
 <li><a href="#LOCAL_HEADER_SIGNATURE" tabindex="0">LOCAL_HEADER_SIGNATURE</a></li>
@@ -290,7 +291,11 @@ whose <code>mrVersion</code> is <code>0</code> or at most the effective runtime 
 </div>
 <div class="col-first even-row-color"><code>static final int</code></div>
 <div class="col-second even-row-color"><code><a href="#E_FLAGS" class="member-name-link">E_FLAGS</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
+<div class="col-last even-row-color">
+<div class="block">A mask of <a href="#ENTRY_FLAG_DIRECTORY"><code>ENTRY_FLAG_DIRECTORY</code></a>, <a href="#ENTRY_FLAG_SYNTHETIC_DIR"><code>ENTRY_FLAG_SYNTHETIC_DIR</code></a>,
+<a href="#ENTRY_FLAG_VERSIONED_ALIAS"><code>ENTRY_FLAG_VERSIONED_ALIAS</code></a>, <a href="#ENTRY_FLAG_PHYSICAL"><code>ENTRY_FLAG_PHYSICAL</code></a> and
+<a href="#ENTRY_FLAG_DIRECTORY_TWIN"><code>ENTRY_FLAG_DIRECTORY_TWIN</code></a>.</div>
+</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
 <div class="col-second odd-row-color"><code><a href="#E_JAR_ID" class="member-name-link">E_JAR_ID</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
@@ -352,323 +357,330 @@ whose <code>mrVersion</code> is <code>0</code> or at most the effective runtime 
 <div class="block">The entry is a directory; its logical name ends with <code>'/'</code>.</div>
 </div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ENTRY_FLAG_PHYSICAL" class="member-name-link">ENTRY_FLAG_PHYSICAL</a></code></div>
+<div class="col-second even-row-color"><code><a href="#ENTRY_FLAG_DIRECTORY_TWIN" class="member-name-link">ENTRY_FLAG_DIRECTORY_TWIN</a></code></div>
 <div class="col-last even-row-color">
+<div class="block">Set on every record (physical or versioned alias) whose logical name does not end with '/' when the
+index also holds that name followed by '/' in any jar, as an explicit, versioned-alias or synthesised
+directory.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ENTRY_FLAG_PHYSICAL" class="member-name-link">ENTRY_FLAG_PHYSICAL</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">The record corresponds to an entry that physically exists in the source archive.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ENTRY_FLAG_SYNTHETIC_DIR" class="member-name-link">ENTRY_FLAG_SYNTHETIC_DIR</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ENTRY_FLAG_SYNTHETIC_DIR" class="member-name-link">ENTRY_FLAG_SYNTHETIC_DIR</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The directory has no entry of its own in the source archive and was synthesised by the packager.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ENTRY_FLAG_VERSIONED_ALIAS" class="member-name-link">ENTRY_FLAG_VERSIONED_ALIAS</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ENTRY_FLAG_VERSIONED_ALIAS" class="member-name-link">ENTRY_FLAG_VERSIONED_ALIAS</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">The record is a multi-release alias of another record in the same jar.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ENTRY_RECORD_SIZE" class="member-name-link">ENTRY_RECORD_SIZE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ENTRY_RECORD_SIZE" class="member-name-link">ENTRY_RECORD_SIZE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Size of one entry record, in bytes.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#FORMAT_VERSION" class="member-name-link">FORMAT_VERSION</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#FORMAT_VERSION" class="member-name-link">FORMAT_VERSION</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">The only format version this release reads or writes.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#GENERATED_PACKAGE" class="member-name-link">GENERATED_PACKAGE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="#GENERATED_PACKAGE" class="member-name-link">GENERATED_PACKAGE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Package into which the packager generates classes; it is part of the application layer.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_ENTRY_COUNT" class="member-name-link">H_ENTRY_COUNT</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_ENTRY_STUB_CLASS" class="member-name-link">H_ENTRY_STUB_CLASS</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_ENTRY_COUNT" class="member-name-link">H_ENTRY_COUNT</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_ENTRY_TABLE_OFFSET" class="member-name-link">H_ENTRY_TABLE_OFFSET</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_ENTRY_STUB_CLASS" class="member-name-link">H_ENTRY_STUB_CLASS</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_FLAGS" class="member-name-link">H_FLAGS</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_ENTRY_TABLE_OFFSET" class="member-name-link">H_ENTRY_TABLE_OFFSET</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_FORMAT_VERSION" class="member-name-link">H_FORMAT_VERSION</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_FLAGS" class="member-name-link">H_FLAGS</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_HASH_SLOTS" class="member-name-link">H_HASH_SLOTS</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_FORMAT_VERSION" class="member-name-link">H_FORMAT_VERSION</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_HASH_TABLE_OFFSET" class="member-name-link">H_HASH_TABLE_OFFSET</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_HASH_SLOTS" class="member-name-link">H_HASH_SLOTS</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_JAR_COUNT" class="member-name-link">H_JAR_COUNT</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_HASH_TABLE_OFFSET" class="member-name-link">H_HASH_TABLE_OFFSET</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_JAR_TABLE_OFFSET" class="member-name-link">H_JAR_TABLE_OFFSET</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_JAR_COUNT" class="member-name-link">H_JAR_COUNT</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_LAUNCHER_VERSION" class="member-name-link">H_LAUNCHER_VERSION</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_JAR_TABLE_OFFSET" class="member-name-link">H_JAR_TABLE_OFFSET</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_MAGIC" class="member-name-link">H_MAGIC</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_LAUNCHER_VERSION" class="member-name-link">H_LAUNCHER_VERSION</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_MAX_PROBE" class="member-name-link">H_MAX_PROBE</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_MAGIC" class="member-name-link">H_MAGIC</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_OUTER_FILE_LENGTH" class="member-name-link">H_OUTER_FILE_LENGTH</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_MAX_PROBE" class="member-name-link">H_MAX_PROBE</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_PACKAGE_COUNT" class="member-name-link">H_PACKAGE_COUNT</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_OUTER_FILE_LENGTH" class="member-name-link">H_OUTER_FILE_LENGTH</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_PACKAGE_TABLE_OFFSET" class="member-name-link">H_PACKAGE_TABLE_OFFSET</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_PACKAGE_COUNT" class="member-name-link">H_PACKAGE_COUNT</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_RESERVED" class="member-name-link">H_RESERVED</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_PACKAGE_TABLE_OFFSET" class="member-name-link">H_PACKAGE_TABLE_OFFSET</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_START_CLASS" class="member-name-link">H_START_CLASS</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_RESERVED" class="member-name-link">H_RESERVED</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_STRING_TABLE_LENGTH" class="member-name-link">H_STRING_TABLE_LENGTH</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_START_CLASS" class="member-name-link">H_START_CLASS</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_STRING_TABLE_OFFSET" class="member-name-link">H_STRING_TABLE_OFFSET</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_STRING_TABLE_LENGTH" class="member-name-link">H_STRING_TABLE_LENGTH</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#HEADER_FLAG_APP_MULTI_RELEASE" class="member-name-link">HEADER_FLAG_APP_MULTI_RELEASE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-second odd-row-color"><code><a href="#H_STRING_TABLE_OFFSET" class="member-name-link">H_STRING_TABLE_OFFSET</a></code></div>
+<div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#HEADER_FLAG_APP_MULTI_RELEASE" class="member-name-link">HEADER_FLAG_APP_MULTI_RELEASE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Header flag: the application layer is itself multi-release.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#HEADER_FLAG_NESTED_STORED" class="member-name-link">HEADER_FLAG_NESTED_STORED</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#HEADER_FLAG_NESTED_STORED" class="member-name-link">HEADER_FLAG_NESTED_STORED</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Header flag: the nested jars were re-packed with all entries STORED.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#HEADER_SIZE" class="member-name-link">HEADER_SIZE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#HEADER_SIZE" class="member-name-link">HEADER_SIZE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Size of the fixed header, in bytes.</div>
 </div>
-<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#INDEX_ENTRY_NAME" class="member-name-link">INDEX_ENTRY_NAME</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#INDEX_ENTRY_NAME" class="member-name-link">INDEX_ENTRY_NAME</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Outer archive entry holding the index.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#J_COORDINATES" class="member-name-link">J_COORDINATES</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#J_COORDINATES" class="member-name-link">J_COORDINATES</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Maven coordinates such as <code>io.netty:netty-common:4.2.1</code>, or 0 when unknown.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#J_DATA_LENGTH" class="member-name-link">J_DATA_LENGTH</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#J_DATA_LENGTH" class="member-name-link">J_DATA_LENGTH</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Length of the nested jar; the outer file length for jar 0.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#J_DATA_OFFSET" class="member-name-link">J_DATA_OFFSET</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#J_DATA_OFFSET" class="member-name-link">J_DATA_OFFSET</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Absolute offset of the nested jar's first byte in the outer file; <code>0</code> for jar 0.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#J_ENTRY_COUNT" class="member-name-link">J_ENTRY_COUNT</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#J_FIRST_ENTRY" class="member-name-link">J_FIRST_ENTRY</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#J_ENTRY_COUNT" class="member-name-link">J_ENTRY_COUNT</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#J_FIRST_PACKAGE" class="member-name-link">J_FIRST_PACKAGE</a></code></div>
+<div class="col-second even-row-color"><code><a href="#J_FIRST_ENTRY" class="member-name-link">J_FIRST_ENTRY</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#J_FLAGS" class="member-name-link">J_FLAGS</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#J_FIRST_PACKAGE" class="member-name-link">J_FIRST_PACKAGE</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#J_IMPL_TITLE" class="member-name-link">J_IMPL_TITLE</a></code></div>
+<div class="col-second even-row-color"><code><a href="#J_FLAGS" class="member-name-link">J_FLAGS</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#J_IMPL_VENDOR" class="member-name-link">J_IMPL_VENDOR</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#J_IMPL_TITLE" class="member-name-link">J_IMPL_TITLE</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#J_IMPL_VERSION" class="member-name-link">J_IMPL_VERSION</a></code></div>
+<div class="col-second even-row-color"><code><a href="#J_IMPL_VENDOR" class="member-name-link">J_IMPL_VENDOR</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#J_LOCAL_HEADER_OFFSET" class="member-name-link">J_LOCAL_HEADER_OFFSET</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-second odd-row-color"><code><a href="#J_IMPL_VERSION" class="member-name-link">J_IMPL_VERSION</a></code></div>
+<div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#J_LOCAL_HEADER_OFFSET" class="member-name-link">J_LOCAL_HEADER_OFFSET</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Offset of the outer local file header introducing this nested jar; unused for jar 0.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#J_NAME" class="member-name-link">J_NAME</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#J_NAME" class="member-name-link">J_NAME</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block"><code>MICRONAUT-INF/lib/&lt;file&gt;.jar</code>, or <code>MICRONAUT-INF/classes/</code> for jar 0.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#J_PACKAGE_COUNT" class="member-name-link">J_PACKAGE_COUNT</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#J_RESERVED_1" class="member-name-link">J_RESERVED_1</a></code></div>
+<div class="col-second even-row-color"><code><a href="#J_PACKAGE_COUNT" class="member-name-link">J_PACKAGE_COUNT</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#J_RESERVED_2" class="member-name-link">J_RESERVED_2</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#J_RESERVED_1" class="member-name-link">J_RESERVED_1</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#J_SPEC_TITLE" class="member-name-link">J_SPEC_TITLE</a></code></div>
+<div class="col-second even-row-color"><code><a href="#J_RESERVED_2" class="member-name-link">J_RESERVED_2</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#J_SPEC_VENDOR" class="member-name-link">J_SPEC_VENDOR</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#J_SPEC_TITLE" class="member-name-link">J_SPEC_TITLE</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#J_SPEC_VERSION" class="member-name-link">J_SPEC_VERSION</a></code></div>
+<div class="col-second even-row-color"><code><a href="#J_SPEC_VENDOR" class="member-name-link">J_SPEC_VENDOR</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#JAR_FLAG_HAS_MANIFEST" class="member-name-link">JAR_FLAG_HAS_MANIFEST</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-second odd-row-color"><code><a href="#J_SPEC_VERSION" class="member-name-link">J_SPEC_VERSION</a></code></div>
+<div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#JAR_FLAG_HAS_MANIFEST" class="member-name-link">JAR_FLAG_HAS_MANIFEST</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The jar has a <code>META-INF/MANIFEST.MF</code> entry.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#JAR_FLAG_IS_OUTER" class="member-name-link">JAR_FLAG_IS_OUTER</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#JAR_FLAG_IS_OUTER" class="member-name-link">JAR_FLAG_IS_OUTER</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">This record is the application layer (jar 0).</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#JAR_FLAG_MULTI_RELEASE" class="member-name-link">JAR_FLAG_MULTI_RELEASE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#JAR_FLAG_MULTI_RELEASE" class="member-name-link">JAR_FLAG_MULTI_RELEASE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The nested jar declares <code>Multi-Release: true</code>.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#JAR_FLAG_SEALED_BY_DEFAULT" class="member-name-link">JAR_FLAG_SEALED_BY_DEFAULT</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#JAR_FLAG_SEALED_BY_DEFAULT" class="member-name-link">JAR_FLAG_SEALED_BY_DEFAULT</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">The manifest main attributes declare <code>Sealed: true</code>.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#JAR_FLAG_SIGNED_ORIGINAL" class="member-name-link">JAR_FLAG_SIGNED_ORIGINAL</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#JAR_FLAG_SIGNED_ORIGINAL" class="member-name-link">JAR_FLAG_SIGNED_ORIGINAL</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The source jar carried signature files, which the packager removed.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#JAR_RECORD_SIZE" class="member-name-link">JAR_RECORD_SIZE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#JAR_RECORD_SIZE" class="member-name-link">JAR_RECORD_SIZE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Size of one jar record, in bytes.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#LAUNCHER_CLASS" class="member-name-link">LAUNCHER_CLASS</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="#LAUNCHER_CLASS" class="member-name-link">LAUNCHER_CLASS</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The <code>Main-Class</code> of every runner jar.</div>
 </div>
-<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#LIB_PREFIX" class="member-name-link">LIB_PREFIX</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#LIB_PREFIX" class="member-name-link">LIB_PREFIX</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Outer archive prefix under which the dependencies are stored as intact nested jars.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#LOCAL_HEADER_SIGNATURE" class="member-name-link">LOCAL_HEADER_SIGNATURE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#LOCAL_HEADER_SIGNATURE" class="member-name-link">LOCAL_HEADER_SIGNATURE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Local file header signature, <code>PK\3\4</code>.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#MAGIC" class="member-name-link">MAGIC</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#MAGIC" class="member-name-link">MAGIC</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Magic number: the ASCII bytes <code>M N R I</code>, read as a little-endian <code>u32</code>.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#MAX_COMMENT_SIZE" class="member-name-link">MAX_COMMENT_SIZE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#MAX_COMMENT_SIZE" class="member-name-link">MAX_COMMENT_SIZE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Largest ZIP archive comment, which bounds how far back the launcher scans for the record.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#MAX_PROBE_LIMIT" class="member-name-link">MAX_PROBE_LIMIT</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#MAX_PROBE_LIMIT" class="member-name-link">MAX_PROBE_LIMIT</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Largest probe sequence a reader accepts before declaring the hash table corrupt.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#METHOD_DEFLATED" class="member-name-link">METHOD_DEFLATED</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#METHOD_DEFLATED" class="member-name-link">METHOD_DEFLATED</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">ZIP compression method: deflated.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#METHOD_STORED" class="member-name-link">METHOD_STORED</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#METHOD_STORED" class="member-name-link">METHOD_STORED</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">ZIP compression method: stored, that is, uncompressed.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#MICRONAUT_SERVICES_PREFIX" class="member-name-link">MICRONAUT_SERVICES_PREFIX</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="#MICRONAUT_SERVICES_PREFIX" class="member-name-link">MICRONAUT_SERVICES_PREFIX</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Micronaut's service metadata directory, merged into the outer archive root by the packager.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#NO_INDEX" class="member-name-link">NO_INDEX</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#NO_INDEX" class="member-name-link">NO_INDEX</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Sentinel for "no such record".</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#P_FLAGS" class="member-name-link">P_FLAGS</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#P_IMPL_TITLE" class="member-name-link">P_IMPL_TITLE</a></code></div>
+<div class="col-second even-row-color"><code><a href="#P_FLAGS" class="member-name-link">P_FLAGS</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#P_IMPL_VENDOR" class="member-name-link">P_IMPL_VENDOR</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#P_IMPL_TITLE" class="member-name-link">P_IMPL_TITLE</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#P_IMPL_VERSION" class="member-name-link">P_IMPL_VERSION</a></code></div>
+<div class="col-second even-row-color"><code><a href="#P_IMPL_VENDOR" class="member-name-link">P_IMPL_VENDOR</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#P_NAME" class="member-name-link">P_NAME</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-second odd-row-color"><code><a href="#P_IMPL_VERSION" class="member-name-link">P_IMPL_VERSION</a></code></div>
+<div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#P_NAME" class="member-name-link">P_NAME</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The package name in dotted form, for example <code>org.example.api</code>.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#P_RESERVED" class="member-name-link">P_RESERVED</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#P_SPEC_TITLE" class="member-name-link">P_SPEC_TITLE</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#P_RESERVED" class="member-name-link">P_RESERVED</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#P_SPEC_VENDOR" class="member-name-link">P_SPEC_VENDOR</a></code></div>
+<div class="col-second even-row-color"><code><a href="#P_SPEC_TITLE" class="member-name-link">P_SPEC_TITLE</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#P_SPEC_VERSION" class="member-name-link">P_SPEC_VERSION</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#P_SPEC_VENDOR" class="member-name-link">P_SPEC_VENDOR</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#PACKAGE_FLAG_SEALED_SPECIFIED" class="member-name-link">PACKAGE_FLAG_SEALED_SPECIFIED</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-second even-row-color"><code><a href="#P_SPEC_VERSION" class="member-name-link">P_SPEC_VERSION</a></code></div>
+<div class="col-last even-row-color">&nbsp;</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#PACKAGE_FLAG_SEALED_SPECIFIED" class="member-name-link">PACKAGE_FLAG_SEALED_SPECIFIED</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">The section carries a <code>Sealed</code> attribute; without this flag the jar default applies.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#PACKAGE_FLAG_SEALED_VALUE" class="member-name-link">PACKAGE_FLAG_SEALED_VALUE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#PACKAGE_FLAG_SEALED_VALUE" class="member-name-link">PACKAGE_FLAG_SEALED_VALUE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The value of that <code>Sealed</code> attribute.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#PACKAGE_RECORD_SIZE" class="member-name-link">PACKAGE_RECORD_SIZE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#PACKAGE_RECORD_SIZE" class="member-name-link">PACKAGE_RECORD_SIZE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Size of one package record, in bytes.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">ZIP64 end of central directory locator signature, <code>PK\6\7</code>.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">ZIP64 end of central directory record signature, <code>PK\6\6</code>.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ZIP64_EXTRA_FIELD_ID" class="member-name-link">ZIP64_EXTRA_FIELD_ID</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ZIP64_EXTRA_FIELD_ID" class="member-name-link">ZIP64_EXTRA_FIELD_ID</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Header id of the ZIP64 extended information extra field.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ZIP64_LOCATOR_SIZE" class="member-name-link">ZIP64_LOCATOR_SIZE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ZIP64_LOCATOR_SIZE" class="member-name-link">ZIP64_LOCATOR_SIZE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Size of a ZIP64 end of central directory locator.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final long</code></div>
-<div class="col-second odd-row-color"><code><a href="#ZIP64_MARKER" class="member-name-link">ZIP64_MARKER</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final long</code></div>
+<div class="col-second even-row-color"><code><a href="#ZIP64_MARKER" class="member-name-link">ZIP64_MARKER</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Value a 32-bit ZIP field carries when the real value lives in a ZIP64 extra field.</div>
 </div>
 </div>
@@ -2118,6 +2130,9 @@ whose <code>mrVersion</code> is <code>0</code> or at most the effective runtime 
 <h3>E_FLAGS</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">E_FLAGS</span></div>
+<div class="block">A mask of <a href="#ENTRY_FLAG_DIRECTORY"><code>ENTRY_FLAG_DIRECTORY</code></a>, <a href="#ENTRY_FLAG_SYNTHETIC_DIR"><code>ENTRY_FLAG_SYNTHETIC_DIR</code></a>,
+<a href="#ENTRY_FLAG_VERSIONED_ALIAS"><code>ENTRY_FLAG_VERSIONED_ALIAS</code></a>, <a href="#ENTRY_FLAG_PHYSICAL"><code>ENTRY_FLAG_PHYSICAL</code></a> and
+<a href="#ENTRY_FLAG_DIRECTORY_TWIN"><code>ENTRY_FLAG_DIRECTORY_TWIN</code></a>.</div>
 <dl class="notes">
 <dt>See Also:</dt>
 <dd>
@@ -2226,6 +2241,26 @@ for a synthetic directory.</div>
 <dd>
 <ul class="tag-list">
 <li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.ENTRY_FLAG_PHYSICAL">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="ENTRY_FLAG_DIRECTORY_TWIN">
+<h3>ENTRY_FLAG_DIRECTORY_TWIN</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">ENTRY_FLAG_DIRECTORY_TWIN</span></div>
+<div class="block">Set on every record (physical or versioned alias) whose logical name does not end with '/' when the
+index also holds that name followed by '/' in any jar, as an explicit, versioned-alias or synthesised
+directory. A loader considers the directory spelling of a slashless name only when the exact lookup
+misses or the record it resolved carries this flag.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>

@@ -138,11 +138,19 @@ makes the JDK load <code>&lt;package&gt;.jar.Handler</code> by name; <a href="#r
 factory, because by the time the launcher runs the JDK has usually resolved and cached its own jar
 handler already.</p>
 
-<p>None of that is load bearing. <a href="#urlFor(int,java.lang.String)"><code>urlFor(int, String)</code></a> and <a href="#codeSourceUrlFor(int)"><code>codeSourceUrlFor(int)</code></a> build their URLs with
-<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html#of(java.net.URI,java.net.URLStreamHandler)" title="class or interface in java.net" class="external-link"><code>URL.of(URI, java.net.URLStreamHandler)</code></a> and an explicit handler instance, so the URLs the class
-loader returns work whether or not the property took effect. The property only matters for a URL that is
-re-parsed from its string form by somebody else, which is why <a href="#register(java.io.File,io.micronaut.runner.Index,io.micronaut.runner.ArchiveSource)"><code>register(File, Index, ArchiveSource)</code></a> verifies it and prints
-one warning when it did not take, rather than failing the launch.</p></div>
+<p>None of that is load bearing. <a href="#urlFor(int,java.lang.String)"><code>urlFor(int, String)</code></a> and <a href="#codeSourceUrlFor(int)"><code>codeSourceUrlFor(int)</code></a> build their URLs from the
+encoders' output with an explicit handler instance, so the URLs the class loader returns work whether or
+not the property took effect. The property only matters for a URL that is re-parsed from its string form
+by somebody else, which is why <a href="#register(java.io.File,io.micronaut.runner.Index,io.micronaut.runner.ArchiveSource)"><code>register(File, Index, ArchiveSource)</code></a> verifies it and prints one warning when it did not take,
+rather than failing the launch.</p>
+
+<p>Each of those URLs is built with a single parse, the handler's own, and no <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URI.html" title="class or interface in java.net" class="external-link"><code>URI</code></a> in front of it:
+that parse is where <code>getResources</code> spends its time, once per contributing jar. Nothing is lost by
+skipping the URI, because every spec is a valid URI by construction: after <code>jar:</code>, the encoders
+emit only unreserved ASCII, <code>'/'</code>, <code>':'</code> (in the archive path only) and a <code>%XX</code> escape
+per UTF-8 byte of anything else, and the jar and entry parts are joined by <a href="#SEPARATOR">"!/"</a>.
+<code>HandlerTest</code> checks that guarantee once, together with the fields of every URL shape against its
+re-parsed string form, instead of every call paying for it.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
