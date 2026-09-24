@@ -448,10 +448,11 @@ final class Reports {
         out.append("- **JVM process**: fresh for every sample\n");
         out.append("- **OS page cache**: uncontrolled; discarded warm-ups do not establish a controlled")
                 .append(" warm-cache or cold-filesystem-cache state\n");
-        out.append("- **Application cache**: per variant. `runner-stored-cds` uses verified custom-loader")
-                .append(" CDS; `shadow-aot` and `runner-extracted-aot` use verified built-in-loader JDK AOT")
-                .append(" caches. Their paired rows select no application archive. Default JDK class sharing")
-                .append(" may still be active\n");
+        out.append("- **Application cache**: per variant. `shadow-aot`, `runner-stored-aot` and")
+                .append(" `runner-extracted-aot` use verified JDK AOT caches launched with `-XX:AOTMode=on`;")
+                .append(" classes defined by Runner's loader are cached but not AOT-linked. `runner-stored-cds`")
+                .append(" uses a verified, strict dynamic CDS archive. Their paired rows select no application")
+                .append(" cache. Default JDK class sharing may still be active\n");
         out.append("- **Readiness**: first HTTP 200 from `").append(context.readinessPath())
                 .append("`, polled every 2 ms with one persistent client, timed on a single monotonic")
                 .append(" clock that starts immediately before the process is spawned\n");

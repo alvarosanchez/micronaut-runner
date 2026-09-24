@@ -15,13 +15,13 @@
  */
 package io.micronaut.runner.benchmarks;
 
+import io.micronaut.runner.build.Compression;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -29,16 +29,14 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
-import java.util.jar.Manifest;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class AotCacheTest {
 
@@ -71,27 +69,30 @@ class AotCacheTest {
     @Tag("benchmark-integration")
     void forkedLifecycleTrainsReusesAndProvesAnApplicationClassIsShared(@TempDir Path directory)
             throws Exception {
-        Variant plain = standardLoaderFixture(directory, "fixture.jar", "one");
+        Path classes = Path.of(CdsCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        Variant plain = SampleBuild.runnerJar(directory, "runner-stored", CdsCacheFixture.class.getName(),
+                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
         ByteArrayOutputStream console = new ByteArrayOutputStream();
         AotCache.Request request = request(directory, console);
 
-        Variant cached = AotCache.prepare(plain, "fixture-aot", request);
+        Variant cached = AotCache.prepare(plain, "runner-stored-aot", request);
         Path archive = cached.launchInputs().get(cached.launchInputs().size() - 1);
         long modified = Files.getLastModifiedTime(archive).toMillis();
-        Variant reused = AotCache.prepare(plain, "fixture-aot", request);
+        Variant reused = AotCache.prepare(plain, "runner-stored-aot", request);
 
         assertTrue(cached.available());
-        assertEquals(EntryMode.STANDARD_LOADER, cached.effectiveEntryMode());
+        assertEquals(EntryMode.STUB, cached.effectiveEntryMode());
         assertEquals(plain.deploymentSize(), cached.deploymentSize(),
                 "cache bytes must be reported separately from deployment bytes");
         assertEquals(archive, reused.launchInputs().get(reused.launchInputs().size() - 1));
         assertEquals(modified, Files.getLastModifiedTime(archive).toMillis());
         assertTrue(Files.size(archive) > 0);
+        assertTrue(cached.command().contains("-XX:AOTMode=on"), cached.command().toString());
         assertTrue(cached.command().stream().anyMatch(argument -> argument.startsWith("-XX:AOTCache=")));
         List<String> withoutCache = new ArrayList<>(cached.command());
-        withoutCache.removeIf(argument -> argument.startsWith("-XX:AOTCache="));
+        withoutCache.removeIf(argument -> argument.equals("-XX:AOTMode=on") || argument.startsWith("-XX:AOTCache="));
         assertEquals(plain.command(), withoutCache,
-                "paired launches must differ only by the selected AOT cache");
+                "paired launches must differ only by the strict AOT cache selection");
         assertEquals("aot", cached.cache().mode());
         assertEquals(Files.size(archive), cached.cache().bytes());
         assertTrue(cached.cache().trainingMillis() >= 0);
@@ -138,15 +139,46 @@ class AotCacheTest {
     }
 
     @Test
-    void customLoaderSourcesAreRejectedBeforeTraining(@TempDir Path directory) throws Exception {
-        Path classes = Path.of(CdsCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-        Variant runner = SampleBuild.runnerJar(directory, "custom-loader", CdsCacheFixture.class.getName(),
-                List.of(classes), List.of(), io.micronaut.runner.build.Compression.STORED, EntryMode.STUB);
+    void strictLaunchRejectsAnUnusableCache(@TempDir Path directory) throws Exception {
+        Path artifact = Files.writeString(directory.resolve("artifact.txt"), "fixture", StandardCharsets.UTF_8);
+        String java = SampleBuild.javaExecutable().toString();
+        Variant plain = Variant.available("plain", "fixture", List.of(java, "-version"), directory, artifact);
+        Path corrupt = Files.writeString(directory.resolve("corrupt.aot"), "not an AOT cache", StandardCharsets.UTF_8);
 
-        IOException failure = assertThrows(IOException.class,
-                () -> AotCache.prepare(runner, "not-aot", request(directory, new ByteArrayOutputStream())));
+        List<String> strict = AotCache.launchCommand(plain, corrupt);
+        List<String> fallback = new ArrayList<>(strict);
+        fallback.remove("-XX:AOTMode=on");
 
-        assertTrue(failure.getMessage().contains("built-in application class loader"), failure.getMessage());
+        assertEquals(List.of(java, "-XX:AOTMode=on", "-XX:AOTCache=" + corrupt.toAbsolutePath().normalize(),
+                "-version"), strict);
+        Launch rejected = launch(strict, directory.resolve("strict.log"));
+        assertNotEquals(0, rejected.exit(), rejected.output());
+        assertTrue(rejected.output().contains("Unable to use AOT cache"), rejected.output());
+        Launch uncached = launch(fallback, directory.resolve("fallback.log"));
+        assertEquals(0, uncached.exit(), "without -XX:AOTMode=on the JVM runs uncached: " + uncached.output());
+    }
+
+    @Test
+    void compatibleOopCompressionProbeParsesPrintFlagsFinal() {
+        List<String> jdk25 = List.of(
+                "[Global flags]",
+                "    ccstr AOTCacheOutput                           =                                           {product} {default}",
+                "     bool AOTClassLinking                          = false                                     {product} {default}",
+                "    ccstr AOTMode                                  =                                           {product} {default}",
+                "openjdk version \"25.0.4.1\" 2026-08-18",
+                "OpenJDK 64-Bit Server VM Homebrew (build 25.0.4.1, mixed mode, sharing)");
+        List<String> jdk27 = List.of(
+                "[Global flags]",
+                "    ccstr AOTCacheOutput                           =                                           {product} {default}",
+                "     bool AOTCompatibleOopCompression              = false                          {diagnostic lp64_product} {ergonomic}",
+                "    ccstr AOTMode                                  =                                           {product} {default}",
+                "openjdk version \"27\" 2026-09-15",
+                "OpenJDK 64-Bit Server VM Homebrew (build 27, mixed mode, sharing)");
+
+        assertEquals(List.of(), AotCache.compatibleOopCompressionFlags(jdk25));
+        assertEquals(List.of("-XX:+UnlockDiagnosticVMOptions", "-XX:+AOTCompatibleOopCompression"),
+                AotCache.compatibleOopCompressionFlags(jdk27));
+        assertEquals(List.of(), AotCache.compatibleOopCompressionFlags(List.of()));
     }
 
     private static AotCache.Request request(Path directory, ByteArrayOutputStream console) {
@@ -155,25 +187,24 @@ class AotCacheTest {
                 new PrintStream(console, true, StandardCharsets.UTF_8));
     }
 
-    private static Variant standardLoaderFixture(Path directory, String fileName, String marker) throws IOException {
-        Path jar = directory.resolve(fileName);
-        Manifest manifest = new Manifest();
-        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, CdsCacheFixture.class.getName());
-        manifest.getMainAttributes().putValue("Fixture-Marker", marker);
-        String classEntry = CdsCacheFixture.class.getName().replace('.', '/') + ".class";
-        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar), manifest);
-             InputStream input = CdsCacheFixture.class.getResourceAsStream("/" + classEntry)) {
-            if (input == null) {
-                throw new IOException("missing fixture bytecode " + classEntry);
+    private record Launch(int exit, String output) {
+    }
+
+    private static Launch launch(List<String> command, Path log) throws IOException, InterruptedException {
+        ProcessBuilder builder = new ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .redirectOutput(log.toFile());
+        StartupHarness.removeInheritedJvmOptions(builder);
+        Process process = builder.start();
+        try {
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                fail("did not exit within 30 s: " + command);
             }
-            output.putNextEntry(new JarEntry(classEntry));
-            input.transferTo(output);
-            output.closeEntry();
+        } finally {
+            if (process.isAlive()) {
+                process.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
+            }
         }
-        DeploymentSize size = DeploymentSize.measure(DeploymentSize.input("application", jar));
-        return Variant.available("fixture", "built-in-loader fixture",
-                List.of(SampleBuild.javaExecutable().toString(), "-jar", jar.toAbsolutePath().toString()),
-                directory, jar, size, List.of(jar));
+        return new Launch(process.exitValue(), Files.readString(log, StandardCharsets.UTF_8));
     }
 }

@@ -31,10 +31,19 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-/** Trains, identifies and verifies a built-in-loader JDK AOT cache. */
+/** Trains, identifies and verifies a JDK AOT cache. */
 final class AotCache {
 
     private static final List<String> CACHE_FLAGS = List.of("AOTCacheOutput", "AOTCache");
+
+    /** Creation flags that let strict JDK 27 launches accept the cache wherever ASLR places the heap. */
+    private static final List<String> COMPATIBLE_OOP_COMPRESSION = List.of(
+            "-XX:+UnlockDiagnosticVMOptions", "-XX:+AOTCompatibleOopCompression");
+
+    private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(60);
+
+    /** The training JDK's probe result, taken once per harness run. */
+    private static CreationProbe creationProbe;
 
     /** Everything needed to exercise and terminate the training application deterministically. */
     record Request(Path cacheRoot,
@@ -57,6 +66,9 @@ final class AotCache {
         }
     }
 
+    private record CreationProbe(List<String> flags, String failure) {
+    }
+
     private AotCache() {
     }
 
@@ -65,20 +77,17 @@ final class AotCache {
         if (!source.available()) {
             throw new IOException("cannot train AOT cache because " + source.name() + " is unavailable");
         }
-        if (source.effectiveEntryMode() != EntryMode.STANDARD_LOADER) {
-            throw new IOException("JDK AOT caching requires the built-in application class loader; "
-                    + source.name() + " uses " + source.effectiveEntryMode().externalName());
-        }
         if (source.launchInputs().isEmpty()) {
             throw new IOException("cannot train AOT cache without immutable ordered launch inputs");
         }
+        List<String> creationFlags = creationFlags();
 
         String identity = identity(source.launchInputs(),
                 System.getProperty("java.runtime.version", "<unavailable>") + "|"
                         + System.getProperty("java.vm.version", "<unavailable>"),
                 System.getProperty("java.vm.name", "<unavailable>"),
                 System.getProperty("os.arch", "<unavailable>"),
-                identityFlags(source, request));
+                identityFlags(source, request, creationFlags));
         Path directory = request.cacheRoot().resolve(identity);
         Path cache = directory.resolve("app.aot");
         Files.createDirectories(directory);
@@ -99,7 +108,7 @@ final class AotCache {
         long trainingMillis = -1;
         if (!reuse) {
             long trainingStarted = System.nanoTime();
-            train(source, cache, request);
+            train(source, cache, request, creationFlags);
             trainingMillis = elapsedMillis(trainingStarted);
             request.log().println("[startup-benchmark] trained AOT cache " + identity);
             verify(source, cache, request);
@@ -112,7 +121,7 @@ final class AotCache {
                 "trained or reused after bounded readiness, workload and normal termination; verified before timing",
                 "application class reused from the AOT cache in a separate diagnostic launch");
         return new Variant(name,
-                source.description() + "; verified built-in-loader JDK AOT cache",
+                source.description() + "; verified JDK AOT cache",
                 launchCommand(source, cache), source.workingDirectory(), source.artifact(), source.deploymentSize(),
                 source.requestedEntryMode(), source.effectiveEntryMode(), true, null, launchInputs, cacheInfo);
     }
@@ -157,15 +166,78 @@ final class AotCache {
         }
     }
 
+    /**
+     * The measured and verified command. {@code -XX:AOTMode=on} makes an absent, corrupt or mismatched cache
+     * a launch failure; the default {@code auto} logs {@code [error][aot]} and runs uncached.
+     */
     static List<String> launchCommand(Variant source, Path cache) {
         return withJvmArguments(source.command(),
-                List.of("-XX:AOTCache=" + cache.toAbsolutePath().normalize()));
+                List.of("-XX:AOTMode=on", "-XX:AOTCache=" + cache.toAbsolutePath().normalize()));
     }
 
-    private static List<String> identityFlags(Variant source, Request request) {
-        List<String> flags = new ArrayList<>(CACHE_FLAGS.size() + request.relevantJvmFlags().size()
-                + source.command().size() + request.workloadPaths().size() + 3);
+    /**
+     * Reads the output of {@code -XX:+UnlockDiagnosticVMOptions -XX:+PrintFlagsFinal -version}.
+     *
+     * @param printFlagsFinal the output lines
+     * @return {@code -XX:+UnlockDiagnosticVMOptions -XX:+AOTCompatibleOopCompression} when the JDK has that
+     *         flag, otherwise nothing
+     */
+    static List<String> compatibleOopCompressionFlags(List<String> printFlagsFinal) {
+        for (String line : printFlagsFinal) {
+            String[] tokens = line.trim().split("\\s+");
+            if (tokens.length > 1 && tokens[0].equals("bool") && tokens[1].equals("AOTCompatibleOopCompression")) {
+                return COMPATIBLE_OOP_COMPRESSION;
+            }
+        }
+        return List.of();
+    }
+
+    private static synchronized List<String> creationFlags() throws IOException, InterruptedException {
+        if (creationProbe == null) {
+            try {
+                creationProbe = new CreationProbe(probeCreationFlags(SampleBuild.javaExecutable()), null);
+            } catch (IOException failure) {
+                creationProbe = new CreationProbe(List.of(), failure.getMessage());
+            }
+        }
+        if (creationProbe.failure() != null) {
+            throw new IOException(creationProbe.failure());
+        }
+        return creationProbe.flags();
+    }
+
+    private static List<String> probeCreationFlags(Path java) throws IOException, InterruptedException {
+        List<String> command = List.of(java.toString(),
+                "-XX:+UnlockDiagnosticVMOptions", "-XX:+PrintFlagsFinal", "-version");
+        Path output = Files.createTempFile("aot-flag-probe", ".txt");
+        try {
+            ProcessBuilder builder = new ProcessBuilder(command)
+                    .redirectErrorStream(true)
+                    .redirectOutput(output.toFile());
+            StartupHarness.removeInheritedJvmOptions(builder);
+            Process process = builder.start();
+            if (!process.waitFor(PROBE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                process.destroyForcibly().waitFor(PROBE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+                throw new IOException("JDK flag probe did not finish within " + PROBE_TIMEOUT + ": "
+                        + String.join(" ", command));
+            }
+            List<String> lines = Files.readAllLines(output, StandardCharsets.UTF_8);
+            if (process.exitValue() != 0) {
+                throw new IOException("JDK flag probe exited with status " + process.exitValue() + ": "
+                        + String.join(" ", command) + ": "
+                        + String.join(" | ", lines.subList(Math.max(0, lines.size() - 10), lines.size())));
+            }
+            return compatibleOopCompressionFlags(lines);
+        } finally {
+            Files.deleteIfExists(output);
+        }
+    }
+
+    private static List<String> identityFlags(Variant source, Request request, List<String> creationFlags) {
+        List<String> flags = new ArrayList<>(CACHE_FLAGS.size() + creationFlags.size()
+                + request.relevantJvmFlags().size() + source.command().size() + request.workloadPaths().size() + 3);
         flags.addAll(CACHE_FLAGS);
+        flags.addAll(creationFlags);
         flags.addAll(request.relevantJvmFlags());
         flags.addAll(source.command().subList(1, source.command().size()));
         flags.add("readiness=" + request.readinessPath());
@@ -174,12 +246,18 @@ final class AotCache {
         return List.copyOf(flags);
     }
 
-    private static void train(Variant source, Path cache, Request request)
+    private static void train(Variant source, Path cache, Request request, List<String> creationFlags)
             throws IOException, InterruptedException {
         Path temporary = cache.resolveSibling("app.training.aot");
         Files.deleteIfExists(temporary);
-        List<String> command = withJvmArguments(source.command(),
-                List.of("-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize()));
+        // Creation flags go on the training command line: JDK 27 (build 27) runs the create step in a child JVM
+        // that inherits it. The child logs "Picked up JAVA_TOOL_OPTIONS: -XX:+UnlockDiagnosticVMOptions
+        // -XX:+AOTCompatibleOopCompression ... -XX:AOTMode=create", and the cache then reports
+        // AOTCompatibleOopCompression = true. JDK_AOT_VM_OPTIONS cannot carry them: runLifecycle removes it
+        // from every child JVM.
+        List<String> arguments = new ArrayList<>(creationFlags);
+        arguments.add("-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize());
+        List<String> command = withJvmArguments(source.command(), arguments);
         CdsCache.runLifecycle(source, command, request.lifecycleRequest(), null, "AOT");
         requireUsableCache(temporary);
         try {
