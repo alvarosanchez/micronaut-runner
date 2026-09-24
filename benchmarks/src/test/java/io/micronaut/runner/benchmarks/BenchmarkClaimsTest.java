@@ -40,8 +40,7 @@ class BenchmarkClaimsTest {
                 List.of(
                         new VariantResult(variant, -1, List.of(), null, null, null, List.of()),
                         new VariantResult(unavailableAot, -1, List.of(), null, null, null, List.of())),
-                List.of(new StartupHarness.ClassLoadCount("exploded-cp", 12, 3, 42.0,
-                        StartupHarness.DIAGNOSTIC_HORIZON,
+                List.of(new StartupHarness.DiagnosticRun("exploded-cp", 42.0,
                         List.of("${java}", "-Xlog:class+load=info:file=${diagnostic-log}", "-jar", "${input:0}"))));
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
@@ -49,7 +48,6 @@ class BenchmarkClaimsTest {
         assertTrue(json.contains("\"osPageCacheState\": \"uncontrolled\""));
         assertTrue(json.contains("\"applicationCacheMode\": \"per-variant\""));
         assertTrue(json.contains("aggregate shared counts do not prove trained application-class reuse"));
-        assertTrue(json.contains("\"horizon\": \"spawn-through-shutdown\""));
         assertTrue(json.contains("-Xlog:class+load=info:file=${diagnostic-log}"));
 
         String summary = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
@@ -57,7 +55,6 @@ class BenchmarkClaimsTest {
         assertTrue(summary.contains("**OS page cache**: uncontrolled"));
         assertTrue(summary.contains("**Application cache**: per variant"));
         assertTrue(summary.contains("| `runner-extracted-aot` | aot (unavailable) | — | — | — | — |"));
-        assertTrue(summary.contains("spawn through completed shutdown"));
     }
 
     @Test

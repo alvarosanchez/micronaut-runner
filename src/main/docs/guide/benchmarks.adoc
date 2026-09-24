@@ -101,16 +101,24 @@ difference and a relative change, the median per-iteration candidate/baseline ra
 measured iterations only; an incomplete iteration is excluded and listed, never re-paired. A bootstrap interval
 over complete iteration pairs appears only with at least ten complete pairs.
 
-Timing runs carry no diagnostic flags: `-Xlog` changes what is being measured, so class-load counts are
-collected in separate runs. Before timing begins, each cache lifecycle makes its own diagnostic launch and
+Timing runs carry no diagnostic flags: `-Xlog` changes what is being measured, so class counts are read
+without it. Before timing begins, each cache lifecycle makes its own diagnostic launch and
 requires `com.example.Application`, an application class, to load from the selected shared objects file;
 aggregate shared-class counts alone are insufficient. The harness removes `JAVA_TOOL_OPTIONS`,
 `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_AOT_VM_OPTIONS` from child JVM environments so ambient flags
-cannot silently change that cache mode. Diagnostic counts are labelled _spawn through shutdown_: logging
-remains active after HTTP
-readiness while the startup line is awaited and while the child shuts down, so shutdown-hook loads can be
-included. Diagnostic readiness is retained only to show logging overhead and never enters measured timing
-distributions.
+cannot silently change that cache mode.
+
+Every successful timing run also records memory and loaded classes once, after HTTP readiness and outside the
+timed interval: `atReadiness` in `results.json`, per attempt and as per-variant medians, and the summary's
+memory table. Memory is read in-process, from `/proc/<pid>/status` on Linux (`VmRSS`, `VmHWM`, `RssAnon`,
+`RssFile`) and from `proc_pid_rusage` on macOS (resident size, `phys_footprint` and its lifetime peak). Class
+counts come from one `jstat -snap` of the child's JDK, which reads its performance counters without attaching and
+adds no flag to the child. A value that cannot be read is `null`: all of them on Windows, and the class counts of
+a JVM started with `-XX:-UsePerfData`. RSS includes clean, file-backed pages of memory-mapped files (the Runner
+archive, CDS and AOT archives, JDK libraries) that the kernel can drop and re-read, so private memory
+(`phys_footprint` or `RssAnon`) is the like-for-like comparison between a mapped archive and a flattened JAR. The
+`-Xlog` files that `-Pbenchmarks.diagnostics=true` writes still cover spawn through shutdown and are for per-class
+inspection; their readiness only shows the logging overhead and never enters measured timing distributions.
 
 === Trained-cache matrix
 

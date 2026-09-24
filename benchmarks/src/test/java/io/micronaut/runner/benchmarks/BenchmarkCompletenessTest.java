@@ -372,7 +372,7 @@ class BenchmarkCompletenessTest {
 
     private static StartupSample sample(int iteration, boolean warmup) {
         return new StartupSample(iteration, warmup, 8080, 10 + iteration, 9 + iteration,
-                8 + iteration, 0.1, 143);
+                8 + iteration, 0.1, 143, ReadinessSnapshot.UNAVAILABLE);
     }
 
     private static StartupRunner scriptedRunner(Script script) {

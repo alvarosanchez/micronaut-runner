@@ -17,17 +17,22 @@ package io.micronaut.runner.benchmarks;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -138,27 +143,126 @@ class StartupHarnessTest {
     }
 
     @Test
-    void diagnosticCountsAreHonestlyLabelledThroughShutdown(@TempDir Path directory) throws Exception {
+    void diagnosticRunWritesTheLogAndARelocatableCommand(@TempDir Path directory) throws Exception {
         Path log = directory.resolve("class-load.log");
-        Variant variant = fixture("diagnostic", directory.resolve("lifecycle"));
+        Variant variant = fixture("success", directory.resolve("lifecycle"));
 
-        StartupHarness.ClassLoadCount count;
+        StartupHarness.DiagnosticRun run;
         try (StartupHarness harness = new StartupHarness("/ready", Duration.ofSeconds(5))) {
-            count = harness.diagnose(variant, log);
+            run = harness.diagnose(variant, log);
         }
 
-        assertEquals("spawn-through-shutdown", count.horizon());
-        assertTrue(count.command().contains("-Xlog:class+load=info:file=${diagnostic-log}"));
-        assertFalse(String.join(" ", count.command()).contains(directory.toString()));
-        assertTrue(count.classesLoaded() > 0);
-        assertTrue(Files.readString(log, StandardCharsets.UTF_8)
-                .contains(StartupHarnessFixture.ShutdownMarker.class.getName()));
+        assertEquals("success", run.variant());
+        assertTrue(run.readinessMillis() > 0);
+        assertTrue(run.command().contains("-Xlog:class+load=info:file=${diagnostic-log}"));
+        assertFalse(String.join(" ", run.command()).contains(directory.toString()));
+        assertFalse(Files.readString(log, StandardCharsets.UTF_8).isBlank());
+    }
+
+    @Test
+    @EnabledOnOs({OS.MAC, OS.LINUX})
+    void realProbeRecordsMemoryAndClassesAtReadiness(@TempDir Path directory) throws Exception {
+        Path lifecycle = directory.resolve("probe.pid");
+        StartupSample sample;
+
+        try (StartupHarness harness = harness(Duration.ofSeconds(2), Map.of())) {
+            sample = harness.run(fixture("success", lifecycle), 0, false);
+        }
+
+        ReadinessSnapshot snapshot = sample.atReadiness();
+        assertTrue(snapshot.probeMillis() >= 0, snapshot.toString());
+        assertTrue(snapshot.rssBytes() > 0, snapshot.toString());
+        assertTrue(snapshot.loadedClasses() > 0, snapshot.toString());
+        assertTrue(snapshot.sharedClasses() >= 0, snapshot.toString());
+        if (OS.MAC.isCurrentOs()) {
+            assertTrue(snapshot.footprintBytes() > 0, snapshot.toString());
+            assertTrue(snapshot.peakFootprintBytes() >= snapshot.footprintBytes(), snapshot.toString());
+        } else {
+            assertTrue(snapshot.anonBytes() > 0, snapshot.toString());
+        }
+        assertStopped(lifecycle);
+    }
+
+    @Test
+    @EnabledOnOs({OS.MAC, OS.LINUX})
+    void classCountsWithoutPerfDataAreUnavailableAndTheRunStillSucceeds(@TempDir Path directory) throws Exception {
+        Path lifecycle = directory.resolve("no-perf-data.pid");
+        StartupSample sample;
+
+        try (StartupHarness harness = harness(Duration.ofSeconds(2), Map.of())) {
+            sample = harness.run(fixture("success", lifecycle, "-XX:-UsePerfData"), 0, false);
+        }
+
+        assertTrue(sample.readinessMillis() > 0);
+        assertEquals(-1, sample.atReadiness().loadedClasses());
+        assertEquals(-1, sample.atReadiness().sharedClasses());
+        assertTrue(sample.atReadiness().rssBytes() > 0, sample.atReadiness().toString());
+        assertStopped(lifecycle);
+    }
+
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    void aSlowProbeRunsOnceAfterReadinessWhileTheChildIsAlive(@TempDir Path directory) throws Exception {
+        Path lifecycle = directory.resolve("slow-probe.pid");
+        AtomicInteger calls = new AtomicInteger();
+        AtomicBoolean aliveDuringProbe = new AtomicBoolean();
+        ReadinessSnapshot recorded = new ReadinessSnapshot(-1, 42, -1, -1, -1, -1, -1, 7, 3);
+        StartupHarness.ReadinessProbe probe = (pid, java) -> {
+            calls.incrementAndGet();
+            try {
+                Thread.sleep(2_500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+            aliveDuringProbe.set(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
+            return recorded;
+        };
+        StartupSample sample;
+
+        try (StartupHarness harness = harness(Duration.ofSeconds(2), Map.of(), probe)) {
+            sample = harness.run(fixture("success", lifecycle), 0, false);
+        }
+
+        assertTrue(sample.readinessMillis() < 2_000, "readiness " + sample.readinessMillis());
+        assertEquals(1, calls.get());
+        assertTrue(aliveDuringProbe.get());
+        assertEquals(42, sample.atReadiness().rssBytes());
+        assertEquals(7, sample.atReadiness().loadedClasses());
+        assertEquals(3, sample.atReadiness().sharedClasses());
+        assertTrue(sample.atReadiness().probeMillis() >= 2_500, "probe " + sample.atReadiness().probeMillis());
+        assertStopped(lifecycle);
+    }
+
+    @Test
+    void aThrowingProbeLeavesTheSnapshotUnavailableAndTheRunSuccessful(@TempDir Path directory) throws Exception {
+        Path lifecycle = directory.resolve("throwing-probe.pid");
+        StartupHarness.ReadinessProbe probe = (pid, java) -> {
+            throw new IllegalStateException("probe failure");
+        };
+        StartupSample sample;
+
+        try (StartupHarness harness = harness(Duration.ofSeconds(2), Map.of(), probe)) {
+            sample = harness.run(fixture("success", lifecycle), 0, false);
+        }
+
+        assertTrue(sample.readinessMillis() > 0);
+        assertTrue(sample.atReadiness().probeMillis() >= 0);
+        assertEquals(ReadinessSnapshot.UNAVAILABLE.withProbeMillis(sample.atReadiness().probeMillis()),
+                sample.atReadiness());
+        assertStopped(lifecycle);
     }
 
     private static StartupHarness harness(Duration startupTimeout, Map<String, String> environment) {
+        return harness(startupTimeout, environment, ReadinessSnapshot::take);
+    }
+
+    private static StartupHarness harness(Duration startupTimeout,
+                                          Map<String, String> environment,
+                                          StartupHarness.ReadinessProbe probe) {
         return new StartupHarness("/ready", startupTimeout, new StartupHarness.Settings(
                 Duration.ofMillis(2), Duration.ofMillis(100), Duration.ofMillis(250),
-                Duration.ofSeconds(2), Duration.ofMillis(50), StartupHarness::freePort, environment));
+                Duration.ofSeconds(2), Duration.ofMillis(50), StartupHarness::freePort, environment, probe));
     }
 
     private static Set<Long> childPids() {
@@ -176,11 +280,12 @@ class StartupHarnessTest {
         assertFalse(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false), "child remains alive: " + pid);
     }
 
-    private static Variant fixture(String mode, Path lifecycle) {
-        return Variant.available(mode, "fixture " + mode, List.of(
-                SampleBuild.javaExecutable().toString(),
-                "-cp", System.getProperty("java.class.path"),
-                StartupHarnessFixture.class.getName(), mode, lifecycle.toString()),
-                lifecycle.getParent(), lifecycle.getParent());
+    private static Variant fixture(String mode, Path lifecycle, String... jvmOptions) {
+        List<String> command = new ArrayList<>();
+        command.add(SampleBuild.javaExecutable().toString());
+        command.addAll(List.of(jvmOptions));
+        command.addAll(List.of("-cp", System.getProperty("java.class.path"),
+                StartupHarnessFixture.class.getName(), mode, lifecycle.toString()));
+        return Variant.available(mode, "fixture " + mode, command, lifecycle.getParent(), lifecycle.getParent());
     }
 }

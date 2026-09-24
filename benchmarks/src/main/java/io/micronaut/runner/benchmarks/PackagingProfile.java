@@ -102,7 +102,7 @@ public final class PackagingProfile {
                                 scenario, iteration, measured.elapsedNanos(), measured.allocatedBytes(),
                                 profiled.peakHeapBytes(), profiled.peakRssBytes(), timing.inputBytes(),
                                 measured.outputBytes(), measured.outputSha256(), "uncontrolled",
-                                profiled.peakRssBytes() < 0 ? "unsupported" : "ps-rss-sampled",
+                                profiled.peakRssBytes() < 0 ? "unsupported" : "rss-sampled",
                                 "JVM memory-pool peak diagnostic invocation"));
                     }
                 }
@@ -430,7 +430,7 @@ public final class PackagingProfile {
 
         private void sample() {
             while (running.get()) {
-                long value = rssBytes(pid);
+                long value = ReadinessSnapshot.rssBytes(pid);
                 if (value >= 0) {
                     peak.accumulateAndGet(value, Math::max);
                 }
@@ -451,27 +451,6 @@ public final class PackagingProfile {
         public void close() throws InterruptedException {
             running.set(false);
             thread.join(2_000);
-        }
-
-        private static long rssBytes(long pid) {
-            String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-            if (os.contains("win")) {
-                return -1;
-            }
-            try {
-                Process process = new ProcessBuilder("ps", "-o", "rss=", "-p",
-                        Long.toString(pid)).start();
-                String value = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-                if (process.waitFor() != 0 || value.isEmpty()) {
-                    return -1;
-                }
-                return Long.parseLong(value) * 1024L;
-            } catch (IOException | InterruptedException | NumberFormatException e) {
-                if (e instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                }
-                return -1;
-            }
         }
     }
 

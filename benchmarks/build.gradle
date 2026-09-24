@@ -19,6 +19,12 @@ dependencies {
     pluginsUnderTest project(path: ':micronaut-runner-gradle-plugin', configuration: 'repository')
 }
 
+// ReadinessSnapshot reads macOS memory through an FFM downcall (proc_pid_rusage). The flag goes on the JVMs that
+// run the harness only, never on an application command.
+tasks.withType(Test).configureEach {
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
 // Any test that forks an AOT cache training JVM or a packaging worker tests the benchmark tool, not the product:
 // tag it @Tag("benchmark-integration"). Tagged tests stay out of check; benchmarks.yml runs them first.
 tasks.named('test', Test) {
@@ -47,6 +53,7 @@ def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
     dependsOn tasks.named('prepareRepository')
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'io.micronaut.runner.benchmarks.StartupBenchmark'
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
     def outDir = layout.buildDirectory.dir('reports/startup')
     outputs.dir(outDir)
     // A measurement is never up to date. The arguments below are supplied by a CommandLineArgumentProvider
@@ -84,6 +91,7 @@ tasks.register('packagingProfile', JavaExec) {
     description = 'Profiles deterministic clean and edit-cycle packaging workloads'
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'io.micronaut.runner.benchmarks.PackagingProfile'
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
     def outDir = layout.buildDirectory.dir('reports/packaging')
     outputs.dir(outDir)
     outputs.upToDateWhen { false }

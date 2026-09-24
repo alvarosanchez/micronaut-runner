@@ -46,7 +46,8 @@ class BenchmarkStatisticsTest {
         RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
                 1, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z");
         Variant variant = Variant.available("a", "fixture a", List.of("java"), Path.of("."), Path.of("."));
-        StartupSample startupSample = new StartupSample(0, false, 8080, 100, -1, -1, 0.1, 143);
+        StartupSample startupSample = new StartupSample(0, false, 8080, 100, -1, -1, 0.1, 143,
+                ReadinessSnapshot.UNAVAILABLE);
         VariantResult result = new VariantResult(variant, 1, List.of(startupSample),
                 statistics, null, null, List.of());
 
@@ -63,6 +64,91 @@ class BenchmarkStatisticsTest {
         assertTrue(markdown.contains("| `a` | 1 | **100.0 ms** | 100.0 ms | n=1 (<10) |"), markdown);
         assertFalse(markdown.contains("100.0 ms – 100.0 ms"));
         assertTrue(markdown.contains("## Runner vs Shadow\n\nNo declared comparison applies"), markdown);
+    }
+
+    @Test
+    void readinessMediansIgnoreUnavailableValuesAndAreWrittenAsNull(@TempDir Path output) throws Exception {
+        Variant variant = Variant.available("a", "fixture a", List.of("java"), Path.of("."), Path.of("."));
+        long[] rss = {100, -1, 300};
+        List<RunAttempt> attempts = new ArrayList<>();
+        for (int iteration = 0; iteration < rss.length; iteration++) {
+            ReadinessSnapshot snapshot = new ReadinessSnapshot(10 + iteration, rss[iteration],
+                    -1, -1, -1, -1, -1, -1, -1);
+            attempts.add(RunAttempt.success("a", iteration, iteration, new StartupSample(iteration, false,
+                    8080 + iteration, 100 + iteration, -1, -1, 0.1, 143, snapshot)));
+        }
+
+        VariantResult result = VariantResult.summarize(variant, 1, attempts, 0, rss.length, 123L);
+
+        assertEquals(200, result.atReadiness().rssBytes());
+        assertEquals(11.0, result.atReadiness().probeMillis());
+        assertEquals(-1, result.atReadiness().loadedClasses());
+        assertEquals(-1, result.atReadiness().sharedClasses());
+
+        Path sample = Files.createDirectory(output.resolve("sample"));
+        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
+                3, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z",
+                List.of("a"), CompletenessPolicy.REQUIRED);
+        Reports.write(output, context, List.of(result), List.of());
+
+        String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
+        assertTrue(json.contains("\"atReadiness\": {\"probeMillis\": 11.000, \"rssBytes\": 200,"
+                + " \"peakRssBytes\": null, \"anonBytes\": null, \"fileBytes\": null, \"footprintBytes\": null,"
+                + " \"peakFootprintBytes\": null, \"loadedClasses\": null, \"sharedClasses\": null}"), json);
+        assertTrue(json.contains("\"atReadiness\": {\"probeMillis\": 11.000, \"rssBytes\": null,"), json);
+        assertTrue(json.contains("\"atReadiness\": {\"probeMillis\": 10.000, \"rssBytes\": 100,"), json);
+        String attemptsJson = json.substring(json.indexOf("\"attempts\": ["), json.indexOf("\"diagnostics\": {"));
+        assertEquals(3, occurrences(attemptsJson, "\"atReadiness\": {"), attemptsJson);
+
+        String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
+        String memory = section(markdown, "## Memory and classes at readiness (not timed)");
+        assertTrue(memory.contains("| `a` | 3 | 0.0 MiB | — | — | — | — |"), memory);
+        assertTrue(memory.contains("a median of 11.0 ms after readiness"), memory);
+        assertTrue(memory.contains("RSS includes clean, file-backed pages of memory-mapped files"), memory);
+        assertTrue(markdown.indexOf("## Successful measured runs only")
+                < markdown.indexOf("## Memory and classes at readiness (not timed)"), markdown);
+    }
+
+    @Test
+    void runnerVersusShadowHasAMemoryRowForEveryTimingRow(@TempDir Path output) throws Exception {
+        long mebibyte = 1024 * 1024;
+        // Linux-shaped snapshots: RssAnon is the private memory and VmHWM the peak, whatever OS runs the test.
+        VariantResult stored = withSnapshot("runner-stored",
+                new ReadinessSnapshot(5, 180 * mebibyte, 190 * mebibyte, 120 * mebibyte, 60 * mebibyte,
+                        -1, -1, 6200, 1280));
+        VariantResult shadow = withSnapshot("shadow",
+                new ReadinessSnapshot(5, 178 * mebibyte, 185 * mebibyte, 150 * mebibyte, 28 * mebibyte,
+                        -1, -1, 6100, 1270));
+        VariantResult preserve = withSnapshot("runner-preserve", ReadinessSnapshot.UNAVAILABLE);
+
+        Path sample = Files.createDirectory(output.resolve("sample"));
+        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
+                1, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z",
+                List.of("runner-stored", "shadow", "runner-preserve"), CompletenessPolicy.PARTIAL);
+        Reports.write(output, context, List.of(stored, shadow, preserve), List.of());
+
+        String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
+        String section = section(markdown, "## Runner vs Shadow");
+        assertTrue(section.contains("| Runner default vs Shadow: `runner-stored` − `shadow` | +2.0 MiB | -30.0 MiB"
+                + " | +100 |"), section);
+        assertTrue(section.contains("| Runner PRESERVE vs Shadow: `runner-preserve` − `shadow` | — | — | — |"),
+                section);
+        assertTrue(section.contains("| STORED vs PRESERVE: `runner-stored` − `runner-preserve` | — | — | — |"),
+                section);
+        assertTrue(section.contains("not paired estimates, and carry no interval"), section);
+        for (String row : List.of("| Runner default vs Shadow: `runner-stored` − `shadow` |",
+                "| Runner PRESERVE vs Shadow: `runner-preserve` − `shadow` |",
+                "| STORED vs PRESERVE: `runner-stored` − `runner-preserve` |")) {
+            assertEquals(2, occurrences(section, row), "one timing and one memory row: " + row);
+        }
+
+        String memory = section(markdown, "## Memory and classes at readiness (not timed)");
+        assertTrue(memory.contains("| `runner-stored` | 1 | 180.0 MiB | 120.0 MiB | 190.0 MiB | 6200 | 1280 |"),
+                memory);
+        assertTrue(memory.contains("| `runner-preserve` | 1 | — | — | — | — | — |"), memory);
+
+        String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
+        assertTrue(json.contains("\"loadedClasses\": 6200, \"sharedClasses\": 1280}"), json);
     }
 
     @Test
@@ -396,12 +482,18 @@ class BenchmarkStatisticsTest {
                         "fixture failure", 1));
             } else {
                 StartupSample sample = new StartupSample(iteration, false, 8080 + iteration,
-                        values[iteration], -1, -1, 0.1, 143);
+                        values[iteration], -1, -1, 0.1, 143, ReadinessSnapshot.UNAVAILABLE);
                 attempts.add(RunAttempt.success(name, iteration, iteration, sample));
             }
         }
         long deploymentBytes = deploymentSize == null ? 1 : deploymentSize.totalBytes();
         return VariantResult.summarize(variant, deploymentBytes, attempts, 0, values.length, 123L);
+    }
+
+    private static VariantResult withSnapshot(String name, ReadinessSnapshot snapshot) {
+        Variant variant = Variant.available(name, "fixture " + name, List.of("java"), Path.of("."), Path.of("."));
+        StartupSample sample = new StartupSample(0, false, 8080, 100, -1, -1, 0.1, 143, snapshot);
+        return VariantResult.summarize(variant, 1, List.of(RunAttempt.success(name, 0, 0, sample)), 0, 1, 123L);
     }
 
     private static VariantResult resultWithMissing(String name, double[] values, int missingIteration) {
@@ -413,7 +505,7 @@ class BenchmarkStatisticsTest {
                 continue;
             }
             StartupSample sample = new StartupSample(iteration, false, 8080 + iteration,
-                    values[iteration], -1, -1, 0.1, 143);
+                    values[iteration], -1, -1, 0.1, 143, ReadinessSnapshot.UNAVAILABLE);
             attempts.add(RunAttempt.success(name, iteration, iteration, sample));
         }
         return VariantResult.summarize(variant, 1, attempts, 0, values.length, 123L);
