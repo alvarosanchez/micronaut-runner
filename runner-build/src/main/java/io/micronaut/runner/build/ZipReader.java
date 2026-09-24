@@ -22,9 +22,14 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -64,7 +69,23 @@ import java.util.zip.Inflater;
  * unsafe to extract or to use as logical names are rejected while the archive is being read, so that no
  * later stage of the pipeline has to remember to check (see {@link #isSafeEntryName(String)}).</p>
  *
- * <p>Instances hold an open file channel and must be closed. They are not thread-safe.</p>
+ * <h2>Mapping, threads and lifetime</h2>
+ * <p>Opening an archive maps the whole file read-only into a {@link MemorySegment} owned by a confined
+ * {@link Arena}. Every local file header is checked against its central directory record, and every data
+ * descriptor against the sizes and CRC-32 it repeats, by reading them from that mapping, so opening costs no
+ * system call and no array per entry. The central directory is copied out of the mapping once, and the
+ * manifest is only read when {@link #manifest()} asks for it. {@link #read(ZipEntryInfo)} copies from the
+ * mapping as well; {@link #transfer(ZipEntryInfo, OutputStream)} streams through the file channel the
+ * reader also keeps open, in 64 KiB chunks.</p>
+ *
+ * <p>A reader is confined to the thread that opened it: only that thread may use it and close it, and it
+ * must never be handed to another thread, whose reads of the mapping would fail. Every reader must be
+ * closed, which unmaps the file and then closes the channel. The mapping lives outside the heap and the
+ * garbage collector never releases it, and on Windows a mapped file can be neither moved nor deleted.</p>
+ *
+ * <p>The file must not change while it is open. A read of the mapping that a concurrent truncation left
+ * without backing fails with an {@link IOException}; payloads are always copied out of the mapping before
+ * they are inflated or checksummed, so a truncation never faults inside native code.</p>
  *
  * @since 1.0
  */
@@ -88,6 +109,9 @@ final class ZipReader implements Closeable {
 
     /** Value a 16-bit ZIP field carries when the real value lives in a ZIP64 extra field. */
     private static final int ZIP64_MARKER_16 = 0xFFFF;
+
+    /** The optional signature of a data descriptor. */
+    private static final int DATA_DESCRIPTOR_SIGNATURE = 0x08074B50;
 
     /** General purpose bit 3: CRC and sizes follow the data in a descriptor. */
     private static final int FLAG_DATA_DESCRIPTOR = 1 << 3;
@@ -113,51 +137,64 @@ final class ZipReader implements Closeable {
     /** Name of the jar index the packager drops, since a nested jar never has a class path of its own. */
     private static final String INDEX_LIST_NAME = "META-INF/INDEX.LIST";
 
+    /** ZIP integers are little-endian and sit at any offset, so every read of the mapping uses these. */
+    private static final ValueLayout.OfShort SHORT_LE =
+            ValueLayout.JAVA_SHORT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+    private static final ValueLayout.OfInt INT_LE = ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+    private static final ValueLayout.OfLong LONG_LE =
+            ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+
     private final Path path;
     private final FileChannel channel;
+    private final Arena arena;
+    private final MemorySegment mapping;
     private final long fileLength;
-    private final List<LocalSpan> localSpans = new ArrayList<>();
     private final String comment;
     private final List<ZipEntryInfo> entries;
     private final Map<String, ZipEntryInfo> byName;
     private final boolean signatureFiles;
-    private final Optional<Manifest> manifest;
+    /** The parsed manifest, {@code null} until {@link #manifest()} has read it once. */
+    private Optional<Manifest> manifest;
+    /** The strict UTF-8 decoder for names that are not plain ASCII, created at the first such name. */
+    private CharsetDecoder utf8;
     private byte[] transferInput;
     private byte[] transferOutput;
 
-    private ZipReader(Path path) throws IOException {
+    /**
+     * Parses an archive that {@link #map(Path)} has opened and mapped. The caller closes the channel and the
+     * arena when this throws.
+     */
+    private ZipReader(Path path, FileChannel channel, Arena arena, MemorySegment mapping) throws IOException {
         this.path = path;
-        this.channel = FileChannel.open(path, StandardOpenOption.READ);
-        boolean initialised = false;
+        this.channel = channel;
+        this.arena = arena;
+        this.mapping = mapping;
+        this.fileLength = mapping.byteSize();
         try {
-            this.fileLength = channel.size();
             long endOffset = findEndOfCentralDirectory();
-            byte[] end = readFully(endOffset, IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE);
-            int commentLength = readUnsignedShort(end, 20);
+            int commentLength = readUnsignedShort(endOffset + 20);
             this.comment = commentLength == 0
                     ? ""
-                    : new String(readFully(endOffset + IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE, commentLength),
+                    : new String(bytesAt(endOffset + IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE, commentLength),
                             StandardCharsets.UTF_8);
-            int diskNumber = readUnsignedShort(end, 4);
-            int directoryDisk = readUnsignedShort(end, 6);
-            long entriesOnDisk = readUnsignedShort(end, 8);
-            long entryCount = readUnsignedShort(end, 10);
+            int diskNumber = readUnsignedShort(endOffset + 4);
+            int directoryDisk = readUnsignedShort(endOffset + 6);
+            long entriesOnDisk = readUnsignedShort(endOffset + 8);
+            long entryCount = readUnsignedShort(endOffset + 10);
             if (diskNumber != 0 || directoryDisk != 0 || entriesOnDisk != entryCount) {
                 throw malformed("multi-disk ZIP archives are not supported; a single-disk archive was required");
             }
-            long directorySize = readUnsignedInt(end, 12);
-            long directoryOffset = readUnsignedInt(end, 16);
+            long directorySize = readUnsignedInt(endOffset + 12);
+            long directoryOffset = readUnsignedInt(endOffset + 16);
             long recordStart = endOffset;
             long locatorOffset = endOffset - IndexFormat.ZIP64_LOCATOR_SIZE;
             long zip64End = -1;
-            if (locatorOffset >= 0) {
-                byte[] locator = readFully(locatorOffset, IndexFormat.ZIP64_LOCATOR_SIZE);
-                if (readInt(locator, 0) == IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE) {
-                    if (readUnsignedInt(locator, 4) != 0 || readUnsignedInt(locator, 16) != 1) {
-                        throw malformed("multi-disk ZIP64 archives are not supported; a single-disk archive was required");
-                    }
-                    zip64End = readLong(locator, 8);
+            if (locatorOffset >= 0
+                    && readInt(locatorOffset) == IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE) {
+                if (readUnsignedInt(locatorOffset + 4) != 0 || readUnsignedInt(locatorOffset + 16) != 1) {
+                    throw malformed("multi-disk ZIP64 archives are not supported; a single-disk archive was required");
                 }
+                zip64End = readLong(locatorOffset + 8);
             }
             // An entry count of 0xFFFF alone does not make the ZIP64 records mandatory: writers that
             // compare with > rather than >= leave an archive of exactly 65535 entries with the marker in
@@ -170,11 +207,10 @@ final class ZipReader implements Closeable {
                 if (zip64End < 0 || zip64End > fileLength - ZIP64_END_SIZE) {
                     throw malformed("no ZIP64 end of central directory locator before the end record");
                 }
-                byte[] zip64 = readFully(zip64End, ZIP64_END_SIZE);
-                if (readInt(zip64, 0) != IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
+                if (readInt(zip64End) != IndexFormat.ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
                     throw malformed("the ZIP64 locator does not point at a ZIP64 end of central directory record");
                 }
-                long zip64RecordSize = readLong(zip64, 4);
+                long zip64RecordSize = readLong(zip64End + 4);
                 if (zip64RecordSize < ZIP64_END_SIZE - 12L) {
                     throw malformed("the ZIP64 end of central directory record size is too small: "
                             + zip64RecordSize);
@@ -185,13 +221,13 @@ final class ZipReader implements Closeable {
                 if (zip64RecordEnd != locatorOffset) {
                     throw malformed("the ZIP64 end of central directory record size does not end at its locator");
                 }
-                if (readUnsignedInt(zip64, 16) != 0 || readUnsignedInt(zip64, 20) != 0
-                        || readLong(zip64, 24) != readLong(zip64, 32)) {
+                if (readUnsignedInt(zip64End + 16) != 0 || readUnsignedInt(zip64End + 20) != 0
+                        || readLong(zip64End + 24) != readLong(zip64End + 32)) {
                     throw malformed("multi-disk ZIP64 archives are not supported; a single-disk archive was required");
                 }
-                entryCount = readLong(zip64, 32);
-                directorySize = readLong(zip64, 40);
-                directoryOffset = readLong(zip64, 48);
+                entryCount = readLong(zip64End + 32);
+                directorySize = readLong(zip64End + 40);
+                directoryOffset = readLong(zip64End + 48);
                 recordStart = zip64End;
             }
             if (entryCount < 0 || directorySize < 0 || directoryOffset < 0) {
@@ -211,12 +247,8 @@ final class ZipReader implements Closeable {
             }
             this.byName = index;
             this.signatureFiles = signed;
-            this.manifest = readManifest();
-            initialised = true;
-        } finally {
-            if (!initialised) {
-                channel.close();
-            }
+        } catch (IndexOutOfBoundsException | InternalError e) {
+            throw unreadable(e);
         }
     }
 
@@ -224,27 +256,27 @@ final class ZipReader implements Closeable {
      * Opens an archive for reading.
      *
      * @param path the archive file
-     * @return an open reader the caller must close
-     * @throws IOException          if the file cannot be read or is not a well-formed ZIP archive, including
-     *                              when it contains an entry name that is unsafe to extract
+     * @return an open reader the caller must close, on the thread that opened it
+     * @throws IOException          if the file cannot be read or mapped, or is not a well-formed ZIP archive,
+     *                              including when it contains an entry name that is unsafe to extract
      * @throws NullPointerException if {@code path} is {@code null}
      */
     public static ZipReader open(Path path) throws IOException {
         Objects.requireNonNull(path, "path");
-        return new ZipReader(path);
+        return map(path);
     }
 
     /**
      * Opens an archive for reading.
      *
      * @param file the archive file
-     * @return an open reader the caller must close
-     * @throws IOException          if the file cannot be read or is not a well-formed ZIP archive
+     * @return an open reader the caller must close, on the thread that opened it
+     * @throws IOException          if the file cannot be read or mapped, or is not a well-formed ZIP archive
      * @throws NullPointerException if {@code file} is {@code null}
      */
     public static ZipReader open(File file) throws IOException {
         Objects.requireNonNull(file, "file");
-        return new ZipReader(file.toPath());
+        return map(file.toPath());
     }
 
     /**
@@ -404,15 +436,24 @@ final class ZipReader implements Closeable {
     }
 
     /**
-     * The archive's manifest, parsed once when the reader was opened.
+     * The archive's manifest, parsed the first time it is asked for and remembered after that.
      *
-     * <p>The manifest entry is looked up case-insensitively, as {@link java.util.jar.JarFile} does. The
-     * returned object is the reader's own instance and is mutable; callers must not modify it.</p>
+     * <p>Opening an archive neither reads nor parses its manifest. The manifest entry is looked up
+     * case-insensitively, as {@link java.util.jar.JarFile} does, and read with {@link #read(ZipEntryInfo)},
+     * so its CRC-32 is verified. The returned object is the reader's own instance and is mutable; callers
+     * must not modify it.</p>
      *
      * @return the manifest, or empty when the archive has no {@code META-INF/MANIFEST.MF}
+     * @throws IOException if the manifest entry is larger than 16 MiB, cannot be read, does not match its
+     *                     recorded CRC-32 or is not a valid manifest
      */
-    public Optional<Manifest> manifest() {
-        return manifest;
+    public Optional<Manifest> manifest() throws IOException {
+        Optional<Manifest> parsed = manifest;
+        if (parsed == null) {
+            parsed = readManifest();
+            manifest = parsed;
+        }
+        return parsed;
     }
 
     /**
@@ -429,11 +470,14 @@ final class ZipReader implements Closeable {
             throw new IOException("Entry '" + entry.name() + "' of " + path + " is too large to read into memory: "
                     + size + " bytes");
         }
-        return readFully(entry.dataOffset(), (int) size);
+        return bytesAt(entry.dataOffset(), (int) size);
     }
 
     /**
      * Reads an entry's content, decompressing it when it is deflated and verifying its CRC-32.
+     *
+     * <p>The content is copied or inflated straight into an array of its exact size. A deflated entry's
+     * compressed bytes pass through one buffer of at most 64 KiB, and only as large as they are.</p>
      *
      * @param entry an entry of this archive
      * @return the verified uncompressed content, of length {@link ZipEntryInfo#uncompressedSize()}
@@ -444,27 +488,24 @@ final class ZipReader implements Closeable {
     public byte[] read(ZipEntryInfo entry) throws IOException {
         Objects.requireNonNull(entry, "entry");
         int resultSize = checkedArraySize(entry, entry.uncompressedSize());
+        requirePayload(entry);
         byte[] result = new byte[resultSize];
-        transfer(entry, new OutputStream() {
-            private int offset;
-
-            @Override
-            public void write(int value) {
-                result[offset++] = (byte) value;
-            }
-
-            @Override
-            public void write(byte[] source, int sourceOffset, int length) {
-                System.arraycopy(source, sourceOffset, result, offset, length);
-                offset += length;
-            }
-        });
+        if (entry.method() == IndexFormat.METHOD_STORED) {
+            copyFromMapping(entry.dataOffset(), result, 0, resultSize);
+            CRC32 crc = new CRC32();
+            crc.update(result, 0, resultSize);
+            verifyCrc(entry, crc.getValue());
+            return result;
+        }
+        byte[] input = new byte[(int) Math.min(TRANSFER_BUFFER_SIZE, entry.compressedSize())];
+        inflate(entry, input, true, result, null);
         return result;
     }
 
     /**
      * Streams one entry to {@code target} while verifying its size, CRC-32 and complete DEFLATE region.
-     * Neither the compressed nor expanded payload is materialised in a payload-sized array.
+     * Neither the compressed nor expanded payload is materialised in a payload-sized array: both pass
+     * through two 64 KiB buffers the reader allocates at its first transfer and keeps.
      *
      * @param entry  an entry of this archive
      * @param target destination, flushed and closed by its owner
@@ -474,19 +515,24 @@ final class ZipReader implements Closeable {
     public synchronized long transfer(ZipEntryInfo entry, OutputStream target) throws IOException {
         Objects.requireNonNull(entry, "entry");
         Objects.requireNonNull(target, "target");
+        requirePayload(entry);
+        if (entry.method() == IndexFormat.METHOD_STORED) {
+            return transferStored(entry, target);
+        }
+        return inflate(entry, transferInput(), false, transferOutput(), target);
+    }
+
+    private void requirePayload(ZipEntryInfo entry) throws IOException {
         requireRange(entry.dataOffset(), entry.compressedSize());
         if (entry.method() == IndexFormat.METHOD_STORED) {
             if (entry.compressedSize() != entry.uncompressedSize()) {
                 throw new IOException("STORED entry '" + entry.name() + "' of " + path
                         + " has different compressed and uncompressed sizes");
             }
-            return transferStored(entry, target);
-        }
-        if (entry.method() != IndexFormat.METHOD_DEFLATED) {
+        } else if (entry.method() != IndexFormat.METHOD_DEFLATED) {
             throw new IOException("Entry '" + entry.name() + "' of " + path + " uses unsupported compression method "
                     + entry.method());
         }
-        return transferDeflated(entry, target);
     }
 
     private long transferStored(ZipEntryInfo entry, OutputStream target) throws IOException {
@@ -506,11 +552,27 @@ final class ZipReader implements Closeable {
         return entry.uncompressedSize();
     }
 
-    private long transferDeflated(ZipEntryInfo entry, OutputStream target) throws IOException {
-        byte[] input = transferInput();
-        byte[] output = transferOutput();
+    /**
+     * Inflates a deflated entry and checks how the stream is framed: it must end exactly at the recorded
+     * uncompressed size, consume exactly the recorded compressed region, need no preset dictionary and match
+     * the recorded CRC-32. {@link #read(ZipEntryInfo)} and {@link #transfer(ZipEntryInfo, OutputStream)} differ
+     * only in where the compressed bytes come from and where the content goes.
+     *
+     * @param entry  the entry, already checked by {@link #requirePayload(ZipEntryInfo)}
+     * @param input  the buffer each chunk of compressed bytes is staged in; its length is the chunk size
+     * @param mapped {@code true} to copy the chunks out of the mapping, {@code false} to read them through
+     *               the channel
+     * @param output with a {@code target}, the buffer every chunk of content is inflated into before it is
+     *               written; without one, the result itself, of the entry's exact size, which is filled in
+     *               place
+     * @param target where the content is written, or {@code null} to leave it in {@code output}
+     * @return the number of bytes inflated, which is the entry's uncompressed size
+     */
+    private long inflate(ZipEntryInfo entry, byte[] input, boolean mapped, byte[] output, OutputStream target)
+            throws IOException {
         CRC32 crc = new CRC32();
         Inflater inflater = new Inflater(true);
+        long expected = entry.uncompressedSize();
         long compressedRemaining = entry.compressedSize();
         long position = entry.dataOffset();
         long total = 0;
@@ -518,22 +580,37 @@ final class ZipReader implements Closeable {
             while (!inflater.finished()) {
                 if (inflater.needsInput()) {
                     if (compressedRemaining == 0) {
-                        throw truncatedDeflate(entry, entry.uncompressedSize(), total);
+                        throw truncatedDeflate(entry, expected, total);
                     }
                     int count = (int) Math.min(input.length, compressedRemaining);
-                    readFully(position, input, count);
+                    if (mapped) {
+                        copyFromMapping(position, input, 0, count);
+                    } else {
+                        readFully(position, input, count);
+                    }
                     inflater.setInput(input, 0, count);
                     position += count;
                     compressedRemaining -= count;
                 }
-                int read = inflater.inflate(output);
+                byte[] into = output;
+                int offset = target == null ? (int) total : 0;
+                int room = output.length - offset;
+                if (room == 0) {
+                    // The result is full but the stream has not ended: one more byte of content is too many.
+                    into = new byte[1];
+                    offset = 0;
+                    room = 1;
+                }
+                int read = inflater.inflate(into, offset, room);
                 if (read > 0) {
-                    if (read > entry.uncompressedSize() - total) {
+                    if (read > expected - total) {
                         throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
-                                + " produces more than the recorded " + entry.uncompressedSize() + " bytes");
+                                + " produces more than the recorded " + expected + " bytes");
                     }
-                    target.write(output, 0, read);
-                    crc.update(output, 0, read);
+                    if (target != null) {
+                        target.write(into, offset, read);
+                    }
+                    crc.update(into, offset, read);
                     total += read;
                 } else if (inflater.finished()) {
                     // The terminal block may produce no plaintext, including for an empty entry.
@@ -548,8 +625,8 @@ final class ZipReader implements Closeable {
                             + " made no progress after " + total + " bytes");
                 }
             }
-            if (total != entry.uncompressedSize()) {
-                throw truncatedDeflate(entry, entry.uncompressedSize(), total);
+            if (total != expected) {
+                throw truncatedDeflate(entry, expected, total);
             }
             long remaining = inflater.getRemaining() + compressedRemaining;
             if (remaining != 0) {
@@ -606,6 +683,7 @@ final class ZipReader implements Closeable {
         }
     }
 
+    /** Reads through the channel, which only {@link #transfer(ZipEntryInfo, OutputStream)} does. */
     private void readFully(long position, byte[] destination, int length) throws IOException {
         ByteBuffer buffer = ByteBuffer.wrap(destination, 0, length);
         long at = position;
@@ -621,9 +699,47 @@ final class ZipReader implements Closeable {
         }
     }
 
+    /**
+     * Unmaps the archive and closes its channel. Only the thread that opened the reader may close it;
+     * closing it again does nothing.
+     *
+     * @throws IOException if the channel cannot be closed
+     */
     @Override
     public void close() throws IOException {
-        channel.close();
+        if (!arena.scope().isAlive()) {
+            return;
+        }
+        try {
+            arena.close();
+        } finally {
+            channel.close();
+        }
+    }
+
+    /**
+     * Opens and maps an archive, then parses it. Whatever fails after the channel is open closes the arena
+     * as well as the channel: a confined arena is never reclaimed by the garbage collector, so every archive
+     * this rejects would otherwise leak its mapping and, on Windows, keep the file from being deleted.
+     */
+    private static ZipReader map(Path path) throws IOException {
+        FileChannel channel = FileChannel.open(path, StandardOpenOption.READ);
+        Arena arena = null;
+        try {
+            arena = Arena.ofConfined();
+            MemorySegment mapping = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size(), arena);
+            return new ZipReader(path, channel, arena, mapping);
+        } catch (IOException | RuntimeException | Error e) {
+            if (arena != null) {
+                arena.close();
+            }
+            try {
+                channel.close();
+            } catch (IOException secondary) {
+                e.addSuppressed(secondary);
+            }
+            throw e;
+        }
     }
 
     private static boolean isDriveLetter(char c) {
@@ -661,50 +777,76 @@ final class ZipReader implements Closeable {
                 | ((long) readInt(buffer, offset + 4) << 32);
     }
 
+    // Reads of the mapping. Every caller has checked the range first, with requireRange or against a bound
+    // derived from the file length, so the messages name what is wrong with the archive; an access that
+    // still falls outside the mapping, or faults because the file shrank, becomes an IOException in the
+    // constructor, copyFromMapping or bytesAt.
+
+    private int readUnsignedShort(long offset) {
+        return Short.toUnsignedInt(mapping.get(SHORT_LE, offset));
+    }
+
+    private int readInt(long offset) {
+        return mapping.get(INT_LE, offset);
+    }
+
+    private long readUnsignedInt(long offset) {
+        return Integer.toUnsignedLong(mapping.get(INT_LE, offset));
+    }
+
+    private long readLong(long offset) {
+        return mapping.get(LONG_LE, offset);
+    }
+
+    /** Copies {@code length} bytes of the archive at {@code position} into a new array. */
+    private byte[] bytesAt(long position, int length) throws IOException {
+        requireRange(position, length);
+        byte[] result = new byte[length];
+        copyFromMapping(position, result, 0, length);
+        return result;
+    }
+
+    private void copyFromMapping(long position, byte[] destination, int offset, int length) throws IOException {
+        try {
+            MemorySegment.copy(mapping, ValueLayout.JAVA_BYTE, position, destination, offset, length);
+        } catch (IndexOutOfBoundsException | InternalError e) {
+            throw unreadable(e);
+        }
+    }
+
+    /**
+     * Turns a failed read of the mapping into the reader's own failure: an access past the end of the
+     * mapping, or the {@link InternalError} an access throws when the file was truncated while it was open.
+     */
+    private IOException unreadable(Throwable cause) {
+        IOException failure = malformed("a read of the file failed; it may have been truncated while it was open");
+        failure.initCause(cause);
+        return failure;
+    }
+
     private IOException malformed(String detail) {
         return new IOException("Cannot read " + path + " as a ZIP archive: " + detail);
     }
 
-    private byte[] readFully(long position, int length) throws IOException {
-        return readFully(position, length, null);
-    }
-
-    private byte[] readFully(long position, int length, CRC32 crc) throws IOException {
-        if (position < 0 || length < 0 || position > fileLength - length) {
-            throw malformed("a read of " + length + " bytes at offset " + position + " runs past the end of the file");
-        }
-        byte[] result = new byte[length];
-        ByteBuffer buffer = ByteBuffer.wrap(result);
-        long at = position;
-        while (buffer.hasRemaining()) {
-            int start = buffer.position();
-            int read = channel.read(buffer, at);
-            if (read < 0) {
-                throw malformed("unexpected end of file at offset " + at);
-            }
-            if (crc != null) {
-                crc.update(result, start, read);
-            }
-            at += read;
-        }
-        return result;
-    }
-
+    /**
+     * Locates the end of central directory record by scanning back from the end of the file, over the
+     * mapping in place. The first candidate is the last 22 bytes of the file, and for an archive without a
+     * comment, which is nearly every jar, it is the record: those are the only bytes the scan reads.
+     */
     private long findEndOfCentralDirectory() throws IOException {
-        int window = (int) Math.min(fileLength,
+        long window = Math.min(fileLength,
                 (long) IndexFormat.MAX_COMMENT_SIZE + IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE);
         if (window < IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE) {
             throw malformed("the file is too short to contain an end of central directory record");
         }
         long start = fileLength - window;
-        byte[] tail = readFully(start, window);
-        for (int i = window - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE; i >= 0; i--) {
-            if (readInt(tail, i) != IndexFormat.END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
+        for (long at = fileLength - IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE; at >= start; at--) {
+            if (readInt(at) != IndexFormat.END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
                 continue;
             }
-            int commentLength = readUnsignedShort(tail, i + 20);
-            if (start + i + IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE + commentLength == fileLength) {
-                return start + i;
+            int commentLength = readUnsignedShort(at + 20);
+            if (at + IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE + commentLength == fileLength) {
+                return at;
             }
         }
         throw malformed("no end of central directory record in the last " + window + " bytes");
@@ -718,8 +860,7 @@ final class ZipReader implements Closeable {
      * central directory but the position implied by the end record does, every offset in the archive is off
      * by that difference.</p>
      */
-    private long offsetCorrection(long recordStart, long directorySize, long directoryOffset, long entryCount)
-            throws IOException {
+    private long offsetCorrection(long recordStart, long directorySize, long directoryOffset, long entryCount) {
         if (entryCount == 0) {
             return directorySize == 0 ? recordStart - directoryOffset : 0;
         }
@@ -736,11 +877,11 @@ final class ZipReader implements Closeable {
         return 0;
     }
 
-    private boolean hasSignatureAt(long offset, int signature) throws IOException {
+    private boolean hasSignatureAt(long offset, int signature) {
         if (offset < 0 || offset > fileLength - 4) {
             return false;
         }
-        return readInt(readFully(offset, 4), 0) == signature;
+        return readInt(offset) == signature;
     }
 
     private List<ZipEntryInfo> readCentralDirectory(long directoryStart, long directorySize, long entryCount,
@@ -755,10 +896,17 @@ final class ZipReader implements Closeable {
         if (entryCount > MAX_ENTRY_COUNT) {
             throw malformed("the archive declares too many entries: " + entryCount);
         }
-        byte[] directory = readFully(directoryStart, (int) directorySize);
-        List<ZipEntryInfo> result = new ArrayList<>((int) entryCount);
+        byte[] directory = bytesAt(directoryStart, (int) directorySize);
+        // Compares central names with local names in place, without copying the local ones.
+        MemorySegment directoryView = MemorySegment.ofArray(directory);
+        int count = (int) entryCount;
+        List<ZipEntryInfo> result = new ArrayList<>(count);
+        // Where each entry's local header starts and its data or data descriptor ends, by central
+        // directory position; only needed until the spans have been checked for overlaps.
+        long[] spanStarts = new long[count];
+        long[] spanEnds = new long[count];
         int position = 0;
-        for (long i = 0; i < entryCount; i++) {
+        for (int i = 0; i < count; i++) {
             if (position > directory.length - CENTRAL_HEADER_SIZE) {
                 throw malformed("the central directory ends after " + i + " of " + entryCount + " records");
             }
@@ -772,8 +920,10 @@ final class ZipReader implements Closeable {
             if (recordSize > directory.length - position) {
                 throw malformed("central directory record " + i + " runs past the end of the directory");
             }
-            result.add(readCentralDirectoryRecord(directory, position, nameLength, extraLength, delta,
-                    directoryStart));
+            ZipEntryInfo entry = readCentralDirectoryRecord(directory, directoryView, position, nameLength,
+                    extraLength, delta, directoryStart, spanEnds, i);
+            spanStarts[i] = entry.localHeaderOffset();
+            result.add(entry);
             position += recordSize;
         }
         if (position != directory.length) {
@@ -786,12 +936,13 @@ final class ZipReader implements Closeable {
                         + " trailing bytes not described by its entry count");
             }
         }
-        validateLocalSpans(directoryStart);
+        validateLocalSpans(result, spanStarts, spanEnds, directoryStart);
         return List.copyOf(result);
     }
 
-    private ZipEntryInfo readCentralDirectoryRecord(byte[] directory, int position, int nameLength, int extraLength,
-            long delta, long directoryStart) throws IOException {
+    private ZipEntryInfo readCentralDirectoryRecord(byte[] directory, MemorySegment directoryView, int position,
+            int nameLength, int extraLength, long delta, long directoryStart, long[] spanEnds, int index)
+            throws IOException {
         int flags = readUnsignedShort(directory, position + 8);
         int method = readUnsignedShort(directory, position + 10);
         int time = readUnsignedShort(directory, position + 12);
@@ -841,8 +992,15 @@ final class ZipReader implements Closeable {
         }
         localHeaderOffset = checkedAdd(localHeaderOffset, delta,
                 "local header offset of entry '" + name + "'");
-        long dataOffset = resolveDataOffset(name, directory, nameStart, nameLength, localHeaderOffset,
+        long dataOffset = resolveDataOffset(name, directoryView, nameStart, nameLength, localHeaderOffset,
                 flags, method, crc, compressedSize, uncompressedSize, directoryStart);
+        long dataEnd = dataOffset + compressedSize;
+        int descriptorLength = 0;
+        if ((flags & FLAG_DATA_DESCRIPTOR) != 0) {
+            descriptorLength = validateDataDescriptor(name, dataEnd, directoryStart,
+                    crc, compressedSize, uncompressedSize);
+        }
+        spanEnds[index] = checkedAdd(dataEnd, descriptorLength, "end of entry '" + name + "'");
         boolean directoryEntry = name.charAt(name.length() - 1) == '/';
         return new ZipEntryInfo(name, method, compressedSize, uncompressedSize, crc, (date << 16) | time,
                 localHeaderOffset, dataOffset, directoryEntry);
@@ -907,45 +1065,52 @@ final class ZipReader implements Closeable {
         return at + 8;
     }
 
-    private long resolveDataOffset(String name, byte[] centralDirectory, int centralNameStart, int centralNameLength,
+    /**
+     * Checks an entry's local file header against its central directory record, reading the header and
+     * the name from the mapping, and returns the offset of its first data byte.
+     */
+    private long resolveDataOffset(String name, MemorySegment directory, int centralNameStart, int centralNameLength,
             long localHeaderOffset, int flags, int method, long crc, long compressedSize, long uncompressedSize,
             long directoryStart) throws IOException {
-        byte[] header = readFully(localHeaderOffset, LOCAL_HEADER_SIZE);
-        if (readInt(header, 0) != IndexFormat.LOCAL_HEADER_SIGNATURE) {
+        requireRange(localHeaderOffset, LOCAL_HEADER_SIZE);
+        if (readInt(localHeaderOffset) != IndexFormat.LOCAL_HEADER_SIGNATURE) {
             throw malformed("no local file header for entry '" + name + "' at offset " + localHeaderOffset);
         }
-        int localFlags = readUnsignedShort(header, 6);
-        int localMethod = readUnsignedShort(header, 8);
+        int localFlags = readUnsignedShort(localHeaderOffset + 6);
+        int localMethod = readUnsignedShort(localHeaderOffset + 8);
         if (localFlags != flags) {
             throw localDisagreement(name, "flags", flags, localFlags);
         }
         if (localMethod != method) {
             throw localDisagreement(name, "method", method, localMethod);
         }
-        long localCrc = readUnsignedInt(header, 14);
-        long localCompressedSize = readUnsignedInt(header, 18);
-        long localUncompressedSize = readUnsignedInt(header, 22);
-        int nameLength = readUnsignedShort(header, LOCAL_NAME_LENGTH_OFFSET);
-        int extraLength = readUnsignedShort(header, LOCAL_NAME_LENGTH_OFFSET + 2);
+        long localCrc = readUnsignedInt(localHeaderOffset + 14);
+        long localCompressedSize = readUnsignedInt(localHeaderOffset + 18);
+        long localUncompressedSize = readUnsignedInt(localHeaderOffset + 22);
+        int nameLength = readUnsignedShort(localHeaderOffset + LOCAL_NAME_LENGTH_OFFSET);
+        int extraLength = readUnsignedShort(localHeaderOffset + LOCAL_NAME_LENGTH_OFFSET + 2);
         long variableLength = (long) nameLength + extraLength;
         if (localHeaderOffset > directoryStart - LOCAL_HEADER_SIZE
                 || variableLength > directoryStart - localHeaderOffset - LOCAL_HEADER_SIZE) {
             throw malformed("the local header of entry '" + name + "' runs into the central directory");
         }
-        long dataOffset = localHeaderOffset + LOCAL_HEADER_SIZE + variableLength;
-        byte[] localVariable = readFully(localHeaderOffset + LOCAL_HEADER_SIZE, nameLength + extraLength);
-        String localName = decodeName(localVariable, 0, nameLength, "local header of entry '" + name + "'");
+        long nameOffset = localHeaderOffset + LOCAL_HEADER_SIZE;
+        long dataOffset = nameOffset + variableLength;
+        // Equal bytes are all it takes to prove the names equal; the local name is only decoded to say
+        // what it is instead, strictly, so a malformed one is reported as malformed.
         if (nameLength != centralNameLength
-                || !Arrays.equals(centralDirectory, centralNameStart, centralNameStart + centralNameLength,
-                        localVariable, 0, nameLength)) {
-            throw malformed("the local header name '" + localName + "' of entry '" + name
-                    + "' disagrees with its central directory name");
+                || MemorySegment.mismatch(directory, centralNameStart, centralNameStart + centralNameLength,
+                        mapping, nameOffset, nameOffset + nameLength) >= 0) {
+            byte[] localName = bytesAt(nameOffset, nameLength);
+            throw malformed("the local header name '"
+                    + decodeName(localName, 0, nameLength, "local header of entry '" + name + "'")
+                    + "' of entry '" + name + "' disagrees with its central directory name");
         }
         if ((flags & FLAG_DATA_DESCRIPTOR) == 0) {
             if (localCompressedSize == IndexFormat.ZIP64_MARKER
                     || localUncompressedSize == IndexFormat.ZIP64_MARKER) {
-                long[] localZip64 = readZip64Extra(localVariable, nameLength, extraLength, name,
-                        localUncompressedSize == IndexFormat.ZIP64_MARKER,
+                long[] localZip64 = readZip64Extra(bytesAt(nameOffset + nameLength, extraLength), 0, extraLength,
+                        name, localUncompressedSize == IndexFormat.ZIP64_MARKER,
                         localCompressedSize == IndexFormat.ZIP64_MARKER, false, false);
                 localUncompressedSize = localZip64[0] < 0 ? localUncompressedSize : localZip64[0];
                 localCompressedSize = localZip64[1] < 0 ? localCompressedSize : localZip64[1];
@@ -973,8 +1138,8 @@ final class ZipReader implements Closeable {
             }
             if (localCompressedSize == IndexFormat.ZIP64_MARKER
                     || localUncompressedSize == IndexFormat.ZIP64_MARKER) {
-                long[] localZip64 = readZip64Extra(localVariable, nameLength, extraLength, name,
-                        localUncompressedSize == IndexFormat.ZIP64_MARKER,
+                long[] localZip64 = readZip64Extra(bytesAt(nameOffset + nameLength, extraLength), 0, extraLength,
+                        name, localUncompressedSize == IndexFormat.ZIP64_MARKER,
                         localCompressedSize == IndexFormat.ZIP64_MARKER, false, false);
                 validateDescriptorZip64Placeholder(name, "uncompressed-size", localZip64[0], uncompressedSize);
                 validateDescriptorZip64Placeholder(name, "compressed-size", localZip64[1], compressedSize);
@@ -983,67 +1148,114 @@ final class ZipReader implements Closeable {
         if (compressedSize > directoryStart - dataOffset) {
             throw malformed("the compressed data of entry '" + name + "' runs into the central directory");
         }
-        long dataEnd = dataOffset + compressedSize;
-        int descriptorLength = 0;
-        if ((flags & FLAG_DATA_DESCRIPTOR) != 0) {
-            descriptorLength = validateDataDescriptor(name, dataEnd, directoryStart,
-                    crc, compressedSize, uncompressedSize);
-        }
-        localSpans.add(new LocalSpan(name, localHeaderOffset,
-                checkedAdd(dataEnd, descriptorLength, "end of entry '" + name + "'")));
         return dataOffset;
     }
 
+    /**
+     * Checks the data descriptor that follows an entry's data against its central directory record, reading
+     * it from the mapping, and returns its length. It may or may not carry its signature, and its sizes are
+     * 4 or, for ZIP64, 8 bytes each.
+     */
     private int validateDataDescriptor(String name, long offset, long directoryStart, long crc,
             long compressedSize, long uncompressedSize) throws IOException {
         int available = (int) Math.min(24, directoryStart - offset);
         if (available < 12) {
             throw malformed("the data descriptor of entry '" + name + "' runs into the central directory");
         }
-        byte[] descriptor = readFully(offset, available);
-        boolean signed = available >= 4 && readInt(descriptor, 0) == 0x08074B50;
-        if (signed && matchesDescriptor(descriptor, 4, false, crc, compressedSize, uncompressedSize)) {
+        requireRange(offset, available);
+        boolean signed = readInt(offset) == DATA_DESCRIPTOR_SIGNATURE;
+        if (signed && matchesDescriptor(offset, available, 4, false, crc, compressedSize, uncompressedSize)) {
             return 16;
         }
-        if (matchesDescriptor(descriptor, 0, false, crc, compressedSize, uncompressedSize)) {
+        if (matchesDescriptor(offset, available, 0, false, crc, compressedSize, uncompressedSize)) {
             return 12;
         }
-        if (signed && matchesDescriptor(descriptor, 4, true, crc, compressedSize, uncompressedSize)) {
+        if (signed && matchesDescriptor(offset, available, 4, true, crc, compressedSize, uncompressedSize)) {
             return 24;
         }
-        if (matchesDescriptor(descriptor, 0, true, crc, compressedSize, uncompressedSize)) {
+        if (matchesDescriptor(offset, available, 0, true, crc, compressedSize, uncompressedSize)) {
             return 20;
         }
         throw malformed("the data descriptor of entry '" + name
                 + "' disagrees with its central directory CRC or sizes");
     }
 
-    private void validateLocalSpans(long directoryStart) throws IOException {
-        List<LocalSpan> ordered = new ArrayList<>(localSpans);
-        ordered.sort(Comparator.comparingLong(LocalSpan::start));
-        List<LocalSpan> distinct = new ArrayList<>(ordered.size());
-        for (LocalSpan span : ordered) {
-            if (!distinct.isEmpty()) {
-                LocalSpan previous = distinct.get(distinct.size() - 1);
-                if (span.start() == previous.start()) {
-                    if (span.end() != previous.end()) {
-                        throw malformed("entry '" + previous.name() + "' overlaps entry '" + span.name() + "'");
-                    }
-                    continue;
+    private boolean matchesDescriptor(long offset, int available, int start, boolean zip64, long crc,
+            long compressedSize, long uncompressedSize) {
+        int size = zip64 ? 20 : 12;
+        long at = offset + start;
+        if (start + size > available || readUnsignedInt(at) != crc) {
+            return false;
+        }
+        if (zip64) {
+            return readLong(at + 4) == compressedSize && readLong(at + 12) == uncompressedSize;
+        }
+        return readUnsignedInt(at + 4) == compressedSize && readUnsignedInt(at + 8) == uncompressedSize;
+    }
+
+    /**
+     * Checks that no entry's local header, data and data descriptor overlap another entry's or the central
+     * directory. Repeated central records may share one local entry, but only with the same end.
+     *
+     * <p>Local entries almost always appear in central directory order, and then one linear pass in that
+     * order suffices. Otherwise the entries are visited sorted by start, stably, so the result and the
+     * message do not depend on which order the archive used.</p>
+     *
+     * @param entries the entries, in central directory order, which name them in the messages
+     * @param starts  where each entry's local header starts
+     * @param ends    where each entry's data, or data descriptor, ends
+     */
+    private void validateLocalSpans(List<ZipEntryInfo> entries, long[] starts, long[] ends, long directoryStart)
+            throws IOException {
+        int count = starts.length;
+        int[] order = null;
+        for (int i = 1; i < count; i++) {
+            if (starts[i] < starts[i - 1]) {
+                order = sortedByStart(starts);
+                break;
+            }
+        }
+        int first = -1;
+        for (int k = 0; k < count; k++) {
+            int i = order == null ? k : order[k];
+            if (first >= 0 && starts[i] == starts[first]) {
+                if (ends[i] != ends[first]) {
+                    throw malformed("entry '" + entries.get(first).name() + "' overlaps entry '"
+                            + entries.get(i).name() + "'");
                 }
-            }
-            distinct.add(span);
-        }
-        for (int i = 0; i < distinct.size(); i++) {
-            LocalSpan current = distinct.get(i);
-            long limit = i + 1 < distinct.size() ? distinct.get(i + 1).start() : directoryStart;
-            if (current.end() > limit) {
-                String next = i + 1 < distinct.size()
-                        ? "entry '" + distinct.get(i + 1).name() + "'"
-                        : "the central directory";
-                throw malformed("entry '" + current.name() + "' overlaps " + next);
+            } else {
+                first = i;
             }
         }
+        int current = -1;
+        for (int k = 0; k < count; k++) {
+            int i = order == null ? k : order[k];
+            if (current >= 0 && starts[i] == starts[current]) {
+                continue;
+            }
+            if (current >= 0 && ends[current] > starts[i]) {
+                throw malformed("entry '" + entries.get(current).name() + "' overlaps entry '"
+                        + entries.get(i).name() + "'");
+            }
+            current = i;
+        }
+        if (current >= 0 && ends[current] > directoryStart) {
+            throw malformed("entry '" + entries.get(current).name() + "' overlaps the central directory");
+        }
+    }
+
+    /** The positions of {@code starts} sorted by value, stably; only an unusual archive needs it. */
+    private static int[] sortedByStart(long[] starts) {
+        Integer[] boxed = new Integer[starts.length];
+        for (int i = 0; i < boxed.length; i++) {
+            boxed[i] = i;
+        }
+        Arrays.sort(boxed, Comparator.comparingLong(i -> starts[i]));
+        int[] order = new int[boxed.length];
+        for (int i = 0; i < order.length; i++) {
+            order[i] = boxed[i];
+        }
+        return order;
     }
 
     private long checkedAdd(long left, long right, String description) throws IOException {
@@ -1052,20 +1264,6 @@ final class ZipReader implements Closeable {
         } catch (ArithmeticException e) {
             throw malformed(description + " overflows a 64-bit file offset");
         }
-    }
-
-    private static boolean matchesDescriptor(byte[] descriptor, int start, boolean zip64, long crc,
-            long compressedSize, long uncompressedSize) {
-        int size = zip64 ? 20 : 12;
-        if (start + size > descriptor.length || readUnsignedInt(descriptor, start) != crc) {
-            return false;
-        }
-        if (zip64) {
-            return readLong(descriptor, start + 4) == compressedSize
-                    && readLong(descriptor, start + 12) == uncompressedSize;
-        }
-        return readUnsignedInt(descriptor, start + 4) == compressedSize
-                && readUnsignedInt(descriptor, start + 8) == uncompressedSize;
     }
 
     private IOException localDisagreement(String name, String field, long central, long local) {
@@ -1080,13 +1278,32 @@ final class ZipReader implements Closeable {
         }
     }
 
+    /**
+     * Decodes an entry name as strict UTF-8. A name of plain ASCII, which is nearly every name, is copied
+     * without a decoder; any other name goes through the reader's one decoder, created at the first such
+     * name.
+     */
     private String decodeName(byte[] buffer, int offset, int length, String location) throws IOException {
-        try {
-            return StandardCharsets.UTF_8.newDecoder()
+        int end = offset + length;
+        for (int i = offset; i < end; i++) {
+            if (buffer[i] < 0) {
+                return decodeUtf8(buffer, offset, length, location);
+            }
+        }
+        // ASCII is the same in ISO-8859-1, which copies the bytes straight into a compact string.
+        return new String(buffer, offset, length, StandardCharsets.ISO_8859_1);
+    }
+
+    private String decodeUtf8(byte[] buffer, int offset, int length, String location) throws IOException {
+        CharsetDecoder decoder = utf8;
+        if (decoder == null) {
+            decoder = StandardCharsets.UTF_8.newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(buffer, offset, length))
-                    .toString();
+                    .onUnmappableCharacter(CodingErrorAction.REPORT);
+            utf8 = decoder;
+        }
+        try {
+            return decoder.reset().decode(ByteBuffer.wrap(buffer, offset, length)).toString();
         } catch (CharacterCodingException e) {
             throw malformed("invalid UTF-8 in the " + location + " entry name");
         }
@@ -1110,8 +1327,5 @@ final class ZipReader implements Closeable {
                     + " bytes; the in-memory metadata limit is " + MAX_MANIFEST_SIZE);
         }
         return Optional.of(new Manifest(new ByteArrayInputStream(read(entry))));
-    }
-
-    private record LocalSpan(String name, long start, long end) {
     }
 }
