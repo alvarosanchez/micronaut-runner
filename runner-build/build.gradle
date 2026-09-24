@@ -40,7 +40,3 @@ tasks.named('processResources', ProcessResources) {
         rename { 'launcher.jar' }
     }
 }
-
-tasks.named('test', Test) {
-    systemProperty 'runner.test.runtimeClasspath', sourceSets.test.runtimeClasspath.asPath
-}

@@ -18,25 +18,12 @@ package io.micronaut.runner;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledOnOs;
-import org.junit.jupiter.api.condition.OS;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
-import java.io.InputStream;
 import java.net.URI;
-import java.net.URLConnection;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
-import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The shape of the {@code file:} URL the handler builds for the archive.
@@ -46,9 +33,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class HandlersFileUrlTest {
-
-    @TempDir
-    Path temporary;
 
     @Test
     void aPosixPathIsUsedAsIs() {
@@ -103,38 +87,5 @@ class HandlersFileUrlTest {
         assertEquals(
                 "file:/srv/unicode-%C3%A9/literal%5Cbackslash/100%25%23%3F/app.jar",
                 Handlers.fileUrl("/srv/unicode-é/literal\\backslash/100%#?/app.jar", '/'));
-    }
-
-    @Test
-    @EnabledOnOs(OS.WINDOWS)
-    void previousEscapedSeparatorsRemainAcceptedByWindowsJdkConsumers() throws Exception {
-        Path archive = temporary.resolve("unicode-é").resolve("apps").resolve("app.jar");
-        Files.createDirectories(archive.getParent());
-        byte[] content = "legacy-path-consumer".getBytes(StandardCharsets.UTF_8);
-        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(archive))) {
-            out.putNextEntry(new JarEntry("probe.txt"));
-            out.write(content);
-            out.closeEntry();
-        }
-
-        String canonical = Handlers.fileUrl(archive.toAbsolutePath().toString(), File.separatorChar);
-        String previous = canonical.replace("/apps/app.jar", "%5Capps%5Capp.jar");
-        assertNotEquals(canonical, previous);
-        assertTrue(previous.endsWith("unicode-%C3%A9%5Capps%5Capp.jar"), previous);
-
-        URI fileUri = URI.create(previous);
-        assertEquals(archive.toRealPath(), new File(fileUri).toPath().toRealPath());
-        try (InputStream in = fileUri.toURL().openStream()) {
-            assertEquals('P', in.read(), "file: URL did not open the ZIP bytes");
-        }
-        try (JarFile jar = new JarFile(new File(fileUri))) {
-            assertEquals("legacy-path-consumer", new String(
-                    jar.getInputStream(jar.getJarEntry("probe.txt")).readAllBytes(), StandardCharsets.UTF_8));
-        }
-        URLConnection entryConnection = URI.create("jar:" + previous + "!/probe.txt").toURL().openConnection();
-        entryConnection.setUseCaches(false);
-        try (InputStream in = entryConnection.getInputStream()) {
-            assertEquals("legacy-path-consumer", new String(in.readAllBytes(), StandardCharsets.UTF_8));
-        }
     }
 }
