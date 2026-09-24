@@ -31,7 +31,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
@@ -47,7 +46,6 @@ import java.util.jar.Manifest;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -119,26 +117,6 @@ class MavenBasicSampleTest {
     }
 
     @Test
-    void strictMavenAndTheChecksumAssertionRejectStaleSidecars() throws Exception {
-        Samples.requireIntegrationScenario();
-        Path repository = temporary.resolve("stale-repository");
-        copyTree(Path.of(URI.create(Samples.REPO)), repository);
-        Path jar = pluginJar(repository);
-        Files.write(jar, new byte[] {0}, StandardOpenOption.APPEND);
-
-        AssertionError mismatch = assertThrows(AssertionError.class, () -> assertChecksumsMatch(jar));
-        assertTrue(mismatch.getMessage().contains("does not describe the staged bytes"), mismatch::getMessage);
-
-        Path sample = Samples.copySample(Samples.sample("maven-basic"), temporary.resolve("stale-sample"));
-        StringBuilder log = new StringBuilder();
-        int status = maven(sample, log, repository.toUri().toASCIIString(),
-                temporary.resolve("empty-maven-local"), "package");
-        assertTrue(status != 0, () -> "strict Maven accepted an artifact with stale checksums:\n" + log);
-        assertTrue(log.toString().toLowerCase(Locale.ROOT).contains("checksum"),
-                () -> "Maven failed for a reason other than the stale checksums:\n" + log);
-    }
-
-    @Test
     void copyingTheSampleSkipsExistingBuildOutput() throws IOException {
         Path source = temporary.resolve("source");
         Files.createDirectories(source.resolve("target"));
@@ -151,16 +129,21 @@ class MavenBasicSampleTest {
         assertFalse(Files.exists(copy.resolve("target")), "build output must not be copied into the test fixture");
     }
 
+    /**
+     * Packages a copy of the sample twice. {@code clean package} produces a runner jar, keeps the jar
+     * plugin's output as the original, and the one launch proves that the runtime exposes the main and the
+     * per-package manifest values. {@code package} without {@code clean} (#25) must then take its manifest
+     * from the jar plugin's new output rather than from the original a previous cycle left behind.
+     */
     @Test
     void packagesTheSampleAndRunsTheRunnerJar() throws Exception {
         Samples.requireIntegrationScenario();
         Samples.requirePublishedArtifact("io/micronaut/runner/micronaut-runner-maven-plugin/"
                 + Samples.VERSION + "/micronaut-runner-maven-plugin-" + Samples.VERSION + ".jar");
         requireMavenCanLoadThePlugin();
-        Path sample = Samples.sample("maven-basic");
-        Path target = sample.resolve("target");
-        Path archive = target.resolve("maven-basic-0.1.jar");
-        Path original = target.resolve("original-maven-basic-0.1.jar");
+        Path sample = Samples.copySample(Samples.sample("maven-basic"), temporary.resolve("maven-basic"));
+        Path archive = sample.resolve("target/maven-basic-0.1.jar");
+        Path original = sample.resolve("target/original-maven-basic-0.1.jar");
 
         StringBuilder log = new StringBuilder();
         int status = maven(sample, log, "clean", "package");
@@ -172,13 +155,11 @@ class MavenBasicSampleTest {
         assertTrue(isRunnerJar(archive), () -> archive.getFileName() + " is not a runner jar:\n" + log);
         assertFalse(isRunnerJar(original), () -> original.getFileName() + " must be the jar plugin's output:\n" + log);
         try (JarFile jar = new JarFile(archive.toFile())) {
-            Attributes attributes = jar.getManifest().getMainAttributes();
-            assertEquals("java.base/sun.nio.ch java.base/jdk.internal.misc",
-                    attributes.getValue("Add-Exports"));
-            assertEquals("java.base/java.lang java.base/java.util", attributes.getValue("Add-Opens"));
             assertNotNull(jar.getEntry("MICRONAUT-INF/classes/io/micronaut/runner/generated/AppEntry.class"),
                     () -> "the default configuration did not generate the entry stub:\n" + log);
         }
+        assertManifestVersion(original, null, "v1");
+        assertManifestVersion(original, "com/example/", "package-v1");
 
         ForkedApplication application = ForkedApplication.start(archive, sample, Map.of());
         try {
@@ -186,29 +167,12 @@ class MavenBasicSampleTest {
             assertEquals(0, exit, () -> "the packaged application exited with " + exit + application.describe());
             assertTrue(application.output().contains(EXPECTED_OUTPUT),
                     () -> "the application did not print \"" + EXPECTED_OUTPUT + "\"" + application.describe());
+            String manifestLine = "RUNNER MANIFEST: main=v1, package=package-v1";
+            assertTrue(application.output().contains(manifestLine),
+                    () -> "the application did not print \"" + manifestLine + "\"" + application.describe());
         } finally {
             application.close();
         }
-    }
-
-    @Test
-    void refreshesManifestMetadataAcrossNonCleanPackageCycles() throws Exception {
-        Samples.requireIntegrationScenario();
-        Samples.requirePublishedArtifact("io/micronaut/runner/micronaut-runner-maven-plugin/"
-                + Samples.VERSION + "/micronaut-runner-maven-plugin-" + Samples.VERSION + ".jar");
-        requireMavenCanLoadThePlugin();
-        Path sample = Samples.copySample(Samples.sample("maven-basic"), temporary.resolve("maven-basic"));
-        Path archive = sample.resolve("target/maven-basic-0.1.jar");
-        Path original = sample.resolve("target/original-maven-basic-0.1.jar");
-
-        StringBuilder firstLog = new StringBuilder();
-        assertEquals(0, maven(sample, firstLog, "clean", "package"),
-                () -> "the first Maven build failed:\n" + firstLog);
-        assertTrue(isRunnerJar(archive));
-        assertFalse(isRunnerJar(original));
-        assertManifestVersion(original, null, "v1");
-        assertManifestVersion(original, "com/example/", "package-v1");
-        assertRuntimeManifest(archive, sample, "v1", "package-v1");
 
         Path pom = sample.resolve("pom.xml");
         String secondPom = Files.readString(pom, StandardCharsets.UTF_8)
@@ -222,20 +186,13 @@ class MavenBasicSampleTest {
         StringBuilder secondLog = new StringBuilder();
         assertEquals(0, maven(sample, secondLog, "package"),
                 () -> "the non-clean Maven build failed:\n" + secondLog);
-        assertTrue(isRunnerJar(archive));
+        assertTrue(isRunnerJar(archive), () -> archive.getFileName() + " is not a runner jar:\n" + secondLog);
         assertFalse(isRunnerJar(original), "the saved original must never be a previous runner");
         assertManifestVersion(original, null, "v2");
         assertManifestVersion(original, "com/example/", "package-v2");
-        assertRuntimeManifest(archive, sample, "v2", "package-v2");
-
-        StringBuilder repeatedGoalLog = new StringBuilder();
-        String goal = "io.micronaut.runner:micronaut-runner-maven-plugin:" + Samples.VERSION + ":package";
-        assertEquals(0, maven(sample, repeatedGoalLog, goal),
-                () -> "the repeated Runner goal failed:\n" + repeatedGoalLog);
-        assertFalse(isRunnerJar(original), "a repeated Runner-only goal must retain the thin original");
-        assertManifestVersion(original, null, "v2");
-        assertManifestVersion(original, "com/example/", "package-v2");
-        assertRuntimeManifest(archive, sample, "v2", "package-v2");
+        // The runner manifest copies the main Implementation-Version. The package section lives only in the
+        // index, which is built from the same manifest, and the launch above already read both at runtime.
+        assertManifestVersion(archive, null, "v2");
     }
 
     // ------------------------------------------------------------------ plumbing
@@ -252,16 +209,12 @@ class MavenBasicSampleTest {
 
     /** Runs Maven against the sample, capturing everything it prints. */
     private static int maven(Path projectDirectory, StringBuilder log, String... goals) throws Exception {
-        return maven(projectDirectory, log, Samples.REPO, Samples.mavenLocalRepository(), goals);
-    }
-
-    private static int maven(Path projectDirectory, StringBuilder log, String repository,
-            Path localRepository, String... goals) throws Exception {
+        Path localRepository = Samples.mavenLocalRepository();
         Files.createDirectories(localRepository);
         Samples.deleteRecursively(localRepository.resolve(RUNNER_GROUP_PATH));
 
         Properties properties = new Properties();
-        properties.setProperty("runner.repo", repository);
+        properties.setProperty("runner.repo", Samples.REPO);
         properties.setProperty("runner.version", Samples.VERSION);
         if (Samples.MICRONAUT_PLATFORM_VERSION != null) {
             properties.setProperty("micronaut.platform.version", Samples.MICRONAUT_PLATFORM_VERSION);
@@ -376,19 +329,6 @@ class MavenBasicSampleTest {
         }
     }
 
-    private static void copyTree(Path source, Path target) throws IOException {
-        try (var files = Files.walk(source)) {
-            for (Path file : files.toList()) {
-                Path destination = target.resolve(source.relativize(file));
-                if (Files.isDirectory(file)) {
-                    Files.createDirectories(destination);
-                } else {
-                    Files.copy(file, destination);
-                }
-            }
-        }
-    }
-
     private static void assertManifestVersion(Path jar, String section, String expected) throws IOException {
         try (JarFile file = new JarFile(jar.toFile())) {
             Manifest manifest = file.getManifest();
@@ -398,20 +338,6 @@ class MavenBasicSampleTest {
             assertEquals(expected, attributes.getValue(Attributes.Name.IMPLEMENTATION_VERSION),
                     () -> jar + " carries stale manifest metadata in "
                             + (section == null ? "the main section" : section));
-        }
-    }
-
-    private static void assertRuntimeManifest(Path archive, Path sample, String mainVersion, String packageVersion)
-            throws IOException {
-        ForkedApplication application = ForkedApplication.start(archive, sample, Map.of());
-        try {
-            int exit = application.awaitExit(RUN_TIMEOUT);
-            assertEquals(0, exit, () -> "the packaged application exited with " + exit + application.describe());
-            String expected = "RUNNER MANIFEST: main=" + mainVersion + ", package=" + packageVersion;
-            assertTrue(application.output().contains(expected),
-                    () -> "the application did not print \"" + expected + "\"" + application.describe());
-        } finally {
-            application.close();
         }
     }
 

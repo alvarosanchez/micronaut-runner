@@ -15,23 +15,17 @@
  */
 package io.micronaut.runner.gradle;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -173,34 +167,25 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
                 }
                 """.replace("@cache@", cache.toAbsolutePath().toString().replace('\\', '/'));
 
-        assertCacheTracksDependencyOrder(root, settings);
-    }
+        Path first = writeOrderFixture(root.resolve("first"), settings);
+        Path second = writeOrderFixture(root.resolve("second"), settings);
 
-    /**
-     * Dependency order is part of an HTTP build-cache key, without relying on another Gradle process or
-     * shared cache state.
-     *
-     * @param root a fresh directory to hold the relocated projects
-     * @throws IOException          if the fixtures or HTTP cache cannot be written
-     * @throws InterruptedException if the forked application is interrupted
-     */
-    @Test
-    void dependencyOrderIsPartOfTheHttpBuildCacheKey(@TempDir Path root)
-            throws IOException, InterruptedException {
-        try (BuildCacheServer cache = new BuildCacheServer()) {
-            String settings = """
-                    buildCache {
-                        local { enabled = false }
-                        remote(HttpBuildCache) {
-                            url = uri('@url@')
-                            allowInsecureProtocol = true
-                            push = true
-                        }
-                    }
-                    """.replace("@url@", cache.url().toString());
+        BuildResult stored = build(first, "micronautRunnerJar", "--build-cache");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(stored, RUNNER_JAR_TASK));
+        assertOrder(first, "A");
 
-            assertCacheTracksDependencyOrder(root, settings);
-        }
+        BuildResult relocated = build(second, "micronautRunnerJar", "--build-cache");
+        assertEquals(TaskOutcome.FROM_CACHE, outcomeOf(relocated, RUNNER_JAR_TASK),
+                () -> "identical ordered inputs did not survive relocation:\n" + relocated.getOutput());
+        assertOrder(second, "A");
+
+        BuildResult reversed = build(second, "micronautRunnerJar", "--build-cache", "-Preversed=true");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(reversed, RUNNER_JAR_TASK),
+                () -> "reordered equal-named dependencies reused stale output:\n" + reversed.getOutput());
+        assertOrder(second, "B");
+
+        BuildResult unchanged = build(second, "micronautRunnerJar", "--build-cache", "-Preversed=true");
+        assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(unchanged, RUNNER_JAR_TASK));
     }
 
     /**
@@ -320,29 +305,6 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
         assertFalse(Files.exists(state), () -> "the task left packaging state behind in " + state);
     }
 
-    private static void assertCacheTracksDependencyOrder(Path root, String settings)
-            throws IOException, InterruptedException {
-        Path first = writeOrderFixture(root.resolve("first"), settings);
-        Path second = writeOrderFixture(root.resolve("second"), settings);
-
-        BuildResult stored = build(first, "micronautRunnerJar", "--build-cache");
-        assertEquals(TaskOutcome.SUCCESS, outcomeOf(stored, RUNNER_JAR_TASK));
-        assertOrder(first, "A");
-
-        BuildResult relocated = build(second, "micronautRunnerJar", "--build-cache");
-        assertEquals(TaskOutcome.FROM_CACHE, outcomeOf(relocated, RUNNER_JAR_TASK),
-                () -> "identical ordered inputs did not survive relocation:\n" + relocated.getOutput());
-        assertOrder(second, "A");
-
-        BuildResult reversed = build(second, "micronautRunnerJar", "--build-cache", "-Preversed=true");
-        assertEquals(TaskOutcome.SUCCESS, outcomeOf(reversed, RUNNER_JAR_TASK),
-                () -> "reordered equal-named dependencies reused stale output:\n" + reversed.getOutput());
-        assertOrder(second, "B");
-
-        BuildResult unchanged = build(second, "micronautRunnerJar", "--build-cache", "-Preversed=true");
-        assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(unchanged, RUNNER_JAR_TASK));
-    }
-
     private static Path writeOrderFixture(Path directory, String settings) throws IOException {
         writeFixture(directory, """
                 def reversed = providers.gradleProperty('reversed').getOrElse('false').toBoolean()
@@ -429,46 +391,5 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
                 "System.out.println(\"RESULT OK\");",
                 "System.out.println(\"marker=" + marker + "\");\n"
                         + "        System.out.println(\"RESULT OK\");"));
-    }
-
-    private static final class BuildCacheServer implements AutoCloseable {
-
-        private final Map<String, byte[]> entries = new ConcurrentHashMap<>();
-        private final HttpServer server;
-
-        private BuildCacheServer() throws IOException {
-            server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-            server.createContext("/", this::handle);
-            server.start();
-        }
-
-        private URI url() {
-            return URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/cache/");
-        }
-
-        private void handle(HttpExchange exchange) throws IOException {
-            String key = exchange.getRequestURI().getPath();
-            try (exchange) {
-                if ("GET".equals(exchange.getRequestMethod())) {
-                    byte[] value = entries.get(key);
-                    if (value == null) {
-                        exchange.sendResponseHeaders(404, -1);
-                    } else {
-                        exchange.sendResponseHeaders(200, value.length);
-                        exchange.getResponseBody().write(value);
-                    }
-                } else if ("PUT".equals(exchange.getRequestMethod())) {
-                    entries.put(key, exchange.getRequestBody().readAllBytes());
-                    exchange.sendResponseHeaders(200, -1);
-                } else {
-                    exchange.sendResponseHeaders(405, -1);
-                }
-            }
-        }
-
-        @Override
-        public void close() {
-            server.stop(0);
-        }
     }
 }

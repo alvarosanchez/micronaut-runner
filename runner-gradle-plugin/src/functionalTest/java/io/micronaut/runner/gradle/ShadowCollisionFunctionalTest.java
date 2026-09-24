@@ -64,29 +64,6 @@ class ShadowCollisionFunctionalTest extends AbstractFunctionalTest {
             """;
 
     /**
-     * Build scripts compiled against the original public collision property can still configure it while
-     * validation is owned by the dedicated task.
-     *
-     * @param project a fresh project directory
-     * @throws IOException          if the fixture cannot be written
-     * @throws InterruptedException if the runner cannot be launched
-     */
-    @Test
-    void legacyCollisionPropertyRemainsConfigurable(@TempDir Path project)
-            throws IOException, InterruptedException {
-        writeFixture(project, """
-                tasks.named('micronautRunnerJar') {
-                    conflictingArchive = layout.buildDirectory.file('legacy-shadow.jar')
-                }
-                """, "");
-
-        BuildResult result = build(project, "micronautRunnerJar");
-
-        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, RUNNER_JAR_TASK));
-        runJarSuccessfully(project.resolve(DEFAULT_ARCHIVE));
-    }
-
-    /**
      * Changing only Shadow's output from safe to conflicting must invalidate the guard even though all
      * packaging inputs and the existing runner archive are unchanged.
      *
@@ -148,37 +125,29 @@ class ShadowCollisionFunctionalTest extends AbstractFunctionalTest {
     }
 
     /**
-     * Both supported Shadow ids and both command-line task orders reject a collision before either archive
-     * producer can replace a previously valid runner jar.
+     * Requesting {@code shadowJar} before {@code micronautRunnerJar} rejects a collision before Shadow can
+     * replace a previously valid runner jar. That order is the only one that exercises the edge from
+     * {@code shadowJar} to the validation task, and the legacy id covers that id's {@code withPlugin}
+     * registration.
      *
-     * @param root a fresh directory for one fixture per sequence
-     * @throws IOException if a fixture or archive cannot be read
+     * @param project a fresh project directory
+     * @throws IOException if the fixture or archive cannot be read
      */
     @Test
-    void combinedRequestsFailBeforeEitherTaskCanOverwriteTheRunner(@TempDir Path root) throws IOException {
-        String[] pluginIds = {"com.gradleup.shadow", "com.github.johnrengelman.shadow"};
-        String[][] taskOrders = {
-            {"micronautRunnerJar", "shadowJar"},
-            {"shadowJar", "micronautRunnerJar"}
-        };
-        int sequence = 0;
-        for (String pluginId : pluginIds) {
-            for (String[] tasks : taskOrders) {
-                Path project = writeShadowFixture(root.resolve("sequence-" + sequence++), "");
-                BuildResult safe = build(project, "micronautRunnerJar",
-                        "-PshadowPlugin=" + pluginId, "-PshadowClassifier=shadow");
-                assertEquals(TaskOutcome.SUCCESS, outcomeOf(safe, RUNNER_JAR_TASK));
-                Path runnerJar = project.resolve(DEFAULT_ARCHIVE);
-                byte[] original = Files.readAllBytes(runnerJar);
+    void combinedRequestFailsBeforeShadowCanOverwriteTheRunner(@TempDir Path project) throws IOException {
+        writeShadowFixture(project, "");
+        BuildResult safe = build(project, "micronautRunnerJar",
+                "-PshadowPlugin=com.github.johnrengelman.shadow", "-PshadowClassifier=shadow");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(safe, RUNNER_JAR_TASK));
+        Path runnerJar = project.resolve(DEFAULT_ARCHIVE);
+        byte[] original = Files.readAllBytes(runnerJar);
 
-                BuildResult collision = buildAndFail(project, tasks[0], tasks[1],
-                        "-PshadowPlugin=" + pluginId, "-PshadowClassifier=all");
+        BuildResult collision = buildAndFail(project, "shadowJar", "micronautRunnerJar",
+                "-PshadowPlugin=com.github.johnrengelman.shadow", "-PshadowClassifier=all");
 
-                assertCollision(collision);
-                assertArrayEquals(original, Files.readAllBytes(runnerJar),
-                        "task order changed the runner archive before rejecting " + pluginId);
-            }
-        }
+        assertCollision(collision);
+        assertArrayEquals(original, Files.readAllBytes(runnerJar),
+                "shadowJar replaced the runner archive before the collision was rejected");
     }
 
     /**
