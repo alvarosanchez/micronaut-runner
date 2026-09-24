@@ -15,11 +15,13 @@
  */
 package io.micronaut.runner.gradle;
 
+import org.gradle.api.Action;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.result.ResolvedArtifactResult;
 import org.gradle.api.file.RegularFile;
+import org.gradle.api.plugins.AppliedPlugin;
 import org.gradle.api.plugins.BasePluginExtension;
 import org.gradle.api.plugins.JavaApplication;
 import org.gradle.api.plugins.JavaPlugin;
@@ -42,10 +44,12 @@ import java.util.Set;
  * Packages a Micronaut application as a runner jar: one executable archive in which every dependency
  * remains an intact nested jar.
  *
- * <p>The plugin registers a single task, {@value #TASK_NAME}, and wires it into {@code assemble}. It
+ * <p>The plugin registers the {@value #TASK_NAME} task and wires it into {@code assemble}. It
  * needs no configuration in a project that already applies the {@code application} plugin: the main class
  * comes from the {@code application} block, the application classes and resources from the main source
- * set's output, and the dependencies from the runtime classpath in resolution order.</p>
+ * set's output, and the dependencies from the runtime classpath in resolution order. Only a project that
+ * applies a Shadow plugin also gets {@value #SHADOW_COLLISION_TASK_NAME}, which both archive tasks depend
+ * on.</p>
  *
  * @since 1.0
  */
@@ -54,7 +58,10 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
     /** The name of the task this plugin registers. */
     public static final String TASK_NAME = "micronautRunnerJar";
 
-    /** The task that checks Runner and Shadow output locations before either producer executes. */
+    /**
+     * The task that checks Runner and Shadow output locations before either producer executes. It exists
+     * only in a project that applies a Shadow plugin.
+     */
     public static final String SHADOW_COLLISION_TASK_NAME = "validateMicronautRunnerShadowOutputs";
 
     /**
@@ -118,26 +125,23 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
 
         // A runner jar and a shaded jar are different archives. Writing both to one path silently produces
         // whichever task ran last. A separate task performs the check even when either producer is skipped.
-        TaskProvider<ValidateShadowArchiveCollision> collisionCheck = project.getTasks().register(
-                SHADOW_COLLISION_TASK_NAME, ValidateShadowArchiveCollision.class, task -> {
-                    task.setGroup(LifecycleBasePlugin.VERIFICATION_GROUP);
-                    task.setDescription("Validates that Runner and Shadow archives have distinct outputs");
-                    task.getRunnerArchive().set(runnerJar.flatMap(MicronautRunnerJar::getArchiveFile));
-                });
-        forbidCollisionWithShadow(project, runnerJar, collisionCheck, SHADOW_PLUGIN);
-        forbidCollisionWithShadow(project, runnerJar, collisionCheck, LEGACY_SHADOW_PLUGIN);
-    }
-
-    private void forbidCollisionWithShadow(Project project,
-                                           TaskProvider<MicronautRunnerJar> runnerJar,
-                                           TaskProvider<ValidateShadowArchiveCollision> collisionCheck,
-                                           String pluginId) {
-        project.getPluginManager().withPlugin(pluginId, unused -> {
+        Action<AppliedPlugin> forbidCollisionWithShadow = unused -> {
+            if (project.getTasks().getNames().contains(SHADOW_COLLISION_TASK_NAME)) {
+                return; // both Shadow plugin ids are applied
+            }
             TaskProvider<Jar> shadowJar = project.getTasks().named("shadowJar", Jar.class);
-            collisionCheck.configure(task -> task.getShadowArchive().set(shadowJar.flatMap(Jar::getArchiveFile)));
+            TaskProvider<ValidateShadowArchiveCollision> collisionCheck = project.getTasks().register(
+                    SHADOW_COLLISION_TASK_NAME, ValidateShadowArchiveCollision.class, task -> {
+                        task.setGroup(LifecycleBasePlugin.VERIFICATION_GROUP);
+                        task.setDescription("Validates that Runner and Shadow archives have distinct outputs");
+                        task.getRunnerArchive().set(runnerJar.flatMap(MicronautRunnerJar::getArchiveFile));
+                        task.getShadowArchive().set(shadowJar.flatMap(Jar::getArchiveFile));
+                    });
             runnerJar.configure(task -> task.dependsOn(collisionCheck));
             shadowJar.configure(task -> task.dependsOn(collisionCheck));
-        });
+        };
+        project.getPluginManager().withPlugin(SHADOW_PLUGIN, forbidCollisionWithShadow);
+        project.getPluginManager().withPlugin(LEGACY_SHADOW_PLUGIN, forbidCollisionWithShadow);
     }
 
     private Provider<RegularFile> defaultArchiveFile(Project project, MicronautRunnerJar task) {
