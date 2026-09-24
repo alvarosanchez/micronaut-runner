@@ -19,10 +19,6 @@ dependencies {
 }
 
 def testTask = tasks.named('test', Test) {
-    // This smoke gate runs several isolated Gradle/Maven builds. Do not overlap it with the Gradle plugin's
-    // process/deadline tests: both suites deliberately fork many short-lived JVMs and resource contention
-    // makes those timing regressions non-deterministic on developer machines and small CI agents.
-    mustRunAfter ':micronaut-runner-gradle-plugin:functionalTest'
     // Sample sources are inputs; their build outputs are not.
     inputs.files(fileTree('samples') { exclude '**/build/**', '**/.gradle/**', '**/target/**' })
           .withPathSensitivity(PathSensitivity.RELATIVE)
