@@ -25,8 +25,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.CopyOption;
 import java.nio.file.DirectoryStream;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileAlreadyExistsException;
@@ -34,9 +32,9 @@ import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
@@ -115,24 +113,14 @@ import java.util.zip.ZipEntry;
  *
  * <h2>Safety</h2>
  * <p>Everything is written into a temporary directory beside the destination and renamed into place, so an
- * interrupted extraction leaves no half-written tree. Without {@code --force}, destination occupancy is
- * checked again after staging and the final move is conditional: an occupant that arrives before either
- * check or wins the final move is preserved. With {@code --force}, an old destination is first renamed to
- * a sibling backup. A failed publication restores it when possible; if restoration or post-commit cleanup
- * fails, the error identifies the retained backup. A destination that contains the runner jar itself is
- * always refused, and every name is checked to resolve inside the destination before anything is written.
- * All timestamps are fixed, so extracting one archive twice produces the same tree and an AOT training run
- * matches the production copy.</p>
- *
- * <p>The source-containment check resolves the archive's real path and a destination that does not yet
- * exist through its nearest existing ancestor, so symbolic-link and case aliases cannot hide the source.
- * The check runs again immediately before publication. Forced backup and publication moves request
- * {@link StandardCopyOption#ATOMIC_MOVE} and fall back to ordinary same-filesystem moves only when the
- * provider reports that atomic moves are unsupported. The standard {@link Path} API offers neither an
- * atomic directory exchange nor a move conditioned on previously checked path identities, so publishing
- * over an existing empty destination or performing a forced replacement can briefly expose an absent
- * destination. A hostile process can also replace path components between checks and moves. Source and
- * destination directories must be writable only by trusted participants.</p>
+ * interrupted extraction leaves no half-written tree. Without {@code --force}, a destination that exists
+ * and is not an empty directory, a symbolic link included, is refused and left untouched, also when it
+ * appears while extraction runs. With {@code --force}, the old destination (only the link itself, when it
+ * is a symbolic link) is renamed to a sibling backup until the new tree is in place, and a failed
+ * publication restores it or names it in the error. A destination that contains the runner jar is always
+ * refused, also through symbolic-link and case aliases, and every name is checked to resolve inside the
+ * destination before anything is written. All timestamps are fixed, so extracting one archive twice
+ * produces the same tree and an AOT training run matches the production copy.</p>
  *
  * <p>This class is loaded only when the mode selects it, so it is written in ordinary Java: the rules that
  * keep {@code io.micronaut.runner} free of lambdas, streams and {@code String.format} do not apply to
@@ -192,10 +180,6 @@ public final class Extract {
     /** The same instant, for the modification times of the files on disk. */
     private static final FileTime FILE_TIME = FileTime.from(Instant.parse("1980-02-01T00:00:00Z"));
 
-    /** The production publication operations; tests replace only the operation they need to control. */
-    private static final PublicationOperations SYSTEM_PUBLICATION = new PublicationOperations() {
-    };
-
     private Extract() {
     }
 
@@ -211,21 +195,6 @@ public final class Extract {
      */
     public static void run(String[] args, File archive, Index index, ArchiveSource source)
             throws IOException {
-        run(args, archive, index, source, SYSTEM_PUBLICATION);
-    }
-
-    /**
-     * Extracts with controllable publication operations for deterministic race and failure tests.
-     *
-     * @param args       the program arguments
-     * @param archive    the runner jar
-     * @param index      the index read from it
-     * @param source     the archive's bytes
-     * @param operations the publication operations
-     * @throws IOException if extraction or publication fails
-     */
-    static void run(String[] args, File archive, Index index, ArchiveSource source,
-            PublicationOperations operations) throws IOException {
         Path archivePath = archive.getAbsoluteFile().toPath().normalize();
         Options options = parse(args, archivePath);
         Path destination = options.destination();
@@ -236,24 +205,23 @@ public final class Extract {
         requireDestinationOutsideArchive(archivePath, destination);
         checkDestination(destination, options.force());
         Files.createDirectories(parent);
-        Path work = Files.createTempDirectory(parent, ".micronaut-runner-extract-");
-        boolean complete = false;
+        // A temporary directory is private to its owner, so the layout is a child of it, created like any
+        // other directory: once renamed into place, it has the permissions the user's umask gives.
+        Path scratch = Files.createTempDirectory(parent, ".micronaut-runner-extract-");
         try {
-            List<Library> libraries = writeLibraries(work, index, source);
+            Path layout = Files.createDirectory(scratch.resolve("layout"));
+            List<Library> libraries = writeLibraries(layout, index, source);
             String applicationJar = applicationJarName(archivePath);
             int entries;
             try (JarFile outer = new JarFile(archive, false)) {
                 Manifest manifest = manifest(outer, index, libraries);
-                entries = writeApplicationJar(resolveWithin(work, applicationJar), outer, manifest);
+                entries = writeApplicationJar(resolveWithin(layout, applicationJar), outer, manifest);
             }
-            stamp(work);
-            moveIntoPlace(work, destination, archivePath, options.force(), operations);
-            complete = true;
+            stamp(layout);
+            publish(layout, destination, options.force());
             report(archivePath, destination, applicationJar, entries, index, libraries);
         } finally {
-            if (!complete) {
-                deleteRecursively(work);
-            }
+            deleteRecursively(scratch);
         }
     }
 
@@ -353,18 +321,31 @@ public final class Extract {
     }
 
     /**
-     * Checks that the destination can be written to.
+     * Checks, once and before anything is written, that the destination may be published to. A symbolic
+     * link is judged as a link, never by its target.
      *
      * @param destination the destination
      * @param force       whether the user allowed a destination that is not empty to be replaced
-     * @throws IOException if the destination is a file, or is a directory with anything in it and
-     *                     {@value #OPTION_FORCE} was not given
+     * @throws IOException if the destination is neither absent nor a directory, or is a symbolic link or a
+     *                     directory with anything in it and {@value #OPTION_FORCE} was not given
      */
     private static void checkDestination(Path destination, boolean force) throws IOException {
-        if (!Files.exists(destination)) {
+        BasicFileAttributes attributes;
+        try {
+            attributes = Files.readAttributes(destination, BasicFileAttributes.class,
+                    LinkOption.NOFOLLOW_LINKS);
+        } catch (NoSuchFileException e) {
             return;
         }
-        if (!Files.isDirectory(destination)) {
+        if (attributes.isSymbolicLink()) {
+            if (!force) {
+                throw new IOException("The destination " + destination + " is a symbolic link. Pass "
+                        + OPTION_FORCE + " to replace the link (its target is not touched), or "
+                        + OPTION_DESTINATION + " to extract somewhere else.");
+            }
+            return;
+        }
+        if (!attributes.isDirectory()) {
             throw new IOException("The destination " + destination + " exists and is not a directory");
         }
         if (force) {
@@ -424,7 +405,7 @@ public final class Extract {
     /**
      * Writes every dependency to {@code lib/}, byte for byte as the runner jar stores it.
      *
-     * @param work   the directory being built, which is renamed onto the destination
+     * @param work   the layout being built, which is renamed onto the destination
      * @param index  the index
      * @param source the archive's bytes
      * @return the dependencies, in index order, which is class path order
@@ -831,115 +812,53 @@ public final class Extract {
     }
 
     /**
-     * Publishes the finished tree according to the requested replacement policy.
+     * Renames the staged layout onto the destination, which {@code checkDestination} has already accepted.
      *
-     * <p>Unforced publication preserves concurrent occupants. Forced publication retains an existing
-     * destination until the new tree commits so that failures can be rolled back.</p>
+     * <p>Without {@code force}, only an empty real directory is removed first, and both the removal and
+     * the rename refuse an occupant that appeared since the check. With {@code force}, an existing
+     * destination (a symbolic link as the link itself) is renamed to a sibling backup that is removed once
+     * the layout is in place, or moved back if it cannot be. A swap of the destination between the
+     * directory check and its removal is not defended against, and an existing empty destination directory
+     * is lost if the final rename then fails for an unrelated reason.</p>
      *
-     * @param work        the finished tree
+     * @param staged      the finished layout
      * @param destination where it belongs
-     * @param archive     the runner jar, rechecked before anything is replaced
-     * @param force       whether replacement was authorized
-     * @throws IOException if the destination cannot be published or restored safely
+     * @param force       whether an existing destination may be replaced
+     * @throws IOException if the destination is occupied without {@code force}, or cannot be replaced
      */
-    private static void moveIntoPlace(Path work, Path destination, Path archive, boolean force,
-            PublicationOperations operations) throws IOException {
-        operations.beforePublication(work, destination);
-        // Path components may have changed while the extracted tree was assembled. This narrows the
-        // accidental race window; see the class documentation for the remaining hostile-race boundary.
-        requireDestinationOutsideArchive(archive, destination);
-        checkDestination(destination, force);
-        if (force) {
-            replaceForced(work, destination, operations);
-        } else {
-            replaceUnforced(work, destination, operations);
-        }
-    }
-
-    /** Publishes without ever replacing an occupant that appeared during extraction. */
-    private static void replaceUnforced(Path work, Path destination, PublicationOperations operations)
-            throws IOException {
-        Path emptyPredecessor = null;
-        if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
-            emptyPredecessor = reserveBackup(destination);
-            moveWithAtomicFallback(destination, emptyPredecessor, operations);
-            try {
-                if (Files.isSymbolicLink(emptyPredecessor)) {
-                    throw new IOException("The destination " + destination
-                            + " became a symbolic link during extraction");
-                }
-                checkDestination(emptyPredecessor, false);
-            } catch (IOException changed) {
+    static void publish(Path staged, Path destination, boolean force) throws IOException {
+        if (!force) {
+            if (Files.isDirectory(destination, LinkOption.NOFOLLOW_LINKS)) {
                 try {
-                    operations.move(emptyPredecessor, destination);
-                } catch (IOException restoreFailure) {
-                    IOException failure = new IOException("The destination " + destination
-                            + " changed during extraction; its occupant remains recoverable at "
-                            + emptyPredecessor, changed);
-                    failure.addSuppressed(restoreFailure);
-                    throw failure;
-                }
-                throw new IOException("The destination " + destination
-                        + " changed during extraction; its occupant was restored", changed);
-            }
-        }
-        try {
-            operations.move(work, destination);
-        } catch (IOException publicationFailure) {
-            boolean destinationOccupied = Files.exists(destination, LinkOption.NOFOLLOW_LINKS)
-                    || publicationFailure instanceof FileAlreadyExistsException
-                    || publicationFailure instanceof DirectoryNotEmptyException;
-            if (emptyPredecessor != null) {
-                if (destinationOccupied && Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
-                    try {
-                        Files.delete(emptyPredecessor);
-                    } catch (IOException cleanupFailure) {
-                        publicationFailure.addSuppressed(cleanupFailure);
-                    }
-                } else {
-                    try {
-                        operations.move(emptyPredecessor, destination);
-                    } catch (IOException restoreFailure) {
-                        IOException failure = new IOException("Could not publish the extracted tree to "
-                                + destination + "; the original empty destination remains at "
-                                + emptyPredecessor, publicationFailure);
-                        failure.addSuppressed(restoreFailure);
-                        throw failure;
-                    }
+                    Files.delete(destination);
+                } catch (DirectoryNotEmptyException e) {
+                    throw occupiedDuringPublication(destination, e);
                 }
             }
-            if (destinationOccupied) {
-                throw occupiedDuringPublication(destination, publicationFailure);
-            }
-            throw publicationFailure;
-        }
-        if (emptyPredecessor != null) {
             try {
-                Files.delete(emptyPredecessor);
-            } catch (IOException cleanupFailure) {
-                throw new IOException("Published the extracted tree to " + destination
-                        + ", but could not remove the original empty destination at " + emptyPredecessor,
-                        cleanupFailure);
+                Files.move(staged, destination);
+            } catch (IOException e) {
+                if (e instanceof FileAlreadyExistsException
+                        || Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
+                    throw occupiedDuringPublication(destination, e);
+                }
+                throw e;
             }
+            return;
         }
-    }
-
-    /** Publishes a forced replacement while retaining the previous tree until the new one commits. */
-    private static void replaceForced(Path work, Path destination, PublicationOperations operations)
-            throws IOException {
         Path backup = null;
         if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
             backup = reserveBackup(destination);
-            moveWithAtomicFallback(destination, backup, operations);
+            Files.move(destination, backup);
         }
         try {
-            moveWithAtomicFallback(work, destination, operations);
+            Files.move(staged, destination);
         } catch (IOException publicationFailure) {
             if (backup == null) {
                 throw publicationFailure;
             }
             try {
-                moveWithAtomicFallback(backup, destination, operations);
+                Files.move(backup, destination);
             } catch (IOException rollbackFailure) {
                 IOException failure = new IOException("Could not publish the extracted tree to " + destination
                         + "; the previous output remains recoverable at " + backup, publicationFailure);
@@ -951,7 +870,7 @@ public final class Extract {
         }
         if (backup != null) {
             try {
-                operations.deleteRecursively(backup);
+                deleteRecursively(backup);
             } catch (IOException cleanupFailure) {
                 throw new IOException("Published the extracted tree to " + destination
                         + ", but could not completely remove the previous output at " + backup,
@@ -967,17 +886,7 @@ public final class Extract {
         return backup;
     }
 
-    /** Attempts an atomic rename and falls back only when the provider does not support it. */
-    private static void moveWithAtomicFallback(Path source, Path target, PublicationOperations operations)
-            throws IOException {
-        try {
-            operations.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            operations.move(source, target);
-        }
-    }
-
-    /** Reports a concurrent destination occupant without replacing it. */
+    /** Reports a destination that became occupied after it was checked, without replacing it. */
     private static IOException occupiedDuringPublication(Path destination, IOException cause) {
         return new IOException("The destination " + destination + " became occupied during extraction and was"
                 + " preserved. Pass " + OPTION_FORCE + " to replace it, or " + OPTION_DESTINATION
@@ -985,13 +894,14 @@ public final class Extract {
     }
 
     /**
-     * Deletes a directory tree, ignoring what is gone already.
+     * Deletes a directory tree, ignoring what is gone already. A symbolic link, dangling or not, is
+     * deleted as the link; its target is never touched.
      *
      * @param directory the tree
      * @throws IOException if a file cannot be deleted
      */
     private static void deleteRecursively(Path directory) throws IOException {
-        if (!Files.exists(directory)) {
+        if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
         Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
@@ -1047,42 +957,6 @@ public final class Extract {
      * @param force       whether a destination that is not empty may be replaced
      */
     private record Options(Path destination, boolean force) {
-    }
-
-    /** Publication seam used to pause immediately before the destination can change. */
-    interface PublicationOperations {
-
-        /**
-         * Called after staging is complete and immediately before publication validation.
-         *
-         * @param work        the staged tree
-         * @param destination the requested destination
-         * @throws IOException if publication should stop
-         */
-        default void beforePublication(Path work, Path destination) throws IOException {
-        }
-
-        /**
-         * Moves one publication path.
-         *
-         * @param source  the source path
-         * @param target  the target path
-         * @param options the requested move options
-         * @throws IOException if the move fails
-         */
-        default void move(Path source, Path target, CopyOption... options) throws IOException {
-            Files.move(source, target, options);
-        }
-
-        /**
-         * Deletes an obsolete backup after publication commits.
-         *
-         * @param directory the backup tree
-         * @throws IOException if cleanup fails
-         */
-        default void deleteRecursively(Path directory) throws IOException {
-            Extract.deleteRecursively(directory);
-        }
     }
 
     /**
