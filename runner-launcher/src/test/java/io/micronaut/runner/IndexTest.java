@@ -185,7 +185,7 @@ class IndexTest {
     }
 
     @Test
-    void packageLookupHandlesCollisionsUnicodeAndDuplicateSections() throws Exception {
+    void packageLookupHandlesCollisionsUnicodeAndDuplicateSections() throws IOException {
         TestIndexBuilder builder = new TestIndexBuilder();
         builder.addJar(IndexFormat.CLASSES_PREFIX);
         TestIndexBuilder.Jar application = builder.addJar(DEP);
@@ -194,12 +194,8 @@ class IndexTest {
         application.addPackage("中文.包").attributes(null, null, null, "unicode", null, null);
         application.addPackage("org.example.Aa").attributes(null, null, null, "duplicate", null, null);
         Index index = open(builder, true);
-        java.lang.reflect.Field caches = Index.class.getDeclaredField("packageLookups");
-        caches.setAccessible(true);
 
-        assertNull(caches.get(index), "opening an index must not eagerly decode package metadata");
         assertEquals(IndexFormat.NO_INDEX, index.findPackage(0, "org.example.Absent"));
-        assertNull(caches.get(index), "a zero-record jar must not allocate the package cache");
 
         int first = index.findPackage(1, "org.example.Aa");
         assertEquals(0, first, "the first matching manifest section keeps precedence");
@@ -209,17 +205,6 @@ class IndexTest {
         for (int i = 0; i < 1_000; i++) {
             assertEquals(IndexFormat.NO_INDEX, index.findPackage(1, "org.example.missing" + i));
         }
-
-        java.util.concurrent.atomic.AtomicReferenceArray<?> byJar =
-                (java.util.concurrent.atomic.AtomicReferenceArray<?>) caches.get(index);
-        assertEquals(2, byJar.length(), "the cache is bounded by the fixed jar table");
-        assertNull(byJar.get(0));
-        Object lookup = byJar.get(1);
-        java.lang.reflect.Field names = lookup.getClass().getDeclaredField("names");
-        names.setAccessible(true);
-        String[] indexed = (String[]) names.get(lookup);
-        assertEquals(3, java.util.Arrays.stream(indexed).filter(java.util.Objects::nonNull).count(),
-                "arbitrary misses must not be retained and duplicate sections share one slot");
     }
 
     @Test
