@@ -15,7 +15,10 @@
  */
 package io.micronaut.runner.benchmarks;
 
-/** Build-time application-cache evidence kept separate from startup timing and deployment bytes. */
+/**
+ * Build-time application-cache evidence kept separate from startup timing. The cache file itself is also a
+ * component of the variant's complete deployment; its training and preparation cost are not.
+ */
 record CacheInfo(String mode,
                  String identity,
                  long bytes,

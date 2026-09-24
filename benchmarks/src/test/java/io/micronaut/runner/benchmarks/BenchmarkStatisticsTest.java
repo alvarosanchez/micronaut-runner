@@ -23,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -59,9 +60,9 @@ class BenchmarkStatisticsTest {
         assertTrue(json.contains("\"descriptiveOnly\": true"));
 
         String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
-        assertTrue(markdown.contains("descriptive only"));
-        assertTrue(markdown.contains("at least 10 successful measured samples"));
+        assertTrue(markdown.contains("| `a` | 1 | **100.0 ms** | 100.0 ms | n=1 (<10) |"), markdown);
         assertFalse(markdown.contains("100.0 ms – 100.0 ms"));
+        assertTrue(markdown.contains("## Runner vs Shadow\n\nNo declared comparison applies"), markdown);
     }
 
     @Test
@@ -93,15 +94,20 @@ class BenchmarkStatisticsTest {
 
     @Test
     void pairedDifferencesKeepIterationIdentity() {
-        VariantResult left = result("a", new double[] {100, 200, 300, 400}, -1);
-        VariantResult right = result("b", new double[] {90, 180, 270, 360}, -1);
+        VariantResult candidate = result("a", new double[] {100, 200, 300, 400}, -1);
+        VariantResult baseline = result("b", new double[] {90, 180, 270, 360}, -1);
 
-        PairedComparison comparison = PairedComparison.of(left, right, 4, 123L);
+        PairedComparison comparison = PairedComparison.of(candidate, baseline, 4, 123L);
 
+        assertEquals("a", comparison.candidateVariant());
+        assertEquals("b", comparison.baselineVariant());
         assertEquals(4, comparison.pairedCount());
         assertEquals(0, comparison.excludedCount());
         assertEquals(List.of(0, 1, 2, 3), comparison.pairs().stream()
                 .map(PairedComparison.Pair::iteration)
+                .toList());
+        assertEquals(List.of(100.0, 200.0, 300.0, 400.0), comparison.pairs().stream()
+                .map(PairedComparison.Pair::candidateMillis)
                 .toList());
         assertEquals(List.of(10.0, 20.0, 30.0, 40.0), comparison.pairs().stream()
                 .map(PairedComparison.Pair::differenceMillis)
@@ -111,11 +117,36 @@ class BenchmarkStatisticsTest {
     }
 
     @Test
-    void failedAttemptExcludesItsIterationWithoutRepairingThePair(@TempDir Path output) throws Exception {
-        VariantResult left = result("a", new double[] {100, 200, 300, 400}, -1);
-        VariantResult right = result("b", new double[] {90, 180, 270, 360}, 1);
+    void negativeDifferenceAndRelativeChangeMeanTheCandidateIsFaster() {
+        VariantResult candidate = result("runner-stored", new double[] {90, 180, 270, 360}, -1);
+        VariantResult baseline = result("shadow", new double[] {100, 200, 300, 400}, -1);
 
-        PairedComparison comparison = PairedComparison.of(left, right, 4, 123L);
+        PairedComparison comparison = PairedComparison.of(candidate, baseline, 4, 123L);
+
+        assertEquals(4, comparison.pairedCount());
+        assertEquals(-25.0, comparison.medianDifferenceMillis());
+        assertEquals(-0.10, comparison.relativeChange(), 1e-9);
+        assertTrue(comparison.descriptiveOnly());
+        assertNull(comparison.relativeCiLow());
+        assertNull(comparison.relativeCiHigh());
+
+        VariantResult failedBaseline = result("shadow", new double[] {100, 200, 300, 400}, 1);
+        PairedComparison excluded = PairedComparison.of(candidate, failedBaseline, 4, 123L);
+
+        assertEquals(List.of(0, 2, 3), excluded.pairs().stream()
+                .map(PairedComparison.Pair::iteration)
+                .toList());
+        assertEquals(-30.0, excluded.medianDifferenceMillis());
+        assertEquals(-0.10, excluded.relativeChange(), 1e-9);
+        assertEquals(List.of(new PairedComparison.Exclusion(1, "success", "failed")), excluded.exclusions());
+    }
+
+    @Test
+    void failedAttemptExcludesItsIterationWithoutRepairingThePair(@TempDir Path output) throws Exception {
+        VariantResult candidate = result("runner-stored", new double[] {100, 200, 300, 400}, -1);
+        VariantResult baseline = result("shadow", new double[] {90, 180, 270, 360}, 1);
+
+        PairedComparison comparison = PairedComparison.of(candidate, baseline, 4, 123L);
 
         assertEquals(3, comparison.pairedCount());
         assertEquals(1, comparison.excludedCount());
@@ -127,64 +158,196 @@ class BenchmarkStatisticsTest {
                 .toList());
         assertEquals(30.0, comparison.medianDifferenceMillis());
         assertEquals(1, comparison.exclusions().getFirst().iteration());
-        assertEquals("success", comparison.exclusions().getFirst().leftOutcome());
-        assertEquals("failed", comparison.exclusions().getFirst().rightOutcome());
+        assertEquals("success", comparison.exclusions().getFirst().candidateOutcome());
+        assertEquals("failed", comparison.exclusions().getFirst().baselineOutcome());
 
         Path sample = Files.createDirectory(output.resolve("sample"));
         RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
                 4, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z",
-                List.of("a", "b"), CompletenessPolicy.PARTIAL);
-        Reports.write(output, context, List.of(left, right), List.of());
+                List.of("runner-stored", "shadow"), CompletenessPolicy.PARTIAL);
+        Reports.write(output, context, List.of(candidate, baseline), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"comparisons\""));
+        assertTrue(json.contains("\"label\": \"Runner default vs Shadow\", \"candidateVariant\": \"runner-stored\","
+                + " \"baselineVariant\": \"shadow\""), json);
         assertTrue(json.contains("\"pairedCount\": 3"));
         assertTrue(json.contains("\"excludedCount\": 1"));
         assertTrue(json.contains("\"includedIterations\": [0, 2, 3]"));
-        assertTrue(json.contains("\"iteration\": 1, \"leftOutcome\": \"success\", \"rightOutcome\": \"failed\""));
+        assertTrue(json.contains(
+                "\"iteration\": 1, \"candidateOutcome\": \"success\", \"baselineOutcome\": \"failed\""), json);
         assertTrue(json.contains("\"resamplingUnit\": \"complete measured iteration pair\""));
         assertTrue(json.contains("\"seed\": 123"));
         assertTrue(json.contains("\"ci95Low\": null"));
+        assertFalse(json.contains("leftVariant"));
+        assertFalse(json.contains("rightOutcome"));
 
         String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
-        assertTrue(markdown.contains("## Paired readiness comparisons"));
-        assertTrue(markdown.contains("3 complete / 4 requested"));
-        assertTrue(markdown.contains("iteration 1 (a: success; b: failed)"));
+        String section = section(markdown, "## Runner vs Shadow");
+        assertTrue(section.contains("| Runner default vs Shadow: `runner-stored` − `shadow` | 300.0 ms | 270.0 ms"
+                + " | +30.0 ms | "), section);
+        assertTrue(section.contains(" | n=3 (<10) | 3/4 | "), section);
+        assertTrue(section.contains("iteration 1 (runner-stored: success; shadow: failed)"), section);
+        assertFalse(markdown.contains("## Paired readiness comparisons"));
         assertFalse(markdown.contains("statistically significant"));
     }
 
     @Test
     void missingAttemptIsReportedInsteadOfBeingSilentlyRepaired() {
-        VariantResult left = result("a", new double[] {100, 200, 300, 400}, -1);
-        VariantResult right = resultWithMissing("b", new double[] {90, 180, 270, 360}, 1);
+        VariantResult candidate = result("a", new double[] {100, 200, 300, 400}, -1);
+        VariantResult baseline = resultWithMissing("b", new double[] {90, 180, 270, 360}, 1);
 
-        PairedComparison comparison = PairedComparison.of(left, right, 4, 123L);
+        PairedComparison comparison = PairedComparison.of(candidate, baseline, 4, 123L);
 
         assertEquals(List.of(0, 2, 3), comparison.pairs().stream()
                 .map(PairedComparison.Pair::iteration)
                 .toList());
         assertEquals(1, comparison.excludedCount());
-        assertEquals("missing", comparison.exclusions().getFirst().rightOutcome());
+        assertEquals("missing", comparison.exclusions().getFirst().baselineOutcome());
     }
 
     @Test
     void pairedBootstrapIsStableOnceThePairThresholdIsMet() {
-        VariantResult left = result("a", new double[] {101, 202, 303, 404, 505, 606, 707, 808, 909, 1010}, -1);
-        VariantResult right = result("b", new double[] {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000}, -1);
+        VariantResult candidate = result("a", new double[] {101, 202, 303, 404, 505, 606, 707, 808, 909, 1010}, -1);
+        VariantResult baseline = result("b", new double[] {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000}, -1);
 
-        PairedComparison first = PairedComparison.of(left, right, 10, 9876L);
-        PairedComparison second = PairedComparison.of(left, right, 10, 9876L);
+        PairedComparison first = PairedComparison.of(candidate, baseline, 10, 9876L);
+        PairedComparison second = PairedComparison.of(candidate, baseline, 10, 9876L);
 
         assertFalse(first.descriptiveOnly());
         assertEquals(5.5, first.medianDifferenceMillis());
         assertEquals(first.ciLow(), second.ciLow());
         assertEquals(first.ciHigh(), second.ciHigh());
         assertNull(first.ciReason());
+        assertEquals(0.01, first.relativeChange(), 1e-9);
+        assertEquals(0.01, first.relativeCiLow(), 1e-9);
+        assertEquals(0.01, first.relativeCiHigh(), 1e-9);
+    }
+
+    @Test
+    void runnerVersusShadowLeadsBothReports(@TempDir Path output) throws Exception {
+        double[] runner = new double[10];
+        double[] shadow = new double[10];
+        for (int i = 0; i < 10; i++) {
+            runner[i] = 500 + 7 * i;
+            shadow[i] = 590 + 11 * i;
+        }
+        VariantResult candidate = result("runner-stored", runner, -1, size(300, 100));
+        VariantResult baseline = result("shadow", shadow, -1, size(150, 120));
+        Path sample = Files.createDirectory(output.resolve("sample"));
+        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
+                10, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z",
+                List.of("runner-stored", "shadow"), CompletenessPolicy.REQUIRED);
+
+        Reports.write(output, context, List.of(baseline, candidate), List.of());
+
+        String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
+        assertTrue(markdown.startsWith("# Startup benchmark\n\n**COMPLETE required comparison**"), markdown);
+        int heading = markdown.indexOf("\n## ");
+        assertTrue(markdown.startsWith("\n## Runner vs Shadow\n", heading), markdown);
+        String row = markdown.lines()
+                .filter(line -> line.startsWith("| Runner default vs Shadow: `runner-stored` − `shadow` |"))
+                .findFirst().orElseThrow();
+        String[] cells = row.split(" \\| ");
+        assertEquals("531.5 ms", cells[1]);
+        assertEquals("639.5 ms", cells[2]);
+        assertEquals("-108.0 ms", cells[3]);
+        assertTrue(cells[4].matches("-1[0-9]\\.[0-9]%"), cells[4]);
+        assertTrue(cells[5].matches("-[0-9.]+ ms to -[0-9.]+ ms"), cells[5]);
+        assertEquals("10/10", cells[6]);
+        assertEquals("2.00×", cells[7]);
+        assertEquals("0.83× |", cells[8]);
+        assertTrue(markdown.indexOf("## Runner vs Shadow") < markdown.indexOf("## Run conditions"));
+        assertEquals(1, occurrences(markdown, "does not by itself establish"));
+
+        String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
+        assertEquals(1, occurrences(json, "\"comparisonMethod\""));
+        assertEquals(1, occurrences(json, "\"candidateVariant\""));
+        assertTrue(json.contains("\"relativeChange\": -0.1"), json);
+        assertTrue(json.contains("\"relativeCi95Low\": -0."), json);
+        assertTrue(json.contains("\"relativeCi95High\": -0."), json);
+        assertFalse(json.contains("\"pairs\":"));
+    }
+
+    @Test
+    void theWholeMatrixReportsOnlyTheDeclaredComparisons(@TempDir Path output) throws Exception {
+        int iterations = 20;
+        List<VariantResult> results = new ArrayList<>();
+        int offset = 0;
+        for (String name : SampleBuild.variantNames()) {
+            double[] values = new double[iterations];
+            for (int i = 0; i < iterations; i++) {
+                values[i] = 300 + 10 * offset + (i * 7 % 13);
+            }
+            results.add(result(name, values, -1));
+            offset++;
+        }
+        Path sample = Files.createDirectory(output.resolve("sample"));
+        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
+                iterations, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z");
+
+        Reports.write(output, context, results, List.of());
+
+        String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
+        String comparisons = json.substring(json.indexOf("\"comparisons\""), json.indexOf("\"attempts\""));
+        assertEquals(6, SampleBuild.comparisons().size());
+        assertEquals(SampleBuild.comparisons().size(), occurrences(comparisons, "\"candidateVariant\""));
+        assertTrue(comparisons.length() < json.length() / 10,
+                comparisons.length() + " of " + json.length() + " bytes");
+        assertEquals(1, occurrences(json, "\"resamplingUnit\""));
+        assertFalse(comparisons.contains("\"estimator\""));
+        assertFalse(comparisons.contains("\"ciMethod\""));
+        assertFalse(comparisons.contains("\"seed\""));
+        assertFalse(comparisons.contains("\"pairs\""));
+        List<String> order = Pattern.compile("\"candidateVariant\": \"([^\"]+)\", \"baselineVariant\": \"([^\"]+)\"")
+                .matcher(comparisons).results()
+                .map(match -> match.group(1) + " - " + match.group(2))
+                .toList();
+        assertEquals(SampleBuild.comparisons().stream()
+                .map(spec -> spec.candidate() + " - " + spec.baseline())
+                .toList(), order);
+        assertEquals("runner-stored - shadow", order.getFirst());
+        assertTrue(order.stream().noneMatch(pair -> pair.startsWith("shadow")), order.toString());
+
+        String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
+        String section = section(markdown, "## Runner vs Shadow");
+        for (SampleBuild.ComparisonSpec spec : SampleBuild.comparisons()) {
+            assertTrue(section.contains("| " + spec.label() + ": `" + spec.candidate() + "` − `"
+                    + spec.baseline() + "` |"), section);
+        }
+        assertEquals(1, occurrences(markdown, "does not by itself establish"));
+        assertFalse(markdown.contains("## Paired readiness comparisons"));
+    }
+
+    private static String section(String markdown, String heading) {
+        int start = markdown.indexOf(heading + "\n");
+        assertTrue(start >= 0, markdown);
+        int end = markdown.indexOf("\n## ", start + heading.length());
+        return markdown.substring(start, end < 0 ? markdown.length() : end);
+    }
+
+    private static int occurrences(String text, String needle) {
+        int count = 0;
+        for (int at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length())) {
+            count++;
+        }
+        return count;
+    }
+
+    private static DeploymentSize size(long bytes, long gzipBytes) {
+        return new DeploymentSize(List.of(new DeploymentSize.Component("archive", bytes, gzipBytes)), bytes);
     }
 
     private static VariantResult result(String name, double[] values, int failedIteration) {
+        return result(name, values, failedIteration, null);
+    }
+
+    private static VariantResult result(String name,
+                                        double[] values,
+                                        int failedIteration,
+                                        DeploymentSize deploymentSize) {
         Variant variant = Variant.available(name, "fixture " + name,
-                List.of("java"), Path.of("."), Path.of("."));
+                List.of("java"), Path.of("."), Path.of("."), deploymentSize);
         List<RunAttempt> attempts = new ArrayList<>();
         for (int iteration = 0; iteration < values.length; iteration++) {
             if (iteration == failedIteration) {
@@ -196,7 +359,8 @@ class BenchmarkStatisticsTest {
                 attempts.add(RunAttempt.success(name, iteration, iteration, sample));
             }
         }
-        return VariantResult.summarize(variant, 1, attempts, 0, values.length, 123L);
+        long deploymentBytes = deploymentSize == null ? 1 : deploymentSize.totalBytes();
+        return VariantResult.summarize(variant, deploymentBytes, attempts, 0, values.length, 123L);
     }
 
     private static VariantResult resultWithMissing(String name, double[] values, int missingIteration) {

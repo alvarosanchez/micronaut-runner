@@ -82,8 +82,19 @@ class AotCacheTest {
 
         assertTrue(cached.available());
         assertEquals(EntryMode.STUB, cached.effectiveEntryMode());
-        assertEquals(plain.deploymentSize(), cached.deploymentSize(),
-                "cache bytes must be reported separately from deployment bytes");
+        DeploymentSize plainSize = plain.deploymentSize();
+        DeploymentSize cachedSize = cached.deploymentSize();
+        int sourceComponents = plainSize.components().size();
+        assertEquals(sourceComponents + 1, cachedSize.components().size());
+        assertEquals(plainSize.components(), cachedSize.components().subList(0, sourceComponents),
+                "the cache row keeps its source's components");
+        DeploymentSize.Component cacheComponent = cachedSize.components().getLast();
+        assertEquals("cache", cacheComponent.name());
+        assertEquals(cached.cache().bytes(), cacheComponent.bytes(),
+                "the launch needs the cache, so it is part of the complete deployment");
+        assertTrue(cacheComponent.gzipBytes() > 0);
+        assertEquals(plainSize.totalBytes() + cached.cache().bytes(), cachedSize.totalBytes());
+        assertEquals(plainSize.totalGzipBytes() + cacheComponent.gzipBytes(), cachedSize.totalGzipBytes());
         assertEquals(archive, reused.launchInputs().get(reused.launchInputs().size() - 1));
         assertEquals(modified, Files.getLastModifiedTime(archive).toMillis());
         assertTrue(Files.size(archive) > 0);
@@ -114,7 +125,9 @@ class AotCacheTest {
         assertTrue(json.contains("\"cacheBytes\": " + Files.size(archive)), json);
         assertTrue(json.contains("\"trainingMillis\":"), json);
         assertTrue(json.contains("\"deploymentSize\":")
-                && json.contains("\"totalBytes\": " + plain.deploymentSize().totalBytes()), json);
+                && json.contains("\"totalBytes\": " + (plainSize.totalBytes() + Files.size(archive))), json);
+        assertTrue(json.contains("{\"name\": \"cache\", \"bytes\": " + Files.size(archive)
+                + ", \"gzipBytes\": " + cacheComponent.gzipBytes() + "}"), json);
         String summary = Files.readString(report.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
         assertTrue(summary.contains("## Application-cache preparation"), summary);
         assertTrue(summary.contains("Training cost"), summary);

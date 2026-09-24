@@ -159,7 +159,7 @@ re-verifies an existing keyed cache before reuse. It also removes `JAVA_TOOL_OPT
 `_JAVA_OPTIONS` and `JDK_AOT_VM_OPTIONS`; production tooling must either remove them or include their effective
 values in the key.
 
-Report the extracted runtime deployment bytes without folding in the optional AOT file. Report cache bytes,
+Count the AOT file in the deployment bytes of a cached launch, which cannot start without it, and report
 training cost and total preparation/verification cost separately from deployment bytes and HTTP readiness, as
 the benchmark's `results.json` and `summary.md` do.
 

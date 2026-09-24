@@ -123,9 +123,13 @@ final class AotCache {
                 elapsedMillis(preparationStarted), trainingMillis, reuse,
                 "trained or reused after bounded readiness, workload and normal termination; verified before timing",
                 "application class reused from the AOT cache in a separate diagnostic launch");
+        // The launch cannot start without the cache, so it is part of the complete deployment. Measured after
+        // CacheInfo so that preparationMillis stays training plus verification.
+        DeploymentSize deploymentSize = source.deploymentSize() == null
+                ? null : source.deploymentSize().withFile("cache", cache);
         return new Variant(name,
                 source.description() + "; verified JDK AOT cache",
-                launchCommand(source, cache), source.workingDirectory(), source.artifact(), source.deploymentSize(),
+                launchCommand(source, cache), source.workingDirectory(), source.artifact(), deploymentSize,
                 source.requestedEntryMode(), source.effectiveEntryMode(), true, null, launchInputs, cacheInfo);
     }
 
