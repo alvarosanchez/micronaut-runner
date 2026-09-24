@@ -27,6 +27,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -37,8 +38,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.jar.Attributes;
@@ -344,6 +352,161 @@ class RunnerJarBuilderTest {
 
         assertTrue(failure.getMessage().contains(dependency.toString()),
                 "a build with dozens of dependencies has to say which one: " + failure.getMessage());
+    }
+
+    @Test
+    void parallelStagingIsByteIdenticalToSequentialStaging() throws IOException {
+        Path directory = Files.createDirectories(fixtures.resolve("parallel"));
+        Path classPath = directory.resolve("class-path-lib.jar");
+        writeJar(classPath, manifest(attributes -> attributes.put(Attributes.Name.CLASS_PATH, "missing.jar")),
+                Map.of("com/example/cp/Cp.class", "cp".getBytes(StandardCharsets.UTF_8)));
+        Path noManifest = directory.resolve("no-manifest.jar");
+        try (ZipWriter writer = ZipWriter.create(noManifest, ZipWriter.DEFAULT_TIMESTAMP)) {
+            writer.writeEntry("com/example/bare/Bare.class", "bare".getBytes(StandardCharsets.UTF_8));
+        }
+        Path duplicate = directory.resolve("dup-dep.jar");
+        try (OutputStream out = Files.newOutputStream(duplicate);
+             ZipWriter writer = new ZipWriter(out, ZipWriter.DEFAULT_TIMESTAMP, false)) {
+            writer.writeEntry("dup/same.txt", "first".getBytes(StandardCharsets.UTF_8));
+            writer.writeEntry("dup/same.txt", "second".getBytes(StandardCharsets.UTF_8));
+        }
+        Path sameFileName = Files.createDirectories(directory.resolve("copy")).resolve("dep-lib.jar");
+        Files.copy(plainDependency, sameFileName);
+        // Last on the class path and first by size, so the submission order is not the class-path order.
+        Path large = directory.resolve("large-lib.jar");
+        byte[] payload = new byte[256 * 1024];
+        new Random(130).nextBytes(payload);
+        try (ZipWriter writer = ZipWriter.create(large, ZipWriter.DEFAULT_TIMESTAMP)) {
+            writer.writeEntry("large/payload.bin", payload);
+        }
+        List<Dependency> dependencies = Stream.of(classPath, plainDependency, multiReleaseDependency,
+                        signedDependency, noManifest, duplicate, sameFileName, large)
+                .map(path -> new Dependency(path, null))
+                .toList();
+
+        for (Compression compression : Compression.values()) {
+            Path sequential = output();
+            Path parallel = output();
+            StagingLogger inline = new StagingLogger();
+            StagingLogger pooled = new StagingLogger();
+            RunnerJarResult sequentialResult = RunnerJarBuilder.build(spec(sequential)
+                    .dependencies(dependencies).compression(compression).build(), inline, 1);
+            RunnerJarResult parallelResult = RunnerJarBuilder.build(spec(parallel)
+                    .dependencies(dependencies).compression(compression).build(), pooled, 4);
+
+            assertEquals(-1, Files.mismatch(sequential, parallel), compression + ": the same bytes");
+            List<String> warnings = parallelResult.warnings();
+            assertEquals(sequentialResult.warnings(), warnings, compression + ": the same warnings");
+            int classPathWarning = indexOfWarning(warnings, "declares Class-Path");
+            int signatureWarning = indexOfWarning(warnings, "is signed");
+            assertTrue(classPathWarning >= 0 && classPathWarning < signatureWarning,
+                    compression + ": warnings in class-path order: " + warnings);
+            assertEquals(Set.of(), inline.stageThreads, compression + ": parallelism 1 creates no thread");
+            assertEquals(Set.of("micronaut-runner-stage-1", "micronaut-runner-stage-2",
+                            "micronaut-runner-stage-3", "micronaut-runner-stage-4"), pooled.stageThreads,
+                    compression + ": four daemon staging threads");
+            assertEquals(Set.of(Thread.currentThread()), pooled.warningThreads,
+                    compression + ": warnings come from the calling thread only");
+            assertNoStagingThreads();
+            try (RunnerJarReader reader = RunnerJarReader.open(parallel)) {
+                assertEquals("MICRONAUT-INF/lib/dep-lib-1.jar", reader.index().jarName(7),
+                        compression + ": the second dep-lib.jar gets a unique name");
+            }
+        }
+    }
+
+    @Test
+    void reportsTheFirstFailingDependencyInClassPathOrder() throws IOException {
+        Path corruptA = corruptedDependency("first-failure/corrupt-a.jar");
+        Path corruptB = corruptedDependency("first-failure/corrupt-b.jar");
+        Path output = Files.createDirectories(fixtures.resolve("first-failure-output")).resolve("runner.jar");
+        Files.write(output, PREVIOUS_OUTPUT);
+
+        IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output)
+                .dependencies(Stream.of(plainDependency, corruptA, multiReleaseDependency, corruptB)
+                        .map(path -> new Dependency(path, null))
+                        .toList())
+                .compression(Compression.STORED)
+                .build(), BuildLogger.noOp(), 4));
+
+        assertTrue(failure.getMessage().contains(corruptA.toString()), failure.getMessage());
+        assertFalse(failure.getMessage().contains(corruptB.toString()), failure.getMessage());
+        assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output));
+        assertNoWorkDirectory(output.getParent());
+        assertNoStagingThreads();
+    }
+
+    @Test
+    void rejectsAStagingParallelismBelowOne() {
+        assertThrows(IllegalArgumentException.class,
+                () -> RunnerJarBuilder.build(spec(output()).build(), BuildLogger.noOp(), 0));
+    }
+
+    @Test
+    void surfacesAnInterruptedWaitForAStageAsAnInterruptedIOException() {
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(InterruptedIOException.class, () -> RunnerJarBuilder.awaitStage(new CompletableFuture<>()));
+            assertTrue(Thread.currentThread().isInterrupted(), "the interrupt flag is restored");
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    void waitsForStagingThreadsThroughAnInterruptAndFailsWhenTheyDoNotStop() throws Exception {
+        RunnerJarBuilder.StageThreads threads = new RunnerJarBuilder.StageThreads();
+        ExecutorService pool = Executors.newFixedThreadPool(1, threads);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        pool.execute(() -> {
+            started.countDown();
+            // A stage that does not answer an interrupt, like one blocked in uninterruptible I/O.
+            while (release.getCount() > 0) {
+                try {
+                    release.await();
+                } catch (InterruptedException ignored) {
+                    // Keep waiting.
+                }
+            }
+        });
+        started.await();
+        IOException building = new IOException("what the build is already failing with");
+        Duration timeout = Duration.ofMillis(200);
+
+        long start = System.nanoTime();
+        Thread.currentThread().interrupt();
+        try {
+            RunnerJarBuilder.stopStaging(pool, threads, building, timeout);
+            assertTrue(Thread.currentThread().isInterrupted(), "the interrupt flag is restored");
+        } finally {
+            Thread.interrupted();
+        }
+        assertTrue(System.nanoTime() - start >= timeout.toNanos(), "an interrupt does not cut the wait short");
+        assertEquals(1, building.getSuppressed().length, "the timeout is added to the build's own failure");
+        assertThrows(IOException.class, () -> RunnerJarBuilder.stopStaging(pool, threads, null, Duration.ZERO),
+                "without a failure already on its way, the timeout fails the build");
+
+        release.countDown();
+        RunnerJarBuilder.stopStaging(pool, threads, null, Duration.ofSeconds(30));
+        assertNoStagingThreads();
+    }
+
+    private static int indexOfWarning(List<String> warnings, String text) {
+        for (int i = 0; i < warnings.size(); i++) {
+            if (warnings.get(i).contains(text)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static void assertNoStagingThreads() {
+        List<String> alive = Thread.getAllStackTraces().keySet().stream()
+                .map(Thread::getName)
+                .filter(name -> name.startsWith(RunnerJarBuilder.STAGE_THREAD_PREFIX))
+                .toList();
+        assertEquals(List.of(), alive, "staging threads outlived the build");
     }
 
     @Test
@@ -1794,5 +1957,29 @@ class RunnerJarBuilderTest {
         IOException inside = assertThrows(IOException.class, () -> RunnerJarBuilder.build(
                 spec(applicationClasses.resolve("app.jar")).build(), BuildLogger.noOp()));
         assertTrue(inside.getMessage().contains("is inside the application output"), inside.getMessage());
+    }
+
+    /**
+     * Records, at every warning, the thread that emitted it and the daemon staging threads alive then. The
+     * pool is only shut down after every stage has been joined, so its threads are all still alive.
+     */
+    private static final class StagingLogger implements BuildLogger {
+
+        private final Set<Thread> warningThreads = ConcurrentHashMap.newKeySet();
+        private final Set<String> stageThreads = ConcurrentHashMap.newKeySet();
+
+        @Override
+        public void info(String message) {
+        }
+
+        @Override
+        public void warn(String message) {
+            warningThreads.add(Thread.currentThread());
+            for (Thread thread : Thread.getAllStackTraces().keySet()) {
+                if (thread.getName().startsWith(RunnerJarBuilder.STAGE_THREAD_PREFIX) && thread.isDaemon()) {
+                    stageThreads.add(thread.getName());
+                }
+            }
+        }
     }
 }
