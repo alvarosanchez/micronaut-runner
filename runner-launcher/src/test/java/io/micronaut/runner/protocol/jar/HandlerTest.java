@@ -151,6 +151,21 @@ class HandlerTest {
         Handlers.register(archive, index, source);
     }
 
+    /**
+     * Turns verification on and registers the handler again over a source and index reopened on the same
+     * archive file, because an index reads the verification flag once, when it is opened. A URL keeps the
+     * handler of the registration it was made under, so verified reads need URLs made after this call.
+     */
+    private void reregisterVerifying() throws IOException {
+        System.setProperty(io.micronaut.runner.RunnerClassLoader.VERIFY_PROPERTY, "true");
+        Handlers.unregister();
+        source.close();
+        source = ArchiveSource.open(archive);
+        index = Index.open(source);
+        index.validateStringReferences();
+        Handlers.register(archive, index, source);
+    }
+
     @AfterEach
     void closeArchive() {
         System.clearProperty(io.micronaut.runner.RunnerClassLoader.VERIFY_PROPERTY);
@@ -399,12 +414,13 @@ class HandlerTest {
 
     @Test
     void verifiesStoredAndDeflatedUrlStreamsWithAndWithoutCaching() throws IOException {
+        assertArrayEquals(CORRUPT_STORED,
+                read(Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt")));
+        assertArrayEquals(CORRUPT_DEFLATED, read(Handlers.urlFor(1, "corrupt-deflated.txt")));
+
+        reregisterVerifying();
         URL stored = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt");
         URL deflated = Handlers.urlFor(1, "corrupt-deflated.txt");
-        assertArrayEquals(CORRUPT_STORED, read(stored));
-        assertArrayEquals(CORRUPT_DEFLATED, read(deflated));
-
-        System.setProperty(io.micronaut.runner.RunnerClassLoader.VERIFY_PROPERTY, "true");
         for (boolean caches : List.of(true, false)) {
             IOException storedFailure = assertThrows(IOException.class, () -> read(stored, caches));
             assertTrue(storedFailure.getMessage().contains("corrupt-stored.txt"), storedFailure.getMessage());
@@ -430,7 +446,7 @@ class HandlerTest {
 
     @Test
     void verificationIsIndependentAcrossConcurrentRepeatedUrlReads() throws Exception {
-        System.setProperty(io.micronaut.runner.RunnerClassLoader.VERIFY_PROPERTY, "true");
+        reregisterVerifying();
         URL valid = Handlers.urlFor(1, NESTED_TEXT_NAME);
         URL corrupt = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt");
         ExecutorService pool = Executors.newFixedThreadPool(4);
