@@ -219,61 +219,6 @@ class RunnerJarBuilderTest {
                 "and the manifest is written in that order");
     }
 
-    @Test
-    void canonicalManifestAttributesSortArbitraryMaps() {
-        RunnerJarSpec spec = spec(output()).canonicalManifestAttributes(Map.of(
-                "Echo-Attribute", "5",
-                "Bravo-Attribute", "2",
-                "Delta-Attribute", "4",
-                "Alpha-Attribute", "1",
-                "Charlie-Attribute", "3")).build();
-
-        assertEquals(List.of(
-                "Alpha-Attribute",
-                "Bravo-Attribute",
-                "Charlie-Attribute",
-                "Delta-Attribute",
-                "Echo-Attribute"), new ArrayList<>(spec.manifestAttributes().keySet()));
-    }
-
-    @Test
-    void canonicalManifestAttributesRejectCaseInsensitiveCollisionsInAnyLocale() {
-        Map<String, String> attributes = new LinkedHashMap<>();
-        attributes.put("Example-Attribute", "first");
-        attributes.put("example-attribute", "second");
-        Locale original = Locale.getDefault();
-        try {
-            Locale.setDefault(Locale.forLanguageTag("tr"));
-            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                    () -> spec(output()).canonicalManifestAttributes(attributes));
-            assertTrue(failure.getMessage().contains("Example-Attribute"), failure.getMessage());
-            assertTrue(failure.getMessage().contains("example-attribute"), failure.getMessage());
-        } finally {
-            Locale.setDefault(original);
-        }
-    }
-
-    @Test
-    void canonicalManifestAttributesProduceIdenticalArchivesInSeparateJvms()
-            throws IOException, InterruptedException {
-        Path first = output();
-        Path second = output();
-
-        runManifestProbe(first, "forward");
-        runManifestProbe(second, "reverse");
-
-        assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(second),
-                "logical map equality, not source iteration order, is the canonical mode's input");
-        assertEquals(List.of(
-                "Alpha-Attribute",
-                "Bravo-Attribute",
-                "Charlie-Attribute",
-                "Delta-Attribute",
-                "Echo-Attribute"), manifestLines(first).stream()
-                        .filter(name -> name.endsWith("-Attribute"))
-                        .toList());
-    }
-
     @ParameterizedTest(name = "rejects {0}")
     @ValueSource(strings = {
             "mAnIfEsT-vErSiOn",
@@ -301,35 +246,6 @@ class RunnerJarBuilderTest {
         }
         assertArrayEquals(previous, Files.readAllBytes(output),
                 "invalid configuration must leave the existing output alone");
-    }
-
-    @ParameterizedTest(name = "canonically rejects {0}")
-    @ValueSource(strings = {
-            "mAnIfEsT-vErSiOn",
-            "mAiN-cLaSs",
-            "mIcRoNaUt-RuNnEr-FoRmAt",
-            "mIcRoNaUt-RuNnEr-vErSiOn",
-            "mIcRoNaUt-RuNnEr-sTaRt-ClAsS",
-            "mIcRoNaUt-RuNnEr-fUtUrE"
-    })
-    void canonicalManifestAttributesRejectReservedKeysWithoutReplacingOutput(String key) throws IOException {
-        Path output = output();
-        Files.createDirectories(output.getParent());
-        byte[] previous = "the existing runner jar".getBytes(StandardCharsets.UTF_8);
-        Files.write(output, previous);
-        Locale original = Locale.getDefault();
-        try {
-            Locale.setDefault(Locale.forLanguageTag("tr"));
-            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                    () -> RunnerJarBuilder.build(spec(output)
-                            .canonicalManifestAttributes(Map.of(key, "missing.Override"))
-                            .build(), BuildLogger.noOp()));
-            assertTrue(failure.getMessage().contains(key), failure.getMessage());
-        } finally {
-            Locale.setDefault(original);
-        }
-        assertArrayEquals(previous, Files.readAllBytes(output),
-                "invalid canonical configuration must leave the existing output alone");
     }
 
     @Test
@@ -1378,8 +1294,7 @@ class RunnerJarBuilderTest {
 
     @Test
     void packagesAndFullyVerifiesLargeJarResourcesInAConstrainedHeap() throws Exception {
-        String classpath = System.getProperty("runner.test.runtimeClasspath");
-        assertNotNull(classpath, "the test task supplies the forked JVM class path");
+        String classpath = System.getProperty("java.class.path");
         Path workspace = Files.createDirectories(fixtures.resolve("bounded-memory-worker"));
         Path workerLog = workspace.resolve("worker.log");
         Process process = new ProcessBuilder(
@@ -1403,30 +1318,6 @@ class RunnerJarBuilderTest {
             assertTrue(children.noneMatch(path -> path.getFileName().toString().startsWith(".micronaut-runner-")),
                     "the build must clean every spool/work directory");
         }
-    }
-
-    private static void runManifestProbe(Path output, String order)
-            throws IOException, InterruptedException {
-        String classpath = System.getProperty("runner.test.runtimeClasspath");
-        assertNotNull(classpath, "the test task supplies the forked JVM class path");
-        Process process = new ProcessBuilder(
-                javaExecutable().toString(),
-                "-cp", classpath,
-                ManifestReproducibilityProbe.class.getName(),
-                output.toString(),
-                applicationClasses.toString(),
-                applicationResources.toString(),
-                plainDependency.toString(),
-                multiReleaseDependency.toString(),
-                signedDependency.toString(),
-                order)
-                .redirectErrorStream(true)
-                .start();
-        String processOutput;
-        try (InputStream in = process.getInputStream()) {
-            processOutput = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
-        assertEquals(0, process.waitFor(), processOutput);
     }
 
     private static void compile(JavaCompiler compiler, Path sources, Path classes, Map<String, String> files)

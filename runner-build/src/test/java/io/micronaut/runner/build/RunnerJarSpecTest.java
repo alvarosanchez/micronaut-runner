@@ -20,10 +20,17 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RunnerJarSpecTest {
+
+    @Test
+    void requestsTheEntryStubByDefault() {
+        assertTrue(complete(RunnerJarSpec.builder()).build().entryStub());
+        assertFalse(complete(RunnerJarSpec.builder().entryStub(false)).build().entryStub());
+    }
 
     @Test
     void acceptsMultipleManifestModulePackagePairs() {
