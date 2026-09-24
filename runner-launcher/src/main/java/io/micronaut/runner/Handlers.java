@@ -65,8 +65,11 @@ import java.util.jar.JarFile;
  * <p>None of that is load bearing. {@link #urlFor} and {@link #codeSourceUrlFor} build their URLs from the
  * encoders' output with an explicit handler instance, so the URLs the class loader returns work whether or
  * not the property took effect. The property only matters for a URL that is re-parsed from its string form
- * by somebody else, which is why {@link #register} verifies it and prints one warning when it did not take,
- * rather than failing the launch.</p>
+ * by somebody else. The forked {@code HandlerInteroperability} test proves that string-parse path in a
+ * fresh JVM on every supported JDK, so {@link #register} does not re-check it on every launch. It prints one
+ * warning, rather than failing the launch, in the cases where the outcome is in doubt: an already installed
+ * {@code URLStreamHandlerFactory} is reported directly, and a string-parse check runs only when the
+ * launcher is not on the system class loader or the property already named another package.</p>
  *
  * <p>Each of those URLs is built with a single parse, the handler's own, and no {@link URI} in front of it:
  * that parse is where {@code getResources} spends its time, once per contributing jar. Nothing is lost by
@@ -113,7 +116,13 @@ public final class Handlers {
     private static String[] jarNames;
     private static volatile URL defaultContext;
     private static String canonicalPath;
-    private static SharedJarFile outerJarFile;
+    /**
+     * The one close-protected outer handle. Declared as {@link JarFile} rather than {@link SharedJarFile}
+     * so that verifying this class does not load that one: it is only needed once an outer-only entry is
+     * opened, which a normal start never does before {@code main}.
+     */
+    private static JarFile outerJarFile;
+    /** The nested jar views, allocated on first use so that {@link NestedJarFile} does not load before main. */
     private static NestedJarFile[] nestedJarFiles;
 
     /**
@@ -129,9 +138,13 @@ public final class Handlers {
      * Installs the {@code jar:} protocol handler for one archive and records everything the handler needs
      * to serve it.
      *
-     * <p>This never throws. Every step that can fail (the property, the handler cache, the verification)
-     * only affects URLs that somebody re-parses from a string; the URLs this class hands out carry the
-     * handler instance with them and keep working regardless. Registration happens once per JVM: a second
+     * <p>This never throws. Every step that can fail (the property, the handler cache) only affects URLs
+     * that somebody re-parses from a string; the URLs this class hands out carry the handler instance with
+     * them and keep working regardless. An already installed {@code URLStreamHandlerFactory} is reported
+     * with one warning on stderr. A string-parsed URL is opened as a check only when the launcher is not on
+     * the system class loader or {@value #HANDLER_PACKAGES_PROPERTY} already named another package, the two
+     * cases the forked {@code HandlerInteroperability} test cannot vouch for; its failure is reported with
+     * one warning too. Registration happens once per JVM: a second
      * call for the same archive does nothing, and a call for a different archive is reported on stderr and
      * ignored, because one process can only have one {@code jar:} handler and the archive is part of its
      * identity.</p>
@@ -163,7 +176,6 @@ public final class Handlers {
             archiveHandler = new Handler();
             jarPrefixes = new String[index.jarCount()];
             jarNames = new String[index.jarCount()];
-            nestedJarFiles = new NestedJarFile[index.jarCount()];
             StringBuilder url = new StringBuilder(fileUrl(absolute.getPath(), File.separatorChar));
             StringBuilder prefix = new StringBuilder(url.length() + 6);
             prefix.append("jar:").append(url).append(SEPARATOR);
@@ -371,20 +383,30 @@ public final class Handlers {
      * they are immutable, because each one holds a handle on the outer file, and because a library that
      * scans the classpath asks for the same jar over and over.
      *
+     * <p>The cache is allocated on first use rather than at registration, so that a normal start does not
+     * load {@link NestedJarFile} before {@code main}. Registration is checked under {@link #LOCK}, so a
+     * concurrent {@link #unregister()} yields the {@link IOException} rather than a
+     * {@link NullPointerException}.</p>
+     *
      * @param jarId the nested jar
      * @return the view
-     * @throws IOException if the outer archive cannot be opened
+     * @throws IOException if no archive is registered, the archive has no such nested jar, or the outer
+     *                     archive cannot be opened
      */
     public static NestedJarFile nestedJarFile(int jarId) throws IOException {
-        if (archiveUrl == null || jarId <= IndexFormat.APPLICATION_JAR_ID
-                || jarId >= archiveIndex.jarCount()) {
-            throw new IOException("No nested jar " + jarId + " in the registered archive");
-        }
         synchronized (LOCK) {
+            Index index = archiveIndex;
+            if (archiveUrl == null || jarId <= IndexFormat.APPLICATION_JAR_ID || jarId >= index.jarCount()) {
+                throw new IOException("No nested jar " + jarId + " in the registered archive");
+            }
             NestedJarFile[] cache = nestedJarFiles;
+            if (cache == null) {
+                cache = new NestedJarFile[index.jarCount()];
+                nestedJarFiles = cache;
+            }
             NestedJarFile jar = cache[jarId];
             if (jar == null) {
-                jar = new NestedJarFile(archiveFile, archiveIndex, archiveSource, jarId);
+                jar = new NestedJarFile(archiveFile, index, archiveSource, jarId);
                 cache[jarId] = jar;
             }
             return jar;
@@ -393,35 +415,27 @@ public final class Handlers {
 
     /**
      * The outer archive as an ordinary {@link JarFile}, for the entries that are not in the index: the
-     * launcher's own classes, the manifest, the index itself and the nested jars as stored bytes. It is
-     * opened on demand, because a normal application start never needs it.
+     * launcher's own classes, the manifest, the index itself and the nested jars as stored bytes.
+     *
+     * <p>This is the one process-lifetime handle on the outer archive, opened on demand because a normal
+     * application start never needs it, and returned to every caller whatever its cache setting. Its
+     * {@code close()} is a no-op, like {@link NestedJarFile}'s, so a caller that closes the jar a connection
+     * handed it cannot break another connection; only {@link #unregister()} really closes it.</p>
      *
      * @return the shared jar file
-     * @throws IOException if the archive cannot be opened
+     * @throws IOException if no archive is registered or the archive cannot be opened
      */
     public static JarFile outerJarFile() throws IOException {
-        return outerJarFile(true);
-    }
-
-    /**
-     * The outer archive as either the shared process-lifetime handle or a handle owned by one connection.
-     *
-     * @param useCaches whether the shared handle may be used
-     * @return the shared jar file, or a new independently closeable jar file when caching is disabled
-     * @throws IOException if the archive cannot be opened
-     */
-    public static JarFile outerJarFile(boolean useCaches) throws IOException {
-        if (archiveUrl == null) {
-            throw new IOException("No runner archive is registered");
-        }
-        if (!useCaches) {
-            return new JarFile(archiveFile, false, JarFile.OPEN_READ, JarFile.runtimeVersion());
-        }
         synchronized (LOCK) {
-            if (outerJarFile == null) {
-                outerJarFile = new SharedJarFile(archiveFile);
+            if (archiveUrl == null) {
+                throw new IOException("No runner archive is registered");
             }
-            return outerJarFile;
+            JarFile jar = outerJarFile;
+            if (jar == null) {
+                jar = SharedJarFile.open(archiveFile);
+                outerJarFile = jar;
+            }
+            return jar;
         }
     }
 
@@ -474,11 +488,11 @@ public final class Handlers {
                     }
                 }
             }
-            SharedJarFile outer = outerJarFile;
+            JarFile outer = outerJarFile;
             outerJarFile = null;
             if (outer != null) {
                 try {
-                    outer.closeShared();
+                    SharedJarFile.closeShared(outer);
                 } catch (IOException ignored) {
                     // Nothing can be done about it and nothing depends on it.
                 }
@@ -711,8 +725,20 @@ public final class Handlers {
     }
 
     /**
-     * Adds our package to the handler property, drops the JDK's cached jar handler, and checks the result.
-     * Called with {@link #LOCK} held, once per JVM.
+     * Adds our package to the handler property, drops the JDK's cached jar handler, and reports the cases
+     * where that may not have taken. Called with {@link #LOCK} held, once per JVM.
+     *
+     * <p>An already installed {@code URLStreamHandlerFactory} makes {@code setURLStreamHandlerFactory}
+     * throw. That is reported directly, with one warning: the JDK's handler cached before the call then
+     * keeps the property from ever taking effect, so there is nothing left to check.</p>
+     *
+     * <p>Otherwise the outcome is certain in a default {@code java -jar} or {@code java -cp} start, which the
+     * forked {@code HandlerInteroperability} test proves on every supported JDK, and nothing is opened.
+     * {@link #verify()} runs only in the two cases that test cannot vouch for: the launcher is not on the
+     * system class loader, where the JDK would instantiate a different {@link Handler} whose registration
+     * state is empty, or the property already named another package before this call, whose own
+     * {@code jar.Handler} may come first. A property that already equals {@value #PROTOCOL_PACKAGE}, as after
+     * {@link #unregister()} and a new registration in the same JVM, is not contested.</p>
      */
     private static void install() {
         if (defaultContext == null) {
@@ -729,19 +755,26 @@ public final class Handlers {
         }
         try {
             // Clears the handler cache as a side effect. It throws when a factory is already installed,
-            // which is exactly the case where the handler cannot be replaced and we must give up quietly.
+            // which is exactly the case where the handler cannot be replaced.
             URL.setURLStreamHandlerFactory(null);
-        } catch (Error ignored) {
-            // A URLStreamHandlerFactory owns the protocol; the verification below reports the consequence.
+        } catch (Error e) {
+            warn("a URLStreamHandlerFactory is already installed");
+            return;
         }
-        if (!verify()) {
+        boolean contested = existing != null && !existing.isEmpty() && !existing.equals(PROTOCOL_PACKAGE);
+        if ((contested || Handler.class.getClassLoader() != ClassLoader.getSystemClassLoader()) && !verify()) {
             warn("the jar: protocol handler could not be installed");
         }
     }
 
     /**
      * Builds a URL of this archive from its string form, the way a library would, and checks that opening
-     * it lands on our connection rather than the JDK's.
+     * it lands on our connection rather than another handler's.
+     *
+     * <p>Only {@link #install()} calls this, and only when the launcher is not on the system class loader or
+     * {@value #HANDLER_PACKAGES_PROPERTY} already named another package: in a default start the result is
+     * known, and the lookup it costs (a reflective handler instantiation and a thrown
+     * {@code ClassNotFoundException}) would run before {@code main} for nothing.</p>
      *
      * @return whether the handler is in place for URLs parsed from strings
      */
@@ -894,6 +927,11 @@ public final class Handlers {
     /**
      * The process-lifetime outer archive handle. A connection may expose it as a {@link JarFile}, so its
      * public close operation must not invalidate other connections that share it.
+     *
+     * <p>{@link Handlers} reaches it only through the static {@link #open} and {@link #closeShared}, and keeps
+     * the instance in a {@link JarFile} field. The verifier does not resolve {@code invokestatic} targets and
+     * does not load a {@code checkcast} operand, so this class loads only when an outer-only entry is really
+     * opened.</p>
      */
     private static final class SharedJarFile extends JarFile {
 
@@ -901,11 +939,32 @@ public final class Handlers {
             super(file, false, OPEN_READ, JarFile.runtimeVersion());
         }
 
+        /**
+         * Opens the shared handle.
+         *
+         * @param file the outer archive
+         * @return the handle, typed as its supertype so that callers do not load this class when they link
+         * @throws IOException if the archive cannot be opened
+         */
+        static JarFile open(File file) throws IOException {
+            return new SharedJarFile(file);
+        }
+
+        /**
+         * Really closes a handle {@link #open} returned.
+         *
+         * @param jar the handle
+         * @throws IOException if closing fails
+         */
+        static void closeShared(JarFile jar) throws IOException {
+            ((SharedJarFile) jar).closeHandle();
+        }
+
         @Override
         public void close() {
         }
 
-        private void closeShared() throws IOException {
+        private void closeHandle() throws IOException {
             super.close();
         }
     }

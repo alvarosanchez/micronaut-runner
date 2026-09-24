@@ -24,7 +24,6 @@ import io.micronaut.runner.NestedJarFile;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
@@ -66,12 +65,13 @@ import java.util.jar.Manifest;
  *
  * <h2>Where the bytes come from</h2>
  * <p>An entry the index knows is streamed straight out of the archive, with no {@code java.util.zip}
- * machinery and no temporary file. Only the outer archive's own entries, the launcher classes, the
- * manifest and the index itself, fall back to a real {@link JarFile} of the outer archive. Cached
- * connections share a close-protected process-lifetime handle; uncached entry streams each own an
- * independent handle, and an uncached handle returned by {@link #getJarFile()} is owned by its caller.
- * Every call to {@link #getInputStream()} returns a fresh stream, because micronaut-core reads service
- * files by disabling caches and then asking for the stream.</p>
+ * machinery and no temporary file, and so is a whole nested jar. Only the outer archive's own entries, the
+ * launcher classes, the manifest and the index itself, are read through a real {@link JarFile} of the outer
+ * archive: one close-protected, process-lifetime handle that every connection shares, opened on demand.
+ * It is also the jar {@link #getJarFile()} reports for every URL outside a nested jar, and closing it is a
+ * no-op under either cache setting, exactly as it is for a {@link NestedJarFile}. Every call to
+ * {@link #getInputStream()} returns a fresh stream, because micronaut-core reads service files by
+ * disabling caches and then asking for the stream.</p>
  *
  * @since 1.0
  */
@@ -91,7 +91,6 @@ public final class RunnerJarURLConnection extends JarURLConnection {
     private final int version;
     private URL jarFileUrl;
     private JarFile jarFile;
-    private boolean jarFileOwned;
     private JarEntry jarEntry;
     private String contentType;
     private int record = IndexFormat.NO_INDEX;
@@ -186,32 +185,20 @@ public final class RunnerJarURLConnection extends JarURLConnection {
         } else if (name != null) {
             record = applicationRecord();
             if (record == IndexFormat.NO_INDEX && Handlers.jarIdForName(name) == IndexFormat.NO_INDEX) {
-                boolean useCaches = getUseCaches();
-                JarFile outer = Handlers.outerJarFile(useCaches);
-                try {
-                    JarEntry entry = outer.getJarEntry(name);
-                    if (entry != null) {
-                        if (useCaches) {
-                            jarFile = outer;
-                            jarFileOwned = false;
-                            jarEntry = entry;
-                        } else {
-                            jarEntry = new DetachedJarEntry(entry);
-                        }
-                    } else {
-                        // Last resort: an outer root name the index carries literally, which is how the
-                        // merged META-INF/micronaut/ service directory is recorded. The physical archive is
-                        // asked first, so that META-INF/MANIFEST.MF is the outer manifest and not the
-                        // application layer's one of the same logical name.
-                        record = index.resolveInJar(index.find(name), version,
-                                IndexFormat.APPLICATION_JAR_ID);
-                        if (record == IndexFormat.NO_INDEX) {
-                            throw notFound();
-                        }
-                    }
-                } finally {
-                    if (!useCaches) {
-                        outer.close();
+                JarFile outer = Handlers.outerJarFile();
+                JarEntry entry = outer.getJarEntry(name);
+                if (entry != null) {
+                    jarFile = outer;
+                    jarEntry = entry;
+                } else {
+                    // Last resort: an outer root name the index carries literally, which is how the
+                    // merged META-INF/micronaut/ service directory is recorded. The physical archive is
+                    // asked first, so that META-INF/MANIFEST.MF is the outer manifest and not the
+                    // application layer's one of the same logical name.
+                    record = index.resolveInJar(index.find(name), version,
+                            IndexFormat.APPLICATION_JAR_ID);
+                    if (record == IndexFormat.NO_INDEX) {
+                        throw notFound();
                     }
                 }
             }
@@ -220,7 +207,8 @@ public final class RunnerJarURLConnection extends JarURLConnection {
     }
 
     /**
-     * The jar this connection reads from.
+     * The jar this connection reads from, whatever the cache setting: the shared {@link NestedJarFile} view
+     * of a nested jar, or the one shared handle on the outer archive. Closing either is a no-op.
      *
      * @return the {@link NestedJarFile} of a nested entry, or the outer archive
      * @throws IOException if the jar cannot be opened
@@ -230,11 +218,8 @@ public final class RunnerJarURLConnection extends JarURLConnection {
         connect();
         JarFile jar = jarFile;
         if (jar == null) {
-            boolean useCaches = getUseCaches();
-            boolean owned = !nested && !useCaches;
-            jar = nested ? Handlers.nestedJarFile(jarId) : Handlers.outerJarFile(useCaches);
+            jar = nested ? Handlers.nestedJarFile(jarId) : Handlers.outerJarFile();
             jarFile = jar;
-            jarFileOwned = owned;
         }
         return jar;
     }
@@ -269,11 +254,6 @@ public final class RunnerJarURLConnection extends JarURLConnection {
                 entry = getJarFile().getJarEntry(name);
             } else if (record != IndexFormat.NO_INDEX) {
                 entry = entryFromRecord();
-            } else if (!getUseCaches()) {
-                try (JarFile jar = Handlers.outerJarFile(false)) {
-                    JarEntry physical = jar.getJarEntry(physicalName());
-                    entry = physical == null ? null : new DetachedJarEntry(physical);
-                }
             } else {
                 entry = getJarFile().getJarEntry(physicalName());
             }
@@ -313,16 +293,7 @@ public final class RunnerJarURLConnection extends JarURLConnection {
      */
     @Override
     public Manifest getManifest() throws IOException {
-        connect();
-        if (nested) {
-            return getJarFile().getManifest();
-        }
-        if (!getUseCaches()) {
-            try (JarFile jar = Handlers.outerJarFile(false)) {
-                return jar.getManifest();
-            }
-        }
-        return cachedOuterJarFile().getManifest();
+        return getJarFile().getManifest();
     }
 
     /**
@@ -370,58 +341,11 @@ public final class RunnerJarURLConnection extends JarURLConnection {
         if (whole != IndexFormat.NO_INDEX) {
             return openJar(whole);
         }
-        return openOuterEntryStream();
-    }
-
-    /**
-     * Opens an outer entry with the lifetime selected for this stream. Uncached streams each get their own
-     * jar so closing one cannot invalidate another stream or a handle returned by {@link #getJarFile()}.
-     *
-     * @return the entry stream
-     * @throws IOException if the outer archive or entry cannot be opened
-     */
-    private InputStream openOuterEntryStream() throws IOException {
-        boolean useCaches = getUseCaches();
-        JarFile jar = useCaches ? cachedOuterJarFile() : Handlers.outerJarFile(false);
-        try {
-            JarEntry entry = jar.getJarEntry(name);
-            if (entry == null) {
-                throw notFound();
-            }
-            InputStream in = jar.getInputStream(entry);
-            if (in == null) {
-                throw notFound();
-            }
-            return useCaches ? in : new OwnedJarInputStream(in, jar);
-        } catch (IOException | RuntimeException e) {
-            if (!useCaches) {
-                try {
-                    jar.close();
-                } catch (IOException closeFailure) {
-                    e.addSuppressed(closeFailure);
-                }
-            }
-            throw e;
+        InputStream in = getJarFile().getInputStream(getJarEntry());
+        if (in == null) {
+            throw notFound();
         }
-    }
-
-    /**
-     * The shared outer jar for a cached operation. A caller-owned jar already stored on the connection is
-     * not substituted: changing the cache flag must not transfer ownership of that handle.
-     *
-     * @return the shared close-protected outer jar
-     * @throws IOException if the archive cannot be opened
-     */
-    private JarFile cachedOuterJarFile() throws IOException {
-        JarFile jar = jarFile;
-        if (jar == null || jarFileOwned) {
-            jar = Handlers.outerJarFile(true);
-            if (jarFile == null) {
-                jarFile = jar;
-                jarFileOwned = false;
-            }
-        }
-        return jar;
+        return in;
     }
 
     /**
@@ -518,10 +442,12 @@ public final class RunnerJarURLConnection extends JarURLConnection {
      * Records the caching preference without the {@link IllegalStateException} the super class throws
      * after a connection is connected.
      *
-     * <p>Streams are opened fresh from the archive every time. For outer entries the value in effect when
-     * the jar is first acquired also selects its lifetime: cached connections share a close-protected
-     * handle, while each uncached outer-entry stream owns an independent handle. A jar returned directly
-     * by {@link #getJarFile()} remains caller-owned even if the flag later changes.</p>
+     * <p>Nothing here caches anything a caller could observe, so the flag cannot make a read fail, and a
+     * library that flips it late, as several do right before reading a service file, is simply obliged.
+     * Every {@link #getInputStream()} returns a fresh stream. Outer-only entries (the launcher classes, the
+     * manifest and the index) are read through the one close-protected, process-lifetime {@link JarFile} of
+     * the outer archive under either setting, and closing the jar that {@link #getJarFile()} returns is a
+     * no-op under either setting, exactly as for a {@link NestedJarFile}.</p>
      *
      * @param useCaches whether caches may be used
      */
@@ -612,55 +538,5 @@ public final class RunnerJarURLConnection extends JarURLConnection {
             message.append(Handlers.archive());
         }
         return new FileNotFoundException(message.toString());
-    }
-
-    /** Closes a connection-owned outer jar when its entry stream is closed. */
-    private static final class OwnedJarInputStream extends FilterInputStream {
-
-        private final JarFile jar;
-
-        private OwnedJarInputStream(InputStream in, JarFile jar) {
-            super(in);
-            this.jar = jar;
-        }
-
-        @Override
-        public void close() throws IOException {
-            IOException failure = null;
-            try {
-                super.close();
-            } catch (IOException e) {
-                failure = e;
-            }
-            try {
-                jar.close();
-            } catch (IOException e) {
-                if (failure == null) {
-                    failure = e;
-                } else {
-                    failure.addSuppressed(e);
-                }
-            }
-            if (failure != null) {
-                throw failure;
-            }
-        }
-    }
-
-    /** An outer entry detached from the temporary jar that supplied its manifest attributes. */
-    private static final class DetachedJarEntry extends JarEntry {
-
-        private final Attributes attributes;
-
-        private DetachedJarEntry(JarEntry entry) throws IOException {
-            super(entry);
-            Attributes source = entry.getAttributes();
-            attributes = source == null ? null : new Attributes(source);
-        }
-
-        @Override
-        public Attributes getAttributes() {
-            return attributes == null ? null : new Attributes(attributes);
-        }
     }
 }

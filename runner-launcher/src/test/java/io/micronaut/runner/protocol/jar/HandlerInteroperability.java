@@ -18,6 +18,7 @@ package io.micronaut.runner.protocol.jar;
 import io.micronaut.runner.ArchiveSource;
 import io.micronaut.runner.Handlers;
 import io.micronaut.runner.Index;
+import io.micronaut.runner.IndexFormat;
 
 import java.io.File;
 import java.net.URI;
@@ -38,11 +39,38 @@ public final class HandlerInteroperability {
     /**
      * Creates JDK URLs before Runner registration and compares them with URLs created afterwards.
      *
-     * @param args the runner archive path
+     * <p>An optional second argument selects another check instead:</p>
+     * <ul>
+     *   <li>{@code factory} installs a {@code URLStreamHandlerFactory} before registering, checks that the
+     *   URLs {@link Handlers#urlFor} builds still open as {@link RunnerJarURLConnection}, and prints
+     *   {@code FACTORY-REPORTED};</li>
+     *   <li>{@code property} only registers and prints {@code PROPERTY-REGISTERED}, for a JVM started with
+     *   another package in {@value Handlers#HANDLER_PACKAGES_PROPERTY}.</li>
+     * </ul>
+     * <p>The forking test counts the {@code micronaut-runner:} warnings registration printed.</p>
+     *
+     * @param args the runner archive path, then an optional mode
      * @throws Exception when setup fails
      */
     public static void main(String[] args) throws Exception {
         File archive = new File(args[0]).getAbsoluteFile();
+        String mode = args.length > 1 ? args[1] : "";
+        if ("factory".equals(mode)) {
+            installedFactory(archive);
+            return;
+        }
+        if ("property".equals(mode)) {
+            try (ArchiveSource source = ArchiveSource.open(archive)) {
+                Handlers.register(archive, Index.open(source), source);
+            } finally {
+                Handlers.unregister();
+            }
+            System.out.println("PROPERTY-REGISTERED");
+            return;
+        }
+        if (!mode.isEmpty()) {
+            throw new IllegalArgumentException("Unknown mode " + mode);
+        }
         String file = archive.toURI().toString();
         String[] specs = {
             "jar:" + file + "!/MICRONAUT-INF/classes/app.txt",
@@ -83,6 +111,25 @@ public final class HandlerInteroperability {
             Handlers.unregister();
         }
         System.out.println("INTEROPERABLE");
+    }
+
+    /**
+     * Registers after an application has claimed the handler factory, which registration can only report.
+     *
+     * @param archive the runner archive
+     * @throws Exception when setup fails
+     */
+    private static void installedFactory(File archive) throws Exception {
+        URL.setURLStreamHandlerFactory(protocol -> null);
+        try (ArchiveSource source = ArchiveSource.open(archive)) {
+            Handlers.register(archive, Index.open(source), source);
+            URL url = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt");
+            check(url.openConnection() instanceof RunnerJarURLConnection,
+                    "a URL built by Handlers did not open with Runner's connection");
+        } finally {
+            Handlers.unregister();
+        }
+        System.out.println("FACTORY-REPORTED");
     }
 
     private static void assertInteroperable(URL jdk, URL secondJdk, URL registered, URL explicit) {
