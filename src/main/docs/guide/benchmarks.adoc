@@ -23,8 +23,8 @@ unchanged-rebuild, application-edit and dependency-edit scenarios. Elapsed time/
 RSS/peak heap come from separate invocations. Logical input/output bytes are reported separately from time and
 memory and are not kernel I/O counters.
 
-Startup:: The whole process, from spawn to readiness, for the same application packaged in the eleven modes
-that the current harness implements:
+Startup:: The whole process, from spawn to readiness, for the same application packaged in each mode that the
+current harness implements:
 +
 [cols="25,75"]
 |===
@@ -39,6 +39,10 @@ that the current harness implements:
 |`shadow`
 |One JAR flattened by the Shadow plugin
 
+|`shadow-stored`
+|The same Shadow task inputs written with `entryCompression = ZipEntryCompression.STORED`, a compression-matched
+control
+
 |`shadow-aot`
 |The identical Shadow JAR with a trained, application-class-verified JDK AOT cache
 
@@ -49,13 +53,11 @@ that the current harness implements:
 |The identical default-entry stored Runner JAR with a trained, application-class-verified JDK AOT cache
 
 |`runner-stored-reflection`
-|The same stored Runner JAR inputs with the entry stub disabled, as a reflection ablation
+|Opt-in, non-gating ablation: the same stored Runner JAR inputs with the entry stub disabled, which measures the
+plugin-default entry stub against reflective entry
 
 |`runner-preserve`
 |Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub
-
-|`runner-preserve-reflection`
-|The same preserved Runner JAR inputs with the entry stub disabled, as a reflection ablation
 
 |`runner-extracted`
 |The stored Runner JAR extracted and launched by the JDK's built-in loader
@@ -76,6 +78,10 @@ working directory, measured workload and JVM options except for the one applicat
 Default JDK class sharing remains enabled when the selected JDK enables it, but reuse of platform classes from
 the JDK's default archive is not evidence of trained application-class AOT cache reuse; default JDK class
 sharing is a separate baseline condition.
+
+The compression-matched pairs are `runner-stored`/`shadow-stored`, where neither side inflates class bytes, and
+`runner-preserve`/`shadow`, where both do; they measure what Runner's layout itself buys. `runner-stored`/`shadow`
+is the default-vs-default pair, and its difference also includes the cost of inflating Shadow's DEFLATED entries.
 
 == Methodology
 
@@ -145,7 +151,11 @@ Run it locally with:
 ./gradlew :benchmarks:packagingProfile
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.optionalRows=true -Pbenchmarks.iterations=40
 ----
+
+The last command adds the opt-in rows, such as the entry-stub ablation. Run it with 40 iterations: at 20, the
+stub effect's interval still spanned zero.
 
 `-Pbenchmarks.workloads=no-manifest,small,representative,wide` selects packaging shapes and
 `-Pbenchmarks.packagingIterations=2` changes the number of independent packaging workers. The JMH resource
@@ -165,7 +175,8 @@ counts separately for warm-up and measured phases. `results.json` also records e
 its variant, iteration, global schedule order, phase, outcome, failure and exit information, and timing only
 when the attempt produced a valid measurement. A build-unavailable variant is skipped, not mislabeled as a
 failed process attempt. A warm-up failure is visible but does not by itself invalidate a complete measured
-matrix.
+matrix. Opt-in rows are built only with `-Pbenchmarks.optionalRows=true`, and their failures are reported but
+never change the exit code.
 
 `results.json` uses a versioned, relocatable provenance schema. It records runner and sample revisions plus
 clean/dirty state, exact JDK and platform identity, logical processor count and physical memory, cache policy,

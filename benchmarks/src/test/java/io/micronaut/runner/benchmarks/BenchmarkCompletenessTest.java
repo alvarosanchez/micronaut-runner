@@ -46,6 +46,70 @@ class BenchmarkCompletenessTest {
     }
 
     @Test
+    void optInRowsAreOffUnlessRequested(@TempDir Path output) {
+        String[] core = {"--sample", output.toString(), "--repo", "file:/repo", "--version", "1.0",
+                "--iterations", "2", "--out", output.resolve("core").toString()};
+        String[] optIn = {"--sample", output.toString(), "--repo", "file:/repo", "--version", "1.0",
+                "--iterations", "2", "--out", output.resolve("opt-in").toString(), "--optional-rows"};
+
+        assertFalse(StartupBenchmark.Options.parse(core).optionalRows());
+        assertTrue(StartupBenchmark.Options.parse(optIn).optionalRows());
+        assertEquals(CompletenessPolicy.REQUIRED, StartupBenchmark.Options.parse(optIn).completenessPolicy());
+    }
+
+    @Test
+    void failingOptInRowIsReportedButNeverGatesTheRequiredMatrix(@TempDir Path output) throws Exception {
+        String optIn = "runner-stored-reflection";
+        Path artifact = Files.writeString(output.resolve("fixture.jar"), "fixture");
+        List<Variant> variants = new ArrayList<>();
+        for (String name : SampleBuild.variantNames()) {
+            variants.add(Variant.available(name, "fixture " + name, List.of("java"), output, artifact,
+                    List.of(artifact)));
+        }
+        variants.add(Variant.available(optIn, "fixture " + optIn, List.of("java"), output, artifact,
+                List.of(artifact)));
+        StartupBenchmark.Options options = options(output, 2, 0, CompletenessPolicy.REQUIRED);
+        List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
+            if (variant.name().equals(optIn) && !warmup) {
+                throw new StartupHarness.RunFailure("opt-in fixture failure", 1);
+            }
+            return sample(iteration, warmup);
+        }), variants, options, log());
+        RunContext context = new RunContext(output, "file:/repo", "1.0", output,
+                options.iterations(), options.warmupIterations(), options.seed(), options.readinessPath(),
+                options.diagnostics(), "2026-09-22T00:00:00Z", SampleBuild.variantNames(),
+                CompletenessPolicy.REQUIRED);
+
+        BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
+
+        assertTrue(status.complete());
+        assertEquals(0, status.exitCode());
+        VariantResult optInResult = results.getLast();
+        assertEquals(optIn, optInResult.variant().name());
+        assertEquals(2, optInResult.measured().attempted());
+        assertEquals(2, optInResult.measured().failed());
+
+        Reports.write(output, context, results, List.of());
+        String json = Files.readString(output.resolve(Reports.RESULTS_FILE));
+        int requiredStart = json.indexOf("\"requiredVariants\": [");
+        String required = json.substring(requiredStart, json.indexOf(']', requiredStart));
+        for (String name : SampleBuild.variantNames()) {
+            assertTrue(required.contains("\"" + name + "\""), required);
+        }
+        assertFalse(required.contains(optIn), required);
+        int variantStart = json.indexOf("\"name\": \"" + optIn + "\"");
+        assertTrue(variantStart >= 0, json);
+        String optInVariant = json.substring(variantStart, json.indexOf("\"measured\": ", variantStart));
+        assertTrue(optInVariant.contains("\"required\": false"), optInVariant);
+        assertTrue(json.contains("\"complete\": true"));
+        assertTrue(json.contains("\"exitCode\": 0"));
+
+        String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE));
+        assertTrue(markdown.contains("**COMPLETE required comparison**"), markdown);
+        assertTrue(markdown.contains("| `runner-stored-reflection` | measured | 2 | 2 | 0 | 2 | 0 |"), markdown);
+    }
+
+    @Test
     void workDirectoryDefaultsUnderTheOutputDirectoryAndCanBeMovedOutOfIt(@TempDir Path output) {
         Path out = output.resolve("reports");
         Path work = output.resolve("work");
@@ -175,10 +239,10 @@ class BenchmarkCompletenessTest {
 
     @Test
     void sharedBuildFailurePreservesEveryRequiredVariantAsUnavailable(@TempDir Path output) throws Exception {
-        List<Variant> variants = SampleBuild.unavailableVariants("sample build failed");
+        List<Variant> variants = SampleBuild.unavailableVariants("sample build failed", false);
         StartupBenchmark.Options options = new StartupBenchmark.Options(output, "file:/repo", "1.0", output,
                 output.resolve("artifacts"), 2, 1, 1234L, "/hello", Duration.ofSeconds(1), false,
-                CompletenessPolicy.REQUIRED);
+                CompletenessPolicy.REQUIRED, false);
         List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
             throw new AssertionError("an unavailable variant must not reach the runner");
         }), variants, options, log());
@@ -276,7 +340,7 @@ class BenchmarkCompletenessTest {
         Path sample = output.resolve("sample");
         Files.createDirectories(sample);
         return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, output.resolve("artifacts"),
-                iterations, warmup, 1234L, "/hello", Duration.ofSeconds(1), false, policy);
+                iterations, warmup, 1234L, "/hello", Duration.ofSeconds(1), false, policy, false);
     }
 
     private static StartupBenchmark.Options options(Path output,
@@ -286,7 +350,8 @@ class BenchmarkCompletenessTest {
         Path sample = output.resolve("sample");
         Files.createDirectories(sample);
         return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, output.resolve("artifacts"),
-                iterations, warmup, seed, "/hello", Duration.ofSeconds(1), false, CompletenessPolicy.REQUIRED);
+                iterations, warmup, seed, "/hello", Duration.ofSeconds(1), false, CompletenessPolicy.REQUIRED,
+                false);
     }
 
     private static List<String> schedule(List<VariantResult> results) {

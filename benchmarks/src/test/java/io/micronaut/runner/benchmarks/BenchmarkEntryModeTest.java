@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,20 +43,40 @@ class BenchmarkEntryModeTest {
 
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
+    private static final List<String> CORE_ROWS = List.of(
+            "exploded-cp",
+            "thin-jar",
+            "shadow",
+            "shadow-stored",
+            "shadow-aot",
+            "runner-stored",
+            "runner-stored-aot",
+            "runner-preserve",
+            "runner-extracted",
+            "runner-extracted-aot");
+
     @Test
-    void matrixNamesPluginDefaultsAndReflectionAblations() {
-        assertEquals(List.of(
-                "exploded-cp",
-                "thin-jar",
-                "shadow",
-                "shadow-aot",
-                "runner-stored",
-                "runner-stored-aot",
-                "runner-stored-reflection",
-                "runner-preserve",
-                "runner-preserve-reflection",
-                "runner-extracted",
-                "runner-extracted-aot"), SampleBuild.variantNames());
+    void matrixNamesPluginDefaults() {
+        assertEquals(CORE_ROWS, SampleBuild.variantNames());
+        assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.endsWith("-reflection")));
+    }
+
+    @Test
+    void sharedBuildFailureSchedulesTheCoreRowsAndOptInRowsOnlyOnRequest() {
+        List<String> core = SampleBuild.unavailableVariants("sample build failed", false).stream()
+                .map(Variant::name).toList();
+        List<String> withOptIn = SampleBuild.unavailableVariants("sample build failed", true).stream()
+                .map(Variant::name).toList();
+
+        assertEquals(CORE_ROWS, core);
+        assertTrue(core.stream().noneMatch(name -> name.endsWith("-reflection")), core.toString());
+
+        List<String> expected = new ArrayList<>(CORE_ROWS);
+        expected.add(expected.indexOf("runner-stored-aot") + 1, "runner-stored-reflection");
+        assertEquals(expected, withOptIn);
+        assertEquals(CORE_ROWS.size() + 1, withOptIn.size());
+        assertEquals(EntryMode.REFLECTION, EntryMode.requestedBy("runner-stored-reflection"));
+        assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-stored"));
     }
 
     @Test

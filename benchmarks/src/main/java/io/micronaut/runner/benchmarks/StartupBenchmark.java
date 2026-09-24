@@ -45,6 +45,7 @@ import java.util.Random;
  *   [ --timeout    &lt;s&gt;  ]  how long one start may take (default 120)
  *   [ --diagnostics     ]  additionally make one -Xlog:class+load run per variant
  *   [ --allow-partial   ]  exploratory mode: exit zero if any measured run succeeds
+ *   [ --optional-rows   ]  also build and measure the opt-in rows, which are reported but never gate
  * </pre>
  *
  * <h2>The methodology, and why each rule is there</h2>
@@ -68,7 +69,8 @@ import java.util.Random;
  *
  * <p>The default required policy exits {@code 0} only when every required variant produced every requested
  * measured run. Explicit partial mode exits {@code 0} when at least one measured run succeeded. Both
- * reports are written before either decision.</p>
+ * reports are written before either decision. The required variants are the core rows,
+ * {@link SampleBuild#variantNames()}; the opt-in rows that {@code --optional-rows} adds are never required.</p>
  */
 public final class StartupBenchmark {
 
@@ -113,12 +115,12 @@ public final class StartupBenchmark {
         try {
             SampleBuild build = SampleBuild.prepare(options.sample(), options.repository(),
                     options.runnerVersion(), artifacts, log);
-            variants = build.variants();
+            variants = build.variants(options.optionalRows());
         } catch (IOException | InterruptedException e) {
             buildFailure = e.getMessage();
             log.println("[startup-benchmark] the sample could not be built: " + buildFailure);
             String reason = "the sample's Gradle build failed: " + oneLine(buildFailure);
-            variants = SampleBuild.unavailableVariants(reason);
+            variants = SampleBuild.unavailableVariants(reason, options.optionalRows());
         }
 
         List<VariantResult> results;
@@ -287,6 +289,7 @@ public final class StartupBenchmark {
      * @param timeout          how long one start may take
      * @param diagnostics      whether to make separate {@code -Xlog:class+load} runs for per-class inspection
      * @param completenessPolicy whether incomplete measured results fail the invocation
+     * @param optionalRows     whether to build and measure the opt-in rows as well as the core rows
      */
     record Options(Path sample,
                    String repository,
@@ -299,7 +302,8 @@ public final class StartupBenchmark {
                    String readinessPath,
                    Duration timeout,
                    boolean diagnostics,
-                   CompletenessPolicy completenessPolicy) {
+                   CompletenessPolicy completenessPolicy,
+                   boolean optionalRows) {
 
         /**
          * Parses the command line.
@@ -321,6 +325,7 @@ public final class StartupBenchmark {
             int timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
             boolean diagnostics = false;
             CompletenessPolicy completenessPolicy = CompletenessPolicy.REQUIRED;
+            boolean optionalRows = false;
 
             for (int i = 0; i < args.length; i++) {
                 String argument = args[i];
@@ -337,6 +342,7 @@ public final class StartupBenchmark {
                     case "--timeout" -> timeoutSeconds = number(value(args, ++i, argument), argument);
                     case "--diagnostics" -> diagnostics = true;
                     case "--allow-partial" -> completenessPolicy = CompletenessPolicy.PARTIAL;
+                    case "--optional-rows" -> optionalRows = true;
                     default -> throw new IllegalArgumentException("unknown option " + argument);
                 }
             }
@@ -364,7 +370,7 @@ public final class StartupBenchmark {
             return new Options(sample.toAbsolutePath().normalize(), repository, version,
                     outputDirectory, workDirectory, iterations, effectiveWarmup, seed,
                     readiness.startsWith("/") ? readiness : "/" + readiness,
-                    Duration.ofSeconds(timeoutSeconds), diagnostics, completenessPolicy);
+                    Duration.ofSeconds(timeoutSeconds), diagnostics, completenessPolicy, optionalRows);
         }
 
         /**
@@ -377,7 +383,7 @@ public final class StartupBenchmark {
                    Usage: StartupBenchmark --sample <dir> --repo <uri> --version <v> \
                    --iterations <n> --out <dir>
                                           [--work <dir>] [--warmup <n>] [--seed <n>] [--readiness <path>] \
-                   [--timeout <seconds>] [--diagnostics] [--allow-partial]""";
+                   [--timeout <seconds>] [--diagnostics] [--allow-partial] [--optional-rows]""";
         }
 
         private static String value(String[] args, int index, String option) {
