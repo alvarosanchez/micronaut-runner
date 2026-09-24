@@ -19,14 +19,14 @@ dependencies {
     pluginsUnderTest project(path: ':micronaut-runner-gradle-plugin', configuration: 'repository')
 }
 
-// Any test that forks a CDS/AOT training JVM or a packaging worker tests the benchmark tool, not the product:
+// Any test that forks an AOT cache training JVM or a packaging worker tests the benchmark tool, not the product:
 // tag it @Tag("benchmark-integration"). Tagged tests stay out of check; benchmarks.yml runs them first.
 tasks.named('test', Test) {
     useJUnitPlatform { excludeTags 'benchmark-integration' }
 }
 def benchmarkIntegrationTest = tasks.register('benchmarkIntegrationTest', Test) {
     group = 'benchmark'
-    description = 'Benchmark-tool tests that fork CDS/AOT training or packaging-worker JVMs'
+    description = 'Benchmark-tool tests that fork AOT cache training or packaging-worker JVMs'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform { includeTags 'benchmark-integration' }

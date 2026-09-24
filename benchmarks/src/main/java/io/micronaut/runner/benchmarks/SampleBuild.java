@@ -80,7 +80,7 @@ final class SampleBuild {
     private static final String SHADOW = "shadow";
     private static final String SHADOW_AOT = "shadow-aot";
     private static final String RUNNER_STORED = "runner-stored";
-    private static final String RUNNER_STORED_CDS = "runner-stored-cds";
+    private static final String RUNNER_STORED_AOT = "runner-stored-aot";
     private static final String RUNNER_STORED_REFLECTION = "runner-stored-reflection";
     private static final String RUNNER_PRESERVE = "runner-preserve";
     private static final String RUNNER_PRESERVE_REFLECTION = "runner-preserve-reflection";
@@ -105,7 +105,7 @@ final class SampleBuild {
     private static final long EXTRACT_TIMEOUT_SECONDS = 120;
 
     /** How long cache training, workload, verification and normal termination may take. */
-    private static final long CDS_TIMEOUT_SECONDS = 120;
+    private static final long CACHE_TIMEOUT_SECONDS = 120;
 
     private final Path sample;
     private final Path artifacts;
@@ -213,7 +213,7 @@ final class SampleBuild {
      */
     static List<String> variantNames() {
         return List.of(EXPLODED_CLASSPATH, THIN_JAR, SHADOW, SHADOW_AOT,
-                RUNNER_STORED, RUNNER_STORED_CDS, RUNNER_STORED_REFLECTION,
+                RUNNER_STORED, RUNNER_STORED_AOT, RUNNER_STORED_REFLECTION,
                 RUNNER_PRESERVE, RUNNER_PRESERVE_REFLECTION,
                 RUNNER_EXTRACTED, RUNNER_EXTRACTED_AOT);
     }
@@ -228,11 +228,11 @@ final class SampleBuild {
                 Variant.unavailable(SHADOW,
                         "Everything flattened into one jar by the Shadow plugin", reason),
                 Variant.unavailable(SHADOW_AOT,
-                        "The same Shadow jar with a verified built-in-loader JDK AOT cache", reason),
+                        "The same Shadow jar with a verified JDK AOT cache", reason),
                 Variant.unavailable(RUNNER_STORED,
                         "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub", reason),
-                Variant.unavailable(RUNNER_STORED_CDS,
-                        "The same default-entry Runner jar with a verified, strict CDS archive", reason),
+                Variant.unavailable(RUNNER_STORED_AOT,
+                        "The same default-entry Runner jar with a verified JDK AOT cache", reason),
                 Variant.unavailable(RUNNER_STORED_REFLECTION,
                         "Runner jar, nested dependencies re-packed uncompressed; reflection ablation", reason),
                 Variant.unavailable(RUNNER_PRESERVE,
@@ -242,7 +242,7 @@ final class SampleBuild {
                 Variant.unavailable(RUNNER_EXTRACTED,
                         "Runner jar unpacked and run by the JDK's own loader", reason),
                 Variant.unavailable(RUNNER_EXTRACTED_AOT,
-                        "The same extracted layout with a verified built-in-loader JDK AOT cache", reason));
+                        "The same extracted layout with a verified JDK AOT cache", reason));
     }
 
     /**
@@ -263,18 +263,15 @@ final class SampleBuild {
                 this::shadowJar);
         variants.add(shadow);
         variants.add(attempt(SHADOW_AOT,
-                "The same Shadow jar with a verified built-in-loader JDK AOT cache",
+                "The same Shadow jar with a verified JDK AOT cache",
                 () -> AotCache.prepare(shadow, SHADOW_AOT, aotRequest())));
         Variant stored = attempt(RUNNER_STORED,
                 "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub",
                 () -> runnerJar(RUNNER_STORED, Compression.STORED, EntryMode.STUB));
         variants.add(stored);
-        variants.add(attempt(RUNNER_STORED_CDS,
-                "The same default-entry Runner jar with a verified, strict CDS archive",
-                () -> CdsCache.prepare(stored, RUNNER_STORED_CDS, new CdsCache.Request(
-                        artifacts.resolve("managed-cds"), "/hello", List.of("/hello"),
-                        "/cds-training/stop", java.time.Duration.ofSeconds(CDS_TIMEOUT_SECONDS),
-                        mainClass, List.of(), log))));
+        variants.add(attempt(RUNNER_STORED_AOT,
+                "The same default-entry Runner jar with a verified JDK AOT cache",
+                () -> AotCache.prepare(stored, RUNNER_STORED_AOT, aotRequest())));
         variants.add(attempt(RUNNER_STORED_REFLECTION,
                 "Runner jar, nested dependencies re-packed uncompressed; reflection ablation",
                 () -> runnerJar(RUNNER_STORED_REFLECTION, Compression.STORED, EntryMode.REFLECTION)));
@@ -289,14 +286,14 @@ final class SampleBuild {
                 () -> extracted(stored));
         variants.add(extracted);
         variants.add(attempt(RUNNER_EXTRACTED_AOT,
-                "The same extracted layout with a verified built-in-loader JDK AOT cache",
+                "The same extracted layout with a verified JDK AOT cache",
                 () -> AotCache.prepare(extracted, RUNNER_EXTRACTED_AOT, aotRequest())));
         return variants;
     }
 
     private AotCache.Request aotRequest() {
         return new AotCache.Request(artifacts.resolve("managed-aot"), "/hello", List.of("/hello"),
-                "/cds-training/stop", java.time.Duration.ofSeconds(CDS_TIMEOUT_SECONDS),
+                "/cds-training/stop", java.time.Duration.ofSeconds(CACHE_TIMEOUT_SECONDS),
                 mainClass, List.of(), log);
     }
 

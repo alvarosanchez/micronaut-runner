@@ -1,57 +1,67 @@
 Modern JVMs can cache the work of loading and linking classes between runs. Understanding how that
 interacts with a runner JAR matters if startup time is your reason for being here.
 
-== The constraint
+== What JDK 25 and 26 cache for a Runner JAR
 
-https://openjdk.org/jeps/483[JEP 483], which introduced the AOT cache in JDK 24, is explicit:
+On JDK 25 the JDK AOT cache and dynamic Class Data Sharing (CDS) both apply to the unchanged single Runner
+JAR, and on JDK 26 the AOT cache does. JDK classes, and the launcher classes that the JDK's built-in
+application class loader loads from the outer JAR, get full AOT loading and linking. Classes that Runner's
+own loader defines are stored as _unregistered_ classes: when the loader later defines a class whose name,
+class-file size and CRC-32 match a stored one, HotSpot reuses the pre-parsed and pre-verified copy instead of
+parsing the bytes again. Those classes are not AOT-linked, and the lambdas they spin at run time are not
+archived. The extracted layout runs entirely on the built-in loader, so its application classes are
+AOT-linked too.
 
-[quote]
-____
-Only classes loaded from the class path, the module path, and the JDK itself, by the JDK's built-in class
-loaders, can be cached.
-____
+On JDK 27 the AOT cache stores only classes whose code source is a `file:` location
+(https://bugs.openjdk.org/browse/JDK-8380291[JDK-8380291]). Runner's loader reports `jar:file:` locations,
+so a JDK 27 AOT cache of the single JAR does not store its application classes; dynamic CDS still does.
+On JDK 27, use the extracted layout for the cached path.
 
-A runner JAR loads application classes through its own class loader, so those classes cannot be
-*AOT-linked*. This is not specific to Micronaut Runner: it applies to every executable-JAR format that
-keeps its dependencies nested, and it is why Quarkus added a separate packaging mode whose class loading
-is delegated entirely to the JDK.
-
-What still applies is the older Class Data Sharing machinery. HotSpot archives classes defined by a
-user-defined class loader as _unregistered_ classes, and when such a loader later defines a class whose
-name, class file size and CRC-32 match an archived one, the pre-parsed and pre-verified copy is used
-instead of parsing the bytes again. So an archive is still worth creating; it simply does not carry the
-full benefit that AOT linking gives an ordinary classpath.
-
-== Keep the single JAR with CDS
+== Keep the single JAR with the AOT cache
 
 Train only the immutable final Runner JAR. The training process must reach readiness, exercise a
-representative workload, and then terminate normally so HotSpot can write the archive:
+representative workload, and then terminate normally so HotSpot can write the cache:
 
 [source,bash]
 ----
-java -XX:ArchiveClassesAtExit=app.jsa -jar my-app-0.1-all.jar
+java -XX:AOTCacheOutput=app.aot -jar my-app-0.1-all.jar
 ----
 
 Bound every phase in deployment automation: build, readiness, workload requests, the normal-termination
-request, and process exit. Treat a nonzero exit or a missing or empty `app.jsa` as failed training. Do not
+request, and process exit. Treat a nonzero exit or a missing or empty `app.aot` as failed training. Do not
 train by killing the process after an arbitrary sleep: that neither proves the workload ran nor proves that
-archive generation completed.
+cache creation completed.
 
-Use strict sharing when a deployment requires its trained cache:
+Run production with the cache:
 
 [source,bash]
 ----
-java -Xshare:on -XX:SharedArchiveFile=app.jsa -jar my-app-0.1-all.jar
+java -XX:AOTCache=app.aot -jar my-app-0.1-all.jar
 ----
 
-`-Xshare:on` makes an absent, corrupt, or incompatible archive a launch failure. If continuing without the
-application cache is an intentional availability policy, select that explicitly with `-Xshare:auto` and
-monitor HotSpot's cache diagnostics. Do not describe that fallback launch as a CDS result.
+With the default `-XX:AOTMode=auto`, an absent, corrupt or incompatible cache logs an `[error][aot]` line and
+the application runs uncached. Adding `-XX:AOTMode=on` makes such a cache a launch failure, so use it when a
+deployment requires its trained cache. If continuing without the cache is an intentional availability policy,
+keep `auto` and monitor HotSpot's cache diagnostics. Do not describe that fallback launch as a cached result.
 
-Store managed archives under an identity derived from the bytes of the final Runner JAR (which contains the
+On `benchmark-large` with JDK 25.0.4.1 (Homebrew OpenJDK build 25.0.4.1), the single JAR with the AOT cache
+reached readiness 37.5 ms sooner than with a dynamic CDS archive (paired median, 95% CI 32.6 to 40.7 ms,
+20 pairs) and used about 15 MiB less maximum RSS (184 against 199 MiB), for a larger cache file (49.5 MB
+against 31.4 MB).
+Dynamic CDS remains the smaller-cache alternative; on JDK 27 it is the single-JAR cache that still stores
+application classes, and it measured 85.4 ms faster than the single-JAR AOT cache there (`benchmark-large`,
+JDK 27 build 27, paired median, 95% CI 74.6 to 91.0 ms, 20 pairs):
+
+[source,bash]
+----
+java -XX:ArchiveClassesAtExit=app.jsa -jar my-app-0.1-all.jar           # train
+java -Xshare:on -XX:SharedArchiveFile=app.jsa -jar my-app-0.1-all.jar   # run; -Xshare:on requires the archive
+----
+
+Store managed caches under an identity derived from the bytes of the final Runner JAR (which contains the
 ordered application and dependency bytes), the exact JDK runtime and VM build, architecture, and every JVM
-flag that can affect training or use. Changing any input selects a different archive instead of overwriting
-or accidentally reusing the old one. The repository's `runner-stored-cds` sample implements this lifecycle:
+flag that can affect training or use. Changing any input selects a different cache instead of overwriting
+or accidentally reusing the old one. The repository's `runner-stored-aot` sample implements this lifecycle:
 
 [source,bash]
 ----
@@ -59,10 +69,10 @@ or accidentally reusing the old one. The repository's `runner-stored-cds` sample
 ----
 
 It builds the sample once, trains after HTTP readiness, exercises `/hello`, calls a training-environment-only
-normal-termination endpoint, rejects missing or empty output, launches the exact same JAR and archive with
-strict sharing, and verifies `com.example.Application` came from the shared objects file. Only then does the
-archive become a benchmark launch input. The paired `runner-stored` row launches the same immutable JAR
-without an application archive.
+normal-termination endpoint, rejects missing or empty output, launches the exact same JAR and cache with
+`-XX:AOTMode=on`, and verifies `com.example.Application` came from the shared objects file. Only then does the
+cache become a benchmark launch input. The paired `runner-stored` row launches the same immutable JAR
+without an application cache.
 
 == Extract for full AOT linking
 
@@ -96,11 +106,11 @@ requires normal exit status zero, and then requires a nonempty cache. A separate
 A timeout, nonzero exit, missing/empty output, unsupported option or failed class-reuse check makes the AOT
 variant unavailable; it never silently becomes a no-cache result.
 
-The matrix contains both `runner-extracted`/`runner-extracted-aot` and `shadow`/`shadow-aot`. Each pair uses
-identical artifact bytes, ordered class path, working directory, `/hello` readiness workload and JVM flags;
-the measured cached command differs only by `-XX:AOTCache=<cache>`. This provides equivalent training for the
-competing built-in-loader layouts rather than comparing a trained extracted Runner layout with an untrained
-Shadow JAR.
+The matrix contains three AOT pairs: `runner-stored`/`runner-stored-aot`, `shadow`/`shadow-aot` and
+`runner-extracted`/`runner-extracted-aot`. Each pair uses identical artifact bytes, ordered class path, working
+directory, `/hello` readiness workload and JVM flags; the measured cached command differs only by
+`-XX:AOTMode=on -XX:AOTCache=<cache>`. This provides equivalent training for the competing layouts rather than
+comparing a trained Runner layout with an untrained Shadow JAR.
 
 The harness launches the real extracted application JAR with `-jar`; it reads and hashes that JAR followed by
 each real JAR named by its manifest `Class-Path`, in manifest order. It adds no helper JAR and no wrapper class
@@ -155,24 +165,31 @@ the benchmark's `results.json` and `summary.md` do.
 
 == Verifying that it worked
 
-Do not assume an archive is being used. Run diagnostics separately from timing and check that an application
-class, not merely a JDK class from the default archive, comes from the selected archive:
+Do not assume a cache is being used. Run diagnostics separately from timing and check that an application
+class, not merely a JDK class from the default archive, comes from the selected cache:
 
 [source,bash]
 ----
+java -XX:AOTMode=on -XX:AOTCache=app.aot -Xlog:class+load -jar my-app-0.1-all.jar
+# Look for: com.example.Application source: shared objects file
+
 java -Xshare:on -XX:SharedArchiveFile=app.jsa -Xlog:class+load -jar my-app-0.1-all.jar
-# Look for: com.example.Application source: shared objects file (top)
+# The dynamic CDS alternative. Look for: com.example.Application source: shared objects file (top)
 
 java -XX:AOTCache=app.aot -Xlog:class+load -jar app/my-app-0.1-all.jar
-# Look for the same application class from the selected shared objects file.
+# The extracted layout. Look for the same application class from the selected shared objects file.
 ----
 
 `-Xlog:class+path=info` reports how an AOT cache's recorded class path was validated and is the first thing to
 inspect when a cache is rejected or disabled. Keep this logging out of readiness timing.
 
-IMPORTANT: Runner's custom-loader CDS reuses pre-parsed and pre-verified class data, but it does not turn the
-custom loader into a built-in loader and does not provide full built-in-loader AOT linking. Extracted-layout
-AOT caching is the path for that stronger optimization.
+IMPORTANT: On the single JAR, the AOT cache reuses the application classes Runner's loader defines but does
+not AOT-link them or archive the lambdas they spin; extraction adds both. On `benchmark-large` with JDK
+25.0.4.1 (Homebrew OpenJDK build 25.0.4.1), `runner-extracted-aot` was 10.2 ms behind `shadow-aot` (paired
+median, 95% CI 3.2 to 18.6 ms, 20 pairs) and `runner-stored-aot` 34.9 ms behind it (95% CI 31.6 to 39.3 ms,
+20 pairs). With JDK 27 (build 27) on the same sample, the single JAR with the AOT cache was 173.5 ms behind
+`shadow-aot` (95% CI 169.7 to 179.8 ms) and the extracted layout was at parity with it (+2.9 ms, 95% CI −5.8
+to +8.6 ms), 20 pairs each.
 
 NOTE: Measure before committing to either option. The cost and benefit depend on the size of the
 application and on how often the process starts, and the numbers move between JDK releases.

@@ -86,9 +86,10 @@ java -jar ./app/my-app.jar
 ----
 
 The extracted form runs entirely on the JDK's own application class loader, with no custom class loader
-anywhere. That matters for the JDK's ahead-of-time cache: as described in <<cdsAndAot>>, classes loaded by
-a user-defined class loader cannot be AOT-linked, so an application that will be started thousands of
-times in the same container image may be better served by extracting once at image build time.
+anywhere. The single JAR also uses the JDK's ahead-of-time cache (<<cdsAndAot>>); what extraction adds is AOT
+linking of the application classes, which classes defined by a user-defined class loader do not get. That is
+why an application that will be started thousands of times in the same container image may be better served
+by extracting once at image build time.
 
 === Publication and replacement
 
