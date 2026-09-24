@@ -290,8 +290,14 @@ class BenchmarkStatisticsTest {
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         String comparisons = json.substring(json.indexOf("\"comparisons\""), json.indexOf("\"attempts\""));
-        assertEquals(6, SampleBuild.comparisons().size());
-        assertEquals(SampleBuild.comparisons().size(), occurrences(comparisons, "\"candidateVariant\""));
+        // Every spec whose two rows are core applies; the reflection spec waits for its opt-in row.
+        List<SampleBuild.ComparisonSpec> applicable = SampleBuild.comparisons().stream()
+                .filter(spec -> SampleBuild.variantNames().contains(spec.candidate())
+                        && SampleBuild.variantNames().contains(spec.baseline()))
+                .toList();
+        assertEquals(7, applicable.size());
+        assertEquals(applicable.size(), occurrences(comparisons, "\"candidateVariant\""));
+        assertFalse(comparisons.contains("\"baselineVariant\": \"runner-stored-reflection\""));
         assertTrue(comparisons.length() < json.length() / 10,
                 comparisons.length() + " of " + json.length() + " bytes");
         assertEquals(1, occurrences(json, "\"resamplingUnit\""));
@@ -303,20 +309,55 @@ class BenchmarkStatisticsTest {
                 .matcher(comparisons).results()
                 .map(match -> match.group(1) + " - " + match.group(2))
                 .toList();
-        assertEquals(SampleBuild.comparisons().stream()
+        assertEquals(applicable.stream()
                 .map(spec -> spec.candidate() + " - " + spec.baseline())
                 .toList(), order);
         assertEquals("runner-stored - shadow", order.getFirst());
-        assertTrue(order.stream().noneMatch(pair -> pair.startsWith("shadow")), order.toString());
+        // The one Shadow candidate is the Shadow-only compression control, and its label says so in both reports.
+        List<SampleBuild.ComparisonSpec> shadowCandidates = applicable.stream()
+                .filter(spec -> spec.candidate().startsWith("shadow"))
+                .toList();
+        assertEquals(1, shadowCandidates.size(), shadowCandidates.toString());
+        SampleBuild.ComparisonSpec control = shadowCandidates.getFirst();
+        assertEquals("shadow-stored - shadow", control.candidate() + " - " + control.baseline());
+        assertTrue(control.label().startsWith("Shadow-only control"), control.label());
+        assertTrue(comparisons.contains("{\"label\": \"" + control.label()
+                + "\", \"candidateVariant\": \"shadow-stored\", \"baselineVariant\": \"shadow\""), comparisons);
 
         String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
         String section = section(markdown, "## Runner vs Shadow");
-        for (SampleBuild.ComparisonSpec spec : SampleBuild.comparisons()) {
+        for (SampleBuild.ComparisonSpec spec : applicable) {
             assertTrue(section.contains("| " + spec.label() + ": `" + spec.candidate() + "` − `"
                     + spec.baseline() + "` |"), section);
         }
+        assertTrue(section.contains("| Shadow-only control: "), section);
+        assertFalse(section.contains("runner-stored-reflection"), section);
         assertEquals(1, occurrences(markdown, "does not by itself establish"));
         assertFalse(markdown.contains("## Paired readiness comparisons"));
+    }
+
+    @Test
+    void theOptInReflectionRowBringsItsDeclaredComparison(@TempDir Path output) throws Exception {
+        int iterations = 10;
+        double[] stub = new double[iterations];
+        double[] reflection = new double[iterations];
+        for (int i = 0; i < iterations; i++) {
+            stub[i] = 500 + (i * 7 % 13);
+            reflection[i] = 510 + (i * 5 % 11);
+        }
+        Path sample = Files.createDirectory(output.resolve("sample"));
+        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
+                iterations, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z",
+                List.of("runner-stored"), CompletenessPolicy.REQUIRED);
+
+        Reports.write(output, context, List.of(result("runner-stored", stub, -1),
+                result("runner-stored-reflection", reflection, -1)), List.of());
+
+        String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
+        String comparisons = json.substring(json.indexOf("\"comparisons\""), json.indexOf("\"attempts\""));
+        assertEquals(1, occurrences(comparisons, "\"candidateVariant\""));
+        assertTrue(comparisons.contains("{\"label\": \"Entry stub vs reflection\", \"candidateVariant\":"
+                + " \"runner-stored\", \"baselineVariant\": \"runner-stored-reflection\""), comparisons);
     }
 
     private static String section(String markdown, String heading) {

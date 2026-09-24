@@ -17,8 +17,8 @@
 /*
  * Applied with -I by StartupBenchmark to the sample's own build.
  *
- * The harness has to package the sample six different ways over *identical* application bytes, and for
- * three of those six it needs the runtime class path in resolution order. A directory listing of an
+ * The harness has to package the sample many different ways over *identical* application bytes, and for
+ * several of them it needs the runtime class path in resolution order. A directory listing of an
  * installDist layout cannot give it that - the order is the whole point, because it decides which copy of
  * a duplicated resource wins - so the order is taken from the only place that knows it, which is Gradle.
  *
@@ -29,6 +29,12 @@ gradle.rootProject { rootProject ->
         task.group = 'benchmark'
         task.description = 'Writes the application class path that the startup benchmark harness packages'
         task.dependsOn('classes')
+        // The STORED Shadow control is not on the harness's command line: a sample without the task would fail
+        // the whole build. This action runs when the task is realized, after the sample's script registered its
+        // tasks, so a sample that declares it gets it built and one that does not loses only that row.
+        if (rootProject.tasks.names.contains('shadowJarStored')) {
+            task.dependsOn('shadowJarStored')
+        }
         // The harness always wants the current answer; there is nothing to be gained from skipping it.
         task.outputs.upToDateWhen { false }
         task.doLast {
@@ -49,6 +55,10 @@ gradle.rootProject { rootProject ->
             def shadowJar = rootProject.tasks.findByName('shadowJar')
             if (shadowJar != null) {
                 lines << "shadowJar=${shadowJar.archiveFile.get().asFile.absolutePath}"
+            }
+            def shadowStoredJar = rootProject.tasks.findByName('shadowJarStored')
+            if (shadowStoredJar != null) {
+                lines << "shadowStoredJar=${shadowStoredJar.archiveFile.get().asFile.absolutePath}"
             }
             def output = rootProject.layout.buildDirectory
                     .file('runner-benchmark-metadata.txt').get().asFile

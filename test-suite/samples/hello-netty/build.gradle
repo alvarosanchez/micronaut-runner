@@ -1,3 +1,5 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
 plugins {
     alias(libs.plugins.micronaut.application)
     // Applied without a version: the version is pinned in settings.gradle.
@@ -47,4 +49,22 @@ java {
 // identical application bytes, so it is the one that moves aside.
 tasks.named('shadowJar') {
     archiveClassifier = 'shadow'
+}
+
+// Benchmark control only: the shadowJar archive with uncompressed entries, so the startup harness can separate
+// Runner's layout from the effect of not inflating. Shadow configures only the task named shadowJar, so this one
+// copies its inputs, excludes, manifest and main class; the Micronaut plugin applies duplicate handling and
+// service-file merging to every ShadowJar task. Registered lazily and not part of assemble.
+def shadowJar = tasks.named('shadowJar', ShadowJar)
+tasks.register('shadowJarStored', ShadowJar) { task ->
+    task.group = 'benchmark'
+    task.description = 'The shadowJar archive with STORED entries, for the startup benchmark control row'
+    task.archiveClassifier = 'shadow-stored'
+    task.entryCompression = ZipEntryCompression.STORED
+    task.from(sourceSets.main.output)
+    task.configurations.set(shadowJar.flatMap { it.configurations })
+    task.mainClass.set(shadowJar.flatMap { it.mainClass })
+    task.manifest.inheritFrom(shadowJar.get().manifest)
+    task.exclude('META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA',
+            'META-INF/versions/**/module-info.class', 'module-info.class')
 }

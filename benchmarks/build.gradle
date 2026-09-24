@@ -71,6 +71,10 @@ def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
         if (providers.gradleProperty('benchmarks.diagnostics').map(String::toBoolean).getOrElse(false)) {
             arguments.add('--diagnostics')
         }
+        // Opt-in rows (ablations and experiments) are built and reported but never gate the exit code.
+        if (providers.gradleProperty('benchmarks.optionalRows').map(String::toBoolean).getOrElse(false)) {
+            arguments.add('--optional-rows')
+        }
         arguments
     } as CommandLineArgumentProvider)
 }
