@@ -33,7 +33,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
@@ -195,11 +197,8 @@ abstract class AbstractFunctionalTest {
     /** How long a forked application may take before the test gives up on it. */
     private static final Duration FORK_TIMEOUT = Duration.ofSeconds(60);
 
-    /** Maximum time spent terminating a child or finishing its output drain. */
+    /** How long a child that is being forcibly destroyed may take to be reaped. */
     private static final Duration FORK_CLEANUP_GRACE = Duration.ofSeconds(2);
-
-    /** Maximum output retained from a runaway child; the stream is still drained after this limit. */
-    private static final int MAX_FORK_OUTPUT_BYTES = 1024 * 1024;
 
     /** The directory holding the compiled fixture dependency jars, built once per test JVM. */
     private static Path libraries;
@@ -315,7 +314,7 @@ abstract class AbstractFunctionalTest {
      * @throws InterruptedException if the wait is interrupted
      */
     static Forked runJar(Path archive, String... arguments) throws IOException, InterruptedException {
-        return runJar(archive, List.of(), FORK_TIMEOUT, arguments);
+        return runJar(archive, List.of(), arguments);
     }
 
     /**
@@ -330,30 +329,27 @@ abstract class AbstractFunctionalTest {
      */
     static Forked runJarInMode(Path archive, String mode, String... arguments)
             throws IOException, InterruptedException {
-        return runJar(archive, List.of("-Dmicronaut.runner.mode=" + mode), FORK_TIMEOUT, arguments);
+        return runJar(archive, List.of("-Dmicronaut.runner.mode=" + mode), arguments);
     }
 
     /**
-     * Runs an archive with a test-specific deadline.
+     * Runs an archive with {@code java -jar}, giving it {@link #FORK_TIMEOUT} to finish.
      *
-     * @param archive   the archive to run
-     * @param timeout   how long the child may run before cleanup starts
-     * @param arguments the application arguments
-     * @return the exit status and combined output
-     * @throws IOException          if the process fails or exceeds its deadline
-     * @throws InterruptedException if the wait is interrupted, after the child is reaped
+     * <p>The combined output goes to a temporary file rather than a pipe, so a chatty child can never block
+     * on a full pipe and a child that never exits cannot stall a read: the timed wait always fires. However
+     * this method leaves, a child that is still alive is forcibly destroyed and awaited for
+     * {@link #FORK_CLEANUP_GRACE}, and the log is deleted.</p>
+     *
+     * @param archive      the archive to run
+     * @param jvmArguments options for the forked JVM, placed before {@code -jar}
+     * @param arguments    the application arguments
+     * @return the exit status and the combined output
+     * @throws IOException          if the process cannot be started or does not finish in time
+     * @throws InterruptedException if the wait is interrupted, thrown once the child has been reaped
      */
-    static Forked runJar(Path archive, Duration timeout, String... arguments)
-            throws IOException, InterruptedException {
-        return runJar(archive, List.of(), timeout, arguments);
-    }
-
-    private static Forked runJar(Path archive, List<String> jvmArguments, Duration timeout, String... arguments)
+    private static Forked runJar(Path archive, List<String> jvmArguments, String... arguments)
             throws IOException, InterruptedException {
         assertTrue(Files.isRegularFile(archive), () -> archive + " was never written");
-        if (timeout.isZero() || timeout.isNegative()) {
-            throw new IllegalArgumentException("timeout must be positive: " + timeout);
-        }
         List<String> command = new ArrayList<>();
         command.add(javaExecutable().toString());
         command.addAll(jvmArguments);
@@ -366,109 +362,62 @@ abstract class AbstractFunctionalTest {
         for (String variable : List.of("JDK_JAVA_OPTIONS", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS")) {
             builder.environment().remove(variable);
         }
-        Process process = builder.start();
-        OutputCapture capture = new OutputCapture(process.getInputStream());
-        Thread drain = new Thread(capture, "forked-application-output-" + process.pid());
-        drain.setDaemon(true);
-        drain.start();
-
-        boolean finished;
+        // In java.io.tmpdir, never next to the archive: tests inspect the fixture's build directory.
+        Path log = Files.createTempFile("forked-application-", ".log");
+        Process process = null;
         try {
-            finished = process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS);
+            process = builder.redirectOutput(log.toFile()).start();
+            if (!process.waitFor(FORK_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                reap(process);
+                throw new IOException("The forked application did not finish within " + FORK_TIMEOUT
+                        + describe(command, readLog(log)));
+            }
+            return new Forked(process.exitValue(), readLog(log));
         } catch (InterruptedException e) {
-            IOException cleanupFailure = cleanup(process, drain);
-            if (cleanupFailure != null) {
-                e.addSuppressed(cleanupFailure);
-            }
-            Thread.currentThread().interrupt();
+            reap(process);                      // waitFor cleared the flag, so this wait is real
+            Thread.currentThread().interrupt(); // restored only once the child is gone
             throw e;
-        }
-        if (!finished) {
-            IOException cleanupFailure = cleanup(process, drain);
-            IOException failure = new IOException("The forked application did not finish within " + timeout
-                    + describe(command, capture.output()));
-            if (cleanupFailure != null) {
-                failure.addSuppressed(cleanupFailure);
+        } finally {
+            if (process != null) {
+                reap(process);                  // a no-op when the child already exited
             }
-            throw failure;
-        }
-
-        try {
-            drain.join(FORK_CLEANUP_GRACE.toMillis());
-        } catch (InterruptedException e) {
-            IOException cleanupFailure = cleanup(process, drain);
-            if (cleanupFailure != null) {
-                e.addSuppressed(cleanupFailure);
+            try {
+                Files.deleteIfExists(log);
+            } catch (IOException ignored) {
+                // cleanup never fails a test
             }
-            Thread.currentThread().interrupt();
-            throw e;
         }
-        if (drain.isAlive()) {
-            IOException cleanupFailure = cleanup(process, drain);
-            IOException failure = new IOException("The forked application's output did not finish within "
-                    + FORK_CLEANUP_GRACE + describe(command, capture.output()));
-            if (cleanupFailure != null) {
-                failure.addSuppressed(cleanupFailure);
-            }
-            throw failure;
-        }
-        if (capture.failure() != null) {
-            throw new IOException("Could not capture the forked application's output"
-                    + describe(command, capture.output()), capture.failure());
-        }
-        return new Forked(process.exitValue(), capture.output());
     }
 
-    private static IOException cleanup(Process process, Thread drain) {
-        boolean interrupted = false;
-        List<String> failures = new ArrayList<>();
-        process.destroy();
-        try {
-            if (!process.waitFor(FORK_CLEANUP_GRACE.toMillis(), TimeUnit.MILLISECONDS)) {
-                process.destroyForcibly();
-            }
-        } catch (InterruptedException e) {
-            interrupted = true;
-            process.destroyForcibly();
-        }
+    /**
+     * Forcibly destroys a child that is still alive and waits up to {@link #FORK_CLEANUP_GRACE} for it to
+     * be reaped.
+     *
+     * @param process the child
+     */
+    private static void reap(Process process) {
         if (process.isAlive()) {
+            process.destroyForcibly();
             try {
-                if (!process.waitFor(FORK_CLEANUP_GRACE.toMillis(), TimeUnit.MILLISECONDS)
-                        && process.isAlive()) {
-                    failures.add("child " + process.pid() + " survived forcible termination");
-                }
+                process.onExit().get(FORK_CLEANUP_GRACE.toMillis(), TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
-                interrupted = true;
-                if (process.isAlive()) {
-                    failures.add("child " + process.pid() + " was not reaped before cleanup was interrupted");
-                }
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException | TimeoutException ignored) {
+                // the caller is already failing
             }
         }
-        try {
-            process.getInputStream().close();
-        } catch (IOException e) {
-            failures.add("could not close the child output stream: " + e);
-        }
-        try {
-            drain.join(FORK_CLEANUP_GRACE.toMillis());
-        } catch (InterruptedException e) {
-            interrupted = true;
-        }
-        if (drain.isAlive()) {
-            drain.interrupt();
-            try {
-                drain.join(FORK_CLEANUP_GRACE.toMillis());
-            } catch (InterruptedException e) {
-                interrupted = true;
-            }
-            if (drain.isAlive()) {
-                failures.add("output drain " + drain.getName() + " did not stop");
-            }
-        }
-        if (interrupted) {
-            Thread.currentThread().interrupt();
-        }
-        return failures.isEmpty() ? null : new IOException("Cleanup incomplete: " + String.join("; ", failures));
+    }
+
+    /**
+     * Reads a forked application's log. Decoding is lenient because {@link Files#readString(Path)} throws
+     * on malformed UTF-8, and a diagnostic should never be lost to that.
+     *
+     * @param log the log
+     * @return its content
+     * @throws IOException if it cannot be read
+     */
+    private static String readLog(Path log) throws IOException {
+        return new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     }
 
     private static String describe(List<String> command, String output) {
@@ -659,51 +608,6 @@ abstract class AbstractFunctionalTest {
             }
         } catch (UncheckedIOException e) {
             throw e.getCause();
-        }
-    }
-
-    private static final class OutputCapture implements Runnable {
-
-        private final InputStream input;
-        private final byte[] output = new byte[MAX_FORK_OUTPUT_BYTES];
-        private int retained;
-        private long received;
-        private volatile IOException failure;
-
-        private OutputCapture(InputStream input) {
-            this.input = input;
-        }
-
-        @Override
-        public void run() {
-            byte[] buffer = new byte[8192];
-            try (input) {
-                int read;
-                while ((read = input.read(buffer)) != -1) {
-                    append(buffer, read);
-                }
-            } catch (IOException e) {
-                failure = e;
-            }
-        }
-
-        private synchronized void append(byte[] bytes, int length) {
-            received += length;
-            int copied = Math.min(length, output.length - retained);
-            System.arraycopy(bytes, 0, output, retained, copied);
-            retained += copied;
-        }
-
-        private synchronized String output() {
-            String captured = new String(output, 0, retained, StandardCharsets.UTF_8);
-            if (received > retained) {
-                return captured + "\n[output truncated after " + retained + " of " + received + " bytes]";
-            }
-            return captured;
-        }
-
-        private IOException failure() {
-            return failure;
         }
     }
 
