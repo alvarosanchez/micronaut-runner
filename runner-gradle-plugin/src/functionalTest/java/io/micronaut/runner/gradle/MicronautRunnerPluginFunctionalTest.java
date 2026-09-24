@@ -29,6 +29,8 @@ import java.util.jar.Attributes;
 import java.util.zip.ZipEntry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -53,6 +55,29 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
                         throw new AssertionError("direct buffer has no address");
                     }
                     System.out.println("MODULE ACCESS OK");
+                    System.out.println("RESULT OK");
+                }
+            }
+            """;
+
+    /** Main and per-package attributes configured on the {@code jar} task, which the archive must carry. */
+    private static final String JAR_MANIFEST = """
+            jar {
+                manifest {
+                    attributes('Implementation-Title': 'app', 'Implementation-Version': '1.2.3',
+                            'Specification-Vendor': 'Example')
+                    attributes(['Implementation-Version': 'pkg-9', 'Sealed': 'true'], 'com/example/')
+                }
+            }
+            """;
+
+    private static final String PACKAGE_SOURCE = """
+            package com.example;
+
+            public final class App {
+                public static void main(String[] args) {
+                    System.out.println("impl=" + App.class.getPackage().getImplementationVersion());
+                    System.out.println("sealed=" + App.class.getPackage().isSealed());
                     System.out.println("RESULT OK");
                 }
             }
@@ -230,5 +255,98 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
         assertTrue(output.contains("addExports entry 'java.base/sun.nio.ch=ALL-UNNAMED'"), output);
         assertTrue(output.contains("Use 'java.base/sun.nio.ch' in the JAR manifest"), output);
         assertTrue(output.contains("--add-exports java.base/sun.nio.ch=ALL-UNNAMED"), output);
+    }
+
+    /**
+     * The {@code jar} task's manifest configuration reaches the archive, main and per-package attributes
+     * alike, without the thin JAR being built: {@code micronautRunnerJar} reads the configuration, not the
+     * archive the {@code jar} task writes.
+     *
+     * @param directory a fresh project directory
+     * @throws IOException          if the fixture cannot be written or the archive cannot be read
+     * @throws InterruptedException if the forked application is interrupted
+     */
+    @Test
+    void theJarTaskManifestReachesTheArchiveWithoutRunningJar(@TempDir Path directory)
+            throws IOException, InterruptedException {
+        writeFixture(directory, JAR_MANIFEST, "");
+        write(directory.resolve("src/main/java/com/example/App.java"), PACKAGE_SOURCE);
+
+        BuildResult result = build(directory, "micronautRunnerJar");
+
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, RUNNER_JAR_TASK));
+        assertNull(result.task(":jar"), () -> "micronautRunnerJar built the thin JAR:\n" + result.getOutput());
+        Path archive = directory.resolve(DEFAULT_ARCHIVE);
+        assertInheritedMainAttributes(archive);
+
+        String output = runJarSuccessfully(archive);
+        assertTrue(output.contains("impl=pkg-9"), () -> "the package section was lost:\n" + output);
+        assertTrue(output.contains("sealed=true"), () -> "the package is not sealed:\n" + output);
+
+        String dryRun = build(directory, "--dry-run", "micronautRunnerJar").getOutput();
+        assertTrue(dryRun.lines().anyMatch(line -> line.startsWith(RUNNER_JAR_TASK + " ")), dryRun);
+        assertFalse(dryRun.lines().anyMatch(line -> line.startsWith(":jar ")),
+                () -> "micronautRunnerJar depends on the thin JAR:\n" + dryRun);
+    }
+
+    /**
+     * A build that disables the thin JAR, as some fat-JAR builds do, still packages the archive with the
+     * {@code jar} task's manifest attributes, including one whose value is a provider.
+     *
+     * @param directory a fresh project directory
+     * @throws IOException if the fixture cannot be written or the archive cannot be read
+     */
+    @Test
+    void packagesWhenTheJarTaskIsDisabled(@TempDir Path directory) throws IOException {
+        writeFixture(directory, JAR_MANIFEST + """
+                jar {
+                    enabled = false
+                    manifest {
+                        attributes('Implementation-Vendor': providers.provider { 'lazy' })
+                    }
+                }
+                """, "");
+
+        BuildResult result = build(directory, "micronautRunnerJar");
+
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, RUNNER_JAR_TASK));
+        Path archive = directory.resolve(DEFAULT_ARCHIVE);
+        assertInheritedMainAttributes(archive);
+        assertEquals("lazy", manifestOf(archive).getValue("Implementation-Vendor"));
+    }
+
+    /**
+     * {@code applicationJar} is an explicit override: set to the thin JAR, it takes the manifest from that
+     * archive, so an attribute that only exists once the {@code jar} task has run still reaches the archive.
+     *
+     * @param directory a fresh project directory
+     * @throws IOException if the fixture cannot be written or the archive cannot be read
+     */
+    @Test
+    void anExplicitApplicationJarSuppliesTheManifest(@TempDir Path directory) throws IOException {
+        writeFixture(directory, """
+                micronautRunnerJar {
+                    applicationJar = tasks.named('jar').flatMap { it.archiveFile }
+                }
+                jar {
+                    doFirst {
+                        manifest.attributes('Implementation-Vendor': 'from-doFirst')
+                    }
+                }
+                """, "");
+
+        BuildResult result = build(directory, "micronautRunnerJar");
+
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, ":jar"));
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, RUNNER_JAR_TASK));
+        assertEquals("from-doFirst",
+                manifestOf(directory.resolve(DEFAULT_ARCHIVE)).getValue("Implementation-Vendor"));
+    }
+
+    private static void assertInheritedMainAttributes(Path archive) throws IOException {
+        Attributes manifest = manifestOf(archive);
+        assertEquals("app", manifest.getValue("Implementation-Title"));
+        assertEquals("1.2.3", manifest.getValue("Implementation-Version"));
+        assertEquals("Example", manifest.getValue("Specification-Vendor"));
     }
 }

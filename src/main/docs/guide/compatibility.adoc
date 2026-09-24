@@ -89,44 +89,9 @@ not prevent a library from doing so.
 [[authenticating]]
 == Authenticating a deployment artifact
 
-Authenticate the final runner JAR as an immutable deployment artifact, and keep it immutable for every JVM's
-complete lifetime as described in <<runtime,archive lifetime and deployment>>. Do not run `jarsigner`, update the
-manifest, re-zip the file or otherwise mutate it after packaging: those operations change the bytes and can
-invalidate both the precomputed runner index and any signature or checksum made over the previous bytes.
-
-The publisher can create an armored detached signature after the runner JAR is final. The sidecar remains
-outside the JAR, so signing does not alter the indexed artifact:
-
-[source,bash]
-----
-artifact=my-app-0.1-all.jar
-gpg --batch --local-user "$RELEASE_KEY_FINGERPRINT" \
-    --armor --detach-sign --output "$artifact.asc" "$artifact"
-----
-
-Provision the verifier's GnuPG home separately with only public keys whose complete fingerprints were
-checked against the release policy. Merely accepting any cryptographically valid signature, or importing a
-key delivered beside an untrusted artifact, does not establish the publisher's identity. Then make successful
-verification a precondition of launch:
-
-[source,bash]
-----
-artifact=/opt/my-app/my-app-0.1-all.jar
-signature="$artifact.asc"
-verifier_home=/etc/my-app/gnupg
-gpg --batch --homedir "$verifier_home" --verify "$signature" "$artifact" &&
-exec java -jar "$artifact"
-----
-
-The verifier must authenticate the same bytes that are executed. Keep the artifact, signature, verifier
-keyring and their parent directories read-only to untrusted principals, or use a deployment system that
-binds verification to an immutable, content-addressed object. Otherwise another process can replace the
-path between verification and launch. Any mutation requires producing and distributing a new detached
-signature.
-
-CRC-32 checks, including `-Dmicronaut.runner.verify=true`, detect accidental corruption; they do not
-authenticate a publisher. A SHA-256 checksum has the same trust boundary when it is delivered unsigned from
-the same source as the artifact. When enabled for the `micronaut-projects` organization, the repository's
-https://github.com/{githubSlug}/blob/master/.github/workflows/release.yml[release workflow] computes SHA-256
-subjects for its published library JAR and POM files and binds them into SLSA provenance. That release
-behavior does not authenticate an application runner JAR and does not make the runner verify nested JARs.
+Do not run `jarsigner`, edit the manifest, re-zip or append to the runner JAR after packaging: the launcher
+rejects the rewritten file, whose length and entry offsets no longer match its index. To authenticate the JAR,
+sign the finished file externally, for example with a detached signature, and verify it against a pinned key
+before launch: `gpg --verify app.jar.asc app.jar && exec java -jar app.jar`. The runner still does not verify
+nested JAR signatures (see _Signatures are not verified_ above), and `-Dmicronaut.runner.verify=true` CRC
+checks detect corruption, not authorship. See <<archiveLifetime,archive lifetime>>.

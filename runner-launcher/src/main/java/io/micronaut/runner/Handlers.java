@@ -236,6 +236,10 @@ public final class Handlers {
      * <p>It ends with a slash, the way {@code URLClassLoader} writes a directory code source, so that a
      * sealed package's base URL is a prefix of every entry URL of that jar.</p>
      *
+     * <p>Each returned URL carries its own {@link Handler}, built by {@link Handler#withCachedForm(String)},
+     * which computes the URL's string form once: the JDK calls {@code toString()} on the code-source location
+     * in every {@code defineClass}. The URL is parsed with the same single parse as every other URL here.</p>
+     *
      * @param jarId the jar, {@code 0} being the application layer
      * @return {@code jar:file:/abs/app.jar!/MICRONAUT-INF/classes/} for jar {@code 0},
      *         {@code jar:file:/abs/app.jar!/MICRONAUT-INF/lib/<dep>.jar!/} for a nested jar, or
@@ -246,7 +250,11 @@ public final class Handlers {
         if (prefix == null) {
             return null;
         }
-        return url(prefix);
+        try {
+            return Handler.withCachedForm(prefix);
+        } catch (MalformedURLException e) {
+            return null;
+        }
     }
 
     /**
