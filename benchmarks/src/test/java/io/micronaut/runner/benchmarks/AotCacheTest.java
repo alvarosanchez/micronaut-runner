@@ -195,7 +195,7 @@ class AotCacheTest {
     }
 
     private static AotCache.Request request(Path directory, ByteArrayOutputStream console) {
-        return new AotCache.Request(directory.resolve("managed-aot"), "/ready", List.of("/work"), "/stop",
+        return new AotCache.Request(directory.resolve("managed-aot"), "/ready", List.of("/work"),
                 Duration.ofSeconds(30), AotCacheFixture.class.getName(), List.of(),
                 new PrintStream(console, true, StandardCharsets.UTF_8));
     }

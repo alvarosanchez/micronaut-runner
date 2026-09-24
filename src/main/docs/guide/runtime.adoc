@@ -82,7 +82,7 @@ application classes in a JAR whose manifest names your main class and lists thos
 [source,bash]
 ----
 java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination ./app
-java -jar ./app/my-app.jar
+java -jar ./app/my-app-0.1-all.jar
 ----
 
 The extracted form runs entirely on the JDK's own application class loader, with no custom class loader
