@@ -160,19 +160,29 @@ public class StoredRunnerClassLoaderBenchmark {
      * {@code java.sql} under {@code java/sql/}, each in sorted order, all loaded once here so that nothing is
      * defined while measuring.
      *
+     * <p>Each name is loaded through the loader that defines it. Loading a {@code java.base} class through
+     * the platform loader would make the platform loader one of its initiating loaders, and its
+     * {@code findLoadedClass} would then answer at once: a startup rarely sees that, since the platform loader
+     * was already an initiating loader for 18 of the about 380 JDK names a benchmark-large startup asks
+     * {@link RunnerClassLoader} for.</p>
+     *
      * @return the names
      * @throws IOException            if the runtime image cannot be listed
      * @throws ClassNotFoundException if one of the names cannot be loaded
      */
     private static String[] jdkNames() throws IOException, ClassNotFoundException {
         FileSystem image = FileSystems.getFileSystem(URI.create("jrt:/"));
-        List<String> selected = new ArrayList<>(JDK_BASE_CLASSES + JDK_SQL_CLASSES);
-        selected.addAll(topLevelClasses(image.getPath("/modules", "java.base"), "java", JDK_BASE_CLASSES));
-        selected.addAll(topLevelClasses(image.getPath("/modules", "java.sql"), "java/sql", JDK_SQL_CLASSES));
-        ClassLoader platform = ClassLoader.getPlatformClassLoader();
-        for (String name : selected) {
-            Class.forName(name, false, platform);
+        List<String> base = topLevelClasses(image.getPath("/modules", "java.base"), "java", JDK_BASE_CLASSES);
+        List<String> sql = topLevelClasses(image.getPath("/modules", "java.sql"), "java/sql", JDK_SQL_CLASSES);
+        for (String name : base) {
+            Class.forName(name, false, null);
         }
+        for (String name : sql) {
+            Class.forName(name, false, ClassLoader.getPlatformClassLoader());
+        }
+        List<String> selected = new ArrayList<>(JDK_BASE_CLASSES + JDK_SQL_CLASSES);
+        selected.addAll(base);
+        selected.addAll(sql);
         return selected.toArray(new String[0]);
     }
 
