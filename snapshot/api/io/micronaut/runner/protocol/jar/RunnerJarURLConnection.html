@@ -126,12 +126,13 @@ jar, streams the bytes of that jar, so that code which wants to treat a dependen
 
 <h2 id="where-the-bytes-come-from-heading">Where the bytes come from</h2>
 <p>An entry the index knows is streamed straight out of the archive, with no <code>java.util.zip</code>
-machinery and no temporary file. Only the outer archive's own entries, the launcher classes, the
-manifest and the index itself, fall back to a real <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link"><code>JarFile</code></a> of the outer archive. Cached
-connections share a close-protected process-lifetime handle; uncached entry streams each own an
-independent handle, and an uncached handle returned by <a href="#getJarFile()"><code>getJarFile()</code></a> is owned by its caller.
-Every call to <a href="#getInputStream()"><code>getInputStream()</code></a> returns a fresh stream, because micronaut-core reads service
-files by disabling caches and then asking for the stream.</p></div>
+machinery and no temporary file, and so is a whole nested jar. Only the outer archive's own entries, the
+launcher classes, the manifest and the index itself, are read through a real <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link"><code>JarFile</code></a> of the outer
+archive: one close-protected, process-lifetime handle that every connection shares, opened on demand.
+It is also the jar <a href="#getJarFile()"><code>getJarFile()</code></a> reports for every URL outside a nested jar, and closing it is a
+no-op under either cache setting, exactly as it is for a <a href="../../NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a>. Every call to
+<a href="#getInputStream()"><code>getInputStream()</code></a> returns a fresh stream, because micronaut-core reads service files by
+disabling caches and then asking for the stream.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -208,7 +209,8 @@ name relative to the nested jar rather than the one the super class would have p
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link">JarFile</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getJarFile()" class="member-name-link">getJarFile</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The jar this connection reads from.</div>
+<div class="block">The jar this connection reads from, whatever the cache setting: the shared <a href="../../NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a> view
+of a nested jar, or the one shared handle on the outer archive.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getJarFileURL()" class="member-name-link">getJarFileURL</a>()</code></div>
@@ -316,7 +318,8 @@ name relative to the nested jar rather than the one the super class would have p
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link">JarFile</a></span>&nbsp;<span class="element-name">getJarFile</span>()
                    throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">The jar this connection reads from.</div>
+<div class="block">The jar this connection reads from, whatever the cache setting: the shared <a href="../../NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a> view
+of a nested jar, or the one shared handle on the outer archive. Closing either is a no-op.</div>
 <dl class="notes">
 <dt>Specified by:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/JarURLConnection.html#getJarFile()" title="class or interface in java.net" class="external-link">getJarFile</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/JarURLConnection.html" title="class or interface in java.net" class="external-link">JarURLConnection</a></code></dd>
@@ -501,10 +504,12 @@ so that the instant does not depend on the machine's time zone.</div>
 <div class="block">Records the caching preference without the <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalStateException.html" title="class or interface in java.lang" class="external-link"><code>IllegalStateException</code></a> the super class throws
 after a connection is connected.
 
-<p>Streams are opened fresh from the archive every time. For outer entries the value in effect when
-the jar is first acquired also selects its lifetime: cached connections share a close-protected
-handle, while each uncached outer-entry stream owns an independent handle. A jar returned directly
-by <a href="#getJarFile()"><code>getJarFile()</code></a> remains caller-owned even if the flag later changes.</p></div>
+<p>Nothing here caches anything a caller could observe, so the flag cannot make a read fail, and a
+library that flips it late, as several do right before reading a service file, is simply obliged.
+Every <a href="#getInputStream()"><code>getInputStream()</code></a> returns a fresh stream. Outer-only entries (the launcher classes, the
+manifest and the index) are read through the one close-protected, process-lifetime <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link"><code>JarFile</code></a> of
+the outer archive under either setting, and closing the jar that <a href="#getJarFile()"><code>getJarFile()</code></a> returns is a
+no-op under either setting, exactly as for a <a href="../../NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a>.</p></div>
 <dl class="notes">
 <dt>Overrides:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLConnection.html#setUseCaches(boolean)" title="class or interface in java.net" class="external-link">setUseCaches</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLConnection.html" title="class or interface in java.net" class="external-link">URLConnection</a></code></dd>

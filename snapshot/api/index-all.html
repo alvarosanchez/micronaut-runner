@@ -1014,7 +1014,8 @@ six <code>Specification-*</code> and <code>Implementation-*</code> attributes an
 </dd>
 <dt><a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html#getJarFile()" class="member-name-link">getJarFile()</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html" title="class in io.micronaut.runner.protocol.jar">RunnerJarURLConnection</a></dt>
 <dd>
-<div class="block">The jar this connection reads from.</div>
+<div class="block">The jar this connection reads from, whatever the cache setting: the shared <a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a> view
+of a nested jar, or the one shared handle on the outer archive.</div>
 </dd>
 <dt><a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html#getJarFileURL()" class="member-name-link">getJarFileURL()</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html" title="class in io.micronaut.runner.protocol.jar">RunnerJarURLConnection</a></dt>
 <dd>
@@ -1876,10 +1877,6 @@ classes straight from the mapping.</div>
 <dd>
 <div class="block">The outer archive as an ordinary <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link"><code>JarFile</code></a>, for the entries that are not in the index: the
 launcher's own classes, the manifest, the index itself and the nested jars as stored bytes.</div>
-</dd>
-<dt><a href="io/micronaut/runner/Handlers.html#outerJarFile(boolean)" class="member-name-link">outerJarFile(boolean)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
-<dd>
-<div class="block">The outer archive as either the shared process-lifetime handle or a handle owned by one connection.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Handlers.html#outerUrlFor(java.lang.String)" class="member-name-link">outerUrlFor(String)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
