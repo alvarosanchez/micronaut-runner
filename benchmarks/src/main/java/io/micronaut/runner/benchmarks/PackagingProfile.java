@@ -58,8 +58,7 @@ public final class PackagingProfile {
     static final String RESULTS_FILE = "packaging-results.json";
     static final String SUMMARY_FILE = "packaging-summary.md";
     private static final List<String> SCENARIOS = List.of(
-            "first-build", "unchanged-rebuild", "application-edit", "dependency-edit",
-            "relocated-cache-restored");
+            "first-build", "unchanged-rebuild", "application-edit", "dependency-edit");
 
     private PackagingProfile() {
     }
@@ -88,22 +87,19 @@ public final class PackagingProfile {
             for (Compression compression : List.of(Compression.STORED, Compression.PRESERVE)) {
                 Path modeRoot = output.resolve("work").resolve(shape.name())
                         .resolve(compression.name().toLowerCase(Locale.ROOT));
+                Inputs timing = Inputs.copy(archive, modeRoot.resolve("timing"));
+                Inputs diagnostic = Inputs.copy(archive, modeRoot.resolve("diagnostic"));
                 for (String scenario : SCENARIOS) {
                     for (int iteration = 0; iteration < iterations; iteration++) {
-                        Path attemptRoot = modeRoot.resolve(scenario).resolve(Integer.toString(iteration));
-                        Inputs timing = Inputs.copy(archive, attemptRoot.resolve("timing"));
-                        Inputs diagnostic = Inputs.copy(archive, attemptRoot.resolve("diagnostic"));
-                        prepareScenario(timing, compression, scenario, iteration);
-                        prepareScenario(diagnostic, compression, scenario, iteration);
+                        timing.prepare(scenario, iteration);
+                        diagnostic.prepare(scenario, iteration);
                         Measurement measured = measure(timing, compression, false);
                         Measurement profiled = measure(diagnostic, compression, true);
                         attempts.add(new Attempt(shape.name(), compression.name().toLowerCase(Locale.ROOT),
                                 scenario, iteration, measured.elapsedNanos(), measured.allocatedBytes(),
                                 profiled.peakHeapBytes(), profiled.peakRssBytes(), timing.inputBytes(),
-                                measured.outputBytes(), measured.outputSha256(), measured.cacheHits(),
-                                measured.cacheMisses(), measured.dependencyStageBytesWritten(),
-                                measured.physicalBlockInputs(), measured.physicalBlockOutputs(), "uncontrolled",
-                                profiled.rssMethod(),
+                                measured.outputBytes(), measured.outputSha256(), "uncontrolled",
+                                profiled.peakRssBytes() < 0 ? "unsupported" : "ps-rss-sampled",
                                 "JVM memory-pool peak diagnostic invocation"));
                     }
                 }
@@ -113,7 +109,7 @@ public final class PackagingProfile {
         BenchmarkProvenance.SourceState source = sourceRoot == null
                 ? BenchmarkProvenance.SourceState.unavailable()
                 : BenchmarkProvenance.SourceState.captureRepository(sourceRoot);
-        Report report = new Report(4, Instant.now().toString(), source.revision(), source.state(),
+        Report report = new Report(3, Instant.now().toString(), source.revision(), source.state(),
                 System.getProperty("java.runtime.version"), System.getProperty("os.name"),
                 System.getProperty("os.version"), System.getProperty("os.arch"), List.copyOf(attempts));
         Files.writeString(output.resolve(RESULTS_FILE), json(report), StandardCharsets.UTF_8);
@@ -121,43 +117,26 @@ public final class PackagingProfile {
         return report;
     }
 
-    private static void prepareScenario(Inputs inputs, Compression compression, String scenario, int iteration)
-            throws Exception {
-        if (!scenario.equals("first-build")) {
-            measure(inputs, compression, false);
-        }
-        inputs.prepare(scenario, iteration);
-    }
-
     private static Measurement measure(Inputs inputs, Compression compression, boolean diagnostic)
             throws Exception {
         if (inputs.deleteOutputBeforeRun()) {
             Files.deleteIfExists(inputs.output());
         }
-        List<String> worker = new ArrayList<>();
-        worker.add(SampleBuild.javaExecutable().toString());
-        worker.add("-Xms128m");
-        worker.add("-Xmx512m");
-        worker.add("-cp");
-        worker.add(System.getProperty("java.class.path"));
-        worker.add(Worker.class.getName());
-        worker.add(inputs.application().toAbsolutePath().toString());
-        worker.add(inputs.output().toAbsolutePath().toString());
-        worker.add(inputs.cache().toAbsolutePath().toString());
-        worker.add(compression.name());
-        inputs.dependencies().forEach(path -> worker.add(path.toAbsolutePath().toString()));
-        Path rusage = null;
-        List<String> command = worker;
-        if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac")
-                && Files.isExecutable(Path.of("/usr/bin/time"))) {
-            rusage = Files.createTempFile(inputs.output().getParent(), "packaging-rusage-", ".txt");
-            command = new ArrayList<>(List.of("/usr/bin/time", "-l", "-o", rusage.toString()));
-            command.addAll(worker);
-        }
+        List<String> command = new ArrayList<>();
+        command.add(SampleBuild.javaExecutable().toString());
+        command.add("-Xms128m");
+        command.add("-Xmx512m");
+        command.add("-cp");
+        command.add(System.getProperty("java.class.path"));
+        command.add(Worker.class.getName());
+        command.add(inputs.application().toAbsolutePath().toString());
+        command.add(inputs.output().toAbsolutePath().toString());
+        command.add(compression.name());
+        inputs.dependencies().forEach(path -> command.add(path.toAbsolutePath().toString()));
         ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
         StartupHarness.removeInheritedJvmOptions(builder);
         Process process = builder.start();
-        RssSampler sampler = diagnostic && rusage == null ? RssSampler.start(process.pid()) : null;
+        RssSampler sampler = diagnostic ? RssSampler.start(process.pid()) : null;
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
         int exit = process.waitFor();
         if (sampler != null) {
@@ -167,40 +146,12 @@ public final class PackagingProfile {
             throw new IOException("packaging worker exited " + exit + ": " + output);
         }
         String[] fields = output.split("\\t");
-        if (fields.length != 8) {
+        if (fields.length != 5) {
             throw new IOException("packaging worker returned malformed metrics: " + output);
         }
-        ResourceUsage resourceUsage = resourceUsage(rusage);
-        if (rusage != null) {
-            Files.deleteIfExists(rusage);
-        }
         return new Measurement(Long.parseLong(fields[0]), Long.parseLong(fields[1]),
-                Long.parseLong(fields[2]), rusage == null
-                        ? sampler == null ? -1 : sampler.peakBytes()
-                        : resourceUsage.peakRssBytes(),
-                Long.parseLong(fields[3]), fields[4], Integer.parseInt(fields[5]), Integer.parseInt(fields[6]),
-                Long.parseLong(fields[7]), resourceUsage.blockInputs(), resourceUsage.blockOutputs(),
-                rusage != null ? "time-rusage-maxrss" : sampler == null ? "unsupported" : "ps-rss-sampled");
-    }
-
-    private static ResourceUsage resourceUsage(Path rusage) throws IOException {
-        long blockInputs = -1;
-        long blockOutputs = -1;
-        long peakRssBytes = -1;
-        if (rusage == null) {
-            return new ResourceUsage(blockInputs, blockOutputs, peakRssBytes);
-        }
-        for (String line : Files.readAllLines(rusage, StandardCharsets.UTF_8)) {
-            String value = line.trim();
-            if (value.endsWith("block input operations")) {
-                blockInputs = Long.parseLong(value.substring(0, value.indexOf(' ')));
-            } else if (value.endsWith("block output operations")) {
-                blockOutputs = Long.parseLong(value.substring(0, value.indexOf(' ')));
-            } else if (value.endsWith("maximum resident set size")) {
-                peakRssBytes = Long.parseLong(value.substring(0, value.indexOf(' ')));
-            }
-        }
-        return new ResourceUsage(blockInputs, blockOutputs, peakRssBytes);
+                Long.parseLong(fields[2]), sampler == null ? -1 : sampler.peakBytes(),
+                Long.parseLong(fields[3]), fields[4]);
     }
 
     private static long allocatedBytes() {
@@ -247,11 +198,6 @@ public final class PackagingProfile {
                     .append(", \"inputBytes\": ").append(a.inputBytes())
                     .append(", \"outputBytes\": ").append(a.outputBytes())
                     .append(", \"outputSha256\": ").append(quote(a.outputSha256()))
-                    .append(", \"dependencyCacheHits\": ").append(a.cacheHits())
-                    .append(", \"dependencyCacheMisses\": ").append(a.cacheMisses())
-                    .append(", \"dependencyStageBytesWritten\": ").append(a.dependencyStageBytesWritten())
-                    .append(", \"physicalBlockInputs\": ").append(nullable(a.physicalBlockInputs()))
-                    .append(", \"physicalBlockOutputs\": ").append(nullable(a.physicalBlockOutputs()))
                     .append(", \"osPageCacheState\": ").append(quote(a.osPageCacheState()))
                     .append(", \"rssMethod\": ").append(quote(a.rssMethod()))
                     .append(", \"heapMethod\": ").append(quote(a.heapMethod())).append('}')
@@ -268,12 +214,10 @@ public final class PackagingProfile {
                 .append(report.javaRuntimeVersion()).append(".\n\n")
                 .append("OS page-cache state is **uncontrolled**. Elapsed/allocation samples are independent")
                 .append(" from RSS/peak-heap diagnostic invocations; diagnostic elapsed time is not reported.")
-                .append(" Input/output columns are logical file bytes. Stage bytes report cache writes;")
-                .append(" physical block operations come from `/usr/bin/time -l` on supported macOS hosts.\n\n")
+                .append(" Input/output columns are logical file bytes, not filesystem-block or kernel I/O counters.\n\n")
                 .append("| Workload | Compression | Scenario | Iteration | Elapsed ms | Allocated bytes |")
-                .append(" Peak heap bytes | Peak RSS bytes | Input bytes | Output bytes | Cache hits/misses |")
-                .append(" Stage bytes written | Physical block in/out |\n")
-                .append("|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n");
+                .append(" Peak heap bytes | Peak RSS bytes | Input bytes | Output bytes |\n")
+                .append("|---|---|---|---:|---:|---:|---:|---:|---:|---:|\n");
         for (Attempt a : report.attempts()) {
             out.append("| ").append(a.workload()).append(" | ").append(a.compression())
                     .append(" | ").append(a.scenario()).append(" | ").append(a.iteration())
@@ -281,12 +225,7 @@ public final class PackagingProfile {
                     .append(" | ").append(a.allocatedBytes() < 0 ? "unsupported" : a.allocatedBytes())
                     .append(" | ").append(a.peakHeapBytes())
                     .append(" | ").append(a.peakRssBytes() < 0 ? "unsupported" : a.peakRssBytes())
-                    .append(" | ").append(a.inputBytes()).append(" | ").append(a.outputBytes())
-                    .append(" | ").append(a.cacheHits()).append('/').append(a.cacheMisses())
-                    .append(" | ").append(a.dependencyStageBytesWritten())
-                    .append(" | ").append(a.physicalBlockInputs() < 0 ? "unsupported" : a.physicalBlockInputs())
-                    .append('/').append(a.physicalBlockOutputs() < 0 ? "unsupported" : a.physicalBlockOutputs())
-                    .append(" |\n");
+                    .append(" | ").append(a.inputBytes()).append(" | ").append(a.outputBytes()).append(" |\n");
         }
         return out.toString();
     }
@@ -343,11 +282,6 @@ public final class PackagingProfile {
                    long inputBytes,
                    long outputBytes,
                    String outputSha256,
-                   int cacheHits,
-                   int cacheMisses,
-                   long dependencyStageBytesWritten,
-                   long physicalBlockInputs,
-                   long physicalBlockOutputs,
                    String osPageCacheState,
                    String rssMethod,
                    String heapMethod) {
@@ -358,16 +292,7 @@ public final class PackagingProfile {
                                long peakHeapBytes,
                                long peakRssBytes,
                                long outputBytes,
-                               String outputSha256,
-                               int cacheHits,
-                               int cacheMisses,
-                               long dependencyStageBytesWritten,
-                               long physicalBlockInputs,
-                               long physicalBlockOutputs,
-                               String rssMethod) {
-    }
-
-    private record ResourceUsage(long blockInputs, long blockOutputs, long peakRssBytes) {
+                               String outputSha256) {
     }
 
     /** Fresh-JVM worker so every attempt has independent allocation and peak-heap state. */
@@ -382,19 +307,16 @@ public final class PackagingProfile {
          * @throws Exception if packaging or metric collection fails
          */
         public static void main(String[] args) throws Exception {
-            if (args.length < 5) {
-                throw new IllegalArgumentException(
-                        "application output, destination, cache, compression and dependencies required");
+            if (args.length < 4) {
+                throw new IllegalArgumentException("application output, destination, compression and dependencies required");
             }
             Path application = Path.of(args[0]);
             Path output = Path.of(args[1]);
-            Path cache = Path.of(args[2]);
-            Compression compression = Compression.valueOf(args[3]);
+            Compression compression = Compression.valueOf(args[2]);
             List<Path> dependencies = new ArrayList<>();
-            for (int i = 4; i < args.length; i++) {
+            for (int i = 3; i < args.length; i++) {
                 dependencies.add(Path.of(args[i]));
             }
-            CountingLogger logger = new CountingLogger();
             ManagementFactory.getMemoryPoolMXBeans().forEach(MemoryPoolMXBean::resetPeakUsage);
             long allocatedBefore = allocatedBytes();
             long start = System.nanoTime();
@@ -403,10 +325,9 @@ public final class PackagingProfile {
                     .applicationOutput(List.of(application))
                     .dependencies(dependencies.stream().map(Dependency::new).toList())
                     .output(output)
-                    .dependencyCache(cache)
                     .compression(compression)
                     .build();
-            RunnerJarBuilder.build(spec, logger);
+            RunnerJarBuilder.build(spec, BuildLogger.noOp());
             long elapsed = System.nanoTime() - start;
             long allocatedAfter = allocatedBytes();
             long allocation = allocatedBefore < 0 || allocatedAfter < allocatedBefore
@@ -418,46 +339,20 @@ public final class PackagingProfile {
                     .mapToLong(java.lang.management.MemoryUsage::getUsed)
                     .sum();
             System.out.println(elapsed + "\t" + allocation + "\t" + peakHeap + "\t"
-                    + Files.size(output) + "\t" + sha256(output) + "\t" + logger.hits + "\t"
-                    + logger.misses + "\t" + logger.stageBytesWritten);
-        }
-    }
-
-    private static final class CountingLogger implements BuildLogger {
-        private int hits;
-        private int misses;
-        private long stageBytesWritten;
-
-        @Override
-        public void info(String message) {
-            if (message.startsWith("Dependency stage cache hit ")) {
-                hits++;
-            } else if (message.startsWith("Dependency stage cache miss ")) {
-                misses++;
-            } else if (message.startsWith("Dependency stage cache wrote ")) {
-                int start = "Dependency stage cache wrote ".length();
-                int end = message.indexOf(" bytes ", start);
-                stageBytesWritten += Long.parseLong(message.substring(start, end));
-            }
-        }
-
-        @Override
-        public void warn(String message) {
+                    + Files.size(output) + "\t" + sha256(output));
         }
     }
 
     private static final class Inputs {
-        private Path application;
-        private List<Path> dependencies;
-        private Path output;
-        private Path cache;
+        private final Path application;
+        private final List<Path> dependencies;
+        private final Path output;
         private boolean deleteOutputBeforeRun;
 
-        private Inputs(Path application, List<Path> dependencies, Path output, Path cache) {
+        private Inputs(Path application, List<Path> dependencies, Path output) {
             this.application = application;
             this.dependencies = dependencies;
             this.output = output;
-            this.cache = cache;
         }
 
         static Inputs copy(SyntheticArchive archive, Path root) throws IOException {
@@ -471,8 +366,7 @@ public final class PackagingProfile {
                 Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
                 dependencies.add(target);
             }
-            return new Inputs(application, List.copyOf(dependencies), root.resolve("runner.jar"),
-                    root.resolve("dependency-stages"));
+            return new Inputs(application, List.copyOf(dependencies), root.resolve("runner.jar"));
         }
 
         void prepare(String scenario, int iteration) throws IOException {
@@ -482,33 +376,7 @@ public final class PackagingProfile {
                         StandardCharsets.UTF_8);
             } else if (scenario.equals("dependency-edit")) {
                 rewriteDependency(dependencies.get(0), iteration);
-            } else if (scenario.equals("relocated-cache-restored")) {
-                relocate(iteration);
             }
-        }
-
-        private void relocate(int iteration) throws IOException {
-            Path relocated = output.getParent().resolveSibling(output.getParent().getFileName()
-                    + "-relocated-" + iteration);
-            deleteRecursively(relocated);
-            Path relocatedApplication = relocated.resolve("application");
-            copyTree(application, relocatedApplication);
-            Path relocatedLibraries = Files.createDirectories(relocated.resolve("lib"));
-            List<Path> relocatedDependencies = new ArrayList<>();
-            for (Path dependency : dependencies) {
-                Path target = relocatedLibraries.resolve(dependency.getFileName().toString());
-                Files.copy(dependency, target, StandardCopyOption.REPLACE_EXISTING);
-                relocatedDependencies.add(target);
-            }
-            Path relocatedCache = relocated.resolve("dependency-stages");
-            if (Files.isDirectory(cache)) {
-                copyTree(cache, relocatedCache);
-            }
-            application = relocatedApplication;
-            dependencies = List.copyOf(relocatedDependencies);
-            output = relocated.resolve("runner.jar");
-            cache = relocatedCache;
-            deleteOutputBeforeRun = true;
         }
 
         long inputBytes() throws IOException {
@@ -529,10 +397,6 @@ public final class PackagingProfile {
 
         Path output() {
             return output;
-        }
-
-        Path cache() {
-            return cache;
         }
 
         boolean deleteOutputBeforeRun() {

@@ -24,7 +24,6 @@ import io.micronaut.runner.build.RunnerJarSpec;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.ConfigurableFileCollection;
-import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.provider.ListProperty;
@@ -38,7 +37,6 @@ import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFile;
-import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
@@ -142,15 +140,6 @@ public abstract class MicronautRunnerJar extends DefaultTask {
      */
     @OutputFile
     public abstract RegularFileProperty getArchiveFile();
-
-    /**
-     * Content-addressed dependency stages retained between executions and in the Gradle build cache.
-     *
-     * @return the dependency stage directory
-     */
-    @OutputDirectory
-    @Optional
-    public abstract DirectoryProperty getDependencyCacheDirectory();
 
     /**
      * The archive classifier used to build the default output file name. Defaults to {@code all}.
@@ -289,10 +278,6 @@ public abstract class MicronautRunnerJar extends DefaultTask {
                 .enableNativeAccess(getEnableNativeAccess().get())
                 // Fixed, so that the same inputs always produce the same bytes.
                 .timestamp(Instant.parse("1980-02-01T00:00:00Z"));
-
-        if (getDependencyCacheDirectory().isPresent()) {
-            spec.dependencyCache(getDependencyCacheDirectory().get().getAsFile().toPath());
-        }
 
         if (getApplicationJar().isPresent()) {
             File jar = getApplicationJar().get().getAsFile();

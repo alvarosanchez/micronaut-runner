@@ -93,8 +93,6 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
                     task.getEnableNativeAccess().convention(Boolean.FALSE);
                     task.getArchiveClassifier().convention(DEFAULT_CLASSIFIER);
                     task.getArchiveFile().convention(defaultArchiveFile(project, task));
-                    task.getDependencyCacheDirectory().convention(
-                            project.getLayout().getBuildDirectory().dir("micronaut-runner/dependency-stages"));
 
                     // The jar task's manifest is the source of the application's own manifest attributes,
                     // such as Implementation-Version, which a directory input cannot carry.
