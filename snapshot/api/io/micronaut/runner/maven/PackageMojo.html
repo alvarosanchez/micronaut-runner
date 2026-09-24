@@ -96,7 +96,14 @@ remains an intact nested jar.
 
 <p>Bind it to the <code>package</code> phase so it runs after <code>maven-jar-plugin</code>. By default it
 replaces the project's main artifact, exactly as the Shade plugin does, keeping the original jar as
-<code>original-&lt;finalName&gt;.jar</code>.</p></div>
+<code>original-&lt;finalName&gt;.jar</code>.</p>
+
+<p>The goal is wiring: it hands the project's facts and the options the build sets to the packaging
+library, which owns every option's default, parsing and validation. A
+<a href="../build/RunnerJarOption.Exposure.html#TYPED"><code>typed</code></a> option has a parameter here that is passed only when it is set;
+every option can also be set by name through <code>&lt;runnerOptions&gt;</code>, and a
+<a href="../build/RunnerJarOption.Exposure.html#PASSTHROUGH"><code>passthrough</code></a> option through the
+<code>micronaut.runner.&lt;name&gt;</code> user or project property.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>

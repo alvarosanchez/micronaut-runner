@@ -312,8 +312,91 @@ archives under one name. The plugin fails the build if it detects that.
     enableNativeAccess = true
 
     manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
+
+    // Options without a typed property, by name (see the table below):
+    // options.put('&lt;name&gt;', '&lt;value&gt;')
 }</code></pre>
 </div>
+</div>
+<div class="paragraph">
+<p>Micronaut Runner&#8217;s packaging library owns every option, its default and its validation; the plugins only pass
+what you set. Every option can be set by name, with the value as text: <code>true</code> or <code>false</code> for a boolean, a
+comma-separated list, or one <code>Name: value</code> line per manifest attribute. An option set by name wins over its
+typed property, and an unknown name fails the build.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 16.6666%;">
+<col style="width: 16.6666%;">
+<col style="width: 16.6666%;">
+<col style="width: 16.6669%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Option</th>
+<th class="tableblock halign-left valign-top">Type</th>
+<th class="tableblock halign-left valign-top">Default</th>
+<th class="tableblock halign-left valign-top">Exposure</th>
+<th class="tableblock halign-left valign-top">Since</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>compression</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>STORED</code> or <code>PRESERVE</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>STORED</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">typed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>entryStub</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">boolean</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">typed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>multiRelease</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">boolean</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">typed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>enableNativeAccess</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">boolean</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">typed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>addOpens</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">list</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">empty</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">typed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>addExports</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">list</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">empty</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">typed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>manifestAttributes</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">map</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">empty</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">typed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,
+through <code>options</code> in Gradle and <code>&lt;runnerOptions&gt;</code> or <code>-Dmicronaut.runner.&lt;name&gt;</code> in Maven, and needs no plugin
+release.</p>
 </div>
 <div class="paragraph">
 <p>The entry stub is generated only when the main class is a public, non-abstract class in a named package that
@@ -333,6 +416,10 @@ set <code>applicationJar = tasks.named('jar').flatMap { it.archiveFile }</code>.
 <div class="paragraph">
 <p><code>manifestAttributes</code> may override attributes imported from the application&#8217;s manifest, but <code>Manifest-Version</code>,
 <code>Main-Class</code> and <code>Micronaut-Runner-*</code> attributes are reserved and rejected.</p>
+</div>
+<div class="paragraph">
+<p>Dependencies that are JAR files are nested, a dependency that is a directory fails the build, and any other
+file, such as a POM, is skipped with a warning.</p>
 </div>
 </div>
 </div>
@@ -387,6 +474,11 @@ attach it as an additional artifact instead and leave the main one untouched.</p
     &lt;/addOpens&gt;
 &lt;/configuration&gt;</code></pre>
 </div>
+</div>
+<div class="paragraph">
+<p>The typed options are parameters of the same names, except that <code>manifestAttributes</code> is <code>&lt;manifestEntries&gt;</code>; the
+scalar ones also read <code>-Dmicronaut.runner.&lt;name&gt;</code>. <code>&lt;runnerOptions&gt;</code> and <code>-Dmicronaut.runner.&lt;name&gt;</code> set the same
+options by name, <code>-Dmicronaut.runner.&lt;name&gt;</code> only for passthrough options, and a <code>&lt;runnerOptions&gt;</code> entry wins.</p>
 </div>
 </div>
 </div>

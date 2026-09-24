@@ -56,6 +56,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#method-summary" tabindex="0">Method Summary</a></li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
+<li><a href="#isRunnerJar(java.nio.file.Path)" tabindex="0">isRunnerJar(Path)</a></li>
 <li><a href="#open(java.nio.file.Path)" tabindex="0">open(Path)</a></li>
 <li><a href="#open(java.io.File)" tabindex="0">open(File)</a></li>
 <li><a href="#path()" tabindex="0">path()</a></li>
@@ -86,12 +87,17 @@ loadScripts(document, 'script');</script>
 <div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">RunnerJarReader</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a>
 implements <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/Closeable.html" title="class or interface in java.io" class="external-link">Closeable</a></span></div>
-<div class="block">Opens a finished runner jar with the launcher's own reader.
+<div class="block">Recognises a runner jar, and opens one with the launcher's own reader.
 
-<p>This is deliberately thin. The index reader and the archive primitives live in the launcher and are
-shared with this module as source, so a test, the <code>inspect</code> tool and the verification pass at the
-end of a build all look at an archive through exactly the code that will read it at startup. A second
-reader written for build time would be a second set of bugs.</p>
+<p><a href="#isRunnerJar(java.nio.file.Path)"><code>isRunnerJar(Path)</code></a> is the stable part of this class: a build plugin that replaces a project's
+main artifact uses it to tell a runner jar it wrote earlier from the thin jar it has to keep. The reader
+itself exposes the launcher's <a href="../ArchiveSource.html" title="class in io.micronaut.runner"><code>ArchiveSource</code></a> and <a href="../Index.html" title="class in io.micronaut.runner"><code>Index</code></a>, so its members are internal: tests,
+benchmarks and the verification pass use them, and they may change in any release.</p>
+
+<p>The reader is deliberately thin. The index reader and the archive primitives live in the launcher, so a
+test, the <code>inspect</code> tool and the verification pass at the end of a build all look at an archive
+through exactly the code that will read it at startup. A second reader written for build time would be a
+second set of bugs.</p>
 
 <p>A reader holds a memory mapping and a file handle and must be closed. On Windows an open mapping keeps
 the file locked, so a build that forgets to close one cannot overwrite the archive it just wrote.</p></div>
@@ -124,34 +130,39 @@ the file locked, so a build that forgets to close one cannot overwrite the archi
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The index of the archive.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#open(java.io.File)" class="member-name-link">open</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/File.html" title="class or interface in java.io" class="external-link">File</a>&nbsp;file)</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static boolean</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#isRunnerJar(java.nio.file.Path)" class="member-name-link">isRunnerJar</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;file)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">Opens a runner jar.</div>
+<div class="block">Whether a file is a runner jar, which is whether it carries the runner index entry.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#open(java.nio.file.Path)" class="member-name-link">open</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;file)</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#open(java.io.File)" class="member-name-link">open</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/File.html" title="class or interface in java.io" class="external-link">File</a>&nbsp;file)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Opens a runner jar.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#path()" class="member-name-link">path</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#open(java.nio.file.Path)" class="member-name-link">open</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;file)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="block">Opens a runner jar.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#path()" class="member-name-link">path</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The archive this reader reads.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>byte[]</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#read(int)" class="member-name-link">read</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>byte[]</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#read(int)" class="member-name-link">read</a><wbr>(int&nbsp;record)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Reads the content of an entry, decompressing it when the entry is deflated.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="../ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#source()" class="member-name-link">source</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="../ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#source()" class="member-name-link">source</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The open archive, for reading entry data.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stream(int)" class="member-name-link">stream</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stream(int)" class="member-name-link">stream</a><wbr>(int&nbsp;record)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Streams an entry without the Java-array size limit, enforcing the sizes and DEFLATE completion in the
 same way as the launcher's archive source.</div>
 </div>
@@ -173,10 +184,31 @@ same way as the launcher's archive source.</div>
 <h2>Method Details</h2>
 <ul class="member-list">
 <li>
+<section class="detail" id="isRunnerJar(java.nio.file.Path)">
+<h3>isRunnerJar</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">isRunnerJar</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;file)</span>
+                           throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
+<div class="block">Whether a file is a runner jar, which is whether it carries the runner index entry. Nothing else about
+the archive is checked, so this is cheap enough to call on every build.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>file</code> - a ZIP archive</dd>
+<dt>Returns:</dt>
+<dd>whether the archive carries the runner index</dd>
+<dt>Throws:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the file cannot be read or is not a ZIP archive</dd>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/NullPointerException.html" title="class or interface in java.lang" class="external-link">NullPointerException</a></code> - if <code>file</code> is <code>null</code></dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
 <section class="detail" id="open(java.nio.file.Path)">
 <h3>open</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></span>&nbsp;<span class="element-name">open</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;file)</span>
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></span>&nbsp;<span class="element-name">open</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;file)</span>
                             throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
 <div class="block">Opens a runner jar.</div>
 <dl class="notes">
@@ -196,7 +228,8 @@ same way as the launcher's archive source.</div>
 <section class="detail" id="open(java.io.File)">
 <h3>open</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></span>&nbsp;<span class="element-name">open</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/File.html" title="class or interface in java.io" class="external-link">File</a>&nbsp;file)</span>
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></span>&nbsp;<span class="element-name">open</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/File.html" title="class or interface in java.io" class="external-link">File</a>&nbsp;file)</span>
                             throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
 <div class="block">Opens a runner jar.</div>
 <dl class="notes">
@@ -216,7 +249,8 @@ same way as the launcher's archive source.</div>
 <section class="detail" id="path()">
 <h3>path</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a></span>&nbsp;<span class="element-name">path</span>()</div>
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a></span>&nbsp;<span class="element-name">path</span>()</div>
 <div class="block">The archive this reader reads.</div>
 <dl class="notes">
 <dt>Returns:</dt>
@@ -229,7 +263,8 @@ same way as the launcher's archive source.</div>
 <section class="detail" id="source()">
 <h3>source</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="../ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></span>&nbsp;<span class="element-name">source</span>()</div>
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="../ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></span>&nbsp;<span class="element-name">source</span>()</div>
 <div class="block">The open archive, for reading entry data.</div>
 <dl class="notes">
 <dt>Returns:</dt>
@@ -242,7 +277,8 @@ same way as the launcher's archive source.</div>
 <section class="detail" id="index()">
 <h3>index</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="../Index.html" title="class in io.micronaut.runner">Index</a></span>&nbsp;<span class="element-name">index</span>()</div>
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="../Index.html" title="class in io.micronaut.runner">Index</a></span>&nbsp;<span class="element-name">index</span>()</div>
 <div class="block">The index of the archive.</div>
 <dl class="notes">
 <dt>Returns:</dt>
@@ -255,7 +291,8 @@ same way as the launcher's archive source.</div>
 <section class="detail" id="read(int)">
 <h3>read</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">byte[]</span>&nbsp;<span class="element-name">read</span><wbr><span class="parameters">(int&nbsp;record)</span>
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type">byte[]</span>&nbsp;<span class="element-name">read</span><wbr><span class="parameters">(int&nbsp;record)</span>
             throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
 <div class="block">Reads the content of an entry, decompressing it when the entry is deflated.</div>
 <dl class="notes">
@@ -273,7 +310,8 @@ same way as the launcher's archive source.</div>
 <section class="detail" id="stream(int)">
 <h3>stream</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></span>&nbsp;<span class="element-name">stream</span><wbr><span class="parameters">(int&nbsp;record)</span>
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></span>&nbsp;<span class="element-name">stream</span><wbr><span class="parameters">(int&nbsp;record)</span>
                    throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
 <div class="block">Streams an entry without the Java-array size limit, enforcing the sizes and DEFLATE completion in the
 same way as the launcher's archive source.</div>

@@ -72,6 +72,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#addOpens(java.util.List)" tabindex="0">addOpens(List)</a></li>
 <li><a href="#addExports(java.util.List)" tabindex="0">addExports(List)</a></li>
 <li><a href="#enableNativeAccess(boolean)" tabindex="0">enableNativeAccess(boolean)</a></li>
+<li><a href="#option(java.lang.String,java.lang.String)" tabindex="0">option(String, String)</a></li>
 <li><a href="#timestamp(java.time.Instant)" tabindex="0">timestamp(Instant)</a></li>
 <li><a href="#build()" tabindex="0">build()</a></li>
 </ol>
@@ -98,7 +99,12 @@ loadScripts(document, 'script');</script>
 <div class="block">Describes a runner jar step by step.
 
 <p>The builder is mutable and is not thread safe; <a href="#build()"><code>build()</code></a> takes a snapshot of it, so it can
-be reused afterwards.</p></div>
+be reused afterwards.</p>
+
+<p>Every packaging option can be set in two ways: through its typed setter, such as
+<a href="#compression(io.micronaut.runner.build.Compression)"><code>compression(Compression)</code></a>, or by name through <a href="#option(java.lang.String,java.lang.String)"><code>option(String, String)</code></a>. Each call
+replaces whatever was set before, so the last one wins. A plugin therefore applies its typed values
+first and its generic options last.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -194,13 +200,20 @@ be reused afterwards.</p></div>
 <div class="block">Declares the application layer multi-release.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#output(java.nio.file.Path)" class="member-name-link">output</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;value)</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#option(java.lang.String,java.lang.String)" class="member-name-link">option</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
+ <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Sets the file the runner jar is written to.</div>
+<div class="block">Sets a packaging option by its <a href="RunnerJarOption.html#optionName()">name</a>, whether it has a
+typed setter or not.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#output(java.nio.file.Path)" class="member-name-link">output</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;value)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Sets the file the runner jar is written to.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the instant every entry is dated with.</div>
 </div>
 </div>
@@ -481,6 +494,33 @@ command-line-only <code>=ALL-UNNAMED</code> target.</p></div>
 <dd><code>value</code> - whether to write <code>Enable-Native-Access: ALL-UNNAMED</code></dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="option(java.lang.String,java.lang.String)">
+<h3>option</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></span>&nbsp;<span class="element-name">option</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
+ <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</span></div>
+<div class="block">Sets a packaging option by its <a href="RunnerJarOption.html#optionName()">name</a>, whether it has a
+typed setter or not. This is how a build plugin passes the options it has no typed property for.
+
+<p>The value is read according to the option's <a href="RunnerJarOption.html#valueType()">type</a>, in
+the grammar <a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> documents, and then validated exactly as the typed setter
+validates it. The call replaces any earlier value of the option, set by name or by its typed
+setter, and a later typed setter call replaces it in turn.</p></div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>name</code> - the option name, such as <code>compression</code></dd>
+<dd><code>value</code> - the value, as text</dd>
+<dt>Returns:</dt>
+<dd>this builder</dd>
+<dt>Throws:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/NullPointerException.html" title="class or interface in java.lang" class="external-link">NullPointerException</a></code> - if <code>name</code> or <code>value</code> is <code>null</code></dd>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link">IllegalArgumentException</a></code> - if no option has that name, or the value is not valid for it; for
+                                 an unknown name, the message lists every known name</dd>
 </dl>
 </div>
 </section>

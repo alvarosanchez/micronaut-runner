@@ -56,6 +56,7 @@ loadScripts(document, 'script');</script>
 <ol class="toc-list">
 <li><a href="#two-passes-one-archive-heading" tabindex="0">Two passes, one archive</a></li>
 <li><a href="#dependency-staging-heading" tabindex="0">Dependency staging</a></li>
+<li><a href="#dependency-files-heading" tabindex="0">Dependency files</a></li>
 <li><a href="#path-safety-heading" tabindex="0">Path safety</a></li>
 </ol>
 </li>
@@ -90,9 +91,9 @@ finally the dependencies, each an intact nested jar under <a href="../IndexForma
 <h2 id="two-passes-one-archive-heading">Two passes, one archive</h2>
 <p>The index stores the absolute offset of every entry's data, and the index is itself the second entry
 of the archive, so its own length shifts everything it describes. The way out is that an index's length
-depends only on names and counts, never on offsets: <a href="IndexWriter.html#layout()"><code>IndexWriter.layout()</code></a> reports it before
+depends only on names and counts, never on offsets: <code>IndexWriter.layout()</code> reports it before
 anything is written. The builder therefore lays the index out, runs the whole archive through a
-<a href="ZipWriter.html" title="class in io.micronaut.runner.build"><code>ZipWriter</code></a> that discards its output to learn where every entry will land, fills those offsets into
+<code>ZipWriter</code> that discards its output to learn where every entry will land, fills those offsets into
 the index and only then writes the file for real, checking as it goes that every entry landed exactly
 where the dry run said it would.</p>
 
@@ -104,11 +105,18 @@ reaches the bytes. Building the same inputs twice, in different time zones, prod
 <p>Each dependency is repacked or copied into its nested jar on up to
 <code>min(availableProcessors(), 8)</code> daemon threads. The threads are created for each build and have
 stopped before <code>build</code> returns; with one processor, or at most one dependency, staging runs on the
-calling thread. A staging thread holds one open <a href="ZipReader.html" title="class in io.micronaut.runner.build"><code>ZipReader</code></a> (its parsed central directory and
+calling thread. A staging thread holds one open <code>ZipReader</code> (its parsed central directory and
 manifest), at most one <code>Inflater</code> at a time and at most four 64 KiB buffers. The archive's bytes do
 not depend on the thread count: every nested jar's name and work file are fixed in class-path order
 before staging starts, warnings are emitted in that order afterwards, and the outer archive is written on
 one thread.</p>
+
+<h2 id="dependency-files-heading">Dependency files</h2>
+<p>A dependency is nested when it is a ZIP archive, which is when its first four bytes are a local file
+header (<code>PK\3\4</code>) or, for an empty archive, an end of central directory record (<code>PK\5\6</code>). A
+directory fails the build before anything is written, because a runner jar nests only JAR files. Any other
+file, such as a POM, is skipped with a warning: it contributes nothing to a <code>java -cp</code> class path
+either. A dependency that does not exist fails the build.</p>
 
 <h2 id="path-safety-heading">Path safety</h2>
 <p>Configured input paths may themselves be symbolic links. The builder resolves their real identities,

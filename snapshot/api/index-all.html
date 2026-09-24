@@ -52,6 +52,14 @@ loadScripts(document, 'script');</script>
 <a href="#I:A">A</a>&nbsp;<a href="#I:B">B</a>&nbsp;<a href="#I:C">C</a>&nbsp;<a href="#I:D">D</a>&nbsp;<a href="#I:E">E</a>&nbsp;<a href="#I:F">F</a>&nbsp;<a href="#I:G">G</a>&nbsp;<a href="#I:H">H</a>&nbsp;<a href="#I:I">I</a>&nbsp;<a href="#I:J">J</a>&nbsp;<a href="#I:L">L</a>&nbsp;<a href="#I:M">M</a>&nbsp;<a href="#I:N">N</a>&nbsp;<a href="#I:O">O</a>&nbsp;<a href="#I:P">P</a>&nbsp;<a href="#I:R">R</a>&nbsp;<a href="#I:S">S</a>&nbsp;<a href="#I:T">T</a>&nbsp;<a href="#I:U">U</a>&nbsp;<a href="#I:V">V</a>&nbsp;<a href="#I:W">W</a>&nbsp;<a href="#I:Z">Z</a>&nbsp;<br><a href="allclasses-index.html">All&nbsp;Classes&nbsp;and&nbsp;Interfaces</a><span class="vertical-separator">|</span><a href="allpackages-index.html">All&nbsp;Packages</a><span class="vertical-separator">|</span><a href="constant-values.html">Constant&nbsp;Field&nbsp;Values</a>
 <h2 class="title" id="I:A">A</h2>
 <dl class="index">
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#ADD_EXPORTS" class="member-name-link">ADD_EXPORTS</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">The <code>module/package</code> pairs written into the <code>Add-Exports</code> manifest attribute.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#ADD_OPENS" class="member-name-link">ADD_OPENS</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">The <code>module/package</code> pairs written into the <code>Add-Opens</code> manifest attribute.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#addApplicationOutput(java.nio.file.Path)" class="member-name-link">addApplicationOutput(Path)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
 <dd>
 <div class="block">Adds one directory or jar to the application output.</div>
@@ -59,15 +67,6 @@ loadScripts(document, 'script');</script>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#addDependency(io.micronaut.runner.build.Dependency)" class="member-name-link">addDependency(Dependency)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
 <dd>
 <div class="block">Adds one dependency at the end of the class path.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#addEntry(java.lang.String)" class="member-name-link">addEntry(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">Adds an entry that physically exists in this jar.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#addEntry(java.lang.String,io.micronaut.runner.build.ZipEntryInfo)" class="member-name-link">addEntry(String, ZipEntryInfo)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">Adds an entry described by a ZIP entry the packager already read, copying its sizes, checksum,
-timestamp and method.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#addExports()" class="member-name-link">addExports()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
 <dd>
@@ -77,14 +76,6 @@ timestamp and method.</div>
 <dd>
 <div class="block">Sets the <code>Add-Exports</code> values.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#addFlags(int)" class="member-name-link">addFlags(int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">Adds flags to the jar record.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html#addJar(java.lang.String)" class="member-name-link">addJar(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.html" title="class in io.micronaut.runner.build">IndexWriter</a></dt>
-<dd>
-<div class="block">Adds a jar.</div>
-</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#addOpens()" class="member-name-link">addOpens()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
 <dd>
 <div class="block">The <code>Add-Opens</code> manifest attribute values.</div>
@@ -93,17 +84,14 @@ timestamp and method.</div>
 <dd>
 <div class="block">Sets the <code>Add-Opens</code> values.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#addPackage(java.lang.String)" class="member-name-link">addPackage(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">Adds a package override section, as read from a <code>Name:</code> section of the jar's manifest.</div>
-</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#APPLICATION_JAR_ID" class="member-name-link">APPLICATION_JAR_ID</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">Index of the application layer in the jar table.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#applicationEntryCount()" class="member-name-link">applicationEntryCount()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#applicationEntryCount()" class="member-name-link">applicationEntryCount()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/RunnerJarResult.html#param-applicationEntryCount"><code>applicationEntryCount</code></a> record component.</div>
+<div class="block">The number of distinct entries the application output contributed, which is what ends up under
+<code>MICRONAUT-INF/classes/</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#applicationManifest()" class="member-name-link">applicationManifest()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
 <dd>
@@ -116,6 +104,11 @@ timestamp and method.</div>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#applicationManifest(java.util.jar.Manifest)" class="member-name-link">applicationManifest(Manifest)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
 <dd>
 <div class="block">Sets the application manifest directly, for a build system that has already parsed it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/ApplicationManifest.html" class="type-name-link" title="class in io.micronaut.runner.build">ApplicationManifest</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
+<dd>
+<div class="block">The part of an application's manifest the packaging library reads, for a build tool that describes that
+manifest in its own model rather than as a file.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#applicationManifestSource()" class="member-name-link">applicationManifestSource()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
 <dd>
@@ -142,9 +135,9 @@ precedence.</div>
 </dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#archive-immutability-heading" class="search-tag-link">Archive immutability</a> - Section in class io.micronaut.runner.ArchiveSource</dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#archiveSize()" class="member-name-link">archiveSize()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#archiveSize()" class="member-name-link">archiveSize()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/RunnerJarResult.html#param-archiveSize"><code>archiveSize</code></a> record component.</div>
+<div class="block">The length of the archive.</div>
 </dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html" class="type-name-link" title="class in io.micronaut.runner">ArchiveSource</a> - Class in <a href="io/micronaut/runner/package-summary.html">io.micronaut.runner</a></dt>
 <dd>
@@ -161,10 +154,6 @@ precedence.</div>
 <dt><a href="io/micronaut/runner/IndexFormat.html#ATTR_VERSION" class="member-name-link">ATTR_VERSION</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">Manifest attribute carrying the version of the packaging library that produced the archive.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.PackageSpec.html#attributes(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String)" class="member-name-link">attributes(String, String, String, String, String, String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.PackageSpec.html" title="class in io.micronaut.runner.build">IndexWriter.PackageSpec</a></dt>
-<dd>
-<div class="block">Sets the six attributes of the section; <code>null</code> means the jar's own attribute applies.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:B">B</h2>
@@ -188,15 +177,6 @@ precedence.</div>
 <dt><a href="io/micronaut/runner/build/BuildLogger.html" class="type-name-link" title="interface in io.micronaut.runner.build">BuildLogger</a> - Interface in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
 <div class="block">Where the packaging library reports what it did and what looked wrong.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/BuildLogger.NoOp.html" class="type-name-link" title="class in io.micronaut.runner.build">BuildLogger.NoOp</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">The logger <a href="io/micronaut/runner/build/BuildLogger.html#noOp()"><code>BuildLogger.noOp()</code></a> hands out.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/BuildLogger.SystemErr.html" class="type-name-link" title="class in io.micronaut.runner.build">BuildLogger.SystemErr</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">The logger <a href="io/micronaut/runner/build/BuildLogger.html#systemErr()"><code>BuildLogger.systemErr()</code></a> hands out, which prefixes every line so that the origin of a message
-is obvious in a build log it shares with everything else.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:C">C</h2>
@@ -273,20 +253,10 @@ is obvious in a build log it shares with everything else.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#CENVER" class="member-name-link">CENVER</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/EntryStubGenerator.html#CLASS_FILE_MAJOR_VERSION" class="member-name-link">CLASS_FILE_MAJOR_VERSION</a> - Static variable in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/EntryStubGenerator.html" title="class in io.micronaut.runner.build">EntryStubGenerator</a></dt>
-<dd>
-<div class="block">Major class file version of the generated class: <code>69</code> is Java 25.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/EntryStubGenerator.html#CLASS_FILE_MINOR_VERSION" class="member-name-link">CLASS_FILE_MINOR_VERSION</a> - Static variable in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/EntryStubGenerator.html" title="class in io.micronaut.runner.build">EntryStubGenerator</a></dt>
-<dd>
-<div class="block">Minor class file version of the generated class.</div>
-</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#CLASSES_PREFIX" class="member-name-link">CLASSES_PREFIX</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">Outer archive prefix under which the application classes and resources are stored exploded.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/EntryStubGenerator.html#class-file-version-heading" class="search-tag-link">Class file version</a> - Section in class io.micronaut.runner.build.EntryStubGenerator</dt>
-<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#close()" class="member-name-link">close()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">Releases the mapping and the file handle.</div>
@@ -295,10 +265,6 @@ is obvious in a build log it shares with everything else.</div>
 <dd>
 <div class="block">Releases the mapping and the file handle.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#close()" class="member-name-link">close()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#close()" class="member-name-link">close()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#close()" class="member-name-link">close()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></dt>
 <dd>
 <div class="block">Does nothing.</div>
@@ -307,14 +273,6 @@ is obvious in a build log it shares with everything else.</div>
 <dd>
 <div class="block">The URL that identifies a whole jar of the registered archive: the <code>CodeSource</code> location of
 every class defined from it, and the seal base of every package it seals.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#comment()" class="member-name-link">comment()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">The archive comment, decoded as UTF-8.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#compressedSize()" class="member-name-link">compressedSize()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipEntryInfo.html#param-compressedSize"><code>compressedSize</code></a> record component.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#compression()" class="member-name-link">compression()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
 <dd>
@@ -328,58 +286,23 @@ every class defined from it, and the seal base of every package it seals.</div>
 <dd>
 <div class="block">How a dependency is stored inside the runner jar.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#COMPRESSION" class="member-name-link">COMPRESSION</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">How the nested dependencies are stored, a <a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a> name.</div>
+</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html#connect()" class="member-name-link">connect()</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html" title="class in io.micronaut.runner.protocol.jar">RunnerJarURLConnection</a></dt>
 <dd>
 <div class="block">Resolves the entry and fails if it does not exist, the way the JDK's connection does.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#conventions-heading" class="search-tag-link">Conventions</a> - Section in class io.micronaut.runner.IndexFormat</dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/Dependency.html#coordinates()" class="member-name-link">coordinates()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dt><a href="io/micronaut/runner/build/Dependency.html#coordinates()" class="member-name-link">coordinates()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
 <dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/Dependency.html#param-coordinates"><code>coordinates</code></a> record component.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#coordinates(java.lang.String)" class="member-name-link">coordinates(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">Sets the Maven coordinates of the jar.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.html#copy(io.micronaut.runner.build.ZipReader,java.io.OutputStream)" class="member-name-link">copy(ZipReader, OutputStream)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.html" title="class in io.micronaut.runner.build">ZipRepacker</a></dt>
-<dd>
-<div class="block">Copies an archive byte for byte, which is what the <code>PRESERVE</code> compression mode does: the nested
-jar keeps its original compression, extra fields, data descriptors, signature files and comment, and
-only its entry offsets have to be discovered.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.html#copy(java.nio.file.Path,java.nio.file.Path)" class="member-name-link">copy(Path, Path)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.html" title="class in io.micronaut.runner.build">ZipRepacker</a></dt>
-<dd>
-<div class="block">Copies an archive byte for byte into a file.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#crc32()" class="member-name-link">crc32()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipEntryInfo.html#param-crc32"><code>crc32</code></a> record component.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html#crc32(long)" class="member-name-link">crc32(long)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html" title="class in io.micronaut.runner.build">IndexWriter.EntrySpec</a></dt>
-<dd>
-<div class="block">Sets the CRC-32 of the entry content, as an unsigned 32 bit value.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#create(java.nio.file.Path,java.time.Instant)" class="member-name-link">create(Path, Instant)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Creates a writer over a file, buffering the writes.</div>
+<div class="block">The coordinates written into the index.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:D">D</h2>
 <dl class="index">
-<dt><a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html#dataOffset()" class="member-name-link">dataOffset()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html" title="class in io.micronaut.runner.build">IndexWriter.EntrySpec</a></dt>
-<dd>
-<div class="block">The absolute offset set on this entry.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#dataOffset()" class="member-name-link">dataOffset()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipEntryInfo.html#param-dataOffset"><code>dataOffset</code></a> record component.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html#dataOffset(long)" class="member-name-link">dataOffset(long)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html" title="class in io.micronaut.runner.build">IndexWriter.EntrySpec</a></dt>
-<dd>
-<div class="block">Sets the absolute offset of the entry data in the outer archive, that is, past its local file
-header.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Handlers.html#decode(java.lang.String)" class="member-name-link">decode(String)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
 <div class="block">Percent-decodes a URL component, one UTF-8 byte per escape.</div>
@@ -388,13 +311,19 @@ header.</div>
 <dd>
 <div class="block">The default archive classifier.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#DEFAULT_TIMESTAMP" class="member-name-link">DEFAULT_TIMESTAMP</a> - Static variable in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#defaultDescription()" class="member-name-link">defaultDescription()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
-<div class="block">The timestamp given to every entry unless the caller supplies another one: 1980-02-01T00:00:00Z.</div>
+<div class="block">The default as documentation states it: the value itself, <code>empty</code> for an empty list or map,
+how a conditional default is chosen, or <code>none</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/RunnerClassLoader.html#defaultParent()" class="member-name-link">defaultParent()</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/RunnerClassLoader.html" title="class in io.micronaut.runner">RunnerClassLoader</a></dt>
 <dd>
 <div class="block">The parent the launcher gives a loader for an application.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#defaultValue()" class="member-name-link">defaultValue()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">The value the option has when nothing sets it, in the grammar
+<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#option(java.lang.String,java.lang.String)"><code>RunnerJarSpec.Builder.option(String, String)</code></a> reads.</div>
 </dd>
 <dt><a href="io/micronaut/runner/RunnerClassLoader.html#delegation-order-heading" class="search-tag-link">Delegation order</a> - Section in class io.micronaut.runner.RunnerClassLoader</dt>
 <dd>&nbsp;</dd>
@@ -406,49 +335,22 @@ header.</div>
 <dd>
 <div class="block">Sets the dependencies to nest, in class path order.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/Dependency.html" class="type-name-link" title="class in io.micronaut.runner.build">Dependency</a> - Record Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
+<dt><a href="io/micronaut/runner/build/Dependency.html" class="type-name-link" title="class in io.micronaut.runner.build">Dependency</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
-<div class="block">One dependency jar to nest into the runner jar, together with the coordinates it was resolved from.</div>
+<div class="block">One dependency to nest into the runner jar, together with the coordinates it was resolved from.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/Dependency.html#%3Cinit%3E(java.nio.file.Path)" class="member-name-link">Dependency(Path)</a> - Constructor for record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
-<dd>
-<div class="block">Creates a dependency whose coordinates are unknown.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/Dependency.html#%3Cinit%3E(java.nio.file.Path,java.lang.String)" class="member-name-link">Dependency(Path, String)</a> - Constructor for record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
-<dd>
-<div class="block">Validates the dependency and normalises blank coordinates to <code>null</code>, so that the index never
-stores an empty string where "unknown" is meant.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#dependencyCount()" class="member-name-link">dependencyCount()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#dependencyCount()" class="member-name-link">dependencyCount()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
 <div class="block">The number of nested dependency jars, which is every jar but the application layer.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#dependency-files-heading" class="search-tag-link">Dependency files</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#dependency-staging-heading" class="search-tag-link">Dependency staging</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#directory()" class="member-name-link">directory()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipEntryInfo.html#param-directory"><code>directory</code></a> record component.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#dosTime()" class="member-name-link">dosTime()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipEntryInfo.html#param-dosTime"><code>dosTime</code></a> record component.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#dosTime()" class="member-name-link">dosTime()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">The MS-DOS date and time every entry gets unless the caller passes another one.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html#dosTime(long)" class="member-name-link">dosTime(long)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html" title="class in io.micronaut.runner.build">IndexWriter.EntrySpec</a></dt>
-<dd>
-<div class="block">Sets the MS-DOS date and time word, as the ZIP headers store it.</div>
-</dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#dosTimeToMillis(long)" class="member-name-link">dosTimeToMillis(long)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>
 <div class="block">Converts a packed MS-DOS date and time word, as a ZIP header stores it, into epoch milliseconds
 <strong>in UTC</strong>.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html#droppedEntries()" class="member-name-link">droppedEntries()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipRepacker.RepackResult.html#param-droppedEntries"><code>droppedEntries</code></a> record component.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:E">E</h2>
@@ -514,8 +416,20 @@ expression engine onto the startup path: <code>jdk.util.jar.enableMultiRelease=f
 versioned entries altogether, <code>jdk.util.jar.version</code> overrides the runtime version and is
 clamped to it, and anything below 9 means base entries only.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/EntryStubGenerator.html#eligibility-heading" class="search-tag-link">Eligibility</a> - Section in class io.micronaut.runner.build.EntryStubGenerator</dt>
-<dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#effectiveOptions()" class="member-name-link">effectiveOptions()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dd>
+<div class="block">The value every <a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> had in this build, keyed by option name in table order, as
+<a href="io/micronaut/runner/build/RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiveOptions()</code></a> reports them.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#effectiveOptions()" class="member-name-link">effectiveOptions()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
+<dd>
+<div class="block">The value every <a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> has in this spec, whether it was set or defaulted, keyed by
+<a href="io/micronaut/runner/build/RunnerJarOption.html#optionName()">option name</a> in table order.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#ENABLE_NATIVE_ACCESS" class="member-name-link">ENABLE_NATIVE_ACCESS</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#enableNativeAccess()" class="member-name-link">enableNativeAccess()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
 <dd>
 <div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest, which silences the
@@ -524,18 +438,6 @@ restricted method warnings a dependency using the foreign function API would oth
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#enableNativeAccess(boolean)" class="member-name-link">enableNativeAccess(boolean)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
 <dd>
 <div class="block">Enables native access for the unnamed module.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html#end()" class="member-name-link">end()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html" title="class in io.micronaut.runner.build">IndexWriter.EntrySpec</a></dt>
-<dd>
-<div class="block">Returns to the jar this entry belongs to.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#end()" class="member-name-link">end()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">Returns to the writer this jar belongs to.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.PackageSpec.html#end()" class="member-name-link">end()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.PackageSpec.html" title="class in io.micronaut.runner.build">IndexWriter.PackageSpec</a></dt>
-<dd>
-<div class="block">Returns to the jar this section belongs to.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">END_OF_CENTRAL_DIRECTORY_SIGNATURE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
@@ -573,25 +475,9 @@ restricted method warnings a dependency using the foreign function API would oth
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#ENDTOT" class="member-name-link">ENDTOT</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#entries()" class="member-name-link">entries()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">The entries added to this jar so far.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#entries()" class="member-name-link">entries()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">Every entry of the archive, in central directory order.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html#entries()" class="member-name-link">entries()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipRepacker.RepackResult.html#param-entries"><code>entries</code></a> record component.</div>
-</dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#entries()" class="member-name-link">entries()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></dt>
 <dd>
 <div class="block">The physical entries of this jar, in central directory order.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#entry(java.lang.String)" class="member-name-link">entry(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">Looks an entry up by its exact name.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Entry.html" class="type-name-link" title="interface in io.micronaut.runner">Entry</a> - Interface in <a href="io/micronaut/runner/package-summary.html">io.micronaut.runner</a></dt>
 <dd>
@@ -623,22 +509,18 @@ directory.</div>
 <dd>
 <div class="block">Size of one entry record, in bytes.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#ENTRY_STUB" class="member-name-link">ENTRY_STUB</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">Whether to generate the entry stub that calls the main method directly.</div>
+</dd>
 <dt><a href="io/micronaut/runner/Index.html#entryCompressedSize(int)" class="member-name-link">entryCompressedSize(int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">The number of bytes an entry occupies in the archive.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.Layout.html#entryCount()" class="member-name-link">entryCount()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.Layout.html" title="class in io.micronaut.runner.build">IndexWriter.Layout</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#entryCount()" class="member-name-link">entryCount()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
-<div class="block">The number of records in the entry table: physical entries, versioned aliases and synthetic
-directories together.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#entryCount()" class="member-name-link">entryCount()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/RunnerJarResult.html#param-entryCount"><code>entryCount</code></a> record component.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#entryCount()" class="member-name-link">entryCount()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">The number of entries written so far.</div>
+<div class="block">The number of index records: physical entries, versioned aliases and synthesised directories of every
+jar.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Index.html#entryCount()" class="member-name-link">entryCount()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
@@ -717,14 +599,6 @@ alias, and <a href="io/micronaut/runner/IndexFormat.html#NO_INDEX"><code>IndexFo
 <dd>
 <div class="block">The generated <a href="io/micronaut/runner/Entry.html" title="interface in io.micronaut.runner"><code>Entry</code></a> implementation that starts the application without reflection.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html#entryStubClass(java.lang.String)" class="member-name-link">entryStubClass(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.html" title="class in io.micronaut.runner.build">IndexWriter</a></dt>
-<dd>
-<div class="block">Sets the generated entry stub class recorded in the header.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/EntryStubGenerator.html" class="type-name-link" title="class in io.micronaut.runner.build">EntryStubGenerator</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">Generates the class that lets the launcher start the application through an interface call.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Index.html#entrySyntheticDirectory(int)" class="member-name-link">entrySyntheticDirectory(int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">Whether a directory entry was synthesised by the packager because the source archive had no entry
@@ -740,22 +614,8 @@ for it.</div>
 </dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#enumeration-heading" class="search-tag-link">Enumeration</a> - Section in class io.micronaut.runner.NestedJarFile</dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/Dependency.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
-<dd>
-<div class="block">Indicates whether some other object is "equal to" this one.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
-<dd>
-<div class="block">Indicates whether some other object is "equal to" this one.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Indicates whether some other object is "equal to" this one.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></dt>
-<dd>
-<div class="block">Indicates whether some other object is "equal to" this one.</div>
-</dd>
+<dt><a href="io/micronaut/runner/build/Dependency.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#equals(java.net.URL,java.net.URL)" class="member-name-link">equals(URL, URL)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>
 <div class="block">Compares two jar URLs, reference included, the way <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html" title="class or interface in java.net" class="external-link"><code>URLStreamHandler</code></a> defines it.</div>
@@ -768,6 +628,10 @@ for it.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Launcher.html#exit-codes-heading" class="search-tag-link">Exit codes</a> - Section in class io.micronaut.runner.Launcher</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#exposure()" class="member-name-link">exposure()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">How the build plugins expose the option.</div>
+</dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#EXTCRC" class="member-name-link">EXTCRC</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#EXTCRC" class="member-name-link">EXTCRC</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></dt>
@@ -800,14 +664,14 @@ layout that the JDK's own application class loader runs.</div>
 <dd>
 <div class="block">The archive this source reads.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#fileLength()" class="member-name-link">fileLength()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
+<dt><a href="io/micronaut/runner/build/Dependency.html#fileName()" class="member-name-link">fileName()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
 <dd>
-<div class="block">The length of the archive file in bytes.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/Dependency.html#fileName()" class="member-name-link">fileName()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
-<dd>
-<div class="block">The file name of the jar, which is the name the nested entry takes under
+<div class="block">The file name of the dependency, which is the name the nested entry takes under
 <a href="io/micronaut/runner/IndexFormat.html#LIB_PREFIX"><code>IndexFormat.LIB_PREFIX</code></a> unless another dependency already claimed it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/ApplicationManifest.html#filter(java.util.Map,java.util.Map)" class="member-name-link">filter(Map, Map)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ApplicationManifest.html" title="class in io.micronaut.runner.build">ApplicationManifest</a></dt>
+<dd>
+<div class="block">Keeps what the packaging library reads of a manifest.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Index.html#find(java.lang.String)" class="member-name-link">find(String)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
@@ -838,26 +702,9 @@ chain, without building that name.</div>
 <dd>
 <div class="block">Every URL for a resource: one per jar that contributes it, in classpath order.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#finish()" class="member-name-link">finish()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Writes the central directory and the end of central directory record, with their ZIP64 counterparts
-when the archive needs them.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#flags()" class="member-name-link">flags()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">The flags of the jar record as they stand.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Index.html#flags()" class="member-name-link">flags()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">The header flags.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html#flags(int)" class="member-name-link">flags(int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html" title="class in io.micronaut.runner.build">IndexWriter.EntrySpec</a></dt>
-<dd>
-<div class="block">Adds flags to the record on top of the ones the writer derives from the name.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#flags(int)" class="member-name-link">flags(int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">Replaces the flags of the jar record.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#FORMAT_VERSION" class="member-name-link">FORMAT_VERSION</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
@@ -866,10 +713,6 @@ when the archive needs them.</div>
 </dl>
 <h2 class="title" id="I:G">G</h2>
 <dl class="index">
-<dt><a href="io/micronaut/runner/build/EntryStubGenerator.html#generate(java.lang.String)" class="member-name-link">generate(String)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/EntryStubGenerator.html" title="class in io.micronaut.runner.build">EntryStubGenerator</a></dt>
-<dd>
-<div class="block">Generates the entry stub for an application.</div>
-</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#GENERATED_PACKAGE" class="member-name-link">GENERATED_PACKAGE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">Package into which the packager generates classes; it is part of the application layer.</div>
@@ -991,10 +834,10 @@ the <code>jar</code> task's.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getInheritedManifestAttributes()" class="member-name-link">getInheritedManifestAttributes()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
-<div class="block">What the packaging library reads from the <a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getInheritedManifest()">inherited manifest</a>: the
-six <code>Specification-*</code> and <code>Implementation-*</code> attributes and <code>Sealed</code>, keyed by
-<code>Name</code> in the main section and by <code>&lt;section&gt;Name</code> in a package section, whose name ends in
-<code>/</code>.</div>
+<div class="block">What the packaging library reads from the <a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getInheritedManifest()">inherited manifest</a>, as
+<a href="io/micronaut/runner/build/ApplicationManifest.html#filter(java.util.Map,java.util.Map)"><code>ApplicationManifest.filter(Map, Map)</code></a> keeps it: the six <code>Specification-*</code> and
+<code>Implementation-*</code> attributes and <code>Sealed</code>, keyed by <code>Name</code> in the main section and by
+<code>&lt;section&gt;Name</code> in a package section, whose name ends in <code>/</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html#getInputStream()" class="member-name-link">getInputStream()</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html" title="class in io.micronaut.runner.protocol.jar">RunnerJarURLConnection</a></dt>
 <dd>
@@ -1021,11 +864,6 @@ of a nested jar, or the one shared handle on the outer archive.</div>
 <dd>
 <div class="block">The URL of the jar this connection reads from: the nested jar for a nested entry, and the outer
 archive's file URL for an entry of the application layer.</div>
-</dd>
-<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getJavaLauncherVersion()" class="member-name-link">getJavaLauncherVersion()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
-<dd>
-<div class="block">The project's target Java version, reported in the build log to make a mismatch between the JDK that
-compiled the application and the JDK that will run it easy to spot.</div>
 </dd>
 <dt><a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html#getLastModified()" class="member-name-link">getLastModified()</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html" title="class in io.micronaut.runner.protocol.jar">RunnerJarURLConnection</a></dt>
 <dd>
@@ -1062,6 +900,11 @@ entry, and the outer archive's manifest otherwise.</div>
 <div class="block">The name of this jar, in the form <code>&lt;outer archive path&gt;!/MICRONAUT-INF/lib/&lt;dep&gt;.jar</code>, which
 is what the JDK's own nested-looking jar names have always looked like and what turns up in the
 error messages and logs of libraries that print <code>JarFile.getName()</code>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getOptions()" class="member-name-link">getOptions()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
+<dd>
+<div class="block">Packaging options by <a href="io/micronaut/runner/build/RunnerJarOption.html#optionName()">name</a>, for the options that have no
+typed property here.</div>
 </dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#getRealName()" class="member-name-link">getRealName()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>
@@ -1125,10 +968,6 @@ ordinary entry, and the <code>META-INF/versions/&lt;n&gt;/...</code> name for a 
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#H_STRING_TABLE_OFFSET" class="member-name-link">H_STRING_TABLE_OFFSET</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html#hadSignatureFiles()" class="member-name-link">hadSignatureFiles()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipRepacker.RepackResult.html#param-hadSignatureFiles"><code>hadSignatureFiles</code></a> record component.</div>
-</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html" class="type-name-link" title="class in io.micronaut.runner.protocol.jar">Handler</a> - Class in <a href="io/micronaut/runner/protocol/jar/package-summary.html">io.micronaut.runner.protocol.jar</a></dt>
 <dd>
 <div class="block">The <code>jar:</code> protocol handler of a runner application.</div>
@@ -1151,39 +990,16 @@ every URL the class loader hands out.</div>
 <dd>
 <div class="block">The hash of a logical name, as stored in <a href="io/micronaut/runner/IndexFormat.html#E_NAME_HASH"><code>IndexFormat.E_NAME_HASH</code></a> and used to pick a hash table slot.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/Dependency.html#hashCode()" class="member-name-link">hashCode()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
-<dd>
-<div class="block">Returns a hash code value for this object.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#hashCode()" class="member-name-link">hashCode()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
-<dd>
-<div class="block">Returns a hash code value for this object.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#hashCode()" class="member-name-link">hashCode()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns a hash code value for this object.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html#hashCode()" class="member-name-link">hashCode()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></dt>
-<dd>
-<div class="block">Returns a hash code value for this object.</div>
-</dd>
+<dt><a href="io/micronaut/runner/build/Dependency.html#hashCode()" class="member-name-link">hashCode()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#hashCode(java.net.URL)" class="member-name-link">hashCode(URL)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>
 <div class="block">Hashes a jar URL consistently with <a href="io/micronaut/runner/protocol/jar/Handler.html#sameFile(java.net.URL,java.net.URL)"><code>Handler.sameFile(URL, URL)</code></a> and with the JDK for local <code>jar:file:</code>
 URLs.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.Layout.html#hashSlots()" class="member-name-link">hashSlots()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.Layout.html" title="class in io.micronaut.runner.build">IndexWriter.Layout</a></dt>
-<dd>
-<div class="block">The size of the hash table.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Index.html#hashSlots()" class="member-name-link">hashSlots()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">The size of the hash table, always a power of two.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#hasSignatureFiles()" class="member-name-link">hasSignatureFiles()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">Whether the archive carries jar signature files, which means the packager must record
-<a href="io/micronaut/runner/IndexFormat.html#JAR_FLAG_SIGNED_ORIGINAL"><code>IndexFormat.JAR_FLAG_SIGNED_ORIGINAL</code></a> for it.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#HEADER_FLAG_APP_MULTI_RELEASE" class="member-name-link">HEADER_FLAG_APP_MULTI_RELEASE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
@@ -1197,10 +1013,6 @@ URLs.</div>
 <dd>
 <div class="block">Size of the fixed header, in bytes.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html#headerFlags(int)" class="member-name-link">headerFlags(int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.html" title="class in io.micronaut.runner.build">IndexWriter</a></dt>
-<dd>
-<div class="block">Sets the header flags.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Handlers.html#how-the-handler-gets-installed-heading" class="search-tag-link">How the handler gets installed</a> - Section in class io.micronaut.runner.Handlers</dt>
 <dd>&nbsp;</dd>
 </dl>
@@ -1209,10 +1021,6 @@ URLs.</div>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#i32(long)" class="member-name-link">i32(long)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">Reads a little-endian 32-bit value as a signed <code>int</code>.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#id()" class="member-name-link">id()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">The position of this jar in the jar table.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarReader.html#index()" class="member-name-link">index()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></dt>
 <dd>
@@ -1236,36 +1044,6 @@ launcher never parses a nested archive at startup.</div>
 <div class="block">The on-disk layout of <code>MICRONAUT-INF/index.bin</code>, the index a runner jar carries so that the
 launcher never has to parse a nested archive's central directory at startup.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html" class="type-name-link" title="class in io.micronaut.runner.build">IndexWriter</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">Builds the bytes of <code>MICRONAUT-INF/index.bin</code> from a description of the jars and entries a runner
-jar contains.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html#%3Cinit%3E()" class="member-name-link">IndexWriter()</a> - Constructor for class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.html" title="class in io.micronaut.runner.build">IndexWriter</a></dt>
-<dd>
-<div class="block">Creates an empty writer.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html" class="type-name-link" title="class in io.micronaut.runner.build">IndexWriter.EntrySpec</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">One entry that physically exists in a jar.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" class="type-name-link" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">One jar of the index: the application layer, or a nested dependency.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.Layout.html" class="type-name-link" title="class in io.micronaut.runner.build">IndexWriter.Layout</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">A laid out index: every record in its final position, the hash table filled and the string table
-built, waiting only for the offsets.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.PackageSpec.html" class="type-name-link" title="class in io.micronaut.runner.build">IndexWriter.PackageSpec</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">One package override section, taken from a <code>Name: &lt;package&gt;/</code> section of a jar's manifest.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/EntryStubGenerator.html#ineligibilityReason(java.lang.String,byte%5B%5D)" class="member-name-link">ineligibilityReason(String, byte[])</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/EntryStubGenerator.html" title="class in io.micronaut.runner.build">EntryStubGenerator</a></dt>
-<dd>
-<div class="block">Decides whether an application can be entered through a generated stub, by parsing its main class.</div>
-</dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#inflate(long,int,int)" class="member-name-link">inflate(long, int, int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">Decompresses a DEFLATE entry into an array of exactly <code>uncompressedSize</code> bytes.</div>
@@ -1274,10 +1052,6 @@ built, waiting only for the offsets.</div>
 <dd>
 <div class="block">Reports something that went as expected and is worth seeing at an informational log level.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/BuildLogger.NoOp.html#info(java.lang.String)" class="member-name-link">info(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/BuildLogger.NoOp.html" title="class in io.micronaut.runner.build">BuildLogger.NoOp</a></dt>
-<dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/BuildLogger.SystemErr.html#info(java.lang.String)" class="member-name-link">info(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/BuildLogger.SystemErr.html" title="class in io.micronaut.runner.build">BuildLogger.SystemErr</a></dt>
-<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/tools/Inspect.html" class="type-name-link" title="class in io.micronaut.runner.tools">Inspect</a> - Class in <a href="io/micronaut/runner/tools/package-summary.html">io.micronaut.runner.tools</a></dt>
 <dd>
 <div class="block">The <code>inspect</code> mode: prints, in a form a human reads, what a runner jar says about itself.</div>
@@ -1296,20 +1070,15 @@ built, waiting only for the offsets.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/tools/package-summary.html">io.micronaut.runner.tools</a> - package io.micronaut.runner.tools</dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#isIndexList(java.lang.String)" class="member-name-link">isIndexList(String)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
+<dt><a href="io/micronaut/runner/build/ApplicationManifest.html#isConsumed(java.lang.String)" class="member-name-link">isConsumed(String)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ApplicationManifest.html" title="class in io.micronaut.runner.build">ApplicationManifest</a></dt>
 <dd>
-<div class="block">Whether an entry name is the jar index the packager drops, matched case-insensitively for the same
-reason signature files are.</div>
+<div class="block">Whether the packaging library reads an attribute: one of <code>Specification-Title</code>,
+<code>Specification-Version</code>, <code>Specification-Vendor</code>, <code>Implementation-Title</code>,
+<code>Implementation-Version</code>, <code>Implementation-Vendor</code> and <code>Sealed</code>.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#isSafeEntryName(java.lang.String)" class="member-name-link">isSafeEntryName(String)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarReader.html#isRunnerJar(java.nio.file.Path)" class="member-name-link">isRunnerJar(Path)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></dt>
 <dd>
-<div class="block">Whether a name is safe to use as an entry name, both for extraction to a directory and as a logical
-name in the index.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#isSignatureFile(java.lang.String)" class="member-name-link">isSignatureFile(String)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">Whether an entry name is a jar signature file, which the packager drops because the runner jar is
-repacked and its nested jars can no longer be verified.</div>
+<div class="block">Whether a file is a runner jar, which is whether it carries the runner index entry.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:J">J</h2>
@@ -1388,9 +1157,10 @@ repacked and its nested jars can no longer be verified.</div>
 <dd>
 <div class="block">The Maven coordinates of a jar, such as <code>io.netty:netty-common:4.2.1</code>.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#jarCount()" class="member-name-link">jarCount()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#jarCount()" class="member-name-link">jarCount()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/RunnerJarResult.html#param-jarCount"><code>jarCount</code></a> record component.</div>
+<div class="block">The number of jars in the index, the application layer included, so the number of nested dependencies
+is one less.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Index.html#jarCount()" class="member-name-link">jarCount()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
@@ -1465,10 +1235,6 @@ application layer.</div>
 <dd>
 <div class="block">The number of package override records belonging to a jar.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html#jars()" class="member-name-link">jars()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.html" title="class in io.micronaut.runner.build">IndexWriter</a></dt>
-<dd>
-<div class="block">The jars added so far.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Index.html#jarSealedByDefault(int)" class="member-name-link">jarSealedByDefault(int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">Whether a jar's manifest main attributes declare <code>Sealed: true</code>, which makes every package
@@ -1501,27 +1267,9 @@ sealed unless a package section says otherwise.</div>
 <dd>
 <div class="block">The version of the packaging library that wrote this archive.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html#launcherVersion(java.lang.String)" class="member-name-link">launcherVersion(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.html" title="class in io.micronaut.runner.build">IndexWriter</a></dt>
-<dd>
-<div class="block">Sets the version of the packaging library recorded in the header.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html#layout()" class="member-name-link">layout()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.html" title="class in io.micronaut.runner.build">IndexWriter</a></dt>
-<dd>
-<div class="block">Lays the index out: expands the aliases and synthetic directories, chains the records that share a
-name, flags the names that also exist as a directory, sizes and fills the hash table and builds the
-string table.</div>
-</dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#length()" class="member-name-link">length()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">The length of the archive when it was opened, which <a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner"><code>Index</code></a> compares with the length it recorded.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.Layout.html#length()" class="member-name-link">length()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.Layout.html" title="class in io.micronaut.runner.build">IndexWriter.Layout</a></dt>
-<dd>
-<div class="block">The exact length of the index this layout produces.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html#length()" class="member-name-link">length()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipRepacker.RepackResult.html#param-length"><code>length</code></a> record component.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#LIB_PREFIX" class="member-name-link">LIB_PREFIX</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
@@ -1544,14 +1292,6 @@ string table.</div>
 <dt><a href="io/micronaut/runner/IndexFormat.html#LOCAL_HEADER_SIGNATURE" class="member-name-link">LOCAL_HEADER_SIGNATURE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">Local file header signature, <code>PK\3\4</code>.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#localHeaderOffset()" class="member-name-link">localHeaderOffset()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipEntryInfo.html#param-localHeaderOffset"><code>localHeaderOffset</code></a> record component.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#location(long,long,long)" class="member-name-link">location(long, long, long)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">Sets where the jar sits in the outer archive.</div>
 </dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#LOCCRC" class="member-name-link">LOCCRC</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>&nbsp;</dd>
@@ -1630,13 +1370,9 @@ string table.</div>
 <dd>
 <div class="block">Sets the application main class.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#manifest()" class="member-name-link">manifest()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#MANIFEST_ATTRIBUTES" class="member-name-link">MANIFEST_ATTRIBUTES</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
-<div class="block">The archive's manifest, parsed once when the reader was opened.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#manifest(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String)" class="member-name-link">manifest(String, String, String, String, String, String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">Sets the six manifest main attributes the jar record carries.</div>
+<div class="block">Extra main attributes of the runner jar's manifest.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#manifestAttributes()" class="member-name-link">manifestAttributes()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
 <dd>
@@ -1662,25 +1398,14 @@ string table.</div>
 <dd>
 <div class="block">Largest slice <a href="io/micronaut/runner/ArchiveSource.html#slice(long,int)"><code>ArchiveSource.slice(long, int)</code></a> can produce.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.Layout.html#maxProbe()" class="member-name-link">maxProbe()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.Layout.html" title="class in io.micronaut.runner.build">IndexWriter.Layout</a></dt>
-<dd>
-<div class="block">The longest probe sequence the hash table needs, which the reader refuses to exceed.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Index.html#maxProbe()" class="member-name-link">maxProbe()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">The longest probe sequence the packager needed, which bounds every lookup.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#mergedServiceEntryCount()" class="member-name-link">mergedServiceEntryCount()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#mergedServiceEntryCount()" class="member-name-link">mergedServiceEntryCount()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/RunnerJarResult.html#param-mergedServiceEntryCount"><code>mergedServiceEntryCount</code></a> record component.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#method()" class="member-name-link">method()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipEntryInfo.html#param-method"><code>method</code></a> record component.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html#method(int)" class="member-name-link">method(int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html" title="class in io.micronaut.runner.build">IndexWriter.EntrySpec</a></dt>
-<dd>
-<div class="block">Sets the compression method.</div>
+<div class="block">The number of distinct <code>META-INF/micronaut/&lt;service&gt;/&lt;name&gt;</code> entries merged into the outer
+archive root.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#METHOD_DEFLATED" class="member-name-link">METHOD_DEFLATED</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
@@ -1737,6 +1462,10 @@ starts the application, the other modes hand the archive to a tool in
 <dd>
 <div class="block">Default mode: start the application.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#MULTI_RELEASE" class="member-name-link">MULTI_RELEASE</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">Whether the application layer itself is multi-release.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#multiRelease()" class="member-name-link">multiRelease()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
 <dd>
 <div class="block">Whether the application layer is itself multi-release.</div>
@@ -1750,21 +1479,9 @@ starts the application, the other modes hand the archive to a tool in
 </dl>
 <h2 class="title" id="I:N">N</h2>
 <dl class="index">
-<dt><a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html#name()" class="member-name-link">name()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html" title="class in io.micronaut.runner.build">IndexWriter.EntrySpec</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#named(java.lang.String)" class="member-name-link">named(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
-<div class="block">The logical name of the entry.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.JarSpec.html#name()" class="member-name-link">name()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.JarSpec.html" title="class in io.micronaut.runner.build">IndexWriter.JarSpec</a></dt>
-<dd>
-<div class="block">The name this jar is recorded under.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.PackageSpec.html#name()" class="member-name-link">name()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.PackageSpec.html" title="class in io.micronaut.runner.build">IndexWriter.PackageSpec</a></dt>
-<dd>
-<div class="block">The package this section applies to.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#name()" class="member-name-link">name()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipEntryInfo.html#param-name"><code>name</code></a> record component.</div>
+<div class="block">Finds an option by its <a href="io/micronaut/runner/build/RunnerJarOption.html#optionName()">name</a>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html" class="type-name-link" title="class in io.micronaut.runner">NestedJarEntry</a> - Class in <a href="io/micronaut/runner/package-summary.html">io.micronaut.runner</a></dt>
 <dd>
@@ -1811,9 +1528,13 @@ classes straight from the mapping.</div>
 </dl>
 <h2 class="title" id="I:O">O</h2>
 <dl class="index">
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#offset()" class="member-name-link">offset()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
+<dt><a href="io/micronaut/runner/build/Dependency.html#of(java.nio.file.Path)" class="member-name-link">of(Path)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
 <dd>
-<div class="block">The number of bytes written so far, which is the offset at which the next local file header will go.</div>
+<div class="block">A dependency whose coordinates are unknown.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/Dependency.html#of(java.nio.file.Path,java.lang.String)" class="member-name-link">of(Path, String)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dd>
+<div class="block">A dependency resolved from the given coordinates.</div>
 </dd>
 <dt><a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html#one-identity-consistently-heading" class="search-tag-link">One identity, consistently</a> - Section in class io.micronaut.runner.protocol.jar.RunnerJarURLConnection</dt>
 <dd>&nbsp;</dd>
@@ -1833,17 +1554,9 @@ classes straight from the mapping.</div>
 <dd>
 <div class="block">Opens a runner jar.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#open(java.io.File)" class="member-name-link">open(File)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">Opens an archive for reading.</div>
-</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarReader.html#open(java.nio.file.Path)" class="member-name-link">open(Path)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></dt>
 <dd>
 <div class="block">Opens a runner jar.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#open(java.nio.file.Path)" class="member-name-link">open(Path)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">Opens an archive for reading.</div>
 </dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#openConnection(java.net.URL)" class="member-name-link">openConnection(URL)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>
@@ -1861,6 +1574,11 @@ classes straight from the mapping.</div>
 <dd>
 <div class="block">Locates <code>MICRONAUT-INF/index.bin</code> in the outer archive without <code>java.util.zip</code>.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#option(java.lang.String,java.lang.String)" class="member-name-link">option(String, String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
+<dd>
+<div class="block">Sets a packaging option by its <a href="io/micronaut/runner/build/RunnerJarOption.html#optionName()">name</a>, whether it has a
+typed setter or not.</div>
+</dd>
 <dt><a href="io/micronaut/runner/tools/Extract.html#OPTION_DESTINATION" class="member-name-link">OPTION_DESTINATION</a> - Static variable in class io.micronaut.runner.tools.<a href="io/micronaut/runner/tools/Extract.html" title="class in io.micronaut.runner.tools">Extract</a></dt>
 <dd>
 <div class="block">Option naming the directory to extract into.</div>
@@ -1868,6 +1586,11 @@ classes straight from the mapping.</div>
 <dt><a href="io/micronaut/runner/tools/Extract.html#OPTION_FORCE" class="member-name-link">OPTION_FORCE</a> - Static variable in class io.micronaut.runner.tools.<a href="io/micronaut/runner/tools/Extract.html" title="class in io.micronaut.runner.tools">Extract</a></dt>
 <dd>
 <div class="block">Option allowing a destination that is not empty to be replaced.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#optionName()" class="member-name-link">optionName()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">The option's name, in camel case, as a build script, a POM and
+<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#option(java.lang.String,java.lang.String)"><code>RunnerJarSpec.Builder.option(String, String)</code></a> spell it.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Index.html#outerFileLength()" class="member-name-link">outerFileLength()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
@@ -1883,9 +1606,9 @@ launcher's own classes, the manifest, the index itself and the nested jars as st
 <div class="block">A URL for an entry of the outer archive itself, addressed by its real name rather than through a
 jar of the index.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#output()" class="member-name-link">output()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#output()" class="member-name-link">output()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/RunnerJarResult.html#param-output"><code>output</code></a> record component.</div>
+<div class="block">The archive that was written.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#output()" class="member-name-link">output()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
 <dd>
@@ -1938,10 +1661,6 @@ decides between serving a URL itself and handing it to the JDK.</div>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#packageArchive()" class="member-name-link">packageArchive()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
 <div class="block">Builds the archive.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.Layout.html#packageCount()" class="member-name-link">packageCount()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.Layout.html" title="class in io.micronaut.runner.build">IndexWriter.Layout</a></dt>
-<dd>
-<div class="block">The number of package override records.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Index.html#packageCount()" class="member-name-link">packageCount()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
@@ -2012,21 +1731,28 @@ applies.</div>
 <dd>
 <div class="block">Value of <a href="io/micronaut/runner/RunnerClassLoader.html#PARENT_PROPERTY">"micronaut.runner.parent"</a> that selects <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#getSystemClassLoader()" title="class or interface in java.lang" class="external-link"><code>ClassLoader.getSystemClassLoader()</code></a>.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/Compression.html#parse(java.lang.String)" class="member-name-link">parse(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
+<dd>
+<div class="block">Reads a compression mode the way a build script or a POM spells it: surrounding whitespace is ignored
+and so is case, so <code>" Preserve "</code> is <a href="io/micronaut/runner/build/Compression.html#PRESERVE"><code>Compression.PRESERVE</code></a>.</div>
+</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#parseURL(java.net.URL,java.lang.String,int,int)" class="member-name-link">parseURL(URL, String, int, int)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>
 <div class="block">Parses a jar URL, following the JDK's jar handler.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/Dependency.html#path()" class="member-name-link">path()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html#PASSTHROUGH" class="member-name-link">PASSTHROUGH</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html" title="enum class in io.micronaut.runner.build">RunnerJarOption.Exposure</a></dt>
 <dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/Dependency.html#param-path"><code>path</code></a> record component.</div>
+<div class="block">The option is set by name, through the build plugin's generic options: Gradle's
+<code>options.put(name, value)</code>, Maven's <code>&lt;runnerOptions&gt;</code> or
+<code>-Dmicronaut.runner.&lt;name&gt;</code>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/Dependency.html#path()" class="member-name-link">path()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dd>
+<div class="block">The file to nest.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarReader.html#path()" class="member-name-link">path()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></dt>
 <dd>
 <div class="block">The archive this reader reads.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#path()" class="member-name-link">path()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">The archive this reader was opened on.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#path-safety-heading" class="search-tag-link">Path safety</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
 <dd>&nbsp;</dd>
@@ -2045,17 +1771,9 @@ applies.</div>
 <dd>
 <div class="block">Reads the content of an entry, decompressing it when the entry is deflated.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#read(io.micronaut.runner.build.ZipEntryInfo)" class="member-name-link">read(ZipEntryInfo)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">Reads an entry's content, decompressing it when it is deflated and verifying its CRC-32.</div>
-</dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#readFully(long,int)" class="member-name-link">readFully(long, int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">Copies a region of the archive into a new array.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#readRaw(io.micronaut.runner.build.ZipEntryInfo)" class="member-name-link">readRaw(ZipEntryInfo)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">Reads an entry's data exactly as it is stored in the archive, without decompressing it.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Index.html#REBUILD_MESSAGE" class="member-name-link">REBUILD_MESSAGE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
@@ -2079,23 +1797,6 @@ to serve it.</div>
 <dd>
 <div class="block">Whether an archive is registered.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.html#repack(io.micronaut.runner.build.ZipReader,java.io.OutputStream)" class="member-name-link">repack(ZipReader, OutputStream)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.html" title="class in io.micronaut.runner.build">ZipRepacker</a></dt>
-<dd>
-<div class="block">Repacks an archive so that every entry is stored uncompressed.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.html#repack(java.nio.file.Path,java.nio.file.Path)" class="member-name-link">repack(Path, Path)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.html" title="class in io.micronaut.runner.build">ZipRepacker</a></dt>
-<dd>
-<div class="block">Repacks an archive into a file.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html#%3Cinit%3E(java.util.List,long,boolean,java.util.List)" class="member-name-link">RepackResult(List, long, boolean, List)</a> - Constructor for record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></dt>
-<dd>
-<div class="block">Validates the result and makes its lists immutable.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#requireSafeEntryName(java.lang.String,java.lang.String)" class="member-name-link">requireSafeEntryName(String, String)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">Checks an entry name with <a href="io/micronaut/runner/build/ZipReader.html#isSafeEntryName(java.lang.String)"><code>ZipReader.isSafeEntryName(String)</code></a> and fails with a message naming both the
-archive and the offending entry.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Index.html#resolve(int,int)" class="member-name-link">resolve(int, int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">Picks the record a chain resolves to for a given runtime.</div>
@@ -2105,6 +1806,8 @@ archive and the offending entry.</div>
 <div class="block">Picks the record a chain resolves to within one jar, for enumerating a resource per jar the way
 <code>ClassLoader.getResources</code> does.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#rules-heading" class="search-tag-link">Rules</a> - Section in enum class io.micronaut.runner.build.RunnerJarOption</dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/Entry.html#run(java.lang.String%5B%5D)" class="member-name-link">run(String[])</a> - Method in interface io.micronaut.runner.<a href="io/micronaut/runner/Entry.html" title="interface in io.micronaut.runner">Entry</a></dt>
 <dd>
 <div class="block">Runs the application.</div>
@@ -2133,17 +1836,22 @@ archive and the offending entry.</div>
 <dd>
 <div class="block">Turns an application's own output and its resolved dependencies into a runner jar.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html" class="type-name-link" title="enum class in io.micronaut.runner.build">RunnerJarOption</a> - Enum Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
+<dd>
+<div class="block">Every packaging option of a runner jar, in one table: its name, the type of its value, its default,
+how the build plugins expose it and the Runner release that added it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html" class="type-name-link" title="enum class in io.micronaut.runner.build">RunnerJarOption.Exposure</a> - Enum Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
+<dd>
+<div class="block">How the build plugins expose an option.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarReader.html" class="type-name-link" title="class in io.micronaut.runner.build">RunnerJarReader</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
-<div class="block">Opens a finished runner jar with the launcher's own reader.</div>
+<div class="block">Recognises a runner jar, and opens one with the launcher's own reader.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html" class="type-name-link" title="class in io.micronaut.runner.build">RunnerJarResult</a> - Record Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html" class="type-name-link" title="class in io.micronaut.runner.build">RunnerJarResult</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
 <div class="block">What <a href="io/micronaut/runner/build/RunnerJarBuilder.html#build(io.micronaut.runner.build.RunnerJarSpec,io.micronaut.runner.build.BuildLogger)"><code>RunnerJarBuilder.build(RunnerJarSpec, BuildLogger)</code></a> produced.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#%3Cinit%3E(java.nio.file.Path,int,int,int,int,long,java.util.List)" class="member-name-link">RunnerJarResult(Path, int, int, int, int, long, List)</a> - Constructor for record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
-<dd>
-<div class="block">Validates the result and makes the warning list immutable.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html" class="type-name-link" title="class in io.micronaut.runner.build">RunnerJarSpec</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
@@ -2166,10 +1874,6 @@ archive and the offending entry.</div>
 <dd>
 <div class="block">Compares two jar URLs by their text.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.PackageSpec.html#sealed(boolean)" class="member-name-link">sealed(boolean)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.PackageSpec.html" title="class in io.micronaut.runner.build">IndexWriter.PackageSpec</a></dt>
-<dd>
-<div class="block">Records a <code>Sealed</code> attribute on the section, which overrides the jar's default either way.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Handlers.html#SEPARATOR" class="member-name-link">SEPARATOR</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
 <div class="block">The separator between a jar and the entry inside it, in a <code>jar:</code> URL.</div>
@@ -2187,17 +1891,13 @@ after a connection is connected.</div>
 <dd>
 <div class="block">The task that checks Runner and Shadow output locations before either producer executes.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#shift(long)" class="member-name-link">shift(long)</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#since()" class="member-name-link">since()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
-<div class="block">Returns a copy of this entry with both offsets moved by <code>delta</code> bytes.</div>
+<div class="block">The Runner release that added the option, as <code>major.minor</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#size()" class="member-name-link">size()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></dt>
 <dd>
 <div class="block">The number of physical entries, which is the number the original dependency had.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html#sizes(long,long)" class="member-name-link">sizes(long, long)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.EntrySpec.html" title="class in io.micronaut.runner.build">IndexWriter.EntrySpec</a></dt>
-<dd>
-<div class="block">Sets the stored and expanded sizes, which are equal for a stored entry.</div>
 </dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#slice(long,int)" class="member-name-link">slice(long, int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
@@ -2223,19 +1923,10 @@ after a connection is connected.</div>
 <dd>
 <div class="block">The application main class, in binary form.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html#startClass(java.lang.String)" class="member-name-link">startClass(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.html" title="class in io.micronaut.runner.build">IndexWriter</a></dt>
-<dd>
-<div class="block">Sets the application main class recorded in the header.</div>
-</dd>
 <dt><a href="io/micronaut/runner/benchmarks/StartupBenchmark.html" class="type-name-link" title="class in io.micronaut.runner.benchmarks">StartupBenchmark</a> - Class in <a href="io/micronaut/runner/benchmarks/package-summary.html">io.micronaut.runner.benchmarks</a></dt>
 <dd>
 <div class="block">The end-to-end startup benchmark: builds the sample application in every packaging the runner competes
 with, starts each of them many times, and reports how long each takes to answer its first request.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#stored()" class="member-name-link">stored()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Whether the entry data is stored uncompressed, in which case the bytes between <a href="io/micronaut/runner/build/ZipEntryInfo.html#dataOffset()"><code>ZipEntryInfo.dataOffset()</code></a>
-and <code>dataOffset() + compressedSize()</code> are the content itself.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/Compression.html#STORED" class="member-name-link">STORED</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
 <dd>
@@ -2258,14 +1949,10 @@ same way as the launcher's archive source.</div>
 <dd>
 <div class="block">Decodes a string from the string table.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/EntryStubGenerator.html#STUB_CLASS" class="member-name-link">STUB_CLASS</a> - Static variable in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/EntryStubGenerator.html" title="class in io.micronaut.runner.build">EntryStubGenerator</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#summary()" class="member-name-link">summary()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
-<div class="block">Binary name of the generated class, which the index header records for the launcher.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/EntryStubGenerator.html#STUB_RESOURCE_NAME" class="member-name-link">STUB_RESOURCE_NAME</a> - Static variable in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/EntryStubGenerator.html" title="class in io.micronaut.runner.build">EntryStubGenerator</a></dt>
-<dd>
-<div class="block">Logical name of the generated class inside the application layer, which is
-<code>MICRONAUT-INF/classes/io/micronaut/runner/generated/AppEntry.class</code> in the outer archive.</div>
+<div class="block">One line that reports the build, for a plugin to log:
+<code>Runner jar written to &lt;output&gt; (N dependencies, M index records, S bytes)</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/BuildLogger.html#systemErr()" class="member-name-link">systemErr()</a> - Static method in interface io.micronaut.runner.build.<a href="io/micronaut/runner/build/BuildLogger.html" title="interface in io.micronaut.runner.build">BuildLogger</a></dt>
 <dd>
@@ -2303,38 +1990,27 @@ same way as the launcher's archive source.</div>
 <div class="block">System property that prints elapsed time checkpoints to standard error when set to exactly
 <code>"true"</code>.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#toDosTime(java.time.Instant)" class="member-name-link">toDosTime(Instant)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Converts an instant to the MS-DOS date and time layout the ZIP format stores, the date in the high 16
-bits and the time in the low 16 bits.</div>
-</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#toExternalForm(java.net.URL)" class="member-name-link">toExternalForm(URL)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>
 <div class="block">The string form of a URL, cached for the one URL <a href="io/micronaut/runner/protocol/jar/Handler.html#withCachedForm(java.lang.String)"><code>Handler.withCachedForm(String)</code></a> created this
 handler for.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/Dependency.html#toString()" class="member-name-link">toString()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dt><a href="io/micronaut/runner/build/ApplicationManifest.html#toManifest(java.util.SortedMap)" class="member-name-link">toManifest(SortedMap)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ApplicationManifest.html" title="class in io.micronaut.runner.build">ApplicationManifest</a></dt>
 <dd>
-<div class="block">Returns a string representation of this record class.</div>
+<div class="block">Builds the application manifest from <a href="io/micronaut/runner/build/ApplicationManifest.html#filter(java.util.Map,java.util.Map)"><code>ApplicationManifest.filter(Map, Map)</code></a>'s result: <code>Manifest-Version: 1.0</code>,
+then the main attributes, then the package sections.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#toString()" class="member-name-link">toString()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
-<dd>
-<div class="block">Returns a string representation of this record class.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#toString()" class="member-name-link">toString()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns a string representation of this record class.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html#toString()" class="member-name-link">toString()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a></dt>
-<dd>
-<div class="block">Returns a string representation of this record class.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html#transfer(io.micronaut.runner.build.ZipEntryInfo,java.io.OutputStream)" class="member-name-link">transfer(ZipEntryInfo, OutputStream)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipReader.html" title="class in io.micronaut.runner.build">ZipReader</a></dt>
-<dd>
-<div class="block">Streams one entry to <code>target</code> while verifying its size, CRC-32 and complete DEFLATE region.</div>
-</dd>
+<dt><a href="io/micronaut/runner/build/Dependency.html#toString()" class="member-name-link">toString()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#toString()" class="member-name-link">toString()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#two-passes-one-archive-heading" class="search-tag-link">Two passes, one archive</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html#TYPED" class="member-name-link">TYPED</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html" title="enum class in io.micronaut.runner.build">RunnerJarOption.Exposure</a></dt>
+<dd>
+<div class="block">The option has a typed property in each build plugin, a Gradle task property or a Maven parameter,
+with the documented default.</div>
+</dd>
 </dl>
 <h2 class="title" id="I:U">U</h2>
 <dl class="index">
@@ -2354,10 +2030,6 @@ handler for.</div>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#u8(long)" class="member-name-link">u8(long)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">Reads one unsigned byte.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#uncompressedSize()" class="member-name-link">uncompressedSize()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/ZipEntryInfo.html#param-uncompressedSize"><code>uncompressedSize</code></a> record component.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Handlers.html#unregister()" class="member-name-link">unregister()</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
@@ -2390,7 +2062,17 @@ handler for.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Index.html#validation-heading" class="search-tag-link">Validation</a> - Section in class io.micronaut.runner.Index</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#value-grammar-heading" class="search-tag-link">Value grammar</a> - Section in enum class io.micronaut.runner.build.RunnerJarOption</dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/Compression.html#valueOf(java.lang.String)" class="member-name-link">valueOf(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
+<dd>
+<div class="block">Returns the enum constant of this class with the specified name.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html#valueOf(java.lang.String)" class="member-name-link">valueOf(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html" title="enum class in io.micronaut.runner.build">RunnerJarOption.Exposure</a></dt>
+<dd>
+<div class="block">Returns the enum constant of this class with the specified name.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#valueOf(java.lang.String)" class="member-name-link">valueOf(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
 <div class="block">Returns the enum constant of this class with the specified name.</div>
 </dd>
@@ -2398,6 +2080,21 @@ handler for.</div>
 <dd>
 <div class="block">Returns an array containing the constants of this enum class, in
 the order they are declared.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html#values()" class="member-name-link">values()</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html" title="enum class in io.micronaut.runner.build">RunnerJarOption.Exposure</a></dt>
+<dd>
+<div class="block">Returns an array containing the constants of this enum class, in
+the order they are declared.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#values()" class="member-name-link">values()</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">Returns an array containing the constants of this enum class, in
+the order they are declared.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#valueType()" class="member-name-link">valueType()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">The type of the option's value, which decides how its text is read: <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link"><code>Boolean</code></a>,
+<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/RunnerClassLoader.html#VERIFY_PROPERTY" class="member-name-link">VERIFY_PROPERTY</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/RunnerClassLoader.html" title="class in io.micronaut.runner">RunnerClassLoader</a></dt>
 <dd>
@@ -2413,18 +2110,14 @@ archive.</div>
 </dl>
 <h2 class="title" id="I:W">W</h2>
 <dl class="index">
-<dt><a href="io/micronaut/runner/build/BuildLogger.NoOp.html#warn(java.lang.String)" class="member-name-link">warn(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/BuildLogger.NoOp.html" title="class in io.micronaut.runner.build">BuildLogger.NoOp</a></dt>
-<dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/BuildLogger.SystemErr.html#warn(java.lang.String)" class="member-name-link">warn(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/BuildLogger.SystemErr.html" title="class in io.micronaut.runner.build">BuildLogger.SystemErr</a></dt>
-<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/BuildLogger.html#warn(java.lang.String)" class="member-name-link">warn(String)</a> - Method in interface io.micronaut.runner.build.<a href="io/micronaut/runner/build/BuildLogger.html" title="interface in io.micronaut.runner.build">BuildLogger</a></dt>
 <dd>
 <div class="block">Reports something the user should probably act on: a duplicate entry that was dropped, a signed
 dependency whose signatures were removed, a <code>Class-Path</code> attribute that no longer applies.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#warnings()" class="member-name-link">warnings()</a> - Method in record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#warnings()" class="member-name-link">warnings()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/RunnerJarResult.html#param-warnings"><code>warnings</code></a> record component.</div>
+<div class="block">Every warning the build reported, in the order it reported them.</div>
 </dd>
 <dt><a href="io/micronaut/runner/tools/Extract.html#what-is-left-out-of-the-application-jar-and-why-heading" class="search-tag-link">What is left out of the application jar, and why</a> - Section in class io.micronaut.runner.tools.Extract</dt>
 <dd>&nbsp;</dd>
@@ -2442,47 +2135,9 @@ dependency whose signatures were removed, a <code>Class-Path</code> attribute th
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/tools/Extract.html#why-the-mode-exists-heading" class="search-tag-link">Why the mode exists</a> - Section in class io.micronaut.runner.tools.Extract</dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html#why-this-is-a-two-step-api-heading" class="search-tag-link">Why this is a two step API</a> - Section in class io.micronaut.runner.build.IndexWriter</dt>
-<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#withCachedForm(java.lang.String)" class="member-name-link">withCachedForm(String)</a> - Static method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>
 <div class="block">Launcher-internal; public only because <a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> is in another package.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/IndexWriter.html#write(io.micronaut.runner.build.IndexWriter.Layout,long)" class="member-name-link">write(IndexWriter.Layout, long)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/IndexWriter.html" title="class in io.micronaut.runner.build">IndexWriter</a></dt>
-<dd>
-<div class="block">Writes the index.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#writeDirectoryEntry(java.lang.String)" class="member-name-link">writeDirectoryEntry(String)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Writes an explicit, zero length directory entry.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#writeDirectoryEntry(java.lang.String,int)" class="member-name-link">writeDirectoryEntry(String, int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Writes an explicit, zero length directory entry with an explicit MS-DOS timestamp.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#writeEntry(java.lang.String,byte%5B%5D)" class="member-name-link">writeEntry(String, byte[])</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Writes a file entry.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#writeEntry(java.lang.String,byte%5B%5D,int,int)" class="member-name-link">writeEntry(String, byte[], int, int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Writes a file entry from part of an array.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#writeEntry(java.lang.String,byte%5B%5D,int,int,int)" class="member-name-link">writeEntry(String, byte[], int, int, int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Writes a file entry from part of an array, with an explicit MS-DOS timestamp.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#writeEntry(java.lang.String,io.micronaut.runner.build.ZipReader,io.micronaut.runner.build.ZipEntryInfo,int)" class="member-name-link">writeEntry(String, ZipReader, ZipEntryInfo, int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Writes and verifies an entry from another ZIP without materialising either compressed or expanded data.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#writeEntry(java.lang.String,java.io.InputStream,long,long,int)" class="member-name-link">writeEntry(String, InputStream, long, long, int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Writes a file entry by streaming exactly <code>length</code> bytes from a source.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#writeEntry(java.lang.String,java.nio.file.Path)" class="member-name-link">writeEntry(String, Path)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Writes a file entry from a file, reading it twice: once to compute its CRC-32 and once to copy it.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:Z">Z</h2>
@@ -2506,45 +2161,6 @@ dependency whose signatures were removed, a <code>Class-Path</code> attribute th
 <dt><a href="io/micronaut/runner/IndexFormat.html#ZIP64_MARKER" class="member-name-link">ZIP64_MARKER</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">Value a 32-bit ZIP field carries when the real value lives in a ZIP64 extra field.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html" class="type-name-link" title="class in io.micronaut.runner.build">ZipEntryInfo</a> - Record Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">An immutable description of one entry of a ZIP archive, as the packaging library needs it.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipEntryInfo.html#%3Cinit%3E(java.lang.String,int,long,long,long,int,long,long,boolean)" class="member-name-link">ZipEntryInfo(String, int, long, long, long, int, long, long, boolean)</a> - Constructor for record class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipEntryInfo.html" title="class in io.micronaut.runner.build">ZipEntryInfo</a></dt>
-<dd>
-<div class="block">Validates the invariants every reader and writer in this library relies on.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipReader.html" class="type-name-link" title="class in io.micronaut.runner.build">ZipReader</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">A read-only view of an existing <code>.jar</code> or <code>.zip</code> file, parsed by hand rather than through
-<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/zip/ZipFile.html" title="class or interface in java.util.zip" class="external-link"><code>ZipFile</code></a>.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.html" class="type-name-link" title="class in io.micronaut.runner.build">ZipRepacker</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">Rewrites a dependency jar so that every entry is <code>STORED</code>, or copies it byte for byte, and reports
-where each entry's data ended up.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipRepacker.RepackResult.html" class="type-name-link" title="class in io.micronaut.runner.build">ZipRepacker.RepackResult</a> - Record Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">What a repack or a verbatim copy produced.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html" class="type-name-link" title="class in io.micronaut.runner.build">ZipWriter</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
-<dd>
-<div class="block">A minimal ZIP writer that only ever writes <code>STORED</code> entries and reports the absolute offset of
-every entry's data as it goes.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#%3Cinit%3E(java.io.OutputStream)" class="member-name-link">ZipWriter(OutputStream)</a> - Constructor for class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Creates a writer using <a href="io/micronaut/runner/build/ZipWriter.html#DEFAULT_TIMESTAMP"><code>ZipWriter.DEFAULT_TIMESTAMP</code></a> for every entry.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#%3Cinit%3E(java.io.OutputStream,java.time.Instant)" class="member-name-link">ZipWriter(OutputStream, Instant)</a> - Constructor for class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Creates a writer using a fixed timestamp for every entry.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/ZipWriter.html#%3Cinit%3E(java.io.OutputStream,java.time.Instant,boolean)" class="member-name-link">ZipWriter(OutputStream, Instant, boolean)</a> - Constructor for class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ZipWriter.html" title="class in io.micronaut.runner.build">ZipWriter</a></dt>
-<dd>
-<div class="block">Creates a writer using a fixed timestamp for every entry, choosing how strict duplicate detection is.</div>
 </dd>
 </dl>
 <a href="#I:A">A</a>&nbsp;<a href="#I:B">B</a>&nbsp;<a href="#I:C">C</a>&nbsp;<a href="#I:D">D</a>&nbsp;<a href="#I:E">E</a>&nbsp;<a href="#I:F">F</a>&nbsp;<a href="#I:G">G</a>&nbsp;<a href="#I:H">H</a>&nbsp;<a href="#I:I">I</a>&nbsp;<a href="#I:J">J</a>&nbsp;<a href="#I:L">L</a>&nbsp;<a href="#I:M">M</a>&nbsp;<a href="#I:N">N</a>&nbsp;<a href="#I:O">O</a>&nbsp;<a href="#I:P">P</a>&nbsp;<a href="#I:R">R</a>&nbsp;<a href="#I:S">S</a>&nbsp;<a href="#I:T">T</a>&nbsp;<a href="#I:U">U</a>&nbsp;<a href="#I:V">V</a>&nbsp;<a href="#I:W">W</a>&nbsp;<a href="#I:Z">Z</a>&nbsp;<br><a href="allclasses-index.html">All&nbsp;Classes&nbsp;and&nbsp;Interfaces</a><span class="vertical-separator">|</span><a href="allpackages-index.html">All&nbsp;Packages</a><span class="vertical-separator">|</span><a href="constant-values.html">Constant&nbsp;Field&nbsp;Values</a></main>

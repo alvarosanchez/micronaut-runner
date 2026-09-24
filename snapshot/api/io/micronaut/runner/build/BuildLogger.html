@@ -53,7 +53,6 @@ loadScripts(document, 'script');</script>
 <div class="toc-header">Contents&nbsp;<input type="text" class="filter-input" disabled placeholder="Filter contents (type .)" aria-label="Filter table of contents" autocomplete="off" spellcheck="false"><input type="reset" class="reset-filter" disabled tabindex="-1" value="Reset"></div>
 <ol class="toc-list" tabindex="-1">
 <li><a href="#" tabindex="0">Description</a></li>
-<li><a href="#nested-class-summary" tabindex="0">Nested Class Summary</a></li>
 <li><a href="#method-summary" tabindex="0">Method Summary</a></li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
@@ -71,10 +70,6 @@ loadScripts(document, 'script');</script>
 <h1 title="Interface BuildLogger" class="title">Interface BuildLogger</h1>
 </div>
 <section class="class-description" id="class-description">
-<dl class="notes">
-<dt>All Known Implementing Classes:</dt>
-<dd><code><a href="BuildLogger.NoOp.html" title="class in io.micronaut.runner.build">BuildLogger.NoOp</a>, <a href="BuildLogger.SystemErr.html" title="class in io.micronaut.runner.build">BuildLogger.SystemErr</a></code></dd>
-</dl>
 <hr>
 <div class="horizontal-scroll">
 <div class="type-signature"><span class="modifiers">public interface </span><span class="element-name type-name-label">BuildLogger</span></div>
@@ -93,29 +88,6 @@ watch the log can use <a href="#noOp()"><code>noOp()</code></a>.</p></div>
 </section>
 <section class="summary">
 <ul class="summary-list">
-<!-- ======== NESTED CLASS SUMMARY ======== -->
-<li>
-<section class="nested-class-summary" id="nested-class-summary">
-<h2>Nested Class Summary</h2>
-<div class="caption"><span>Nested Classes</span></div>
-<div class="summary-table three-column-summary">
-<div class="table-header col-first">Modifier and Type</div>
-<div class="table-header col-second">Interface</div>
-<div class="table-header col-last">Description</div>
-<div class="col-first even-row-color"><code>static final class&nbsp;</code></div>
-<div class="col-second even-row-color"><code><a href="BuildLogger.NoOp.html" class="type-name-link" title="class in io.micronaut.runner.build">BuildLogger.NoOp</a></code></div>
-<div class="col-last even-row-color">
-<div class="block">The logger <a href="#noOp()"><code>noOp()</code></a> hands out.</div>
-</div>
-<div class="col-first odd-row-color"><code>static final class&nbsp;</code></div>
-<div class="col-second odd-row-color"><code><a href="BuildLogger.SystemErr.html" class="type-name-link" title="class in io.micronaut.runner.build">BuildLogger.SystemErr</a></code></div>
-<div class="col-last odd-row-color">
-<div class="block">The logger <a href="#systemErr()"><code>systemErr()</code></a> hands out, which prefixes every line so that the origin of a message
-is obvious in a build log it shares with everything else.</div>
-</div>
-</div>
-</section>
-</li>
 <!-- ========== METHOD SUMMARY =========== -->
 <li>
 <section class="method-summary" id="method-summary">

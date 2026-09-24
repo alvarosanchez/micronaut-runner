@@ -82,7 +82,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#getAddExports()" tabindex="0">getAddExports()</a></li>
 <li><a href="#getEnableNativeAccess()" tabindex="0">getEnableNativeAccess()</a></li>
 <li><a href="#getManifestAttributes()" tabindex="0">getManifestAttributes()</a></li>
-<li><a href="#getJavaLauncherVersion()" tabindex="0">getJavaLauncherVersion()</a></li>
+<li><a href="#getOptions()" tabindex="0">getOptions()</a></li>
 <li><a href="#packageArchive()" tabindex="0">packageArchive()</a></li>
 </ol>
 </li>
@@ -115,7 +115,11 @@ loadScripts(document, 'script');</script>
 <p>The plugin takes the task's inputs from the project: conventions for its properties, and the
 <code>jar</code> task's manifest configuration for the application's own manifest attributes. The task
 therefore normally needs no configuration at all. See the plugin documentation for the properties worth
-overriding.</p></div>
+overriding.</p>
+
+<p>The task is wiring: it hands the project's facts and the options the build sets to the packaging
+library, which owns every option's default, parsing and validation. A <a href="../build/RunnerJarOption.Exposure.html#TYPED"><code>typed</code></a> option has a property here; every option, typed or not, can also be set by name through
+<a href="#getOptions()"><code>getOptions()</code></a>.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -252,31 +256,31 @@ the <code>jar</code> task's.</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/SortedMap.html" title="class or interface in java.util" class="external-link">SortedMap</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getInheritedManifestAttributes()" class="member-name-link">getInheritedManifestAttributes</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">What the packaging library reads from the <a href="#getInheritedManifest()">inherited manifest</a>: the
-six <code>Specification-*</code> and <code>Implementation-*</code> attributes and <code>Sealed</code>, keyed by
-<code>Name</code> in the main section and by <code>&lt;section&gt;Name</code> in a package section, whose name ends in
-<code>/</code>.</div>
+<div class="block">What the packaging library reads from the <a href="#getInheritedManifest()">inherited manifest</a>, as
+<a href="../build/ApplicationManifest.html#filter(java.util.Map,java.util.Map)"><code>ApplicationManifest.filter(Map, Map)</code></a> keeps it: the six <code>Specification-*</code> and
+<code>Implementation-*</code> attributes and <code>Sealed</code>, keyed by <code>Name</code> in the main section and by
+<code>&lt;section&gt;Name</code> in a package section, whose name ends in <code>/</code>.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getJavaLauncherVersion()" class="member-name-link">getJavaLauncherVersion</a>()</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getMainClass()" class="member-name-link">getMainClass</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">The project's target Java version, reported in the build log to make a mismatch between the JDK that
-compiled the application and the JDK that will run it easy to spot.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getMainClass()" class="member-name-link">getMainClass</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">The application main class.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getManifestAttributes()" class="member-name-link">getManifestAttributes</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getManifestAttributes()" class="member-name-link">getManifestAttributes</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Extra main manifest attributes.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getMultiRelease()" class="member-name-link">getMultiRelease</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getMultiRelease()" class="member-name-link">getMultiRelease</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Whether the application layer itself is multi-release.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getOptions()" class="member-name-link">getOptions</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="block">Packaging options by <a href="../build/RunnerJarOption.html#optionName()">name</a>, for the options that have no
+typed property here.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageArchive()" class="member-name-link">packageArchive</a>()</code></div>
@@ -418,10 +422,11 @@ archive carries are inputs: see <a href="#getInheritedManifestAttributes()"><cod
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Input
 </span><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/SortedMap.html" title="class or interface in java.util" class="external-link">SortedMap</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getInheritedManifestAttributes</span>()</div>
-<div class="block">What the packaging library reads from the <a href="#getInheritedManifest()">inherited manifest</a>: the
-six <code>Specification-*</code> and <code>Implementation-*</code> attributes and <code>Sealed</code>, keyed by
-<code>Name</code> in the main section and by <code>&lt;section&gt;Name</code> in a package section, whose name ends in
-<code>/</code>. Every other attribute and section is left out, so it cannot invalidate the archive.
+<div class="block">What the packaging library reads from the <a href="#getInheritedManifest()">inherited manifest</a>, as
+<a href="../build/ApplicationManifest.html#filter(java.util.Map,java.util.Map)"><code>ApplicationManifest.filter(Map, Map)</code></a> keeps it: the six <code>Specification-*</code> and
+<code>Implementation-*</code> attributes and <code>Sealed</code>, keyed by <code>Name</code> in the main section and by
+<code>&lt;section&gt;Name</code> in a package section, whose name ends in <code>/</code>. Every other attribute and
+section is left out, so it cannot invalidate the archive.
 
 <p>Empty when there is no inherited manifest, or when <a href="#getApplicationJar()"><code>getApplicationJar()</code></a> overrides it.</p></div>
 <dl class="notes">
@@ -516,10 +521,11 @@ identical project must not change its cache key.</p></div>
 <h3>getCompression</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Input
+@Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getCompression</span>()</div>
 <div class="block">How the entries of each dependency are stored: <code>STORED</code> re-packs them uncompressed so classes
 are defined straight from the memory-mapped archive, <code>PRESERVE</code> copies each dependency byte
-for byte.</div>
+for byte. The plugin sets <a href="../build/RunnerJarOption.html#COMPRESSION"><code>RunnerJarOption.COMPRESSION</code></a>'s default as the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the compression mode</dd>
@@ -532,8 +538,10 @@ for byte.</div>
 <h3>getMultiRelease</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Input
+@Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</span>&nbsp;<span class="element-name">getMultiRelease</span>()</div>
-<div class="block">Whether the application layer itself is multi-release.</div>
+<div class="block">Whether the application layer itself is multi-release. The plugin sets
+<a href="../build/RunnerJarOption.html#MULTI_RELEASE"><code>RunnerJarOption.MULTI_RELEASE</code></a>'s default as the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the multi-release flag</dd>
@@ -546,9 +554,11 @@ for byte.</div>
 <h3>getEntryStub</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Input
+@Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</span>&nbsp;<span class="element-name">getEntryStub</span>()</div>
 <div class="block">Whether to generate the entry stub that lets the launcher call the application main method through
-an interface rather than by reflection.</div>
+an interface rather than by reflection. The plugin sets <a href="../build/RunnerJarOption.html#ENTRY_STUB"><code>RunnerJarOption.ENTRY_STUB</code></a>'s default as
+the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the entry stub flag</dd>
@@ -561,6 +571,7 @@ an interface rather than by reflection.</div>
 <h3>getAddOpens</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Input
+@Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.ListProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getAddOpens</span>()</div>
 <div class="block">Module/package pairs to open, written into the manifest as <code>Add-Opens</code> so users need not pass
 the flag. Each entry uses JAR manifest syntax, for example <code>java.base/java.lang</code>, without the
@@ -577,6 +588,7 @@ command-line-only <code>=ALL-UNNAMED</code> suffix.</div>
 <h3>getAddExports</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Input
+@Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.ListProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getAddExports</span>()</div>
 <div class="block">Module/package pairs to export, written into the manifest as <code>Add-Exports</code>. Each entry uses JAR
 manifest syntax, for example <code>java.base/sun.nio.ch</code>, without the command-line-only
@@ -593,8 +605,10 @@ manifest syntax, for example <code>java.base/sun.nio.ch</code>, without the comm
 <h3>getEnableNativeAccess</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Input
+@Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</span>&nbsp;<span class="element-name">getEnableNativeAccess</span>()</div>
-<div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest.</div>
+<div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest. The plugin sets
+<a href="../build/RunnerJarOption.html#ENABLE_NATIVE_ACCESS"><code>RunnerJarOption.ENABLE_NATIVE_ACCESS</code></a>'s default as the convention.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the native access flag</dd>
@@ -607,6 +621,7 @@ manifest syntax, for example <code>java.base/sun.nio.ch</code>, without the comm
 <h3>getManifestAttributes</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Input
+@Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.MapProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getManifestAttributes</span>()</div>
 <div class="block">Extra main manifest attributes.</div>
 <dl class="notes">
@@ -617,16 +632,18 @@ manifest syntax, for example <code>java.base/sun.nio.ch</code>, without the comm
 </section>
 </li>
 <li>
-<section class="detail" id="getJavaLauncherVersion()">
-<h3>getJavaLauncherVersion</h3>
+<section class="detail" id="getOptions()">
+<h3>getOptions</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="annotations">@Internal
-</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getJavaLauncherVersion</span>()</div>
-<div class="block">The project's target Java version, reported in the build log to make a mismatch between the JDK that
-compiled the application and the JDK that will run it easy to spot.</div>
+<div class="member-signature"><span class="annotations">@Input
+</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.MapProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getOptions</span>()</div>
+<div class="block">Packaging options by <a href="../build/RunnerJarOption.html#optionName()">name</a>, for the options that have no
+typed property here. Each value uses the grammar <a href="../build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> documents, and the packaging
+library parses and validates it; an unknown name fails the task. An entry is applied after the typed
+properties, so it wins over a typed property of the same option.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the target version</dd>
+<dd>the options by name</dd>
 </dl>
 </div>
 </section>
