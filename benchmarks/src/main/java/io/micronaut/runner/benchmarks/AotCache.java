@@ -46,6 +46,9 @@ final class AotCache {
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(60);
     private static final List<String> CACHE_FLAGS = List.of("AOTCacheOutput", "AOTCache");
 
+    /** The exit status of a JVM ended by SIGTERM: 128 + 15. */
+    private static final int SIGTERM_EXIT_STATUS = 143;
+
     /** Creation flags that let strict JDK 27 launches accept the cache wherever ASLR places the heap. */
     private static final List<String> COMPATIBLE_OOP_COMPRESSION = List.of(
             "-XX:+UnlockDiagnosticVMOptions", "-XX:+AOTCompatibleOopCompression");
@@ -53,11 +56,13 @@ final class AotCache {
     /** The training JDK's probe result, taken once per harness run. */
     private static CreationProbe creationProbe;
 
-    /** Everything needed to exercise and terminate the training application deterministically. */
+    /**
+     * Everything needed to exercise the training application deterministically. The lifecycle ends every
+     * training and verification launch with SIGTERM, an orderly shutdown that writes the cache.
+     */
     record Request(Path cacheRoot,
                    String readinessPath,
                    List<String> workloadPaths,
-                   String terminationPath,
                    Duration timeout,
                    String applicationClass,
                    List<String> relevantJvmFlags,
@@ -121,7 +126,7 @@ final class AotCache {
         launchInputs.add(cache);
         CacheInfo cacheInfo = new CacheInfo("aot", identity, Files.size(cache),
                 elapsedMillis(preparationStarted), trainingMillis, reuse,
-                "trained or reused after bounded readiness, workload and normal termination; verified before timing",
+                "trained or reused after bounded readiness, workload and SIGTERM shutdown; verified before timing",
                 "application class reused from the AOT cache in a separate diagnostic launch");
         // The launch cannot start without the cache, so it is part of the complete deployment. Measured after
         // CacheInfo so that preparationMillis stays training plus verification.
@@ -241,14 +246,13 @@ final class AotCache {
 
     private static List<String> identityFlags(Variant source, Request request, List<String> creationFlags) {
         List<String> flags = new ArrayList<>(CACHE_FLAGS.size() + creationFlags.size()
-                + request.relevantJvmFlags().size() + source.command().size() + request.workloadPaths().size() + 3);
+                + request.relevantJvmFlags().size() + source.command().size() + request.workloadPaths().size() + 2);
         flags.addAll(CACHE_FLAGS);
         flags.addAll(creationFlags);
         flags.addAll(request.relevantJvmFlags());
         flags.addAll(source.command().subList(1, source.command().size()));
         flags.add("readiness=" + request.readinessPath());
         request.workloadPaths().forEach(path -> flags.add("workload=" + path));
-        flags.add("termination=" + request.terminationPath());
         return List.copyOf(flags);
     }
 
@@ -263,8 +267,13 @@ final class AotCache {
         // from every child JVM.
         List<String> arguments = new ArrayList<>(creationFlags);
         arguments.add("-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize());
-        runLifecycle(source, withJvmArguments(source.command(), arguments), request, null);
-        requireUsableCache(temporary);
+        ByteArrayOutputStream output = runLifecycle(source, withJvmArguments(source.command(), arguments), request,
+                null);
+        try {
+            requireUsableCache(temporary);
+        } catch (IOException failure) {
+            throw new IOException(failure.getMessage() + " after training" + tail(output), failure);
+        }
         try {
             Files.move(temporary, cache, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (AtomicMoveNotSupportedException ignored) {
@@ -296,10 +305,10 @@ final class AotCache {
                 + " is reused from AOT cache");
     }
 
-    private static void runLifecycle(Variant source,
-                                     List<String> command,
-                                     Request request,
-                                     Path cache) throws IOException, InterruptedException {
+    private static ByteArrayOutputStream runLifecycle(Variant source,
+                                                      List<String> command,
+                                                      Request request,
+                                                      Path cache) throws IOException, InterruptedException {
         int port = StartupHarness.freePort();
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(source.workingDirectory().toFile())
@@ -309,7 +318,6 @@ final class AotCache {
         environment.putAll(System.getenv());
         StartupHarness.removeInheritedJvmOptions(builder);
         environment.put("SERVER_PORT", Integer.toString(port));
-        environment.put("MICRONAUT_ENVIRONMENTS", "cds-training");
 
         Process process = null;
         Thread drain = null;
@@ -324,15 +332,21 @@ final class AotCache {
             drain = drain(process, output, drainFailure);
             awaitReadiness(client, process, port, request.readinessPath(), deadline, output);
             for (String path : request.workloadPaths()) {
-                requireOk(client, port, path, "training workload", false);
+                requireOk(client, port, path, "training workload");
             }
-            requireOk(client, port, request.terminationPath(), "normal termination request", true);
+            // On Linux and macOS this sends SIGTERM: the JVM runs its shutdown hooks, writes the cache and exits
+            // with 143 (128 + SIGTERM), or 0 when the application ends itself first. Windows has no SIGTERM, so
+            // there the JVM ends without writing a cache and the row becomes unavailable. This is
+            // ProcessHandle.destroy(), not Process.destroy(): the latter also closes the output pipe, and a
+            // training JVM whose output pipe is closed before SIGTERM still exits 143 but writes no cache
+            // (JDK 25.0.4.1).
+            process.toHandle().destroy();
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0 || !process.waitFor(remaining, TimeUnit.NANOSECONDS)) {
-                throw new IOException("AOT lifecycle did not terminate normally within "
+                throw new IOException("AOT lifecycle did not finish its SIGTERM shutdown within "
                         + request.timeout() + tail(output));
             }
-            if (process.exitValue() != 0) {
+            if (process.exitValue() != 0 && process.exitValue() != SIGTERM_EXIT_STATUS) {
                 throw new IOException("AOT lifecycle exited with status " + process.exitValue()
                         + (cache == null ? " while training" : " while verifying " + cache.getFileName())
                         + tail(output));
@@ -341,6 +355,7 @@ final class AotCache {
             if (drainFailure.get() != null) {
                 throw new IOException("could not capture AOT lifecycle output", drainFailure.get());
             }
+            return output;
         } finally {
             if (process != null && process.isAlive()) {
                 process.destroyForcibly().waitFor(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
@@ -363,7 +378,7 @@ final class AotCache {
                         + " before readiness" + tail(output));
             }
             try {
-                HttpResponse<String> response = send(client, port, path, false);
+                HttpResponse<String> response = send(client, port, path);
                 if (response.statusCode() == 200) {
                     return;
                 }
@@ -375,19 +390,18 @@ final class AotCache {
         throw new IOException("AOT lifecycle did not reach " + path + " before its timeout" + tail(output));
     }
 
-    private static void requireOk(HttpClient client, int port, String path, String phase, boolean post)
+    private static void requireOk(HttpClient client, int port, String path, String phase)
             throws IOException, InterruptedException {
-        HttpResponse<String> response = send(client, port, path, post);
+        HttpResponse<String> response = send(client, port, path);
         if (response.statusCode() != 200) {
             throw new IOException(phase + " " + path + " returned HTTP " + response.statusCode());
         }
     }
 
-    private static HttpResponse<String> send(HttpClient client, int port, String path, boolean post)
+    private static HttpResponse<String> send(HttpClient client, int port, String path)
             throws IOException, InterruptedException {
         URI uri = URI.create("http://127.0.0.1:" + port + (path.startsWith("/") ? path : "/" + path));
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(REQUEST_TIMEOUT);
-        HttpRequest request = (post ? builder.POST(HttpRequest.BodyPublishers.noBody()) : builder.GET()).build();
+        HttpRequest request = HttpRequest.newBuilder(uri).timeout(REQUEST_TIMEOUT).GET().build();
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 

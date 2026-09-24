@@ -104,7 +104,7 @@ final class SampleBuild {
     /** How long the extraction of a runner jar may take. */
     private static final long EXTRACT_TIMEOUT_SECONDS = 120;
 
-    /** How long cache training, workload, verification and normal termination may take. */
+    /** How long cache training, workload, verification and the SIGTERM shutdown may take. */
     private static final long CACHE_TIMEOUT_SECONDS = 120;
 
     private final Path sample;
@@ -330,8 +330,7 @@ final class SampleBuild {
 
     private AotCache.Request aotRequest() {
         return new AotCache.Request(artifacts.resolve("managed-aot"), "/hello", List.of("/hello"),
-                "/cds-training/stop", java.time.Duration.ofSeconds(CACHE_TIMEOUT_SECONDS),
-                mainClass, List.of(), log);
+                java.time.Duration.ofSeconds(CACHE_TIMEOUT_SECONDS), mainClass, List.of(), log);
     }
 
     private Variant attempt(String name, String description, VariantFactory factory) {

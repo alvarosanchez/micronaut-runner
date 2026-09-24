@@ -21,7 +21,6 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Forked application used to exercise the complete AOT cache training lifecycle. */
 public final class AotCacheFixture {
@@ -31,21 +30,9 @@ public final class AotCacheFixture {
 
     public static void main(String[] args) throws Exception {
         int port = Integer.parseInt(System.getenv("SERVER_PORT"));
-        AtomicBoolean workload = new AtomicBoolean();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         server.createContext("/ready", exchange -> respond(exchange, 200, "ready"));
-        server.createContext("/work", exchange -> {
-            workload.set(true);
-            respond(exchange, 200, "worked");
-        });
-        server.createContext("/stop", exchange -> {
-            if (!workload.get()) {
-                respond(exchange, 409, "workload not exercised");
-                return;
-            }
-            respond(exchange, 200, "stopping");
-            server.stop(0);
-        });
+        server.createContext("/work", exchange -> respond(exchange, 200, "worked"));
         server.start();
     }
 

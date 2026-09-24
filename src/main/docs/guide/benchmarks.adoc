@@ -114,7 +114,7 @@ only with an untrained Shadow layout. Classes that Runner's loader defines are c
 caching is not GraalVM Native Image.
 
 Training and verification are bounded build-time operations outside all timing samples. Training reaches
-HTTP readiness, exercises `/hello`, requests normal application termination, requires exit status zero and a
+HTTP readiness, exercises `/hello`, sends SIGTERM for an orderly shutdown, accepts exit status 0 or 143, requires a
 nonempty cache, then performs a strict diagnostic launch. The managed cache identity hashes the immutable
 final JAR (and therefore its embedded application and dependency bytes), exact JDK/VM build, architecture,
 launch options and workload paths. A changed input selects a different cache. A cached variant is measured only
@@ -162,9 +162,9 @@ matrix.
 `results.json` uses a versioned, relocatable provenance schema. It records runner and sample revisions plus
 clean/dirty state, exact JDK and platform identity, logical processor count and physical memory, cache policy,
 the seed and actual attempt order, relocatable effective command arrays, and SHA-256 identities for ordered
-launch inputs. The three ambient JVM-option variables are recorded only as present/absent and removed; their
-values are explicitly redacted. Full environments, repository locations, Java homes and private absolute paths
-are never serialized. A reader can therefore identify the exact launched bytes and reconstruct successes and
+launch inputs. The four ambient JVM-option variables (`JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and
+`JDK_AOT_VM_OPTIONS`) are recorded only as present/absent and removed; their values are explicitly redacted. Full
+environments, repository locations, Java homes and private absolute paths are never serialized. A reader can therefore identify the exact launched bytes and reconstruct successes and
 failures without depending on the original checkout location.
 
 For investigation only, `-Pbenchmarks.allowPartial=true` selects the explicit partial policy. An incomplete
