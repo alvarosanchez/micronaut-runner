@@ -659,6 +659,10 @@ decompression from class loading at the cost of a larger archive. Re-packing als
 never rewritten, so package metadata and sealing survive intact. The <code>PRESERVE</code> option copies each
 dependency byte for byte instead.</p>
 </div>
+<div class="paragraph">
+<p>Shadow can also write <code>STORED</code> entries (<code>entryCompression = ZipEntryCompression.STORED</code>), so the gain from not
+inflating is not specific to this format; <a href="#benchmarks">[benchmarks]</a> measures the two effects separately.</p>
+</div>
 </div>
 </div>
 <div class="sect1">
@@ -1345,8 +1349,8 @@ memory and are not kernel I/O counters.</p>
 </dd>
 <dt class="hdlist1">Startup</dt>
 <dd>
-<p>The whole process, from spawn to readiness, for the same application packaged in the eleven modes
-that the current harness implements:</p>
+<p>The whole process, from spawn to readiness, for the same application packaged in each mode that the
+current harness implements:</p>
 <table class="tableblock frame-all grid-all stretch">
 <colgroup>
 <col style="width: 25%;">
@@ -1372,6 +1376,11 @@ that the current harness implements:</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">One JAR flattened by the Shadow plugin</p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-stored</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The same Shadow task inputs written with <code>entryCompression = ZipEntryCompression.STORED</code>, a compression-matched
+control</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-aot</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The identical Shadow JAR with a trained, application-class-verified JDK AOT cache</p></td>
 </tr>
@@ -1385,15 +1394,12 @@ that the current harness implements:</p>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-reflection</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The same stored Runner JAR inputs with the entry stub disabled, as a reflection ablation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating ablation: the same stored Runner JAR inputs with the entry stub disabled, which measures the
+plugin-default entry stub against reflective entry</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve-reflection</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The same preserved Runner JAR inputs with the entry stub disabled, as a reflection ablation</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted</code></p></td>
@@ -1422,6 +1428,11 @@ working directory, measured workload and JVM options except for the one applicat
 Default JDK class sharing remains enabled when the selected JDK enables it, but reuse of platform classes from
 the JDK&#8217;s default archive is not evidence of trained application-class AOT cache reuse; default JDK class
 sharing is a separate baseline condition.</p>
+</div>
+<div class="paragraph">
+<p>The compression-matched pairs are <code>runner-stored</code>/<code>shadow-stored</code>, where neither side inflates class bytes, and
+<code>runner-preserve</code>/<code>shadow</code>, where both do; they measure what Runner&#8217;s layout itself buys. <code>runner-stored</code>/<code>shadow</code>
+is the default-vs-default pair, and its difference also includes the cost of inflating Shadow&#8217;s DEFLATED entries.</p>
 </div>
 </div>
 </div>
@@ -1491,8 +1502,13 @@ inferring it from default JDK class sharing.</p>
 <pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">./gradlew :benchmarks:jmh
 ./gradlew :benchmarks:packagingProfile
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
-./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true</code></pre>
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.optionalRows=true -Pbenchmarks.iterations=40</code></pre>
 </div>
+</div>
+<div class="paragraph">
+<p>The last command adds the opt-in rows, such as the entry-stub ablation. Run it with 40 iterations: at 20, the
+stub effect&#8217;s interval still spanned zero.</p>
 </div>
 <div class="paragraph">
 <p><code>-Pbenchmarks.workloads=no-manifest,small,representative,wide</code> selects packaging shapes and
@@ -1515,7 +1531,8 @@ counts separately for warm-up and measured phases. <code>results.json</code> als
 its variant, iteration, global schedule order, phase, outcome, failure and exit information, and timing only
 when the attempt produced a valid measurement. A build-unavailable variant is skipped, not mislabeled as a
 failed process attempt. A warm-up failure is visible but does not by itself invalidate a complete measured
-matrix.</p>
+matrix. Opt-in rows are built only with <code>-Pbenchmarks.optionalRows=true</code>, and their failures are reported but
+never change the exit code.</p>
 </div>
 <div class="paragraph">
 <p><code>results.json</code> uses a versioned, relocatable provenance schema. It records runner and sample revisions plus

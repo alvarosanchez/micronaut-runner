@@ -95,6 +95,7 @@ java io.micronaut.runner.benchmarks.StartupBenchmark \
   [ --timeout    &lt;s&gt;  ]  how long one start may take (default 120)
   [ --diagnostics     ]  additionally make one -Xlog:class+load run per variant
   [ --allow-partial   ]  exploratory mode: exit zero if any measured run succeeds
+  [ --optional-rows   ]  also build and measure the opt-in rows, which are reported but never gate
 </pre>
 
 <h2 id="the-methodology-and-why-each-rule-is-there-heading">The methodology, and why each rule is there</h2>
@@ -118,7 +119,8 @@ java io.micronaut.runner.benchmarks.StartupBenchmark \
 
 <p>The default required policy exits <code>0</code> only when every required variant produced every requested
 measured run. Explicit partial mode exits <code>0</code> when at least one measured run succeeded. Both
-reports are written before either decision.</p></div>
+reports are written before either decision. The required variants are the core rows,
+<code>SampleBuild.variantNames()</code>; the opt-in rows that <code>--optional-rows</code> adds are never required.</p></div>
 </div>
 </section>
 <section class="summary">
