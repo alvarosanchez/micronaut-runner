@@ -122,7 +122,7 @@ public final class StartupBenchmark {
         }
 
         List<VariantResult> results;
-        List<StartupHarness.ClassLoadCount> diagnostics = new ArrayList<>();
+        List<StartupHarness.DiagnosticRun> diagnostics = new ArrayList<>();
         try (StartupHarness harness = new StartupHarness(options.readinessPath(), options.timeout())) {
             results = measure(harness, variants, options, log);
             if (options.diagnostics()) {
@@ -149,7 +149,7 @@ public final class StartupBenchmark {
 
     static int finish(RunContext context,
                       List<VariantResult> results,
-                      List<StartupHarness.ClassLoadCount> diagnostics,
+                      List<StartupHarness.DiagnosticRun> diagnostics,
                       PrintStream log) throws IOException {
         Reports.write(context.outputDirectory(), context, results, diagnostics);
         log.println("[startup-benchmark] wrote " + context.outputDirectory().resolve(Reports.RESULTS_FILE));
@@ -232,12 +232,12 @@ public final class StartupBenchmark {
         return results;
     }
 
-    private static List<StartupHarness.ClassLoadCount> collectDiagnostics(StartupHarness harness,
-                                                                          List<Variant> variants,
-                                                                          Options options,
-                                                                          PrintStream log)
+    private static List<StartupHarness.DiagnosticRun> collectDiagnostics(StartupHarness harness,
+                                                                         List<Variant> variants,
+                                                                         Options options,
+                                                                         PrintStream log)
             throws InterruptedException {
-        List<StartupHarness.ClassLoadCount> counts = new ArrayList<>();
+        List<StartupHarness.DiagnosticRun> runs = new ArrayList<>();
         Path logs = options.outputDirectory().resolve("diagnostics");
         for (Variant variant : variants) {
             if (!variant.available()) {
@@ -245,14 +245,14 @@ public final class StartupBenchmark {
             }
             try {
                 Files.createDirectories(logs);
-                counts.add(harness.diagnose(variant, logs.resolve(variant.name() + "-class-load.log")));
+                runs.add(harness.diagnose(variant, logs.resolve(variant.name() + "-class-load.log")));
                 log.println("[startup-benchmark] diagnostic run of " + variant.name() + " done");
             } catch (IOException e) {
                 log.println("[startup-benchmark] diagnostic run of " + variant.name()
                         + " failed: " + oneLine(e.getMessage()));
             }
         }
-        return counts;
+        return runs;
     }
 
     private static String oneLine(String message) {
@@ -272,7 +272,7 @@ public final class StartupBenchmark {
      * @param seed             the seed of the shuffle and the bootstrap
      * @param readinessPath    the HTTP path polled for readiness
      * @param timeout          how long one start may take
-     * @param diagnostics      whether to make separate class-load counting runs
+     * @param diagnostics      whether to make separate {@code -Xlog:class+load} runs for per-class inspection
      * @param completenessPolicy whether incomplete measured results fail the invocation
      */
     record Options(Path sample,

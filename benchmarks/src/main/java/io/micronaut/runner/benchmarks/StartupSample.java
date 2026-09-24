@@ -32,6 +32,8 @@ package io.micronaut.runner.benchmarks;
  * @param pollGapMillis    the interval between the last failed poll and the successful one, which bounds
  *                         how much of {@code readinessMillis} is polling latency rather than startup
  * @param exitCode         the exit status after the process was destroyed, or {@code -1} if it was killed
+ * @param atReadiness      memory and loaded classes read once after readiness, outside the timed interval;
+ *                         {@link ReadinessSnapshot#UNAVAILABLE} when nothing could be read
  */
 record StartupSample(int iteration,
                      boolean warmup,
@@ -40,5 +42,6 @@ record StartupSample(int iteration,
                      double logLineMillis,
                      double frameworkMillis,
                      double pollGapMillis,
-                     int exitCode) {
+                     int exitCode,
+                     ReadinessSnapshot atReadiness) {
 }

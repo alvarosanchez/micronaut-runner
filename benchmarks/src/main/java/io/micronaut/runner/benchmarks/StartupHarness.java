@@ -49,7 +49,10 @@ import java.util.regex.Pattern;
  *       on the wire means a client can be served.</li>
  *   <li><strong>No {@code -Xlog} on a timing run.</strong> Unified logging costs milliseconds and it costs
  *       them unevenly across formats, which is the size of the effect being measured. {@link #diagnose}
- *       exists for class-load counting and everything it produces is labelled a diagnostic.</li>
+ *       exists for per-class inspection and everything it produces is labelled a diagnostic.</li>
+ *   <li><strong>Nothing between spawn and readiness but polling.</strong> Memory and loaded classes are read
+ *       once, by the {@link ReadinessProbe}, after readiness is final and before any wait or
+ *       {@code destroy()}, so the probe can neither move the readiness time nor miss the process.</li>
  *   <li><strong>A free port per run, never a fixed one.</strong></li>
  *   <li><strong>The process is destroyed in a {@code finally} block,</strong> whether the run succeeded,
  *       timed out or threw. A leaked JVM holding a port would poison every run after it.</li>
@@ -69,9 +72,6 @@ import java.util.regex.Pattern;
  * </ol>
  */
 final class StartupHarness implements StartupRunner, AutoCloseable {
-
-    /** Class-load logging remains active until the child has completed shutdown. */
-    static final String DIAGNOSTIC_HORIZON = "spawn-through-shutdown";
 
     /** A failed start with the child exit status when the process supplied one. */
     static final class RunFailure extends IOException {
@@ -124,14 +124,33 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
     /** Micronaut's own startup line. */
     private static final Pattern STARTUP_LINE = Pattern.compile("Startup completed in (\\d+)ms");
 
-    /** Injectable timing, port and environment policy used by deterministic forked tests. */
+    /**
+     * Reads a child's memory and loaded classes once its readiness is final. It is called while the child is
+     * alive, outside the timed interval; a {@link RuntimeException} it throws makes the snapshot unavailable
+     * and never fails the run.
+     */
+    @FunctionalInterface
+    interface ReadinessProbe {
+
+        /**
+         * Takes the snapshot.
+         *
+         * @param pid            the child
+         * @param javaExecutable the variant's {@code java}
+         * @return the snapshot, whose {@code probeMillis} the harness sets
+         */
+        ReadinessSnapshot take(long pid, Path javaExecutable);
+    }
+
+    /** Injectable timing, port, environment and probe policy used by deterministic forked tests. */
     record Settings(Duration pollInterval,
                     Duration pollTimeout,
                     Duration logLineGrace,
                     Duration shutdownGrace,
                     Duration servingGrace,
                     IntSupplier portSupplier,
-                    Map<String, String> environment) {
+                    Map<String, String> environment,
+                    ReadinessProbe readinessProbe) {
 
         Settings {
             environment = Map.copyOf(environment);
@@ -139,7 +158,7 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
 
         static Settings defaults() {
             return new Settings(POLL_INTERVAL, POLL_TIMEOUT, LOG_LINE_GRACE, SHUTDOWN_GRACE, SERVING_GRACE,
-                    StartupHarness::freePort, System.getenv());
+                    StartupHarness::freePort, System.getenv(), ReadinessSnapshot::take);
         }
     }
 
@@ -188,31 +207,20 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
 
     /**
      * A diagnostic run, explicitly not a timing run: it carries {@code -Xlog:class+load} and its cost is
-     * therefore not comparable with anything {@link #run} produced.
+     * therefore not comparable with anything {@link #run} produced. The log is for per-class inspection; the
+     * only reported class counts are the timing runs' readiness snapshots.
      *
      * @param variant the variant to start
      * @param logFile where the unified log is written
-     * @return how many classes the JVM loaded from process spawn through completed shutdown
+     * @return the run's readiness with logging and its relocatable command
      * @throws IOException          if the run fails
      * @throws InterruptedException if the wait is interrupted
      */
-    ClassLoadCount diagnose(Variant variant, Path logFile) throws IOException, InterruptedException {
+    DiagnosticRun diagnose(Variant variant, Path logFile) throws IOException, InterruptedException {
         Files.deleteIfExists(logFile);
         List<String> diagnosticArguments = List.of("-Xlog:class+load=info:file=" + logFile.toAbsolutePath());
         StartupSample sample = run(variant, -1, true, diagnosticArguments);
-        int loaded = 0;
-        int shared = 0;
-        if (Files.isRegularFile(logFile)) {
-            for (String line : Files.readAllLines(logFile, StandardCharsets.UTF_8)) {
-                if (line.contains("[class,load]")) {
-                    loaded++;
-                    if (line.contains("shared objects file")) {
-                        shared++;
-                    }
-                }
-            }
-        }
-        return new ClassLoadCount(variant.name(), loaded, shared, sample.readinessMillis(), DIAGNOSTIC_HORIZON,
+        return new DiagnosticRun(variant.name(), sample.readinessMillis(),
                 BenchmarkProvenance.relocatableCommand(variant,
                         List.of("-Xlog:class+load=info:file=${diagnostic-log}")));
     }
@@ -288,18 +296,43 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
                         + startupTimeout + tail(capture), null);
             }
 
+            // start, ready and lastFailureEnd are final and the child is alive: the one place where a probe can
+            // neither move readinessMillis nor miss the process.
+            ReadinessSnapshot atReadiness = probe(process, Path.of(variant.command().get(0)), ready);
             awaitStartupLine(capture, settings.logLineGrace());
             return new StartupSample(iteration, warmup, port,
                     (ready - start) / 1_000_000.0,
                     capture.logLineMillis(),
                     capture.reportedMillis(),
                     (ready - lastFailureEnd) / 1_000_000.0,
-                    destroy(process, drain, settings.shutdownGrace()));
+                    destroy(process, drain, settings.shutdownGrace()),
+                    atReadiness);
         } finally {
             if (process != null && process.isAlive()) {
                 destroy(process, drain, settings.shutdownGrace());
             }
         }
+    }
+
+    /**
+     * Takes the readiness snapshot. A failing probe yields an unavailable snapshot, never a failed run.
+     *
+     * @param process        the ready child
+     * @param javaExecutable the variant's {@code java}, even if a prefix is ever put in front of the command
+     * @param ready          the readiness instant
+     * @return the snapshot, with the time from readiness to its completion
+     */
+    private ReadinessSnapshot probe(Process process, Path javaExecutable, long ready) {
+        ReadinessSnapshot snapshot;
+        try {
+            snapshot = settings.readinessProbe().take(process.pid(), javaExecutable);
+        } catch (RuntimeException e) {
+            snapshot = null;
+        }
+        if (snapshot == null) {
+            snapshot = ReadinessSnapshot.UNAVAILABLE;
+        }
+        return snapshot.withProbeMillis((System.nanoTime() - ready) / 1_000_000.0);
     }
 
     /**
@@ -448,22 +481,14 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
     /**
      * The result of a diagnostic run. Never mixed into the timing statistics.
      *
-     * @param variant           the variant that was run
-     * @param classesLoaded     how many classes the JVM loaded
-     * @param fromSharedArchive how many of those came from a CDS or AOT archive
-     * @param readinessMillis   the readiness time of this run, which is slower than a timing run because
-     *                          of the logging and is reported only so the slowdown is visible
-     * @param horizon           the complete interval covered by the class-load log
-     * @param command           the effective relocatable diagnostic command
+     * @param variant         the variant that was run
+     * @param readinessMillis the readiness time of this run, which is slower than a timing run because of the
+     *                        logging and is reported only so the slowdown is visible
+     * @param command         the effective relocatable diagnostic command
      */
-    record ClassLoadCount(String variant,
-                          int classesLoaded,
-                          int fromSharedArchive,
-                          double readinessMillis,
-                          String horizon,
-                          List<String> command) {
+    record DiagnosticRun(String variant, double readinessMillis, List<String> command) {
 
-        ClassLoadCount {
+        DiagnosticRun {
             command = List.copyOf(command);
         }
     }

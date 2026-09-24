@@ -41,6 +41,12 @@ final class Reports {
     /** The file every raw sample goes to. */
     static final String RESULTS_FILE = "results.json";
 
+    /** RSS counts mapped files' clean pages; the report says so wherever it shows RSS beside private memory. */
+    private static final String RSS_VERSUS_PRIVATE = "RSS includes clean, file-backed pages of memory-mapped"
+            + " files (the Runner archive, CDS/AOT archives, JDK libraries). Private memory (`phys_footprint` on"
+            + " macOS, `RssAnon` on Linux) is the like-for-like comparison between a mapped archive and a flattened"
+            + " JAR.";
+
     private Reports() {
     }
 
@@ -50,13 +56,13 @@ final class Reports {
      * @param outputDirectory where they go
      * @param context         what this run was
      * @param results         one entry per variant, in report order
-     * @param diagnostics     class-load counts from separate, explicitly labelled runs
+     * @param diagnostics     separate, explicitly labelled {@code -Xlog:class+load} runs
      * @throws IOException if either file cannot be written
      */
     static void write(Path outputDirectory,
                       RunContext context,
                       List<VariantResult> results,
-                      List<StartupHarness.ClassLoadCount> diagnostics) throws IOException {
+                      List<StartupHarness.DiagnosticRun> diagnostics) throws IOException {
         Files.createDirectories(outputDirectory);
         List<ComparisonRow> comparisons = comparisons(context, results);
         Files.writeString(outputDirectory.resolve(RESULTS_FILE), json(context, results, comparisons, diagnostics),
@@ -68,7 +74,7 @@ final class Reports {
     private static String json(RunContext context,
                                List<VariantResult> results,
                                List<ComparisonRow> comparisons,
-                               List<StartupHarness.ClassLoadCount> diagnostics) throws IOException {
+                               List<StartupHarness.DiagnosticRun> diagnostics) throws IOException {
         StringBuilder out = new StringBuilder(64 * 1024);
         BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
         out.append("{\n");
@@ -128,15 +134,12 @@ final class Reports {
                 .append(" application-class reuse\",\n");
         out.append("    \"runs\": [\n");
         for (int i = 0; i < diagnostics.size(); i++) {
-            StartupHarness.ClassLoadCount count = diagnostics.get(i);
-            out.append("      {\"variant\": ").append(quote(count.variant()))
-                    .append(", \"classesLoaded\": ").append(count.classesLoaded())
-                    .append(", \"fromSharedArchive\": ").append(count.fromSharedArchive())
-                    .append(", \"horizon\": ").append(quote(count.horizon()))
-                    .append(", \"readinessMillisWithLogging\": ").append(number(count.readinessMillis()))
+            StartupHarness.DiagnosticRun run = diagnostics.get(i);
+            out.append("      {\"variant\": ").append(quote(run.variant()))
+                    .append(", \"readinessMillisWithLogging\": ").append(number(run.readinessMillis()))
                     .append(", \"command\": [");
-            for (int argument = 0; argument < count.command().size(); argument++) {
-                out.append(argument == 0 ? "" : ", ").append(quote(count.command().get(argument)));
+            for (int argument = 0; argument < run.command().size(); argument++) {
+                out.append(argument == 0 ? "" : ", ").append(quote(run.command().get(argument)));
             }
             out.append("]}").append(i == diagnostics.size() - 1 ? "\n" : ",\n");
         }
@@ -232,6 +235,7 @@ final class Reports {
         out.append("      \"readiness\": ").append(statistics(result.readiness())).append(",\n");
         out.append("      \"logLine\": ").append(statistics(result.logLine())).append(",\n");
         out.append("      \"framework\": ").append(statistics(result.framework())).append(",\n");
+        out.append("      \"atReadiness\": ").append(snapshot(result.atReadiness())).append(",\n");
         out.append("      \"warmup\": ");
         appendCounts(out, result.warmup());
         out.append(",\n");
@@ -329,6 +333,7 @@ final class Reports {
                         .append(", \"pollGapMillis\": ").append(number(sample.pollGapMillis()))
                         .append('}');
             }
+            out.append(", \"atReadiness\": ").append(sample == null ? "null" : snapshot(sample.atReadiness()));
             out.append('}').append(i == attempts.size() - 1 ? "\n" : ",\n");
         }
         out.append("  ]");
@@ -438,10 +443,28 @@ final class Reports {
                 + ", \"ciReason\": " + quote(statistics.ciReason()) + "}";
     }
 
+    /** All nine fields, each {@code null} where the value is unavailable ({@code -1}). */
+    private static String snapshot(ReadinessSnapshot snapshot) {
+        ReadinessSnapshot value = snapshot == null ? ReadinessSnapshot.UNAVAILABLE : snapshot;
+        return "{\"probeMillis\": " + (value.probeMillis() < 0 ? "null" : number(value.probeMillis()))
+                + ", \"rssBytes\": " + nullableCount(value.rssBytes())
+                + ", \"peakRssBytes\": " + nullableCount(value.peakRssBytes())
+                + ", \"anonBytes\": " + nullableCount(value.anonBytes())
+                + ", \"fileBytes\": " + nullableCount(value.fileBytes())
+                + ", \"footprintBytes\": " + nullableCount(value.footprintBytes())
+                + ", \"peakFootprintBytes\": " + nullableCount(value.peakFootprintBytes())
+                + ", \"loadedClasses\": " + nullableCount(value.loadedClasses())
+                + ", \"sharedClasses\": " + nullableCount(value.sharedClasses()) + "}";
+    }
+
+    private static String nullableCount(long value) {
+        return value < 0 ? "null" : Long.toString(value);
+    }
+
     private static String markdown(RunContext context,
                                    List<VariantResult> results,
                                    List<ComparisonRow> comparisons,
-                                   List<StartupHarness.ClassLoadCount> diagnostics) {
+                                   List<StartupHarness.DiagnosticRun> diagnostics) {
         StringBuilder out = new StringBuilder(8 * 1024);
         BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
         out.append("# Startup benchmark\n\n");
@@ -488,8 +511,10 @@ final class Reports {
         out.append("- **Readiness**: first HTTP 200 from `").append(context.readinessPath())
                 .append("`, polled every 2 ms with one persistent client, timed on a single monotonic")
                 .append(" clock that starts immediately before the process is spawned\n");
-        out.append("- **Timing runs carry no `-Xlog` flags.** Class-load counts, when collected, come from")
-                .append(" separate runs and are labelled as such below\n");
+        out.append("- **Timing runs carry no `-Xlog` flags.** Memory and loaded-class counts come from every")
+                .append(" timing run, read once after readiness and outside the timed interval; `jstat` reads the")
+                .append(" class counters and adds no flag to the child. `-Xlog:class+load` logs, when collected,")
+                .append(" come from separate diagnostic runs labelled as such below\n");
         out.append("- **Generated**: ").append(context.generatedAt()).append("\n\n");
 
         out.append("## Matrix status\n\n");
@@ -533,6 +558,7 @@ final class Reports {
         }
         out.append('\n');
 
+        appendMemoryAtReadiness(out, results);
         appendDeploymentSizes(out, results);
         appendCachePreparation(out, results);
         appendIncompleteDetails(out, context, results, status);
@@ -553,15 +579,14 @@ final class Reports {
             out.append("## Diagnostic runs — NOT timing runs\n\n");
             out.append("These runs carry `-Xlog:class+load=info`, which costs milliseconds and costs them")
                     .append(" unevenly. Their times are here only so the size of that penalty is visible;")
-                    .append(" they must never be compared with the table above. Counts cover **process")
-                    .append(" spawn through completed shutdown**, so they can include classes loaded after")
-                    .append(" readiness and by shutdown hooks.\n\n");
-            out.append("| Variant | Classes loaded | From a shared archive | Readiness *with logging* |\n");
-            out.append("|---|---:|---:|---:|\n");
-            for (StartupHarness.ClassLoadCount count : diagnostics) {
-                out.append("| `").append(count.variant()).append("` | ").append(count.classesLoaded())
-                        .append(" | ").append(count.fromSharedArchive()).append(" | ")
-                        .append(millis(count.readinessMillis())).append(" |\n");
+                    .append(" they must never be compared with the table above. Their logs, in `diagnostics/`,")
+                    .append(" are for per-class inspection; the class counts this report gives are the ones at")
+                    .append(" readiness above.\n\n");
+            out.append("| Variant | Readiness *with logging* |\n");
+            out.append("|---|---:|\n");
+            for (StartupHarness.DiagnosticRun run : diagnostics) {
+                out.append("| `").append(run.variant()).append("` | ")
+                        .append(millis(run.readinessMillis())).append(" |\n");
             }
             out.append('\n');
         }
@@ -589,6 +614,85 @@ final class Reports {
                 .append(" status and attempt records distinguish skipped cells from failed processes.\n");
         out.append("- Every raw sample, warm-up runs included, is in `").append(RESULTS_FILE).append("`.\n");
         return out.toString();
+    }
+
+    /**
+     * One row per measured variant: the medians of its readiness snapshots. Memory is in MiB; the private
+     * and peak columns name the platform's own counters, because they are not the same quantity on macOS and
+     * Linux.
+     */
+    private static void appendMemoryAtReadiness(StringBuilder out, List<VariantResult> results) {
+        out.append("## Memory and classes at readiness (not timed)\n\n");
+        out.append("Read once per successful measured run, after readiness and outside the timed interval: memory")
+                .append(" from `/proc/<pid>/status` on Linux or `proc_pid_rusage` on macOS, loaded classes from")
+                .append(" `jstat -snap`. Medians over successful measured runs; `—` means unavailable. ")
+                .append(RSS_VERSUS_PRIVATE).append("\n\n");
+        out.append("| Variant | Runs | RSS, median | ").append(privateLabel()).append(", median | ")
+                .append(peakLabel()).append(", median | Loaded classes, median | From a shared archive, median |\n");
+        out.append("|---|---:|---:|---:|---:|---:|---:|\n");
+        List<Double> probes = new ArrayList<>();
+        boolean any = false;
+        for (VariantResult result : results) {
+            if (!result.variant().available() || result.readiness() == null) {
+                continue;
+            }
+            any = true;
+            ReadinessSnapshot medians = result.atReadiness() == null
+                    ? ReadinessSnapshot.UNAVAILABLE : result.atReadiness();
+            out.append("| `").append(result.variant().name()).append("` | ").append(result.readiness().count())
+                    .append(" | ").append(mebibytes(medians.rssBytes()))
+                    .append(" | ").append(mebibytes(privateBytes(medians)))
+                    .append(" | ").append(mebibytes(peakBytes(medians)))
+                    .append(" | ").append(medians.loadedClasses() < 0 ? "—" : medians.loadedClasses())
+                    .append(" | ").append(medians.sharedClasses() < 0 ? "—" : medians.sharedClasses())
+                    .append(" |\n");
+            for (StartupSample sample : result.samples()) {
+                if (!sample.warmup() && sample.atReadiness() != null && sample.atReadiness().probeMillis() >= 0) {
+                    probes.add(sample.atReadiness().probeMillis());
+                }
+            }
+        }
+        if (!any) {
+            out.append("| — | **not measured** | — | — | — | — | — |\n");
+        }
+        out.append('\n');
+        if (probes.isEmpty()) {
+            out.append("No readiness snapshot was taken.\n\n");
+        } else {
+            double[] sorted = probes.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+            out.append("Snapshots were complete a median of ").append(millis(Statistics.percentile(sorted, 0.5)))
+                    .append(" after readiness (`probeMillis`, over all ").append(sorted.length)
+                    .append(" successful measured runs).\n\n");
+        }
+    }
+
+    private static String privateLabel() {
+        return ReadinessSnapshot.macOs() ? "Private (`phys_footprint`)" : "Private (`RssAnon`)";
+    }
+
+    private static String peakLabel() {
+        return ReadinessSnapshot.macOs() ? "Peak (`phys_footprint_peak`)" : "Peak (`VmHWM`)";
+    }
+
+    private static long privateBytes(ReadinessSnapshot snapshot) {
+        return ReadinessSnapshot.macOs() ? snapshot.footprintBytes() : snapshot.anonBytes();
+    }
+
+    private static long peakBytes(ReadinessSnapshot snapshot) {
+        return ReadinessSnapshot.macOs() ? snapshot.peakFootprintBytes() : snapshot.peakRssBytes();
+    }
+
+    private static String mebibytes(long bytes) {
+        return bytes < 0 ? "—" : String.format(Locale.ROOT, "%.1f MiB", bytes / (1024.0 * 1024.0));
+    }
+
+    private static String signedMebibytes(long candidate, long baseline) {
+        return candidate < 0 || baseline < 0
+                ? "—" : String.format(Locale.ROOT, "%+.1f MiB", (candidate - baseline) / (1024.0 * 1024.0));
+    }
+
+    private static String signedCount(long candidate, long baseline) {
+        return candidate < 0 || baseline < 0 ? "—" : String.format(Locale.ROOT, "%+d", candidate - baseline);
     }
 
     private static void appendDeploymentSizes(StringBuilder out, List<VariantResult> results) {
@@ -727,6 +831,32 @@ final class Reports {
         if (excluded) {
             out.append('\n');
         }
+        appendMemoryDifferences(out, rows);
+    }
+
+    /**
+     * The memory counterpart of the timing table: the same rows, in the same order, from the per-variant
+     * medians of the readiness snapshots.
+     */
+    private static void appendMemoryDifferences(StringBuilder out, List<ComparisonRow> rows) {
+        out.append("| Comparison | Δ RSS at readiness | Δ ").append(privateLabel()).append(" at readiness |")
+                .append(" Δ loaded classes at readiness |\n")
+                .append("|---|---:|---:|---:|\n");
+        for (ComparisonRow row : rows) {
+            PairedComparison comparison = row.comparison();
+            ReadinessSnapshot candidate = row.candidate().atReadiness() == null
+                    ? ReadinessSnapshot.UNAVAILABLE : row.candidate().atReadiness();
+            ReadinessSnapshot baseline = row.baseline().atReadiness() == null
+                    ? ReadinessSnapshot.UNAVAILABLE : row.baseline().atReadiness();
+            out.append("| ").append(row.spec().label()).append(": `").append(comparison.candidateVariant())
+                    .append("` − `").append(comparison.baselineVariant()).append("` | ")
+                    .append(signedMebibytes(candidate.rssBytes(), baseline.rssBytes())).append(" | ")
+                    .append(signedMebibytes(privateBytes(candidate), privateBytes(baseline))).append(" | ")
+                    .append(signedCount(candidate.loadedClasses(), baseline.loadedClasses())).append(" |\n");
+        }
+        out.append('\n');
+        out.append("Memory and class Δ are differences of the two per-variant medians (candidate − baseline), not")
+                .append(" paired estimates, and carry no interval. ").append(RSS_VERSUS_PRIVATE).append("\n\n");
     }
 
     private static String nullableMillis(Double value) {

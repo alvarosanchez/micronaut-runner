@@ -47,9 +47,6 @@ public final class StartupHarnessFixture {
         int port = Integer.parseInt(System.getenv("SERVER_PORT"));
         ServerSocket server = new ServerSocket(port);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            if (mode.equals("diagnostic")) {
-                ShutdownMarker.touch();
-            }
             try {
                 server.close();
             } catch (IOException ignored) {
@@ -95,13 +92,6 @@ public final class StartupHarnessFixture {
             Files.writeString(file, value, StandardCharsets.UTF_8);
         } catch (IOException ignored) {
             // Best-effort fixture signal during JVM shutdown.
-        }
-    }
-
-    /** Loaded only by the shutdown hook so diagnostics prove their actual observation horizon. */
-    static final class ShutdownMarker {
-        static void touch() {
-            System.out.println(ShutdownMarker.class.getName());
         }
     }
 }
