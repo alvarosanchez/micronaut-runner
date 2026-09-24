@@ -19,8 +19,11 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.ClosedChannelException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +36,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -508,6 +512,37 @@ class IndexTest {
         assertTrue(failure.getMessage().startsWith(Index.REBUILD_MESSAGE), failure.getMessage());
     }
 
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void reportsANestedJarHeaderOutsideTheArchiveAsStale(boolean mapped) throws IOException {
+        // The jar table check at open bounds each jar's data, not its local header offset, so a header
+        // offset past the end reaches validateJar, and it means the index does not describe this file.
+        for (long header : new long[] {-1L, 1L << 40}) {
+            Index index = Index.open(openSource(nestedJarArchive(header), mapped));
+            index.validateJar(0);
+            IllegalStateException failure = assertThrows(IllegalStateException.class,
+                    () -> index.validateJar(1));
+            assertTrue(failure.getMessage().startsWith(Index.REBUILD_MESSAGE), failure.getMessage());
+            assertTrue(failure.getMessage().contains("is outside the archive"), failure.getMessage());
+        }
+    }
+
+    @Test
+    void reportsAHeaderThatCannotBeReadAsAnIoFailure() throws IOException {
+        // A read that fails says nothing about the jar: before, a closed positional source was reported as
+        // a jar modified after packaging, which sent users to rebuild an archive that was fine.
+        ArchiveSource source = openSource(nestedJarArchive(null), false);
+        assertFalse(source.mapped());
+        Index index = Index.open(source);
+        index.validateJar(0);
+        source.close();
+
+        UncheckedIOException failure = assertThrows(UncheckedIOException.class, () -> index.validateJar(1));
+        assertFalse(failure.getMessage().contains(Index.REBUILD_MESSAGE), failure.getMessage());
+        assertTrue(failure.getMessage().contains(DEP), failure.getMessage());
+        assertInstanceOf(ClosedChannelException.class, failure.getCause());
+    }
+
     @Test
     void rejectsAnIndexWhoseMagicIsWrong() {
         assertStale(patchInt(valid(), IndexFormat.H_MAGIC, 0));
@@ -698,6 +733,30 @@ class IndexTest {
         } finally {
             System.clearProperty("jdk.util.jar.version");
         }
+    }
+
+    /**
+     * Writes an archive holding the application layer and one nested jar, {@link #DEP}, whose index record
+     * names {@code header} as its local file header offset, or the real offset when {@code header} is
+     * {@code null}.
+     */
+    private File nestedJarArchive(Long header) throws IOException {
+        byte[] payload = "nested".getBytes(StandardCharsets.UTF_8);
+        TestIndexBuilder builder = new TestIndexBuilder();
+        builder.addJar(IndexFormat.CLASSES_PREFIX);
+        TestIndexBuilder.Jar dependency = builder.addJar(DEP);
+        dependency.addEntry("a/B.class").data(0, 1, 1);
+        byte[] draft = builder.build();
+
+        TestArchiveBuilder archive = new TestArchiveBuilder();
+        archive.stored("META-INF/MANIFEST.MF", payload);
+        archive.reserve(IndexFormat.INDEX_ENTRY_NAME, draft.length);
+        long nested = archive.stored(DEP, payload);
+        dependency.location(nested, payload.length, header != null ? header : archive.localHeaderOffset(DEP));
+        archive.replace(IndexFormat.INDEX_ENTRY_NAME, builder.build());
+        File file = newFile();
+        archive.writeTo(file);
+        return file;
     }
 
     private static String resourceName(String binaryName) {

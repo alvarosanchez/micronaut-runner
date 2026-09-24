@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner;
 
+import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,7 +26,10 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
@@ -42,9 +46,18 @@ import java.util.zip.InflaterInputStream;
  * stores, so no per-entry bookkeeping is needed.</p>
  *
  * <p>Setting the system property {@value #MMAP_PROPERTY} to exactly {@code "false"} selects a fallback mode
- * that maps nothing and serves every read with a positional {@link FileChannel#read(ByteBuffer, long)} into
- * a heap buffer. The fallback exists for platforms or containers where a large mapping is unwelcome. It
- * reads the same immutable archive format, but it does not make concurrent changes to that archive safe.</p>
+ * that maps nothing and serves every read with positional {@link FileChannel#read(ByteBuffer, long)} calls
+ * into a heap buffer, at most 64 KiB per call so that no thread keeps a large temporary native buffer. The
+ * fallback exists for platforms or containers where a large mapping is unwelcome. It reads the same immutable
+ * archive format, but it does not make concurrent changes to that archive safe.</p>
+ *
+ * <p>A {@link FileChannel} is interruptible: a read by a thread whose interrupt status is set, or that is
+ * interrupted during the read, closes the channel for every thread. Positional reads therefore clear the
+ * caller's interrupt status before each attempt and restore it afterwards, and a read that finds the channel
+ * closed by an interrupt reopens the archive by its path and continues from the bytes it already has. The
+ * reopened file is used only if it still has the length, and where the file system reports one the file key,
+ * captured when this source opened; otherwise every later read fails and asks for a restart. Nothing reopens
+ * after {@link #close()}.</p>
  *
  * <h2>Lifetime</h2>
  * <p>The instance is {@link AutoCloseable}, but the launcher never closes it: application threads keep
@@ -70,8 +83,10 @@ import java.util.zip.InflaterInputStream;
  * <h2>Thread safety</h2>
  * <p>Everything after {@link #open(File)} is safe for concurrent use by any number of class-loading
  * threads when the archive obeys the immutability requirement: the segment is read-only, positional channel
- * reads do not touch the channel position, and the
- * inflater pool is guarded by its own lock. Only {@link #close()} must not race with readers.</p>
+ * reads do not touch the channel position, and the inflater pool is guarded by this instance's lock. Thread
+ * interrupts are harmless in both modes: mapped reads are not interruptible, and positional reads clear and
+ * restore the caller's interrupt status and reopen, under the same lock, a channel that an interrupt closed.
+ * Only {@link #close()} must not race with readers; a read that does fails and never reopens.</p>
  *
  * @since 1.0
  */
@@ -114,8 +129,24 @@ public final class ArchiveSource implements AutoCloseable {
     private static final byte[] INDEX_ENTRY_NAME_BYTES = indexEntryNameBytes();
 
     private final File file;
-    private final RandomAccessFile handle;
-    private final FileChannel channel;
+    /**
+     * The open archive and its channel. Both are {@code volatile} because a positional read that finds the
+     * channel closed by a thread interrupt publishes a reopened pair; see {@link PositionalReads}. In the
+     * mapped mode they are only read by {@link #close()}.
+     */
+    private volatile RandomAccessFile handle;
+    private volatile FileChannel channel;
+    /**
+     * The identity of the file this source opened, captured at open when reads go through the channel, and
+     * {@code null} in the mapped mode or when the file system reports no key (Windows). A reopen after an
+     * interrupt compares it with the file the path names by then.
+     */
+    private final Object fileKey;
+    /**
+     * The failure of a reopen that found the path naming another file, stored under this instance's lock so
+     * that every later read fails the same way instead of reopening again.
+     */
+    private IOException replaced;
     private final Arena arena;
     private final MemorySegment segment;
     /**
@@ -136,11 +167,12 @@ public final class ArchiveSource implements AutoCloseable {
     private final ArrayDeque<Inflater> inflaters;
     private boolean closed;
 
-    private ArchiveSource(File file, RandomAccessFile handle, FileChannel channel, Arena arena,
+    private ArchiveSource(File file, RandomAccessFile handle, FileChannel channel, Object fileKey, Arena arena,
                           MemorySegment segment, long length) {
         this.file = file;
         this.handle = handle;
         this.channel = channel;
+        this.fileKey = fileKey;
         this.arena = arena;
         this.segment = segment;
         this.view = segment != null && length <= MAX_SLICE_LENGTH
@@ -164,17 +196,23 @@ public final class ArchiveSource implements AutoCloseable {
         if (file == null) {
             throw new IOException("No archive file given");
         }
+        boolean map = !"false".equals(System.getProperty(MMAP_PROPERTY));
+        // Reads through the channel may have to reopen the file by its path after an interrupt, and then
+        // compare it with this key. It is read before the file is opened: if the path is replaced in between,
+        // the key cannot match any later file, which fails safe, whereas a key read after the open could
+        // belong to a file renamed in afterwards and let a reopen switch to it.
+        Object fileKey = map ? null : PositionalReads.fileKey(file);
         RandomAccessFile handle = new RandomAccessFile(file, "r");
         Arena arena = null;
         try {
             FileChannel channel = handle.getChannel();
             long length = channel.size();
             MemorySegment segment = null;
-            if (!"false".equals(System.getProperty(MMAP_PROPERTY))) {
+            if (map) {
                 arena = Arena.ofShared();
                 segment = channel.map(FileChannel.MapMode.READ_ONLY, 0L, length, arena);
             }
-            return new ArchiveSource(file, handle, channel, arena, segment, length);
+            return new ArchiveSource(file, handle, channel, fileKey, arena, segment, length);
         } catch (IOException | RuntimeException | Error e) {
             if (arena != null) {
                 arena.close();
@@ -311,16 +349,20 @@ public final class ArchiveSource implements AutoCloseable {
     }
 
     /**
-     * A read-only view of a region of the archive. In the mapped mode this copies nothing: the buffer is a
-     * window onto the mapping, which is what lets the class loader define a STORED class without ever
-     * materialising a {@code byte[]}. In the fallback mode the region is read into a heap array first.
+     * A buffer over a region of the archive. In the mapped mode this copies nothing: the buffer is a
+     * read-only window onto the mapping, which is what lets the class loader define a STORED class without
+     * ever materialising a {@code byte[]}. In the fallback mode the region is read into a new heap array, and
+     * the buffer wraps that array, writable and with {@link ByteBuffer#hasArray() an accessible array}, so
+     * that {@link ClassLoader} defines a class straight from it instead of copying it again. Every call
+     * returns a fresh array that the caller owns, so writing to it changes no shared state.
      *
      * <p>The returned buffer's byte order is the {@link ByteBuffer} default, big-endian; callers reading
      * little-endian structures out of it must set the order themselves.</p>
      *
      * @param offset absolute offset in the archive
      * @param length number of bytes, at most {@link #MAX_SLICE_LENGTH}
-     * @return a read-only buffer positioned at zero with the region as its content
+     * @return a buffer positioned at zero with the region as its content: read-only in the mapped mode, and a
+     *         new array owned by the caller in the fallback mode
      * @throws IOException if the region is outside the archive, the length is negative or too large, or
      *                     the read fails
      */
@@ -333,7 +375,7 @@ public final class ArchiveSource implements AutoCloseable {
         if (s != null) {
             return s.asSlice(offset, length).asByteBuffer();
         }
-        return ByteBuffer.wrap(readFully(offset, length)).asReadOnlyBuffer();
+        return ByteBuffer.wrap(readFully(offset, length));
     }
 
     /**
@@ -525,6 +567,8 @@ public final class ArchiveSource implements AutoCloseable {
     @Override
     public void close() {
         Inflater[] pooled;
+        FileChannel openChannel;
+        RandomAccessFile openHandle;
         synchronized (this) {
             if (closed) {
                 return;
@@ -532,6 +576,9 @@ public final class ArchiveSource implements AutoCloseable {
             closed = true;
             pooled = inflaters.toArray(new Inflater[0]);
             inflaters.clear();
+            // A reopen publishes under this lock and checks closed first, so these are the last pair.
+            openChannel = channel;
+            openHandle = handle;
         }
         for (int i = 0; i < pooled.length; i++) {
             pooled[i].end();
@@ -541,12 +588,12 @@ public final class ArchiveSource implements AutoCloseable {
         }
         IOException failure = null;
         try {
-            channel.close();
+            openChannel.close();
         } catch (IOException e) {
             failure = e;
         }
         try {
-            handle.close();
+            openHandle.close();
         } catch (IOException e) {
             if (failure == null) {
                 failure = e;
@@ -592,15 +639,28 @@ public final class ArchiveSource implements AutoCloseable {
             MemorySegment.copy(s, ValueLayout.JAVA_BYTE, offset, destination, destinationOffset, count);
             return;
         }
-        ByteBuffer buffer = ByteBuffer.wrap(destination, destinationOffset, count);
-        long position = offset;
-        while (buffer.hasRemaining()) {
-            int read = channel.read(buffer, position);
-            if (read < 0) {
-                throw new IOException("Unexpected end of " + file + " at offset " + position);
-            }
-            position += read;
-        }
+        readInto(offset, ByteBuffer.wrap(destination, destinationOffset, count));
+    }
+
+    /**
+     * Fills a buffer with positional channel reads, surviving thread interrupts.
+     *
+     * <p>Every read that does not go through the mapping ends here. It reads {@code destination.remaining()}
+     * bytes starting at {@code position} and leaves the buffer's position at its limit. A heap buffer is
+     * filled at most 64 KiB per call, and a direct buffer in one call. The caller's interrupt status is
+     * cleared for the read and restored afterwards, and a channel that an interrupt closed, in this thread
+     * or in any other, is reopened a bounded number of times; see {@link PositionalReads}. The method holds no
+     * mode-specific logic. The file key that a reopen compares is captured only by a source that {@link
+     * #open(File) opens} to read through the channel.</p>
+     *
+     * @param position    absolute offset in the archive; the caller has already checked the region
+     * @param destination the buffer to fill between its position and its limit
+     * @throws IOException if the archive ends early, the source is closed, the path no longer names the
+     *                     file this source opened when a reopen is needed, or interrupts keep closing the
+     *                     channel
+     */
+    void readInto(long position, ByteBuffer destination) throws IOException {
+        PositionalReads.read(this, position, destination);
     }
 
     private Inflater acquireInflater() {
@@ -746,6 +806,179 @@ public final class ArchiveSource implements AutoCloseable {
         long dataOffset = localHeaderOffset + 30 + nameLength + extraLength;
         checkRange(dataOffset, size);
         return new long[] {dataOffset, size};
+    }
+
+    /**
+     * The positional read loop and the reopen logic behind {@link #readInto(long, ByteBuffer)}.
+     *
+     * <p>A {@link FileChannel} is an interruptible channel. A read by a thread whose interrupt status is set,
+     * or that is interrupted during the read, closes the channel for every thread, and closing a channel
+     * obtained from a {@link RandomAccessFile} closes that file too. Without this class one cancelled task
+     * would stop all class loading from the archive for the rest of the process. So each attempt clears the
+     * caller's interrupt status, a read that finds the channel closed reopens the file and continues from the
+     * bytes it already has, and the caller's interrupt status is restored at the end: the caller sees it as if
+     * the read had not touched it. A closed channel is not a sign of a damaged archive, only of an interrupt
+     * or of {@link ArchiveSource#close()}, and nothing reopens after the latter.</p>
+     *
+     * <p>A reopen goes by path, and a deployment may have renamed another file onto that path since this JVM
+     * opened it. The reopened file is published only if its length, and the file key when the file system
+     * has one, still match what {@link ArchiveSource#open(File)} captured. Otherwise the failure is stored and
+     * every later read fails with it. Opening first and comparing the key afterwards can only raise a false
+     * alarm, never switch to a file that was renamed in.</p>
+     *
+     * <p>This is a separate class, reached only through static calls from the fallback branches, so that
+     * verifying {@link ArchiveSource} does not load the exception types caught and thrown here. In the default
+     * mapped mode the class is never loaded.</p>
+     */
+    static final class PositionalReads {
+
+        /**
+         * Largest read into a heap buffer. The JDK reads a heap buffer through a per-thread temporary direct
+         * buffer as large as the request and caches it with no size limit by default, so one large read would
+         * leave that much native memory behind in the thread.
+         */
+        static final int HEAP_READ_CHUNK = 64 * 1024;
+
+        /**
+         * How many times one read may reopen the channel before giving up. Most closures seen by a read are
+         * another thread's interrupt closing the channel just before or during this read's attempt, and a
+         * retry can race the next one; under heavy stress one read needed five reopens.
+         */
+        static final int MAX_REOPENS = 16;
+
+        private PositionalReads() {
+        }
+
+        /**
+         * Fills {@code destination} from {@code position}; see {@link ArchiveSource#readInto(long, ByteBuffer)}.
+         *
+         * @param source      the archive
+         * @param position    absolute offset of the first byte to read
+         * @param destination the buffer to fill between its position and its limit
+         * @throws IOException if the archive ends early, the source is closed, the file was replaced, or
+         *                     interrupts keep closing the channel
+         */
+        static void read(ArchiveSource source, long position, ByteBuffer destination) throws IOException {
+            int start = destination.position();
+            int limit = destination.limit();
+            boolean chunked = !destination.isDirect();
+            boolean interrupted = false;
+            int reopens = 0;
+            try {
+                while (true) {
+                    if (Thread.interrupted()) {
+                        interrupted = true;
+                    }
+                    FileChannel channel = source.channel;
+                    try {
+                        int at = destination.position();
+                        while (at < limit) {
+                            if (chunked) {
+                                destination.limit(limit - at > HEAP_READ_CHUNK ? at + HEAP_READ_CHUNK : limit);
+                            }
+                            long offset = position + (at - start);
+                            if (channel.read(destination, offset) < 0) {
+                                throw new EOFException("Unexpected end of " + source.file + " at offset "
+                                        + offset);
+                            }
+                            at = destination.position();
+                        }
+                        return;
+                    } catch (ClosedChannelException e) {
+                        // Also ClosedByInterruptException and AsynchronousCloseException. Bytes the failed
+                        // call transferred have already advanced the buffer, so the retry starts after them.
+                        if (reopens == MAX_REOPENS) {
+                            throw new IOException("Thread interrupts closed " + source.file + " "
+                                    + (MAX_REOPENS + 1) + " times during one read", e);
+                        }
+                        reopens++;
+                        reopen(source, channel, e);
+                    } finally {
+                        destination.limit(limit);
+                    }
+                }
+            } finally {
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+
+        /**
+         * The identity of a file as the file system reports it: device and inode on POSIX, {@code null} on
+         * Windows, where the JDK opens files without delete sharing so that an open file cannot be replaced.
+         *
+         * @param file the file
+         * @return the key, or {@code null} when the file system has none
+         * @throws IOException if the attributes cannot be read
+         */
+        static Object fileKey(File file) throws IOException {
+            return Files.readAttributes(file.toPath(), BasicFileAttributes.class).fileKey();
+        }
+
+        /**
+         * Replaces a channel that was found closed, unless another thread already did or the source is closed.
+         *
+         * @param source the archive
+         * @param stale  the channel the failed attempt read from
+         * @param cause  why that attempt failed
+         * @throws IOException {@code cause} when the source is closed, or the stored or new failure when the
+         *                     path no longer names the file this source opened
+         */
+        private static void reopen(ArchiveSource source, FileChannel stale, ClosedChannelException cause)
+                throws IOException {
+            synchronized (source) {
+                if (source.closed) {
+                    throw cause;
+                }
+                if (source.channel != stale) {
+                    return;
+                }
+                IOException replaced = source.replaced;
+                if (replaced != null) {
+                    throw replaced;
+                }
+                RandomAccessFile handle = null;
+                boolean same;
+                try {
+                    handle = new RandomAccessFile(source.file, "r");
+                    same = handle.length() == source.length
+                            && (source.fileKey == null || source.fileKey.equals(fileKey(source.file)));
+                } catch (IOException e) {
+                    // Not stored: the path may name the original file again by the next read.
+                    IOException failure = new IOException("Cannot reopen the runner jar " + source.file
+                            + " after an interrupted read closed it", e);
+                    failure.addSuppressed(cause);
+                    if (handle != null) {
+                        closeQuietly(handle, failure);
+                    }
+                    throw failure;
+                } catch (RuntimeException | Error e) {
+                    if (handle != null) {
+                        closeQuietly(handle, e);
+                    }
+                    throw e;
+                }
+                if (!same) {
+                    replaced = new IOException("The runner jar " + source.file + " was replaced after this JVM"
+                            + " opened it, and an interrupted read closed the original file; restart the JVM");
+                    replaced.addSuppressed(cause);
+                    closeQuietly(handle, replaced);
+                    source.replaced = replaced;
+                    throw replaced;
+                }
+                source.handle = handle;
+                source.channel = handle.getChannel();
+            }
+        }
+
+        private static void closeQuietly(RandomAccessFile handle, Throwable failure) {
+            try {
+                handle.close();
+            } catch (IOException e) {
+                failure.addSuppressed(e);
+            }
+        }
     }
 
     /**

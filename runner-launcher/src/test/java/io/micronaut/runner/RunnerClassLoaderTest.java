@@ -32,11 +32,15 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.SplittableRandom;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.CRC32;
 
 import org.junit.jupiter.api.AfterAll;
@@ -45,6 +49,8 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -87,6 +93,13 @@ class RunnerClassLoaderTest {
     private static final String ENUMERATION_COLLISION = "enumeration/collision";
     private static final int ENUMERATION_JARS = 300;
     private static final int GENERATED_CLASSES = 24;
+    private static final String INTERRUPT_STORED = "MICRONAUT-INF/lib/interrupt-stored.jar";
+    private static final String INTERRUPT_DEFLATED = "MICRONAUT-INF/lib/interrupt-deflated.jar";
+    private static final String INTERRUPT_STORED_PACKAGE = "org.interrupt.stored";
+    private static final String INTERRUPT_DEFLATED_PACKAGE = "org.interrupt.deflated";
+    private static final int INTERRUPT_CLASSES_PER_JAR = 256;
+    private static final int INTERRUPT_THREADS = 6;
+    private static final long INTERRUPT_SPIN_NANOS = 20_000;
 
     private static File archive;
     private static File alphaClasspathJar;
@@ -181,6 +194,8 @@ class RunnerClassLoaderTest {
         sealer.add("org/unsealed/Second.class", classBytes("org.unsealed.Second", "unsealed-second"));
 
         addEnumerationFixtures(fixture);
+        // Appended last so that every jar above keeps its id.
+        addInterruptFixtures(fixture);
 
         archive = fixture.writeTo(temporary.resolve("runner-classloader-test.jar").toFile());
         TestArchiveBuilder alphaClasspath = new TestArchiveBuilder();
@@ -244,9 +259,115 @@ class RunnerClassLoaderTest {
                     ClassLoader.getPlatformClassLoader());
 
             assertEquals("app", id(loader.loadClass("org.example.App")),
-                    "a STORED class must define from a read-only heap buffer too");
+                    "a STORED class must define from a heap buffer too");
             assertEquals("alpha", id(loader.loadClass("org.alpha.Alpha")));
             assertEquals("jar0-shared", string(loader.getResourceAsStream("shared.txt")));
+        }
+    }
+
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void loadsClassesOnAnInterruptedThread(boolean mapped) throws Exception {
+        // Future.cancel(true), ExecutorService.shutdownNow() or Thread.interrupt() leave a thread's interrupt
+        // status set, and that thread may then load a class for the first time. A positional read used to
+        // close the archive for every thread at that point.
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, Boolean.toString(mapped));
+        try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
+            assertEquals(mapped, modeSource.mapped());
+            RunnerClassLoader loader = new RunnerClassLoader(Index.open(modeSource), modeSource,
+                    ClassLoader.getPlatformClassLoader());
+
+            Thread.currentThread().interrupt();
+            try {
+                assertEquals("alpha", id(loader.loadClass("org.alpha.Alpha")),
+                        "the first class of a DEFLATE jar, which also checks that jar's local header");
+                assertEquals("app", id(loader.loadClass("org.example.App")), "a STORED class");
+                assertEquals("jar0-shared", string(loader.getResourceAsStream("shared.txt")));
+                assertTrue(Thread.currentThread().isInterrupted(), "the interrupt status must still be set");
+            } finally {
+                Thread.interrupted();
+            }
+        }
+    }
+
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void definesClassesWhileThreadsAreInterrupted(boolean mapped) throws Exception {
+        List<String> names = new ArrayList<>();
+        List<String> ids = new ArrayList<>();
+        for (int i = 0; i < INTERRUPT_CLASSES_PER_JAR; i++) {
+            names.add(INTERRUPT_STORED_PACKAGE + ".C" + i);
+            ids.add("stored-" + i);
+            names.add(INTERRUPT_DEFLATED_PACKAGE + ".C" + i);
+            ids.add("deflated-" + i);
+        }
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, Boolean.toString(mapped));
+        try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
+            assertEquals(mapped, modeSource.mapped());
+            RunnerClassLoader loader = new RunnerClassLoader(Index.open(modeSource), modeSource,
+                    ClassLoader.getPlatformClassLoader());
+            Class<?>[][] loaded = new Class<?>[INTERRUPT_THREADS][names.size()];
+            AtomicInteger failures = new AtomicInteger();
+            AtomicReference<Throwable> firstFailure = new AtomicReference<>();
+            AtomicInteger interrupts = new AtomicInteger();
+            AtomicBoolean workersDone = new AtomicBoolean();
+            Thread[] workers = new Thread[INTERRUPT_THREADS];
+            for (int t = 0; t < workers.length; t++) {
+                int worker = t;
+                workers[t] = new Thread(() -> {
+                    // Each thread starts at a different name, so that the threads define different classes.
+                    int start = worker * names.size() / INTERRUPT_THREADS;
+                    for (int i = 0; i < names.size(); i++) {
+                        int at = (start + i) % names.size();
+                        try {
+                            loaded[worker][at] = loader.loadClass(names.get(at));
+                        } catch (ClassNotFoundException | RuntimeException | LinkageError e) {
+                            failures.incrementAndGet();
+                            firstFailure.compareAndSet(null, e);
+                        }
+                    }
+                }, "interrupted-class-loader-" + t);
+                workers[t].setDaemon(true);
+            }
+            Thread interrupter = new Thread(() -> {
+                SplittableRandom random = new SplittableRandom(149);
+                while (!workersDone.get()) {
+                    workers[random.nextInt(workers.length)].interrupt();
+                    interrupts.incrementAndGet();
+                    long until = System.nanoTime() + INTERRUPT_SPIN_NANOS;
+                    while (System.nanoTime() < until) {
+                        Thread.onSpinWait();
+                    }
+                }
+            }, "class-loader-interrupter");
+            interrupter.setDaemon(true);
+            try {
+                for (Thread worker : workers) {
+                    worker.start();
+                }
+                interrupter.start();
+            } finally {
+                for (Thread worker : workers) {
+                    worker.join(TimeUnit.SECONDS.toMillis(60));
+                }
+                workersDone.set(true);
+                interrupter.join(TimeUnit.SECONDS.toMillis(30));
+            }
+            for (Thread worker : workers) {
+                assertFalse(worker.isAlive(), worker.getName() + " must have finished");
+            }
+            assertFalse(interrupter.isAlive(), "the interrupter must have finished");
+
+            assertEquals(0, failures.get(), () -> failures.get() + " loads failed while " + interrupts.get()
+                    + " interrupts were sent; the first failure was " + firstFailure.get());
+            for (int i = 0; i < names.size(); i++) {
+                Class<?> type = loaded[0][i];
+                assertSame(loader, type.getClassLoader());
+                assertEquals(ids.get(i), id(type), names.get(i));
+                for (int t = 1; t < INTERRUPT_THREADS; t++) {
+                    assertSame(type, loaded[t][i], "every thread must see one class");
+                }
+            }
         }
     }
 
@@ -840,6 +961,21 @@ class RunnerClassLoaderTest {
             if ((jarId & 1) != 0) {
                 jar.add(ENUMERATION_COLLISION + "/", new byte[0]);
             }
+        }
+    }
+
+    /**
+     * Two jars of generated classes for the interrupt tests: one STORED and one DEFLATE, each with packages
+     * of its own so that nothing else in the archive shares their names.
+     */
+    private static void addInterruptFixtures(Fixture fixture) {
+        Fixture.Jar stored = fixture.addJar(INTERRUPT_STORED);
+        Fixture.Jar deflated = fixture.addJar(INTERRUPT_DEFLATED).deflate();
+        for (int i = 0; i < INTERRUPT_CLASSES_PER_JAR; i++) {
+            stored.add(INTERRUPT_STORED_PACKAGE.replace('.', '/') + "/C" + i + ".class",
+                    classBytes(INTERRUPT_STORED_PACKAGE + ".C" + i, "stored-" + i));
+            deflated.add(INTERRUPT_DEFLATED_PACKAGE.replace('.', '/') + "/C" + i + ".class",
+                    classBytes(INTERRUPT_DEFLATED_PACKAGE + ".C" + i, "deflated-" + i));
         }
     }
 

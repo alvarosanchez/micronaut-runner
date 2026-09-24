@@ -17,6 +17,7 @@ package io.micronaut.runner;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -531,8 +532,13 @@ public final class Index {
      * safe while another process mutates the archive. The application layer is not a nested jar and is never
      * checked.</p>
      *
+     * <p>A header offset outside the archive means the index does not describe this file, so it is reported
+     * as a stale jar. A read that fails for any other reason, for example because the source was closed, says
+     * nothing about the jar and is reported as the I/O failure it is.</p>
+     *
      * @param jarId the jar index
      * @throws IllegalStateException if the archive no longer agrees with the index
+     * @throws UncheckedIOException  if the local file header cannot be read
      */
     public void validateJar(int jarId) {
         int offset = jarOffset(jarId);
@@ -541,12 +547,15 @@ public final class Index {
         }
         if (jarId != IndexFormat.APPLICATION_JAR_ID) {
             long header = u64(offset + IndexFormat.J_LOCAL_HEADER_OFFSET);
+            if (header < 0 || header > source.length() - 4) {
+                throw stale("the local file header of " + jarName(jarId) + " is outside the archive");
+            }
             int signature;
             try {
                 signature = source.i32(header);
             } catch (IOException e) {
-                throw new IllegalStateException(REBUILD_MESSAGE + " (the local file header of "
-                        + jarName(jarId) + " is outside the archive)", e);
+                throw new UncheckedIOException("Cannot read the local file header of " + jarName(jarId)
+                        + " from " + source.file(), e);
             }
             if (signature != IndexFormat.LOCAL_HEADER_SIGNATURE) {
                 throw stale("no local file header for " + jarName(jarId) + " at offset " + header);
