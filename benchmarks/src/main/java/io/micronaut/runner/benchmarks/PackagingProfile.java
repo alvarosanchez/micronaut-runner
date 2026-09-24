@@ -80,12 +80,15 @@ public final class PackagingProfile {
             throw new IllegalArgumentException("iterations must be at least 1");
         }
         Files.createDirectories(output);
+        // Work trees are scratch space, not reports: clear leftovers from earlier or failed runs.
+        Path work = output.resolve("work");
+        deleteRecursively(work);
         List<Attempt> attempts = new ArrayList<>();
         for (String workloadName : workloadNames) {
             WorkloadShape shape = WorkloadShape.named(workloadName);
             SyntheticArchive archive = SyntheticArchive.forWorkload(shape.name());
             for (Compression compression : List.of(Compression.STORED, Compression.PRESERVE)) {
-                Path modeRoot = output.resolve("work").resolve(shape.name())
+                Path modeRoot = work.resolve(shape.name())
                         .resolve(compression.name().toLowerCase(Locale.ROOT));
                 Inputs timing = Inputs.copy(archive, modeRoot.resolve("timing"));
                 Inputs diagnostic = Inputs.copy(archive, modeRoot.resolve("diagnostic"));
@@ -103,8 +106,12 @@ public final class PackagingProfile {
                                 "JVM memory-pool peak diagnostic invocation"));
                     }
                 }
+                // Scenarios build on each other's state, so the tree lives for the whole mode. It is deleted
+                // after the mode's last measurement and before the next copy; a failed mode stays for debugging.
+                deleteRecursively(modeRoot);
             }
         }
+        deleteRecursively(work);
         Path sourceRoot = configuredSourceRoot();
         BenchmarkProvenance.SourceState source = sourceRoot == null
                 ? BenchmarkProvenance.SourceState.unavailable()

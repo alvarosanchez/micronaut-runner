@@ -82,5 +82,12 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: benchmark-results
-          path: benchmarks/build/reports/**
+          path: |
+            benchmarks/build/reports/startup/results.json
+            benchmarks/build/reports/startup/summary.md
+            benchmarks/build/reports/startup/diagnostics/**
+            benchmarks/build/reports/packaging/packaging-results.json
+            benchmarks/build/reports/packaging/packaging-summary.md
+            benchmarks/build/reports/jmh/results.json
+          if-no-files-found: warn
           retention-days: 30

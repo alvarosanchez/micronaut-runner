@@ -75,8 +75,11 @@ class RepresentativeWorkloadTest {
         assertTrue(report.attempts().stream().allMatch(attempt -> attempt.inputBytes() > 0));
         assertTrue(report.attempts().stream().allMatch(attempt -> attempt.outputBytes() > 0));
         assertTrue(report.attempts().stream().allMatch(attempt -> attempt.peakHeapBytes() > 0));
-        assertTrue(java.nio.file.Files.isRegularFile(output.resolve("packaging-results.json")));
-        assertTrue(java.nio.file.Files.isRegularFile(output.resolve("packaging-summary.md")));
+        try (var entries = java.nio.file.Files.list(output)) {
+            assertEquals(java.util.Set.of("packaging-results.json", "packaging-summary.md"),
+                    entries.map(path -> path.getFileName().toString())
+                            .collect(java.util.stream.Collectors.toSet()));
+        }
     }
 
     /**
