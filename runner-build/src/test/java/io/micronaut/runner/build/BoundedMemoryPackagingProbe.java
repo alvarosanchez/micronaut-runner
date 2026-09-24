@@ -23,10 +23,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.zip.CRC32;
+import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-/** Forked low-heap acceptance probe; kept out of the ordinary test JVM to avoid large fixture allocations. */
+/**
+ * Forked low-heap acceptance probe; kept out of the ordinary test JVM to avoid large fixture allocations.
+ * The application JAR is DEFLATED at level 0, so it exercises the inflating path with compressed and expanded
+ * sizes both above the heap, without paying for compression.
+ */
 public final class BoundedMemoryPackagingProbe {
 
     private static final int LARGE_RESOURCE_SIZE = 48 * 1024 * 1024;
@@ -45,6 +50,7 @@ public final class BoundedMemoryPackagingProbe {
         fill(buffer);
         try (OutputStream file = Files.newOutputStream(application);
              ZipOutputStream zip = new ZipOutputStream(file)) {
+            zip.setLevel(Deflater.NO_COMPRESSION);
             zip.putNextEntry(new ZipEntry("com/example/Application.class"));
             Files.copy(applicationClass, zip);
             zip.closeEntry();

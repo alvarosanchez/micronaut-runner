@@ -159,15 +159,6 @@ final class SyntheticArchive {
                 contributors, 16, 0, 1, 1, 0, true, true));
     }
 
-    /** Builds a one-dependency fixture whose manifest has exactly the requested package sections. */
-    static synchronized SyntheticArchive forPackageLookup(int packageSections) {
-        if (packageSections < 0) {
-            throw new IllegalArgumentException("package sections must not be negative");
-        }
-        return forShape(new WorkloadShape("package-lookup-" + packageSections,
-                1, Math.max(1, packageSections), 0, 1, 1, packageSections, false, false));
-    }
-
     private static SyntheticArchive forShape(WorkloadShape shape) {
         String name = shape.name();
         SyntheticArchive existing = SHARED.get(name);

@@ -37,8 +37,7 @@ ready, application entered. Use it to separate launcher cost from framework cost
 only needed on a platform or file system where mapping is unavailable or undesirable. Thread interrupts are
 harmless in this mode: a read that an interrupt cuts short reopens the archive by its path and carries on.
 If that path no longer names the file this JVM opened, class loading fails and asks for a restart, so
-publish new versions under new paths as described in the deployment section below. Positional mode does not
-make concurrent archive replacement safe.
+publish new versions under new paths as described in the archive lifetime section below.
 
 |`micronaut.runner.verify`
 |`false`
@@ -63,30 +62,15 @@ application.
 its format version is not supported.
 |===
 
-== Archive lifetime and deployment
+[[archiveLifetime]]
+== Archive lifetime
 
-Treat a runner JAR as immutable from the moment its JVM opens it until that JVM terminates. Do not overwrite,
-truncate, append to, sign, re-zip or otherwise modify a running archive. This requirement applies both to the
-default memory-mapped mode and to `-Dmicronaut.runner.mmap=false` positional reads.
-
-The format's length comparison happens against the file length captured when the archive opens. A nested
-JAR's local-header signature is checked only on its first use, and a successful check is cached. These checks
-are diagnostics for some stale packaging outputs, not ongoing file monitoring. CRC-32 verification with
-`micronaut.runner.verify` can diagnose accidental byte corruption as complete entries are read; it is neither
-authentication nor protection against concurrent mutation. The JDK leaves the visibility of changes to a
-mapped file, and failures after truncation, dependent on the operating system and file system. Disabling mmap
-can change the observed failure, but does not establish a supported live-mutation procedure.
-
-Publish each version under a new path, preferably a versioned or content-addressed name. Verify the final
-bytes, start a new JVM from that path, direct new work to it, and remove the old artifact only after the old
-JVM has stopped. An atomic rename or symlink/pointer update may select the new path for _new_ launches without
-changing the file already open by an existing POSIX process. It does not update that process, which must keep
-using its original immutable file. On Windows, an open mapping commonly prevents deleting or replacing its
-file, so distinct versioned filenames are required. If deployment requires reusing one filename, stop every
-JVM using it before replacement and start them again afterwards.
-
-The launcher deliberately keeps the archive open after the application `main` method returns because
-background threads may still load classes. Returning from `main` is therefore not a replacement boundary.
+As with any JAR a running JVM reads, a Shadow JAR included, do not modify, truncate or overwrite a runner
+JAR while a JVM runs from it: publish each version under a new path. In the default mmap mode, STORED
+classes are defined straight from the mapping, so truncating the file under a running JVM can terminate
+the JVM instead of raising an exception; the JDK's own `ZipFile` does not memory-map the archive. The
+recorded length (checked when the archive opens) and each nested JAR's local header (checked once, on
+first use) are stale-archive diagnostics, not integrity protection or live-mutation detection.
 
 == Running from an exploded layout
 

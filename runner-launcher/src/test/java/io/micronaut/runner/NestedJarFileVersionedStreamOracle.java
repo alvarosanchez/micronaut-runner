@@ -25,7 +25,9 @@ import java.util.jar.JarFile;
 import java.util.stream.Stream;
 
 /**
- * Forked differential oracle for {@link NestedJarFile#versionedStream()}.
+ * Differential oracle for {@link NestedJarFile#versionedStream()}. {@link #compare} runs in-process for the
+ * settings a {@link NestedJarFile} reads on every construction; {@link #main} runs it in a fresh VM for the
+ * global multi-release properties that the JDK's {@link JarFile} latches once per VM.
  */
 public final class NestedJarFileVersionedStreamOracle {
 
@@ -42,12 +44,24 @@ public final class NestedJarFileVersionedStreamOracle {
         if (arguments.length != 2) {
             throw new IllegalArgumentException("Expected outer archive and original dependency");
         }
-        File archive = new File(arguments[0]);
-        File dependency = new File(arguments[1]);
-        try (ArchiveSource source = ArchiveSource.open(archive);
-             JarFile oracle = new JarFile(dependency, false, JarFile.OPEN_READ, JarFile.runtimeVersion())) {
+        try (ArchiveSource source = ArchiveSource.open(new File(arguments[0]))) {
+            compare(source, new File(arguments[1]));
+        }
+        System.out.println("OK");
+    }
+
+    /**
+     * Compares the versioned stream (closing the nested jar before consuming it), the physical stream and
+     * the size of the first nested jar of {@code source} with the JDK's view of the original dependency.
+     *
+     * @param source     the open outer runner archive
+     * @param dependency the original dependency jar
+     * @throws IOException if either view cannot be read
+     */
+    static void compare(ArchiveSource source, File dependency) throws IOException {
+        try (JarFile oracle = new JarFile(dependency, false, JarFile.OPEN_READ, JarFile.runtimeVersion())) {
             Index index = Index.open(source);
-            NestedJarFile nested = new NestedJarFile(archive, index, source, 1);
+            NestedJarFile nested = new NestedJarFile(source.file(), index, source, 1);
             try {
                 Stream<JarEntry> effective = nested.versionedStream();
                 nested.close();
@@ -63,7 +77,6 @@ public final class NestedJarFileVersionedStreamOracle {
                 nested.closeNested();
             }
         }
-        System.out.println("OK");
     }
 
     private static List<String> describe(JarFile jarFile, Stream<JarEntry> stream) {

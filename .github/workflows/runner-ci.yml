@@ -62,8 +62,10 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      # Building buildSrc does not run its tests, and check does not either: the build-logic tests run
+      # here only, in the same Gradle invocation, on one JDK.
       - name: "🛠 Build and test"
-        run: ./gradlew check --continue --no-daemon -Prunner.integration=required
+        run: ./gradlew check ${{ matrix.java == '25' && ':buildSrc:test' || '' }} --continue --no-daemon -Prunner.integration=required
 
       - name: "📊 Publish Test Report"
         if: always()

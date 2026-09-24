@@ -34,6 +34,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -218,10 +220,13 @@ class NestedJarFileTest {
         assertTrue(index.jarMultiRelease(1), "the index knows what JarFile cannot report");
     }
 
-    @Test
-    void versionedStreamMatchesTheJdkEffectiveView() throws IOException {
-        try (JarFile oracle = new JarFile(dependencyFile, false, JarFile.OPEN_READ, Runtime.version())) {
-            assertEquals(versionedEntries(oracle), versionedEntries(jar));
+    @ParameterizedTest(name = "mapped={0}")
+    @ValueSource(booleans = {true, false})
+    void versionedStreamMatchesTheJdkEffectiveView(boolean mapped) throws IOException {
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, Boolean.toString(mapped));
+        try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
+            assertEquals(mapped, modeSource.mapped());
+            NestedJarFileVersionedStreamOracle.compare(modeSource, dependencyFile);
         }
     }
 
@@ -233,9 +238,9 @@ class NestedJarFileTest {
                 .getCodeSource().getLocation().toURI()).toString();
         Path java = Path.of(System.getProperty("runner.test.javaHome", System.getProperty("java.home")),
                 "bin", "java");
+        // The JDK's JarFile latches both properties once per VM, so each needs a fresh one; the mmap mode is
+        // read on every open and is covered in-process by versionedStreamMatchesTheJdkEffectiveView.
         List<List<String>> configurations = List.of(
-                List.of("-Dmicronaut.runner.mmap=true"),
-                List.of("-Dmicronaut.runner.mmap=false"),
                 List.of("-Djdk.util.jar.version=8"),
                 List.of("-Djdk.util.jar.enableMultiRelease=false"));
         for (List<String> configuration : configurations) {

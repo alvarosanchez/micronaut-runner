@@ -33,8 +33,6 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.Executors;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -48,9 +46,6 @@ import static io.micronaut.runner.build.ZipReaderTest.repeat;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -269,28 +264,28 @@ class ZipWriterTest {
     }
 
     @Test
-    void independentWritersReusePrivateBuffersAndEmptyStreamsAllocateNone() throws Exception {
-        ByteArrayOutputStream emptyArchive = new ByteArrayOutputStream();
-        try (ZipWriter empty = new ZipWriter(emptyArchive)) {
-            empty.writeEntry("empty", InputStream.nullInputStream(), 0, 0, empty.dosTime());
-            assertNull(copyBuffer(empty), "an empty streamed entry needs no copy buffer");
+    void streamsEmptyAndMultiBufferEntries() throws IOException {
+        // 128 KiB + 17 bytes is two full refills of the 64 KiB copy buffer plus a partial tail. The second
+        // entry differs from the first, so a writer that reused its buffer and leaked the previous entry's
+        // bytes would fail the comparison.
+        byte[] first = new byte[128 * 1024 + 17];
+        Arrays.fill(first, (byte) 1);
+        byte[] second = new byte[128 * 1024 + 17];
+        Arrays.fill(second, (byte) 2);
+        Path jar = temp.resolve("streamed.jar");
+        try (ZipWriter writer = ZipWriter.create(jar, ZipWriter.DEFAULT_TIMESTAMP)) {
+            writer.writeEntry("empty.bin", InputStream.nullInputStream(), 0, 0, writer.dosTime());
+            writer.writeEntry("first.bin", new ByteArrayInputStream(first), first.length, crc(first),
+                    writer.dosTime());
+            writer.writeEntry("second.bin", new ByteArrayInputStream(second), second.length, crc(second),
+                    writer.dosTime());
         }
 
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            Callable<WriterCapture> ones = () -> streamedArchive((byte) 1);
-            Callable<WriterCapture> twos = () -> streamedArchive((byte) 2);
-            var first = executor.submit(ones);
-            var second = executor.submit(twos);
-            WriterCapture firstCapture = first.get();
-            WriterCapture secondCapture = second.get();
-
-            assertSame(firstCapture.firstBuffer(), firstCapture.secondBuffer(),
-                    "one writer reuses its bounded streaming buffer");
-            assertSame(secondCapture.firstBuffer(), secondCapture.secondBuffer());
-            assertNotSame(firstCapture.firstBuffer(), secondCapture.firstBuffer(),
-                    "independent writers must never share a mutable copy buffer");
-            assertArrayEquals(repeatByte((byte) 1), firstCapture.payload());
-            assertArrayEquals(repeatByte((byte) 2), secondCapture.payload());
+        try (ZipFile oracle = new ZipFile(jar.toFile())) {
+            assertArrayEquals(new byte[0], readAll(oracle, oracle.getEntry("empty.bin")));
+            assertArrayEquals(first, readAll(oracle, oracle.getEntry("first.bin")));
+            assertArrayEquals(second, readAll(oracle, oracle.getEntry("second.bin")),
+                    "a reused copy buffer carries no bytes over from the previous entry");
         }
     }
 
@@ -482,37 +477,6 @@ class ZipWriterTest {
         return crc.getValue();
     }
 
-    private static WriterCapture streamedArchive(byte value) throws Exception {
-        byte[] payload = repeatByte(value);
-        ByteArrayOutputStream archive = new ByteArrayOutputStream();
-        long firstOffset;
-        Object firstBuffer;
-        Object secondBuffer;
-        try (ZipWriter writer = new ZipWriter(archive)) {
-            firstOffset = writer.writeEntry("first.bin", new ByteArrayInputStream(payload), payload.length,
-                    crc(payload), writer.dosTime());
-            firstBuffer = copyBuffer(writer);
-            writer.writeEntry("second.bin", new ByteArrayInputStream(payload), payload.length,
-                    crc(payload), writer.dosTime());
-            secondBuffer = copyBuffer(writer);
-        }
-        byte[] bytes = archive.toByteArray();
-        return new WriterCapture(Arrays.copyOfRange(bytes, (int) firstOffset, (int) firstOffset + payload.length),
-                firstBuffer, secondBuffer);
-    }
-
-    private static byte[] repeatByte(byte value) {
-        byte[] payload = new byte[128 * 1024 + 17];
-        Arrays.fill(payload, value);
-        return payload;
-    }
-
-    private static Object copyBuffer(ZipWriter writer) throws Exception {
-        var field = ZipWriter.class.getDeclaredField("copyBuffer");
-        field.setAccessible(true);
-        return field.get(writer);
-    }
-
     private static HeaderCapture simulateHeaderOnlyEntry(long size, long initialOffset) throws Exception {
         String name = "boundary.bin";
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -584,8 +548,5 @@ class ZipWriterTest {
             long afterLocalHeader,
             long dataOffset,
             int centralHeader) {
-    }
-
-    private record WriterCapture(byte[] payload, Object firstBuffer, Object secondBuffer) {
     }
 }
