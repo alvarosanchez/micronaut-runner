@@ -206,6 +206,82 @@ class IndexWriterTest {
     }
 
     @Test
+    void flagsEveryRecordOfANameThatAlsoExistsAsADirectory() {
+        IndexWriter writer = new IndexWriter();
+        IndexWriter.JarSpec application = writer.addJar(IndexFormat.CLASSES_PREFIX);
+        application.addEntry("explicit/").sizes(0, 0);
+        application.addEntry("implied/child.txt").sizes(1, 1);
+        application.addEntry("same").sizes(1, 1);
+        application.addEntry("same/").sizes(0, 0);
+        application.addEntry("plain.txt").sizes(1, 1);
+        application.addEntry("doubled//").sizes(0, 0);
+        IndexWriter.JarSpec multiRelease = writer.addJar("MICRONAUT-INF/lib/a.jar")
+                .addFlags(IndexFormat.JAR_FLAG_MULTI_RELEASE);
+        multiRelease.addEntry("explicit").sizes(1, 1);
+        multiRelease.addEntry("implied").sizes(1, 1);
+        multiRelease.addEntry("versioned").sizes(1, 1);
+        multiRelease.addEntry("META-INF/versions/11/versioned").sizes(1, 1);
+        multiRelease.addEntry("META-INF/versions/17/aliased/").sizes(0, 0);
+        IndexWriter.JarSpec other = writer.addJar("MICRONAUT-INF/lib/b.jar");
+        other.addEntry("versioned/").sizes(0, 0);
+        other.addEntry("aliased").sizes(1, 1);
+
+        Decoded index = new Decoded(writer.write(writer.layout(), 1024));
+
+        assertEquals(List.of(1), twinFlaggedJars(index, "explicit"),
+                "a file in a later jar, twin of the application's stored directory");
+        assertEquals(IndexFormat.ENTRY_FLAG_DIRECTORY | IndexFormat.ENTRY_FLAG_SYNTHETIC_DIR,
+                index.entryFlags(index.find("implied/")), "the twin is only implied by implied/child.txt");
+        assertEquals(List.of(1), twinFlaggedJars(index, "implied"),
+                "a file in a later jar, twin of a directory the application only implies");
+        assertEquals(List.of(0), twinFlaggedJars(index, "same"), "a file and a directory in one jar");
+        int versioned = index.find("versioned");
+        assertTrue((index.entryFlags(versioned) & IndexFormat.ENTRY_FLAG_VERSIONED_ALIAS) != 0,
+                "the chain starts with the alias of META-INF/versions/11/versioned");
+        assertEquals(List.of(1, 1), twinFlaggedJars(index, "versioned"),
+                "the alias and the base record of a multi-release jar, twins of a later jar's directory");
+        int aliased = index.find("aliased/");
+        assertEquals(IndexFormat.ENTRY_FLAG_VERSIONED_ALIAS | IndexFormat.ENTRY_FLAG_DIRECTORY,
+                index.entryFlags(aliased), "the only aliased/ record is a versioned alias");
+        assertEquals(IndexFormat.NO_INDEX, index.entryNext(aliased));
+        assertEquals(List.of(2), twinFlaggedJars(index, "aliased"),
+                "a file whose twin is the versioned alias of a directory");
+
+        for (String name : new String[] {"plain.txt", "implied/child.txt", "META-INF/versions/11/versioned"}) {
+            int record = index.find(name);
+            assertNotEquals(IndexFormat.NO_INDEX, record, name);
+            assertEquals(0, index.entryFlags(record) & IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN,
+                    name + " has no directory twin");
+        }
+        assertNotEquals(IndexFormat.NO_INDEX, index.find("doubled/"),
+                "doubled// implies doubled/, which is a directory and so never flagged");
+        for (int record = 0; record < index.entryCount(); record++) {
+            String name = index.entryName(record);
+            boolean twin = !name.endsWith("/") && index.find(name + "/") != IndexFormat.NO_INDEX;
+            assertEquals(twin, (index.entryFlags(record) & IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN) != 0,
+                    "record " + record + " '" + name + "' is flagged exactly when its name has a directory twin");
+        }
+    }
+
+    /**
+     * Walks the chain of a name and returns the jar of every record, asserting that each one carries
+     * {@link IndexFormat#ENTRY_FLAG_DIRECTORY_TWIN}.
+     *
+     * @param index the index
+     * @param name  the logical name
+     * @return the jar ids of the chain's records, in chain order
+     */
+    private static List<Integer> twinFlaggedJars(Decoded index, String name) {
+        List<Integer> jars = new ArrayList<>();
+        for (int record = index.find(name); record != IndexFormat.NO_INDEX; record = index.entryNext(record)) {
+            assertTrue((index.entryFlags(record) & IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN) != 0,
+                    "record " + record + " of " + name + " in jar " + index.entryJarId(record));
+            jars.add(index.entryJarId(record));
+        }
+        return jars;
+    }
+
+    @Test
     void chainsRunInClasspathOrderAcrossJars() {
         IndexWriter writer = new IndexWriter();
         writer.addJar(IndexFormat.CLASSES_PREFIX).addEntry("shared.txt").sizes(1, 1).dataOffset(10);
@@ -330,6 +406,9 @@ class IndexWriterTest {
         byte[] theirs = buildWithLauncherBuilder(type);
 
         assertArrayEquals(theirs, mine, () -> difference(theirs, mine));
+        Decoded index = new Decoded(mine);
+        assertTrue((index.entryFlags(index.find("resources")) & IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN) != 0,
+                "the fixture has to exercise the directory twin flag for the comparison to cover it");
     }
 
     /**
@@ -337,8 +416,9 @@ class IndexWriterTest {
      * appears in all of them, versioned aliases in both directions, an entry under {@code META-INF} that
      * must not be aliased, version directories below the multi-release floor and past the {@code u8} of
      * {@link IndexFormat#E_MR_VERSION} that must not be aliased either, directories that are stored and
-     * directories that are only implied, package sections with and without sealing, and metadata strings
-     * that repeat so the string table has to deduplicate them.
+     * directories that are only implied, a file whose name another jar holds as a directory, package
+     * sections with and without sealing, and metadata strings that repeat so the string table has to
+     * deduplicate them.
      *
      * @return the index as {@link IndexWriter} writes it
      */
@@ -402,6 +482,10 @@ class IndexWriterTest {
                 .dosTime(0x2A210000L).dataOffset(300100L);
         other.addEntry("other/thing.txt").sizes(11, 11).crc32(0xCCCCCCCCL)
                 .dosTime(0x2A210000L).dataOffset(300200L);
+        // A file named like the application's stored resources/ directory: its record carries
+        // ENTRY_FLAG_DIRECTORY_TWIN, so the two writers have to agree on that bit as well.
+        other.addEntry("resources").sizes(12, 12).crc32(0xCDCDCDCDL)
+                .dosTime(0x2A210000L).dataOffset(300300L);
 
         return writer.write(writer.layout(), 123456789L);
     }
@@ -463,6 +547,7 @@ class IndexWriterTest {
         call(other, "location", 300000L, 2048L, 299950L);
         entry(other, "com/example/Shared.class", 300100L, 20L, 0xBBBBBBBBL);
         entry(other, "other/thing.txt", 300200L, 11L, 0xCCCCCCCCL);
+        entry(other, "resources", 300300L, 12L, 0xCDCDCDCDL);
 
         return (byte[]) call(writer, "build");
     }

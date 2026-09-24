@@ -227,6 +227,11 @@ public final class IndexFormat {
     public static final int E_METHOD = 40;               // u8
     /** {@code 0} for a base entry, otherwise the {@code META-INF/versions/N} feature version. */
     public static final int E_MR_VERSION = 41;           // u8
+    /**
+     * A mask of {@link #ENTRY_FLAG_DIRECTORY}, {@link #ENTRY_FLAG_SYNTHETIC_DIR},
+     * {@link #ENTRY_FLAG_VERSIONED_ALIAS}, {@link #ENTRY_FLAG_PHYSICAL} and
+     * {@link #ENTRY_FLAG_DIRECTORY_TWIN}.
+     */
     public static final int E_FLAGS = 42;                // u8
     public static final int E_RESERVED = 43;             // u8
     /**
@@ -244,6 +249,13 @@ public final class IndexFormat {
     public static final int ENTRY_FLAG_VERSIONED_ALIAS = 1 << 2;
     /** The record corresponds to an entry that physically exists in the source archive. */
     public static final int ENTRY_FLAG_PHYSICAL = 1 << 3;
+    /**
+     * Set on every record (physical or versioned alias) whose logical name does not end with '/' when the
+     * index also holds that name followed by '/' in any jar, as an explicit, versioned-alias or synthesised
+     * directory. A loader considers the directory spelling of a slashless name only when the exact lookup
+     * misses or the record it resolved carries this flag.
+     */
+    public static final int ENTRY_FLAG_DIRECTORY_TWIN = 1 << 4;
 
     /** ZIP compression method: stored, that is, uncompressed. */
     public static final int METHOD_STORED = 0;

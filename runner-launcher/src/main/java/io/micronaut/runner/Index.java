@@ -925,6 +925,18 @@ public final class Index {
     }
 
     /**
+     * Whether the index also holds this record's logical name followed by a slash, in any jar. Only then
+     * can a slashless lookup of the name be answered by a directory, so a lookup that resolves a record
+     * without this flag is complete after one probe.
+     *
+     * @param record the entry record index
+     * @return {@code true} when the name has a directory twin
+     */
+    public boolean entryDirectoryTwin(int record) {
+        return (entryFlags(record) & IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN) != 0;
+    }
+
+    /**
      * Whether a record is a multi-release alias of another record in the same jar. Aliases are excluded
      * from jar enumeration, which lists physical records only.
      *
@@ -969,6 +981,37 @@ public final class Index {
             int offset = entryOffset(record);
             if (buffer.getInt(offset + IndexFormat.E_NAME_HASH) == hash
                     && nameEquals(offset, logicalName)) {
+                return record;
+            }
+            slot = (slot + 1) & hashMask;
+        }
+        return IndexFormat.NO_INDEX;
+    }
+
+    /**
+     * Looks up the directory spelling of a name, that is {@code name + "/"}, and returns the head of its
+     * chain, without building that name.
+     *
+     * <p>The hash is derived from the cached {@link String#hashCode()} of {@code name}, since
+     * {@code hashCode(name + "/") == hashCode(name) * 31 + '/'}, and a candidate is verified by comparing
+     * the stored UTF-8 bytes against {@code name} followed by a final slash, decoding only a name that
+     * actually contains a non-ASCII character, exactly as {@link #find(String)} does.</p>
+     *
+     * @param name the entry name without its trailing slash, relative to its jar, with no leading slash
+     * @return the first record named {@code name + "/"}, or {@link IndexFormat#NO_INDEX}
+     */
+    public int findDirectory(String name) {
+        int hash = IndexFormat.spread(name.hashCode() * 31 + '/');
+        int slot = hash & hashMask;
+        int table = hashTableOffset;
+        for (int probe = 0; probe <= maxProbe; probe++) {
+            int record = buffer.getInt(table + (slot << 2));
+            if (record == IndexFormat.NO_INDEX) {
+                return IndexFormat.NO_INDEX;
+            }
+            int offset = entryOffset(record);
+            if (buffer.getInt(offset + IndexFormat.E_NAME_HASH) == hash
+                    && directoryNameEquals(offset, name)) {
                 return record;
             }
             slot = (slot + 1) & hashMask;
@@ -1373,6 +1416,28 @@ public final class Index {
         return true;
     }
 
+    private boolean directoryNameEquals(int offset, String name) {
+        int size = buffer.getShort(offset + IndexFormat.E_NAME_LENGTH) & 0xFFFF;
+        int prefix = name.length();
+        if (size < prefix + 1) {
+            return false;
+        }
+        int at = nameBytesOffset(buffer.getInt(offset + IndexFormat.E_NAME), size);
+        if (size != prefix + 1) {
+            return decodedDirectoryEquals(at, size, name);
+        }
+        for (int i = 0; i < prefix; i++) {
+            char c = name.charAt(i);
+            if (c >= 0x80) {
+                return decodedDirectoryEquals(at, size, name);
+            }
+            if (buffer.get(at + i) != (byte) c) {
+                return false;
+            }
+        }
+        return buffer.get(at + prefix) == '/';
+    }
+
     private boolean classNameEquals(int offset, String binaryName) {
         int size = buffer.getShort(offset + IndexFormat.E_NAME_LENGTH) & 0xFFFF;
         int characters = binaryName.length() + CLASS_SUFFIX.length;
@@ -1420,6 +1485,14 @@ public final class Index {
         byte[] bytes = new byte[size];
         buffer.get(at, bytes, 0, size);
         return name.equals(new String(bytes, StandardCharsets.UTF_8));
+    }
+
+    private boolean decodedDirectoryEquals(int at, int size, String name) {
+        byte[] bytes = new byte[size];
+        buffer.get(at, bytes, 0, size);
+        String decoded = new String(bytes, StandardCharsets.UTF_8);
+        int prefix = name.length();
+        return decoded.length() == prefix + 1 && decoded.charAt(prefix) == '/' && decoded.startsWith(name);
     }
 
     /** One immutable hash table containing only the package metadata declared by a single jar. */
