@@ -808,7 +808,9 @@ final class ZipReader implements Closeable {
 
     private void copyFromMapping(long position, byte[] destination, int offset, int length) throws IOException {
         try {
-            MemorySegment.copy(mapping, ValueLayout.JAVA_BYTE, position, destination, offset, length);
+            // Segment to segment rather than segment to array: the array overload bootstraps a type switch on
+            // its first call, about a millisecond that every fresh packaging JVM would pay.
+            MemorySegment.copy(mapping, position, MemorySegment.ofArray(destination), offset, length);
         } catch (IndexOutOfBoundsException | InternalError e) {
             throw unreadable(e);
         }
