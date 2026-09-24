@@ -458,7 +458,11 @@ bytes.</p></div>
 every class defined from it, and the seal base of every package it seals.
 
 <p>It ends with a slash, the way <code>URLClassLoader</code> writes a directory code source, so that a
-sealed package's base URL is a prefix of every entry URL of that jar.</p></div>
+sealed package's base URL is a prefix of every entry URL of that jar.</p>
+
+<p>Each returned URL carries its own <a href="protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar"><code>Handler</code></a>, built by <a href="protocol/jar/Handler.html#withCachedForm(java.lang.String)"><code>Handler.withCachedForm(String)</code></a>,
+which computes the URL's string form once: the JDK calls <code>toString()</code> on the code-source location
+in every <code>defineClass</code>. The URL is parsed with the same single parse as every other URL here.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>jarId</code> - the jar, <code>0</code> being the application layer</dd>

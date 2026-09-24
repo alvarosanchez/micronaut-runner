@@ -68,6 +68,8 @@ loadScripts(document, 'script');</script>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
+<li><a href="#withCachedForm(java.lang.String)" tabindex="0">withCachedForm(String)</a></li>
+<li><a href="#toExternalForm(java.net.URL)" tabindex="0">toExternalForm(URL)</a></li>
 <li><a href="#openConnection(java.net.URL)" tabindex="0">openConnection(URL)</a></li>
 <li><a href="#parseURL(java.net.URL,java.lang.String,int,int)" tabindex="0">parseURL(URL, String, int, int)</a></li>
 <li><a href="#sameFile(java.net.URL,java.net.URL)" tabindex="0">sameFile(URL, URL)</a></li>
@@ -98,8 +100,9 @@ loadScripts(document, 'script');</script>
 name <code>&lt;package&gt;.&lt;protocol&gt;.Handler</code> for every package listed in
 <code>java.protocol.handler.pkgs</code>, loads it with the system class loader and instantiates it
 reflectively, so this class must stay public, must keep this name, and must keep a public no-argument
-constructor. The JDK's instance and the instance <a href="../../Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> keeps for building URLs are different
-objects; both read the same static registration, so it makes no difference which one parses a URL.</p>
+constructor. The JDK's instance, the instance <a href="../../Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> keeps for building URLs and the instance
+each code-source URL carries (see <a href="#withCachedForm(java.lang.String)"><code>withCachedForm(String)</code></a>) are different objects; all of them
+read the same static registration, so it makes no difference which one parses a URL.</p>
 
 <h2 id="what-it-parses-heading">What it parses</h2>
 <p><a href="#parseURL(java.net.URL,java.lang.String,int,int)"><code>parseURL(URL, String, int, int)</code></a> follows the JDK's jar handler exactly, because every library that ever built a jar
@@ -145,7 +148,7 @@ exactly as it did before the launcher started.</p></div>
 <section class="method-summary" id="method-summary">
 <h2>Method Summary</h2>
 <div id="method-summary-table">
-<div class="table-tabs" role="tablist" aria-orientation="horizontal"><button id="method-summary-table-tab0" role="tab" aria-selected="true" aria-controls="method-summary-table.tabpanel" tabindex="0" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table', 3)" class="active-table-tab">All Methods</button><button id="method-summary-table-tab2" role="tab" aria-selected="false" aria-controls="method-summary-table.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table-tab2', 3)" class="table-tab">Instance Methods</button><button id="method-summary-table-tab4" role="tab" aria-selected="false" aria-controls="method-summary-table.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table-tab4', 3)" class="table-tab">Concrete Methods</button></div>
+<div class="table-tabs" role="tablist" aria-orientation="horizontal"><button id="method-summary-table-tab0" role="tab" aria-selected="true" aria-controls="method-summary-table.tabpanel" tabindex="0" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table', 3)" class="active-table-tab">All Methods</button><button id="method-summary-table-tab1" role="tab" aria-selected="false" aria-controls="method-summary-table.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table-tab1', 3)" class="table-tab">Static Methods</button><button id="method-summary-table-tab2" role="tab" aria-selected="false" aria-controls="method-summary-table.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table-tab2', 3)" class="table-tab">Instance Methods</button><button id="method-summary-table-tab4" role="tab" aria-selected="false" aria-controls="method-summary-table.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table-tab4', 3)" class="table-tab">Concrete Methods</button></div>
 <div id="method-summary-table.tabpanel" role="tabpanel" aria-labelledby="method-summary-table-tab0">
 <div class="summary-table three-column-summary">
 <div class="table-header col-first">Modifier and Type</div>
@@ -182,12 +185,23 @@ URLs.</div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Compares two jar URLs by their text.</div>
 </div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>protected <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#toExternalForm(java.net.URL)" class="member-name-link">toExternalForm</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a>&nbsp;url)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">The string form of a URL, cached for the one URL <a href="#withCachedForm(java.lang.String)"><code>withCachedForm(String)</code></a> created this
+handler for.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#withCachedForm(java.lang.String)" class="member-name-link">withCachedForm</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;spec)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="block">Launcher-internal; public only because <a href="../../Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> is in another package.</div>
+</div>
 </div>
 </div>
 </div>
 <div class="inherited-list">
 <h3 id="methods-inherited-from-class-java.net.URLStreamHandler">Methods inherited from class&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#method-summary" title="class or interface in java.net" class="external-link">URLStreamHandler</a></h3>
-<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#getDefaultPort()" title="class or interface in java.net" class="external-link">getDefaultPort</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#getHostAddress(java.net.URL)" title="class or interface in java.net" class="external-link">getHostAddress</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#hostsEqual(java.net.URL,java.net.URL)" title="class or interface in java.net" class="external-link">hostsEqual</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#openConnection(java.net.URL,java.net.Proxy)" title="class or interface in java.net" class="external-link">openConnection</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#setURL(java.net.URL,java.lang.String,java.lang.String,int,java.lang.String,java.lang.String)" title="class or interface in java.net" class="external-link">setURL</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#setURL(java.net.URL,java.lang.String,java.lang.String,int,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String)" title="class or interface in java.net" class="external-link">setURL</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#toExternalForm(java.net.URL)" title="class or interface in java.net" class="external-link">toExternalForm</a></code></div>
+<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#getDefaultPort()" title="class or interface in java.net" class="external-link">getDefaultPort</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#getHostAddress(java.net.URL)" title="class or interface in java.net" class="external-link">getHostAddress</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#hostsEqual(java.net.URL,java.net.URL)" title="class or interface in java.net" class="external-link">hostsEqual</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#openConnection(java.net.URL,java.net.Proxy)" title="class or interface in java.net" class="external-link">openConnection</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#setURL(java.net.URL,java.lang.String,java.lang.String,int,java.lang.String,java.lang.String)" title="class or interface in java.net" class="external-link">setURL</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#setURL(java.net.URL,java.lang.String,java.lang.String,int,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String)" title="class or interface in java.net" class="external-link">setURL</a></code></div>
 <div class="inherited-list">
 <h3 id="methods-inherited-from-class-java.lang.Object">Methods inherited from class&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#method-summary" title="class or interface in java.lang" class="external-link">Object</a></h3>
 <code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#clone()" title="class or interface in java.lang" class="external-link">clone</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#equals(java.lang.Object)" title="class or interface in java.lang" class="external-link">equals</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#finalize()" title="class or interface in java.lang" class="external-link">finalize</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#getClass()" title="class or interface in java.lang" class="external-link">getClass</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#hashCode()" title="class or interface in java.lang" class="external-link">hashCode</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#notify()" title="class or interface in java.lang" class="external-link">notify</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#notifyAll()" title="class or interface in java.lang" class="external-link">notifyAll</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#toString()" title="class or interface in java.lang" class="external-link">toString</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#wait()" title="class or interface in java.lang" class="external-link">wait</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#wait(long)" title="class or interface in java.lang" class="external-link">wait</a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#wait(long,int)" title="class or interface in java.lang" class="external-link">wait</a></code></div>
@@ -209,7 +223,8 @@ URLs.</div>
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="element-name">Handler</span>()</div>
 <div class="block">Creates a handler. The JDK calls this reflectively when it resolves the <code>jar</code> protocol through
 <code>java.protocol.handler.pkgs</code>; <a href="../../Handlers.html#register(java.io.File,io.micronaut.runner.Index,io.micronaut.runner.ArchiveSource)"><code>Handlers.register(File, Index, ArchiveSource)</code></a> also creates one directly, to build
-URLs that do not depend on that property having taken effect.</div>
+URLs that do not depend on that property having taken effect; and <a href="#withCachedForm(java.lang.String)"><code>withCachedForm(String)</code></a>
+creates one for each URL whose string form it caches.</div>
 </div>
 </section>
 </li>
@@ -221,6 +236,54 @@ URLs that do not depend on that property having taken effect.</div>
 <section class="method-details" id="method-detail">
 <h2>Method Details</h2>
 <ul class="member-list">
+<li>
+<section class="detail" id="withCachedForm(java.lang.String)">
+<h3>withCachedForm</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></span>&nbsp;<span class="element-name">withCachedForm</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;spec)</span>
+                          throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/MalformedURLException.html" title="class or interface in java.net" class="external-link">MalformedURLException</a></span></div>
+<div class="block">Launcher-internal; public only because <a href="../../Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> is in another package. Creates a URL with its
+own handler instance that computes the URL's string form once. <a href="../../Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> uses it for
+code-source URLs, whose <code>toString()</code> the JDK calls on every <code>defineClass</code>.
+
+<p>The URL is parsed exactly as <a href="../../Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> parses every other URL it builds, with the same
+constructor and a single parse; only the handler instance differs. The cached string is this
+handler's own default output for the URL, so it cannot differ from what the URL reported before. A
+URL derived from this one, such as <code>new URL(codeSource, "a/B.class")</code>, inherits the handler
+but not the cache.</p></div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>spec</code> - a complete <code>jar:</code> spec</dd>
+<dt>Returns:</dt>
+<dd>the URL</dd>
+<dt>Throws:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/MalformedURLException.html" title="class or interface in java.net" class="external-link">MalformedURLException</a></code> - if the spec is rejected</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="toExternalForm(java.net.URL)">
+<h3>toExternalForm</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">protected</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">toExternalForm</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a>&nbsp;url)</span></div>
+<div class="block">The string form of a URL, cached for the one URL <a href="#withCachedForm(java.lang.String)"><code>withCachedForm(String)</code></a> created this
+handler for.
+
+<p>Both fields are written before that URL leaves the factory, <code>ownerForm</code> first. A thread
+that reads them through a race reads <code>ownerForm</code> first and falls back to the default when it
+sees <code>null</code>, which computes the same string.</p></div>
+<dl class="notes">
+<dt>Overrides:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html#toExternalForm(java.net.URL)" title="class or interface in java.net" class="external-link">toExternalForm</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html" title="class or interface in java.net" class="external-link">URLStreamHandler</a></code></dd>
+<dt>Parameters:</dt>
+<dd><code>url</code> - the URL</dd>
+<dt>Returns:</dt>
+<dd>its string form</dd>
+</dl>
+</div>
+</section>
+</li>
 <li>
 <section class="detail" id="openConnection(java.net.URL)">
 <h3>openConnection</h3>

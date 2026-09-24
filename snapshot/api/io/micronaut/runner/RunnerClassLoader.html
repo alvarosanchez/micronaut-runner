@@ -118,20 +118,32 @@ rules decide where a name is looked up:</p>
       class loader that loaded the launcher, so that <a href="Entry.html" title="interface in io.micronaut.runner"><code>Entry</code></a>, <a href="Index.html" title="class in io.micronaut.runner"><code>Index</code></a> and friends are the
       same types on both sides of the boundary.</li>
   <li>A class whose package belongs to a boot layer module of the boot or platform loader is
-      <em>parent-visible</em>: the parent is asked first and the index is only a fallback. The set is
-      built once from <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ModuleLayer.html#boot()" title="class or interface in java.lang" class="external-link"><code>ModuleLayer.boot()</code></a>, which is exact for the running JDK, unlike a prefix
-      test on <code>java.</code>.</li>
+      <em>parent-visible</em>: the parent is asked first and the index is only a fallback. The package
+      map is built once from <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ModuleLayer.html#boot()" title="class or interface in java.lang" class="external-link"><code>ModuleLayer.boot()</code></a>, which is exact for the running JDK, unlike a
+      prefix test on <code>java.</code>. When the parent is one of the JDK's own loaders - the platform
+      loader, or the JDK's system loader - a package of a module of the boot loader skips both this
+      loader's per-name lock and the parent: <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Class.html#forName(java.lang.Module,java.lang.String)" title="class or interface in java.lang" class="external-link"><code>Class.forName(Module, String)</code></a> asks the boot loader
+      directly, which is where the parent would end up, and the lock and the archive are consulted only
+      when the boot loader does not have the class. Packages of the platform loader's modules, and every
+      package under any other parent, are asked of the parent.</li>
   <li>Everything else - that is, every application and dependency class - is looked up in the index
-      <em>first</em>. This is the point of the whole design: a parent-first loader pays a failed parent
-      lookup and a thrown <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassNotFoundException.html" title="class or interface in java.lang" class="external-link"><code>ClassNotFoundException</code></a> for every single application class, which is
-      the dominant cost in naive nested jar loaders.</li>
+      <em>first</em>, and the parent is asked only after a miss. This is the point of the whole design: a
+      parent-first loader pays a failed parent lookup and a thrown <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassNotFoundException.html" title="class or interface in java.lang" class="external-link"><code>ClassNotFoundException</code></a> for
+      every single application class, which is the dominant cost in naive nested jar loaders.</li>
 </ul>
+
+<p>A class neither side has costs one <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassNotFoundException.html" title="class or interface in java.lang" class="external-link"><code>ClassNotFoundException</code></a>, as it does with the JDK's own
+loaders: the parent's is rethrown rather than caught and replaced, and the one exception this loader
+builds itself is for a boot-module package whose class neither the boot loader nor the archive has.</p>
 
 <h2 id="thread-safety-heading">Thread safety</h2>
 <p>The loader is parallel capable, so the superclass hands out one lock per class name and several
 threads define classes at once. The protection domain cache is guarded by its own monitor, which is
 never held while a class is defined, and package definition relies on the superclass's concurrent
-package map, catching the <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link"><code>IllegalArgumentException</code></a> that a lost race produces.</p></div>
+package map, catching the <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link"><code>IllegalArgumentException</code></a> that a lost race produces. The decoded
+manifest attributes of a jar are written under that same monitor, together with its protection domain,
+and read without it: every class definition acquires the monitor for the domain before it reads them,
+which orders the read after the write. The boot fast path defines nothing, so it takes no lock.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -325,8 +337,9 @@ once per jar, and checksumming every class would add a full pass over each class
 <div class="block">Creates a loader over an open archive.
 
 <p>Everything that does not depend on the classes being loaded is computed here, once: the
-multi-release feature version, the set of parent-visible packages and the verification flag. The
-archive and the index are <em>not</em> owned by the loader and are never closed by it.</p></div>
+multi-release feature version, the modules of the parent-visible packages, whether boot-module
+packages may bypass the parent, and the verification flag. The archive and the index are <em>not</em>
+owned by the loader and are never closed by it.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>index</code> - the index of the archive, already validated</dd>
@@ -366,7 +379,13 @@ archive and the index are <em>not</em> owned by the loader and are never closed 
 <div class="member-signature"><span class="modifiers">protected</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Class.html" title="class or interface in java.lang" class="external-link">Class</a>&lt;?&gt;</span>&nbsp;<span class="element-name">loadClass</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
  boolean&nbsp;resolve)</span>
                       throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassNotFoundException.html" title="class or interface in java.lang" class="external-link">ClassNotFoundException</a></span></div>
-<div class="block">Loads a class, deciding between the parent and the index by package.</div>
+<div class="block">Loads a class, deciding between the parent and the index by package.
+
+<p>The package name is extracted once, here, and handed down to the definition of the class. A class
+of a boot-module package is looked up in the boot loader before the per-name lock is taken, when the
+parent is one of the JDK's own loaders: nothing is defined on that path, so neither the lock nor
+<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#findLoadedClass(java.lang.String)" title="class or interface in java.lang" class="external-link"><code>ClassLoader.findLoadedClass(String)</code></a> is needed, and a hit costs no lock object in the superclass's lock
+map.</p></div>
 <dl class="notes">
 <dt>Overrides:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#loadClass(java.lang.String,boolean)" title="class or interface in java.lang" class="external-link">loadClass</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html" title="class or interface in java.lang" class="external-link">ClassLoader</a></code></dd>
