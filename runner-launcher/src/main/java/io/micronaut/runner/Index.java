@@ -21,9 +21,7 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReferenceArray;
-import java.util.zip.CRC32;
 
 /**
  * The reader of {@code MICRONAUT-INF/index.bin}, the table of contents a runner jar carries so that the
@@ -97,11 +95,13 @@ public final class Index {
     private final int stringTableOffset;
     private final int stringTableLength;
     private final boolean[] validatedJars;
+    private final boolean verifies;
     private volatile AtomicReferenceArray<PackageLookup> packageLookups;
 
     private Index(ArchiveSource source, ByteBuffer buffer) {
         this.source = source;
         this.buffer = buffer;
+        this.verifies = "true".equals(System.getProperty(RunnerClassLoader.VERIFY_PROPERTY));
         this.length = buffer.limit();
         if (length < IndexFormat.HEADER_SIZE) {
             throw stale("the index is " + length + " bytes, shorter than its header");
@@ -561,38 +561,40 @@ public final class Index {
     }
 
     /**
-     * Opens one indexed entry after performing its jar's lazy staleness check.
+     * Opens one indexed entry after performing its jar's lazy staleness check. Every stream of an entry,
+     * whether for the class loader, a {@link NestedJarFile} or a {@code jar:} URL, is opened here.
      *
-     * <p>When verification is enabled, every byte returned or skipped contributes to the CRC-32 and the
-     * checksum is compared as soon as the recorded end of the entry is reached. Closing a partially read
-     * stream does not drain or verify it.</p>
-     *
-     * @param record the entry record
-     * @param verify whether to verify the uncompressed content against the indexed CRC-32
-     * @return a fresh stream over the entry
-     * @throws IOException if the entry cannot be opened or fails verification
-     */
-    InputStream openEntryStream(int record, boolean verify) throws IOException {
-        int jarId = entryJarId(record);
-        validateJar(jarId);
-        InputStream stream = source.stream(entryDataOffset(record), entryCompressedSize(record),
-                entryUncompressedSize(record), entryMethod(record));
-        if (!verify) {
-            return stream;
-        }
-        return new VerifyingEntryInputStream(stream, entryUncompressedSize(record), entryCrc32(record),
-                entryName(record), jarName(jarId));
-    }
-
-    /**
-     * Opens one indexed entry using the runtime verification setting.
+     * <p>When {@value RunnerClassLoader#VERIFY_PROPERTY} was {@code "true"} as this index was opened, every
+     * byte returned or skipped contributes to the CRC-32, and the checksum is compared as soon as the
+     * recorded end of the entry is reached. Closing a partially read stream does not drain or verify it.</p>
      *
      * @param record the entry record
      * @return a fresh stream over the entry
      * @throws IOException if the entry cannot be opened or fails verification
      */
     public InputStream openEntryStream(int record) throws IOException {
-        return openEntryStream(record, "true".equals(System.getProperty(RunnerClassLoader.VERIFY_PROPERTY)));
+        int jarId = entryJarId(record);
+        validateJar(jarId);
+        long offset = entryDataOffset(record);
+        long compressed = entryCompressedSize(record);
+        long size = entryUncompressedSize(record);
+        int method = entryMethod(record);
+        if (!verifies) {
+            return source.stream(offset, compressed, size, method);
+        }
+        return source.stream(offset, compressed, size, method, entryCrc32(record),
+                "The entry " + entryName(record) + " of " + jarName(jarId));
+    }
+
+    /**
+     * Whether entries are verified against their CRC-32, which {@value RunnerClassLoader#VERIFY_PROPERTY}
+     * decides once, when the index is opened. The launcher opens one index and shares it, so its class
+     * loader, its {@link NestedJarFile} views and its {@code jar:} URLs all agree.
+     *
+     * @return {@code true} when {@value RunnerClassLoader#VERIFY_PROPERTY} was {@code "true"} at open
+     */
+    boolean verifies() {
+        return verifies;
     }
 
     /**
@@ -1515,131 +1517,6 @@ public final class Index {
                 candidate = names[slot];
             }
             return IndexFormat.NO_INDEX;
-        }
-    }
-
-    /** Verifies an indexed entry without buffering its content. */
-    private static final class VerifyingEntryInputStream extends InputStream {
-
-        private static final int SKIP_BUFFER_SIZE = 8192;
-
-        private final InputStream delegate;
-        private final CRC32 checksum = new CRC32();
-        private final long expected;
-        private final String entryName;
-        private final String jarName;
-        private long remaining;
-        private IOException failure;
-        private boolean verified;
-
-        private VerifyingEntryInputStream(InputStream delegate, long size, long expected, String entryName,
-                                          String jarName) {
-            this.delegate = delegate;
-            this.remaining = size;
-            this.expected = expected;
-            this.entryName = entryName;
-            this.jarName = jarName;
-        }
-
-        @Override
-        public int read() throws IOException {
-            checkFailure();
-            if (remaining == 0) {
-                verifyEnd();
-                return -1;
-            }
-            int value = delegate.read();
-            if (value < 0) {
-                return value;
-            }
-            checksum.update(value);
-            remaining--;
-            if (remaining == 0) {
-                verifyEnd();
-            }
-            return value;
-        }
-
-        @Override
-        public int read(byte[] destination, int offset, int count) throws IOException {
-            checkFailure();
-            Objects.checkFromIndexSize(offset, count, destination.length);
-            if (count == 0) {
-                return 0;
-            }
-            if (remaining == 0) {
-                verifyEnd();
-                return -1;
-            }
-            int read = delegate.read(destination, offset, (int) Math.min(count, remaining));
-            if (read < 0) {
-                return read;
-            }
-            checksum.update(destination, offset, read);
-            remaining -= read;
-            if (remaining == 0) {
-                verifyEnd();
-            }
-            return read;
-        }
-
-        @Override
-        public long skip(long count) throws IOException {
-            checkFailure();
-            long wanted = Math.min(Math.max(count, 0L), remaining);
-            if (wanted == 0) {
-                if (remaining == 0 && count > 0) {
-                    verifyEnd();
-                }
-                return 0;
-            }
-            byte[] discarded = new byte[(int) Math.min(wanted, SKIP_BUFFER_SIZE)];
-            long skipped = 0;
-            while (skipped < wanted) {
-                int read = read(discarded, 0, (int) Math.min(discarded.length, wanted - skipped));
-                if (read < 0) {
-                    break;
-                }
-                skipped += read;
-            }
-            return skipped;
-        }
-
-        @Override
-        public int available() throws IOException {
-            return delegate.available();
-        }
-
-        @Override
-        public void close() throws IOException {
-            delegate.close();
-        }
-
-        private void verifyEnd() throws IOException {
-            checkFailure();
-            if (verified) {
-                return;
-            }
-            if (delegate.read() >= 0) {
-                fail(new IOException("The entry holds more data than the index records"));
-            }
-            long actual = checksum.getValue();
-            if (expected != actual) {
-                fail(new IOException("The entry " + entryName + " of " + jarName + " has checksum "
-                        + actual + " but the index records " + expected + "; " + REBUILD_MESSAGE));
-            }
-            verified = true;
-        }
-
-        private void checkFailure() throws IOException {
-            if (failure != null) {
-                throw failure;
-            }
-        }
-
-        private void fail(IOException exception) throws IOException {
-            failure = exception;
-            throw exception;
         }
     }
 }

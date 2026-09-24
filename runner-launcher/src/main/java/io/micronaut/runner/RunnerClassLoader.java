@@ -91,6 +91,9 @@ public final class RunnerClassLoader extends ClassLoader {
      * System property that turns on CRC-32 verification of every class and resource read from the
      * archive. Verification is off by default: the archive is checked for staleness when it is opened and
      * once per jar, and checksumming every class would add a full pass over each class file to startup.
+     *
+     * <p>The property is read once, when the archive's {@link Index} is opened, and the class loader,
+     * {@link NestedJarFile} and {@code jar:} URL streams over that index all follow what it read then.</p>
      */
     public static final String VERIFY_PROPERTY = "micronaut.runner.verify";
 
@@ -122,9 +125,10 @@ public final class RunnerClassLoader extends ClassLoader {
      * Creates a loader over an open archive.
      *
      * <p>Everything that does not depend on the classes being loaded is computed here, once: the
-     * multi-release feature version, the modules of the parent-visible packages, whether boot-module
-     * packages may bypass the parent, and the verification flag. The archive and the index are <em>not</em>
-     * owned by the loader and are never closed by it.</p>
+     * multi-release feature version, the modules of the parent-visible packages, and whether boot-module
+     * packages may bypass the parent. Whether classes and resources are verified is the index's setting,
+     * read when the index was opened; see {@link #VERIFY_PROPERTY}. The archive and the index are
+     * <em>not</em> owned by the loader and are never closed by it.</p>
      *
      * @param index  the index of the archive, already validated
      * @param source the open archive the index describes
@@ -142,7 +146,7 @@ public final class RunnerClassLoader extends ClassLoader {
         this.domains = new ProtectionDomain[index.jarCount()];
         this.jarAttributes = new String[index.jarCount()][];
         this.multiReleaseVersion = Index.effectiveMultiReleaseVersion();
-        this.verify = "true".equals(System.getProperty(VERIFY_PROPERTY));
+        this.verify = index.verifies();
     }
 
     /**
@@ -332,7 +336,7 @@ public final class RunnerClassLoader extends ClassLoader {
             return null;
         }
         try {
-            return index.openEntryStream(record, verify);
+            return index.openEntryStream(record);
         } catch (IOException e) {
             return null;
         }

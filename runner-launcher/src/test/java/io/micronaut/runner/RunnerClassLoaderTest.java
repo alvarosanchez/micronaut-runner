@@ -754,15 +754,19 @@ class RunnerClassLoaderTest {
         assertEquals("corrupt", id(newLoader().loadClass("org.example.Corrupt")),
                 "the checksum must not be verified by default");
 
+        // The index reads the flag when it is opened, so the verifying loader needs an index of its own.
         System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
-        RunnerClassLoader verifying = newLoader();
-        ClassNotFoundException failure = assertThrows(ClassNotFoundException.class,
-                () -> verifying.loadClass("org.example.Corrupt"));
-        assertNotNull(failure.getCause());
-        assertTrue(failure.getCause().getMessage().contains("org/example/Corrupt.class"),
-                failure.getCause().getMessage());
-        assertEquals("app", id(verifying.loadClass("org.example.App")),
-                "an intact entry still loads with verification on");
+        try (ArchiveSource verifyingSource = ArchiveSource.open(archive)) {
+            RunnerClassLoader verifying = new RunnerClassLoader(Index.open(verifyingSource), verifyingSource,
+                    ClassLoader.getPlatformClassLoader());
+            ClassNotFoundException failure = assertThrows(ClassNotFoundException.class,
+                    () -> verifying.loadClass("org.example.Corrupt"));
+            assertNotNull(failure.getCause());
+            assertTrue(failure.getCause().getMessage().contains("org/example/Corrupt.class"),
+                    failure.getCause().getMessage());
+            assertEquals("app", id(verifying.loadClass("org.example.App")),
+                    "an intact entry still loads with verification on");
+        }
     }
 
     @Test
@@ -773,15 +777,18 @@ class RunnerClassLoaderTest {
                 string(unchecked.getResourceAsStream("corrupt-deflated.txt")));
 
         System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
-        RunnerClassLoader verifying = newLoader();
-        IOException stored = assertThrows(IOException.class,
-                () -> string(verifying.getResourceAsStream("corrupt-stored.txt")));
-        assertTrue(stored.getMessage().contains("corrupt-stored.txt"), stored.getMessage());
-        IOException deflated = assertThrows(IOException.class,
-                () -> string(verifying.getResourceAsStream("corrupt-deflated.txt")));
-        assertTrue(deflated.getMessage().contains("corrupt-deflated.txt"), deflated.getMessage());
-        assertEquals("jar0-shared", string(verifying.getResourceAsStream("shared.txt")),
-                "an intact resource still reads with verification on");
+        try (ArchiveSource verifyingSource = ArchiveSource.open(archive)) {
+            RunnerClassLoader verifying = new RunnerClassLoader(Index.open(verifyingSource), verifyingSource,
+                    ClassLoader.getPlatformClassLoader());
+            IOException stored = assertThrows(IOException.class,
+                    () -> string(verifying.getResourceAsStream("corrupt-stored.txt")));
+            assertTrue(stored.getMessage().contains("corrupt-stored.txt"), stored.getMessage());
+            IOException deflated = assertThrows(IOException.class,
+                    () -> string(verifying.getResourceAsStream("corrupt-deflated.txt")));
+            assertTrue(deflated.getMessage().contains("corrupt-deflated.txt"), deflated.getMessage());
+            assertEquals("jar0-shared", string(verifying.getResourceAsStream("shared.txt")),
+                    "an intact resource still reads with verification on");
+        }
     }
 
     @Test

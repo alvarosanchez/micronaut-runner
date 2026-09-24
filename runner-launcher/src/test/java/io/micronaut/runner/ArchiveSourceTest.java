@@ -36,6 +36,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -45,23 +46,29 @@ import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests the archive reader in both the mapped and the fallback mode, over archives written by
+ * Tests the archive reader on each of its read paths, see {@link Mode}, over archives written by
  * {@link TestArchiveBuilder}: plain, with a ZIP comment, and in ZIP64 form.
  */
 class ArchiveSourceTest {
 
     private static final byte[] HELLO = "hello runner".getBytes(StandardCharsets.UTF_8);
+
+    /** The content of the verifying stream cases: longer than one skip buffer, so a skip takes two reads. */
+    private static final byte[] VERIFIED = payload(20_000);
+    private static final String DESCRIPTION = "The entry verified.bin of test.jar";
+    private static final int[] METHODS = {IndexFormat.METHOD_STORED, IndexFormat.METHOD_DEFLATED};
 
     /** Size of the random file the interrupt stress reads. */
     private static final int STRESS_FILE_LENGTH = 4 * 1024 * 1024;
@@ -90,16 +97,16 @@ class ArchiveSourceTest {
         System.clearProperty(ArchiveSource.MMAP_PROPERTY);
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void readsPrimitivesLittleEndian(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void readsPrimitivesLittleEndian(Mode mode) throws IOException {
         byte[] content = new byte[] {
             0x01, (byte) 0xFF, 0x02, 0x03, (byte) 0x80, 0x11, 0x22, 0x33,
             0x44, 0x55, 0x66, 0x77, (byte) 0x88, (byte) 0x99, (byte) 0xAA, (byte) 0xBB
         };
-        ArchiveSource source = open(content, mapped);
+        ArchiveSource source = open(content, mode);
 
-        assertEquals(mapped, source.mapped());
+        assertEquals(mode.mapped(), source.mapped());
         assertEquals(content.length, source.length());
         assertEquals(1, source.u8(0));
         assertEquals(255, source.u8(1));
@@ -115,10 +122,10 @@ class ArchiveSourceTest {
         assertEquals(0x66554433, source.i32(7));
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void refusesReadsOutsideTheArchive(boolean mapped) throws IOException {
-        ArchiveSource source = open(HELLO, mapped);
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void refusesReadsOutsideTheArchive(Mode mode) throws IOException {
+        ArchiveSource source = open(HELLO, mode);
         assertThrows(IOException.class, () -> source.u8(-1));
         assertThrows(IOException.class, () -> source.u8(HELLO.length));
         assertThrows(IOException.class, () -> source.u32(HELLO.length - 3));
@@ -128,14 +135,19 @@ class ArchiveSourceTest {
         assertThrows(IOException.class, () -> source.readFully(0, HELLO.length + 1));
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void slicesAndCopiesContent(boolean mapped) throws IOException {
-        ArchiveSource source = open(HELLO, mapped);
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void slicesAndCopiesContent(Mode mode) throws IOException {
+        ArchiveSource source = open(HELLO, mode);
 
         ByteBuffer slice = source.slice(6, 6);
-        if (mapped) {
+        if (mode.mapped()) {
+            assertTrue(slice.isDirect(), "a mapped slice is a window onto the mapping");
             assertTrue(slice.isReadOnly(), "a mapped slice is a read-only window onto the mapping");
+            assertEquals(ByteOrder.BIG_ENDIAN, slice.order());
+            assertEquals(0, slice.position());
+            assertEquals(6, slice.limit());
+            assertEquals(6, slice.capacity());
         } else {
             // A class defines straight from an accessible array; a read-only heap buffer is copied again.
             assertFalse(slice.isReadOnly());
@@ -153,13 +165,106 @@ class ArchiveSourceTest {
         assertEquals(0, source.slice(3, 0).remaining());
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void streamsStoredEntries(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(value = Mode.class, names = {"VIEW", "SEGMENT_ONLY"})
+    void mappedReadsFailOnceTheSourceIsClosed(Mode mode) throws IOException {
+        ArchiveSource source = open(HELLO, mode);
+        ByteBuffer slice = source.slice(6, 6);
+        assertEquals('r', slice.get(0));
+        source.close();
+
+        assertThrows(IllegalStateException.class, () -> slice.get(0),
+                "a slice shares the mapping's lifetime, so it cannot outlive the source");
+        assertThrows(IllegalStateException.class, () -> source.readFully(0, HELLO.length));
+    }
+
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void verifyingStreamsReadIntactEntriesToTheEnd(Mode mode) throws IOException {
+        Verified archive = verified(mode);
+        for (int method : METHODS) {
+            try (InputStream in = archive.stream(method, archive.crc)) {
+                assertArrayEquals(VERIFIED, in.readAllBytes());
+                for (int i = 0; i < 3; i++) {
+                    assertEquals(-1, in.read());
+                    assertEquals(-1, in.read(new byte[4], 0, 4));
+                    assertEquals(0, in.skip(1));
+                }
+            }
+            try (InputStream in = archive.emptyStream(method, 0)) {
+                assertEquals(-1, in.read());
+                assertEquals(-1, in.read());
+            }
+        }
+    }
+
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void verifyingStreamsFailBeforeTheLastReadReturnsAndKeepFailing(Mode mode) throws IOException {
+        Verified archive = verified(mode);
+        for (int method : METHODS) {
+            try (InputStream in = archive.stream(method, archive.crc ^ 1)) {
+                byte[] content = new byte[VERIFIED.length];
+                IOException failure = assertThrows(IOException.class,
+                        () -> in.readNBytes(content, 0, content.length),
+                        "an exact-length read never asks for the end, and must still fail");
+                assertTrue(failure.getMessage().startsWith(DESCRIPTION + " has checksum "), failure.getMessage());
+                assertTrue(failure.getMessage().contains(Index.REBUILD_MESSAGE), failure.getMessage());
+                assertSame(failure, assertThrows(IOException.class, in::read));
+                assertSame(failure, assertThrows(IOException.class, () -> in.read(content, 0, 1)));
+                assertSame(failure, assertThrows(IOException.class, () -> in.skip(1)));
+            }
+            try (InputStream in = archive.emptyStream(method, 1)) {
+                IOException failure = assertThrows(IOException.class, in::read);
+                assertTrue(failure.getMessage().startsWith(DESCRIPTION), failure.getMessage());
+                assertSame(failure, assertThrows(IOException.class, in::read));
+            }
+        }
+    }
+
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void verifyingStreamsChecksumSkippedBytes(Mode mode) throws IOException {
+        Verified archive = verified(mode);
+        int skip = VERIFIED.length / 2;
+        for (int method : METHODS) {
+            try (InputStream in = archive.stream(method, archive.crc)) {
+                assertEquals(skip, in.skip(skip));
+                assertArrayEquals(Arrays.copyOfRange(VERIFIED, skip, VERIFIED.length), in.readAllBytes());
+            }
+            try (InputStream in = archive.stream(method, archive.crc ^ 1)) {
+                assertEquals(skip, in.skip(skip));
+                IOException failure = assertThrows(IOException.class, in::readAllBytes);
+                assertTrue(failure.getMessage().startsWith(DESCRIPTION), failure.getMessage());
+            }
+            try (InputStream in = archive.stream(method, archive.crc ^ 1)) {
+                IOException failure = assertThrows(IOException.class, () -> in.skip(Long.MAX_VALUE));
+                assertTrue(failure.getMessage().startsWith(DESCRIPTION), failure.getMessage());
+            }
+        }
+    }
+
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void closingAPartiallyReadVerifyingStreamReportsNothing(Mode mode) throws IOException {
+        Verified archive = verified(mode);
+        for (int method : METHODS) {
+            InputStream in = archive.stream(method, archive.crc ^ 1);
+            assertEquals(VERIFIED[0] & 0xFF, in.read());
+            in.close();
+            in.close();
+        }
+        assertArrayEquals(VERIFIED, archive.source.inflate(archive.deflated, archive.compressed, VERIFIED.length),
+                "the inflater a closed stream returned to the pool must still work");
+    }
+
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void streamsStoredEntries(Mode mode) throws IOException {
         byte[] large = payload(200_000);
         TestArchiveBuilder archive = new TestArchiveBuilder();
         long at = archive.stored("large.bin", large);
-        ArchiveSource source = open(archive.build(), mapped);
+        ArchiveSource source = open(archive.build(), mode);
 
         try (InputStream in = source.stream(at, large.length, large.length, IndexFormat.METHOD_STORED)) {
             assertEquals(large.length, in.available());
@@ -177,14 +282,14 @@ class ArchiveSourceTest {
         assertThrows(IOException.class, () -> source.stream(at, 1, 1, 12));
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void streamsAndInflatesDeflatedEntries(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void streamsAndInflatesDeflatedEntries(Mode mode) throws IOException {
         byte[] large = payload(200_000);
         TestArchiveBuilder archive = new TestArchiveBuilder();
         long at = archive.deflated("large.bin", large);
         int compressed = archive.storedSize("large.bin");
-        ArchiveSource source = open(archive.build(), mapped);
+        ArchiveSource source = open(archive.build(), mode);
 
         try (InputStream in = source.stream(at, compressed, large.length, IndexFormat.METHOD_DEFLATED)) {
             assertArrayEquals(large, in.readAllBytes());
@@ -200,14 +305,14 @@ class ArchiveSourceTest {
         }
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void rejectsTruncatedAndOverlongDeflateStreams(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void rejectsTruncatedAndOverlongDeflateStreams(Mode mode) throws IOException {
         byte[] large = payload(50_000);
         TestArchiveBuilder archive = new TestArchiveBuilder();
         long at = archive.deflated("large.bin", large);
         int compressed = archive.storedSize("large.bin");
-        ArchiveSource source = open(archive.build(), mapped);
+        ArchiveSource source = open(archive.build(), mode);
 
         assertThrows(IOException.class, () -> source.stream(at, compressed / 2, large.length,
                 IndexFormat.METHOD_DEFLATED).readAllBytes());
@@ -223,11 +328,11 @@ class ArchiveSourceTest {
         assertArrayEquals(large, source.inflate(at, compressed, large.length));
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void rejectsUnterminatedDeflateAfterExpectedPlaintext(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void rejectsUnterminatedDeflateAfterExpectedPlaintext(Mode mode) throws IOException {
         byte[] unterminated = new byte[] {0, 1, 0, (byte) 0xFE, (byte) 0xFF, 'x'};
-        ArchiveSource source = open(unterminated, mapped);
+        ArchiveSource source = open(unterminated, mode);
 
         assertThrows(IOException.class, () -> source.inflate(0, unterminated.length, 1));
         try (InputStream in = source.stream(0, unterminated.length, 1, IndexFormat.METHOD_DEFLATED)) {
@@ -235,14 +340,14 @@ class ArchiveSourceTest {
         }
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void acceptsTerminalDeflateFramingAfterExpectedPlaintext(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void acceptsTerminalDeflateFramingAfterExpectedPlaintext(Mode mode) throws IOException {
         byte[] complete = new byte[] {
             0, 1, 0, (byte) 0xFE, (byte) 0xFF, 'x',
             1, 0, 0, (byte) 0xFF, (byte) 0xFF
         };
-        ArchiveSource source = open(complete, mapped);
+        ArchiveSource source = open(complete, mode);
 
         assertArrayEquals(new byte[] {'x'}, source.inflate(0, complete.length, 1));
         try (InputStream in = source.stream(0, complete.length, 1, IndexFormat.METHOD_DEFLATED)) {
@@ -250,13 +355,13 @@ class ArchiveSourceTest {
         }
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void rejectsUnusedBytesAfterACompleteDeflateStream(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void rejectsUnusedBytesAfterACompleteDeflateStream(Mode mode) throws IOException {
         byte[] completeWithTrailingByte = new byte[] {
             1, 1, 0, (byte) 0xFE, (byte) 0xFF, 'x', 0
         };
-        ArchiveSource source = open(completeWithTrailingByte, mapped);
+        ArchiveSource source = open(completeWithTrailingByte, mode);
 
         IOException failure = assertThrows(IOException.class,
                 () -> source.inflate(0, completeWithTrailingByte.length, 1));
@@ -269,11 +374,11 @@ class ArchiveSourceTest {
         }
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void validatesEmptyDeflateStreamsAndReusesInflatersAfterFailures(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void validatesEmptyDeflateStreamsAndReusesInflatersAfterFailures(Mode mode) throws IOException {
         byte[] completeEmpty = new byte[] {1, 0, 0, (byte) 0xFF, (byte) 0xFF};
-        ArchiveSource source = open(completeEmpty, mapped);
+        ArchiveSource source = open(completeEmpty, mode);
 
         for (int i = 0; i < 16; i++) {
             assertThrows(IOException.class, () -> source.inflate(0, 0, 0));
@@ -289,27 +394,27 @@ class ArchiveSourceTest {
         }
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void streamsCorruptDataAsAnIoException(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void streamsCorruptDataAsAnIoException(Mode mode) throws IOException {
         TestArchiveBuilder archive = new TestArchiveBuilder();
         long at = archive.raw("broken.bin", new byte[] {1, 2, 3, 4, 5, 6, 7, 8},
                 IndexFormat.METHOD_DEFLATED, 64);
-        ArchiveSource source = open(archive.build(), mapped);
+        ArchiveSource source = open(archive.build(), mode);
         assertThrows(IOException.class,
                 () -> source.stream(at, 8, 64, IndexFormat.METHOD_DEFLATED).readAllBytes());
         assertThrows(IOException.class, () -> source.inflate(at, 8, 64));
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void findsTheIndexEntry(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void findsTheIndexEntry(Mode mode) throws IOException {
         byte[] index = smallIndex();
         TestArchiveBuilder archive = new TestArchiveBuilder();
         archive.stored("META-INF/MANIFEST.MF", HELLO);
         long at = archive.stored(IndexFormat.INDEX_ENTRY_NAME, index);
         archive.stored("MICRONAUT-INF/classes/a/B.class", HELLO);
-        ArchiveSource source = open(archive.build(), mapped);
+        ArchiveSource source = open(archive.build(), mode);
 
         long[] location = source.openIndex();
         assertEquals(at, location[0]);
@@ -317,9 +422,9 @@ class ArchiveSourceTest {
         assertEquals(IndexFormat.MAGIC, source.i32(location[0]));
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void findsTheIndexEntryBehindAZipComment(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void findsTheIndexEntryBehindAZipComment(Mode mode) throws IOException {
         byte[] index = smallIndex();
         StringBuilder comment = new StringBuilder();
         for (int i = 0; i < 300; i++) {
@@ -329,7 +434,7 @@ class ArchiveSourceTest {
         archive.stored("META-INF/MANIFEST.MF", HELLO);
         long at = archive.stored(IndexFormat.INDEX_ENTRY_NAME, index);
         byte[] content = archive.build();
-        ArchiveSource source = open(content, mapped);
+        ArchiveSource source = open(content, mode);
 
         long[] location = source.openIndex();
         assertEquals(at, location[0]);
@@ -343,16 +448,16 @@ class ArchiveSourceTest {
         }
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void findsTheIndexEntryInAZip64Archive(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void findsTheIndexEntryInAZip64Archive(Mode mode) throws IOException {
         byte[] index = smallIndex();
         TestArchiveBuilder archive = new TestArchiveBuilder().zip64(true);
         archive.stored("META-INF/MANIFEST.MF", HELLO);
         long at = archive.stored(IndexFormat.INDEX_ENTRY_NAME, index);
         archive.stored("MICRONAUT-INF/classes/a/B.class", HELLO);
         byte[] content = archive.build();
-        ArchiveSource source = open(content, mapped);
+        ArchiveSource source = open(content, mode);
 
         long[] location = source.openIndex();
         assertEquals(at, location[0]);
@@ -369,18 +474,18 @@ class ArchiveSourceTest {
     void refusesArchivesThatAreNotRunnerJars() throws IOException {
         TestArchiveBuilder archive = new TestArchiveBuilder();
         archive.stored("META-INF/MANIFEST.MF", HELLO);
-        ArchiveSource withoutIndex = open(archive.build(), true);
+        ArchiveSource withoutIndex = open(archive.build(), Mode.VIEW);
         IOException missing = assertThrows(IOException.class, withoutIndex::openIndex);
         assertTrue(missing.getMessage().contains(IndexFormat.INDEX_ENTRY_NAME), missing.getMessage());
 
         byte[] notAZip = new byte[512];
         Arrays.fill(notAZip, (byte) 'x');
-        ArchiveSource garbage = open(notAZip, true);
+        ArchiveSource garbage = open(notAZip, Mode.VIEW);
         assertThrows(IOException.class, garbage::openIndex);
 
-        ArchiveSource tooShort = open(new byte[4], true);
+        ArchiveSource tooShort = open(new byte[4], Mode.VIEW);
         assertThrows(IOException.class, tooShort::openIndex);
-        ArchiveSource nothing = open(new byte[0], true);
+        ArchiveSource nothing = open(new byte[0], Mode.VIEW);
         assertEquals(0, nothing.length());
         assertThrows(IOException.class, nothing::openIndex);
         assertThrows(IOException.class, () -> ArchiveSource.open(new File(temporary.toFile(), "missing")));
@@ -392,7 +497,7 @@ class ArchiveSourceTest {
         TestArchiveBuilder archive = new TestArchiveBuilder();
         archive.stored("META-INF/MANIFEST.MF", HELLO);
         archive.deflated(IndexFormat.INDEX_ENTRY_NAME, payload(4096));
-        ArchiveSource source = open(archive.build(), true);
+        ArchiveSource source = open(archive.build(), Mode.VIEW);
         assertThrows(IOException.class, source::openIndex);
     }
 
@@ -417,9 +522,9 @@ class ArchiveSourceTest {
         assertFalse(track(ArchiveSource.open(file)).mapped());
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void readsWithTheInterruptFlagSet(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void readsWithTheInterruptFlagSet(Mode mode) throws IOException {
         // A FileChannel read by an interrupted thread closes the channel for every thread, so before the
         // positional reads handled interrupts, one cancelled task stopped all class loading in the process.
         byte[] stored = payload(200_000);
@@ -428,7 +533,7 @@ class ArchiveSourceTest {
         long storedAt = archive.stored("stored.bin", stored);
         long deflatedAt = archive.deflated("deflated.bin", deflated);
         int compressed = archive.storedSize("deflated.bin");
-        ArchiveSource source = open(archive.build(), mapped);
+        ArchiveSource source = open(archive.build(), mode);
         long expectedU32 = ByteBuffer.wrap(stored).order(ByteOrder.LITTLE_ENDIAN).getInt(9) & 0xFFFFFFFFL;
 
         try {
@@ -473,11 +578,11 @@ class ArchiveSourceTest {
         assertFalse(Thread.currentThread().isInterrupted(), "a read must not set the interrupt status");
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void readsSurviveConcurrentInterrupts(boolean mapped) throws Exception {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void readsSurviveConcurrentInterrupts(Mode mode) throws Exception {
         byte[] content = random(STRESS_FILE_LENGTH, 149);
-        ArchiveSource source = open(content, mapped);
+        ArchiveSource source = open(content, mode);
 
         Stress stress = stress(source, content, STRESS_READS_PER_THREAD, false, STRESS_SECONDS);
 
@@ -492,7 +597,7 @@ class ArchiveSourceTest {
 
     @Test
     void closedPositionalSourceNeverReopens() throws IOException {
-        ArchiveSource source = open(HELLO, false);
+        ArchiveSource source = open(HELLO, Mode.CHANNEL);
         assertFalse(source.mapped());
         source.close();
 
@@ -533,9 +638,9 @@ class ArchiveSourceTest {
         assertEquals(first.getMessage(), later.getMessage(), "the refusal is remembered");
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void findsTheIndexEntryWhenTheEntryCountCarriesTheMarker(boolean mapped) throws IOException {
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
+    void findsTheIndexEntryWhenTheEntryCountCarriesTheMarker(Mode mode) throws IOException {
         // Exactly 65535 entries: the 16-bit count field of the end record has no value for that number
         // which is not also the ZIP64 marker, and a writer that does not notice leaves no ZIP64 records
         // behind it. java.util.zip falls back to the 32-bit fields and reads the archive, so the launcher
@@ -548,7 +653,7 @@ class ArchiveSourceTest {
             archive.stored("MICRONAUT-INF/classes/f/" + i, new byte[0]);
         }
         byte[] content = archive.build();
-        ArchiveSource source = open(content, mapped);
+        ArchiveSource source = open(content, mode);
 
         long[] location = source.openIndex();
         assertEquals(at, location[0]);
@@ -647,9 +752,26 @@ class ArchiveSourceTest {
         return builder.build();
     }
 
-    private ArchiveSource open(byte[] content, boolean mapped) throws IOException {
-        System.setProperty(ArchiveSource.MMAP_PROPERTY, Boolean.toString(mapped));
-        return track(ArchiveSource.open(write(content)));
+    /** An archive with {@link #VERIFIED} stored and deflated, and an empty entry of each kind. */
+    private Verified verified(Mode mode) throws IOException {
+        TestArchiveBuilder archive = new TestArchiveBuilder();
+        long stored = archive.stored("stored.bin", VERIFIED);
+        long deflated = archive.deflated("deflated.bin", VERIFIED);
+        int compressed = archive.storedSize("deflated.bin");
+        long emptyStored = archive.stored("empty-stored.bin", new byte[0]);
+        long emptyDeflated = archive.deflated("empty-deflated.bin", new byte[0]);
+        int emptyCompressed = archive.storedSize("empty-deflated.bin");
+        CRC32 checksum = new CRC32();
+        checksum.update(VERIFIED);
+        return new Verified(open(archive.build(), mode), stored, deflated, compressed, emptyStored, emptyDeflated,
+                emptyCompressed, checksum.getValue());
+    }
+
+    private ArchiveSource open(byte[] content, Mode mode) throws IOException {
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, Boolean.toString(mode.mapped()));
+        ArchiveSource source = track(ArchiveSource.open(write(content), mode != Mode.SEGMENT_ONLY));
+        assertEquals(mode.mapped(), source.mapped());
+        return source;
     }
 
     private ArchiveSource track(ArchiveSource source) {
@@ -668,6 +790,41 @@ class ArchiveSourceTest {
     private File newFile() {
         files++;
         return temporary.resolve("archive-" + files + ".zip").toFile();
+    }
+
+    /** The read path a test runs on. */
+    enum Mode {
+        /** Mapped, read through the buffer view of the mapping: the default. */
+        VIEW,
+        /** Mapped, read through the segment, as for an archive too large for a buffer view. */
+        SEGMENT_ONLY,
+        /** Not mapped: {@value ArchiveSource#MMAP_PROPERTY} is {@code false}, and reads are positional. */
+        CHANNEL;
+
+        boolean mapped() {
+            return this != CHANNEL;
+        }
+    }
+
+    /** Where {@link #verified} put its entries, and what they checksum to. */
+    private record Verified(ArchiveSource source, long stored, long deflated, int compressed, long emptyStored,
+                            long emptyDeflated, int emptyCompressed, long crc) {
+
+        /** A verifying stream of {@link #VERIFIED}, expecting {@code expectedCrc}. */
+        InputStream stream(int method, long expectedCrc) throws IOException {
+            if (method == IndexFormat.METHOD_STORED) {
+                return source.stream(stored, VERIFIED.length, VERIFIED.length, method, expectedCrc, DESCRIPTION);
+            }
+            return source.stream(deflated, compressed, VERIFIED.length, method, expectedCrc, DESCRIPTION);
+        }
+
+        /** A verifying stream of an empty entry, whose CRC-32 is 0, expecting {@code expectedCrc}. */
+        InputStream emptyStream(int method, long expectedCrc) throws IOException {
+            if (method == IndexFormat.METHOD_STORED) {
+                return source.stream(emptyStored, 0, 0, method, expectedCrc, DESCRIPTION);
+            }
+            return source.stream(emptyDeflated, emptyCompressed, 0, method, expectedCrc, DESCRIPTION);
+        }
     }
 
     /** What {@link #stress} observed. */

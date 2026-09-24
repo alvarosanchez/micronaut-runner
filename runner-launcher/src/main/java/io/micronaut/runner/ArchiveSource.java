@@ -31,6 +31,8 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
+import java.util.Objects;
+import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
@@ -102,20 +104,11 @@ public final class ArchiveSource implements AutoCloseable {
      */
     private static final int INFLATER_POOL_LIMIT = 8;
 
-    /** Buffer size handed to {@link InflaterInputStream}; also the chunk size of raw region reads. */
+    /**
+     * Buffer size handed to {@link InflaterInputStream}; also the chunk size of raw region reads, and the
+     * largest skip buffer of a verifying stream.
+     */
     private static final int STREAM_BUFFER_SIZE = 8192;
-
-    /** Little-endian, alignment-free view of a {@code u16}. ZIP and index fields are never aligned. */
-    private static final ValueLayout.OfShort SHORT_LE =
-            ValueLayout.JAVA_SHORT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
-
-    /** Little-endian, alignment-free view of a {@code u32}. */
-    private static final ValueLayout.OfInt INT_LE =
-            ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
-
-    /** Little-endian, alignment-free view of a {@code u64}. */
-    private static final ValueLayout.OfLong LONG_LE =
-            ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
 
     /** {@code MICRONAUT-INF/index.bin} as UTF-8 bytes, compared without decoding a name. */
     private static final byte[] INDEX_ENTRY_NAME_BYTES = indexEntryNameBytes();
@@ -142,17 +135,21 @@ public final class ArchiveSource implements AutoCloseable {
     private final Arena arena;
     private final MemorySegment segment;
     /**
-     * Little-endian view of the whole mapping, used in preference to the {@link ValueLayout} accessors.
+     * Little-endian view of the whole mapping, through which every mapped read goes: the scalar getters,
+     * {@link #copyTo}, {@link #slice} and {@link #inflate}.
      *
-     * <p>Reading through a {@code ValueLayout} goes through a {@code VarHandle}, and the first such read
-     * initialises {@code java.lang.invoke}, which costs milliseconds in a cold JVM and lands squarely on
-     * the startup path. A {@link ByteBuffer} absolute getter is an intrinsic with no such bootstrap, and
-     * the buffer machinery is loaded anyway because {@link #slice} hands out buffer views. Measured on a
-     * 31 MB archive: 10.2 ms to first read through var handles against 8.1 ms through a buffer.</p>
+     * <p>A {@link ByteBuffer} keeps work off the startup path that the {@link MemorySegment} API adds on
+     * JDK 25: the first {@code MemorySegment.copy} into an array bootstraps a pattern {@code switch}, which
+     * spins a hidden class with the ClassFile API, and the {@link ValueLayout} constants that segment reads
+     * take initialise a dozen layout classes from {@code jrt:/java.base} rather than the CDS archive.
+     * Reading a {@code ValueLayout} also goes through a {@code VarHandle}. A buffer's absolute getters and
+     * bulk get need none of that, and {@code view.slice} is one object where
+     * {@code segment.asSlice(...).asByteBuffer()} is three.</p>
      *
      * <p>{@link MemorySegment#asByteBuffer()} only accepts segments up to {@link Integer#MAX_VALUE}, so
-     * this is {@code null} for a larger archive and the {@code ValueLayout} path remains as the fallback.
-     * Absolute getters do not touch the buffer's position, so sharing one across threads is safe.</p>
+     * this is {@code null} for a larger archive, and only then do mapped reads go through the segment and
+     * {@link SegmentLayouts}. Absolute accessors do not touch the buffer's position, so sharing one across
+     * threads is safe.</p>
      */
     private final ByteBuffer view;
     private final long length;
@@ -160,14 +157,14 @@ public final class ArchiveSource implements AutoCloseable {
     private boolean closed;
 
     private ArchiveSource(File file, RandomAccessFile handle, FileChannel channel, Object fileKey, Arena arena,
-                          MemorySegment segment, long length) {
+                          MemorySegment segment, long length, boolean bufferView) {
         this.file = file;
         this.handle = handle;
         this.channel = channel;
         this.fileKey = fileKey;
         this.arena = arena;
         this.segment = segment;
-        this.view = segment != null && length <= MAX_SLICE_LENGTH
+        this.view = bufferView && segment != null && length <= MAX_SLICE_LENGTH
                 ? segment.asByteBuffer().order(ByteOrder.LITTLE_ENDIAN)
                 : null;
         this.length = length;
@@ -185,6 +182,19 @@ public final class ArchiveSource implements AutoCloseable {
      * @throws IOException if the file cannot be opened or cannot be mapped
      */
     public static ArchiveSource open(File file) throws IOException {
+        return open(file, true);
+    }
+
+    /**
+     * Opens an archive, optionally without the buffer view of the mapping, so that tests can run the
+     * segment reads that otherwise only an archive over {@link #MAX_SLICE_LENGTH} bytes takes.
+     *
+     * @param file       the outer archive
+     * @param bufferView {@code false} to read a mapped archive through its segment only
+     * @return an open source
+     * @throws IOException if the file cannot be opened or cannot be mapped
+     */
+    static ArchiveSource open(File file, boolean bufferView) throws IOException {
         if (file == null) {
             throw new IOException("No archive file given");
         }
@@ -204,7 +214,7 @@ public final class ArchiveSource implements AutoCloseable {
                 arena = Arena.ofShared();
                 segment = channel.map(FileChannel.MapMode.READ_ONLY, 0L, length, arena);
             }
-            return new ArchiveSource(file, handle, channel, fileKey, arena, segment, length);
+            return new ArchiveSource(file, handle, channel, fileKey, arena, segment, length, bufferView);
         } catch (IOException | RuntimeException | Error e) {
             if (arena != null) {
                 arena.close();
@@ -260,7 +270,7 @@ public final class ArchiveSource implements AutoCloseable {
         }
         MemorySegment s = segment;
         if (s != null) {
-            return s.get(ValueLayout.JAVA_BYTE, offset) & 0xFF;
+            return s.get(SegmentLayouts.BYTE, offset) & 0xFF;
         }
         return (int) readScalar(offset, 1);
     }
@@ -280,7 +290,7 @@ public final class ArchiveSource implements AutoCloseable {
         }
         MemorySegment s = segment;
         if (s != null) {
-            return s.get(SHORT_LE, offset) & 0xFFFF;
+            return s.get(SegmentLayouts.SHORT_LE, offset) & 0xFFFF;
         }
         return (int) readScalar(offset, 2);
     }
@@ -301,7 +311,7 @@ public final class ArchiveSource implements AutoCloseable {
         }
         MemorySegment s = segment;
         if (s != null) {
-            return s.get(INT_LE, offset);
+            return s.get(SegmentLayouts.INT_LE, offset);
         }
         return (int) readScalar(offset, 4);
     }
@@ -334,7 +344,7 @@ public final class ArchiveSource implements AutoCloseable {
         }
         MemorySegment s = segment;
         if (s != null) {
-            return s.get(LONG_LE, offset);
+            return s.get(SegmentLayouts.LONG_LE, offset);
         }
         return readScalar(offset, 8);
     }
@@ -362,6 +372,10 @@ public final class ArchiveSource implements AutoCloseable {
             throw new IOException("Cannot slice " + length + " bytes, the limit is " + MAX_SLICE_LENGTH);
         }
         checkRange(offset, length);
+        ByteBuffer b = view;
+        if (b != null) {
+            return b.slice((int) offset, length);
+        }
         MemorySegment s = segment;
         if (s != null) {
             return s.asSlice(offset, length).asByteBuffer();
@@ -406,6 +420,22 @@ public final class ArchiveSource implements AutoCloseable {
      */
     public InputStream stream(long dataOffset, long compressedSize, long uncompressedSize, int method)
             throws IOException {
+        return entryStream(dataOffset, compressedSize, uncompressedSize, method, null);
+    }
+
+    /**
+     * Streams an entry like {@link #stream(long, long, long, int)} and checks the CRC-32 of the bytes read or
+     * skipped when the read reaching the recorded end returns; closing early checks nothing. An integrity
+     * failure names the entry by {@code description}, and every later read and skip rethrows it.
+     */
+    InputStream stream(long dataOffset, long compressedSize, long uncompressedSize, int method,
+                       long expectedCrc, String description) throws IOException {
+        return entryStream(dataOffset, compressedSize, uncompressedSize, method,
+                new Verification(expectedCrc, description));
+    }
+
+    private InputStream entryStream(long dataOffset, long compressedSize, long uncompressedSize, int method,
+                                    Verification verification) throws IOException {
         if (compressedSize < 0 || uncompressedSize < 0) {
             throw new IOException("Negative entry size at offset " + dataOffset);
         }
@@ -416,7 +446,7 @@ public final class ArchiveSource implements AutoCloseable {
                         + compressedSize + " but uncompressed size " + uncompressedSize);
             }
             RegionInputStream raw = new RegionInputStream(this, dataOffset, compressedSize);
-            return new EntryInputStream(raw, raw, uncompressedSize, this, null);
+            return new EntryInputStream(raw, raw, uncompressedSize, this, null, verification);
         }
         if (method != IndexFormat.METHOD_DEFLATED) {
             throw new IOException("Unsupported compression method " + method + " at offset " + dataOffset);
@@ -424,7 +454,7 @@ public final class ArchiveSource implements AutoCloseable {
         Inflater inflater = acquireInflater();
         RegionInputStream raw = new RegionInputStream(this, dataOffset, compressedSize);
         return new EntryInputStream(new InflaterInputStream(raw, inflater, STREAM_BUFFER_SIZE), raw,
-                uncompressedSize, this, inflater);
+                uncompressedSize, this, inflater, verification);
     }
 
     /**
@@ -449,19 +479,26 @@ public final class ArchiveSource implements AutoCloseable {
         byte[] result = new byte[uncompressedSize];
         Inflater inflater = acquireInflater();
         try {
+            ByteBuffer b = view;
             MemorySegment s = segment;
-            if (s != null) {
+            if (b != null) {
+                inflater.setInput(b.slice((int) dataOffset, compressedSize));
+            } else if (s != null) {
                 inflater.setInput(s.asSlice(dataOffset, compressedSize).asByteBuffer());
             } else {
                 inflater.setInput(readFully(dataOffset, compressedSize));
             }
             int done = 0;
-            byte[] probe = new byte[1];
+            byte[] probe = null;
             while (!inflater.finished()) {
                 int n;
                 if (done < uncompressedSize) {
                     n = inflater.inflate(result, done, uncompressedSize - done);
                 } else {
+                    // Only a stream that has not finished on the exactly sized output gets here, which is rare.
+                    if (probe == null) {
+                        probe = new byte[1];
+                    }
                     n = inflater.inflate(probe, 0, 1);
                 }
                 if (n > 0) {
@@ -625,9 +662,16 @@ public final class ArchiveSource implements AutoCloseable {
 
     private void copyTo(long offset, byte[] destination, int destinationOffset, int count)
             throws IOException {
+        ByteBuffer b = view;
+        if (b != null) {
+            // An absolute bulk get leaves the shared view's position alone. The cast is safe: a view exists
+            // only for an archive of at most MAX_SLICE_LENGTH bytes, and every caller has checked the range.
+            b.get((int) offset, destination, destinationOffset, count);
+            return;
+        }
         MemorySegment s = segment;
         if (s != null) {
-            MemorySegment.copy(s, ValueLayout.JAVA_BYTE, offset, destination, destinationOffset, count);
+            MemorySegment.copy(s, SegmentLayouts.BYTE, offset, destination, destinationOffset, count);
             return;
         }
         readInto(offset, ByteBuffer.wrap(destination, destinationOffset, count));
@@ -797,6 +841,30 @@ public final class ArchiveSource implements AutoCloseable {
         long dataOffset = localHeaderOffset + 30 + nameLength + extraLength;
         checkRange(dataOffset, size);
         return new long[] {dataOffset, size};
+    }
+
+    /**
+     * The layouts of the segment reads, which run only for a mapped archive without a {@link #view}, one
+     * larger than {@link #MAX_SLICE_LENGTH}. Holding them here keeps the {@link ValueLayout} classes that
+     * their initialisation loads, from {@code jrt:/java.base} rather than the CDS archive, off every other
+     * launch.
+     */
+    private static final class SegmentLayouts {
+
+        static final ValueLayout.OfByte BYTE = ValueLayout.JAVA_BYTE;
+
+        /** Little-endian and alignment-free, like every ZIP and index field. */
+        static final ValueLayout.OfShort SHORT_LE =
+                ValueLayout.JAVA_SHORT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+
+        static final ValueLayout.OfInt INT_LE =
+                ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+
+        static final ValueLayout.OfLong LONG_LE =
+                ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+
+        private SegmentLayouts() {
+        }
     }
 
     /**
@@ -1039,8 +1107,8 @@ public final class ArchiveSource implements AutoCloseable {
     }
 
     /**
-     * Enforces that exactly the recorded number of bytes reaches the caller, and returns the borrowed
-     * inflater to the pool on close.
+     * Enforces that exactly the recorded number of bytes reaches the caller, verifies them when the stream
+     * has a {@link Verification}, and returns the borrowed inflater to the pool on close.
      */
     private static final class EntryInputStream extends InputStream {
 
@@ -1048,23 +1116,30 @@ public final class ArchiveSource implements AutoCloseable {
         private final RegionInputStream raw;
         private final ArchiveSource source;
         private final Inflater inflater;
+        /** {@code null} unless the stream verifies; declared as its own type so that it loads only then. */
+        private final Verification verification;
         private long remaining;
         private boolean checkedTrailing;
         private boolean closed;
 
         private EntryInputStream(InputStream delegate, RegionInputStream raw, long size,
-                                 ArchiveSource source, Inflater inflater) {
+                                 ArchiveSource source, Inflater inflater, Verification verification) {
             this.delegate = delegate;
             this.raw = raw;
             this.source = source;
             this.inflater = inflater;
+            this.verification = verification;
             this.remaining = size;
         }
 
         @Override
         public int read() throws IOException {
+            Verification v = verification;
+            if (v != null) {
+                v.rethrow();
+            }
             if (remaining <= 0) {
-                checkTrailing();
+                end(v);
                 return -1;
             }
             int value = delegate.read();
@@ -1072,16 +1147,27 @@ public final class ArchiveSource implements AutoCloseable {
                 throw truncated();
             }
             remaining--;
+            if (v != null) {
+                v.update(value);
+                if (remaining == 0) {
+                    end(v);
+                }
+            }
             return value;
         }
 
         @Override
         public int read(byte[] destination, int offset, int count) throws IOException {
+            Verification v = verification;
+            if (v != null) {
+                v.rethrow();
+            }
+            Objects.checkFromIndexSize(offset, count, destination.length);
             if (count == 0) {
                 return 0;
             }
             if (remaining <= 0) {
-                checkTrailing();
+                end(v);
                 return -1;
             }
             int chunk = (int) Math.min(count, remaining);
@@ -1090,14 +1176,36 @@ public final class ArchiveSource implements AutoCloseable {
                 throw truncated();
             }
             remaining -= read;
+            if (v != null) {
+                v.update(destination, offset, read);
+                if (remaining == 0) {
+                    end(v);
+                }
+            }
             return read;
         }
 
         @Override
         public long skip(long count) throws IOException {
             long wanted = Math.min(Math.max(count, 0L), remaining);
-            long skipped = delegate.skip(wanted);
-            remaining -= skipped;
+            Verification v = verification;
+            if (v == null) {
+                long skipped = delegate.skip(wanted);
+                remaining -= skipped;
+                return skipped;
+            }
+            v.rethrow();
+            if (wanted == 0 && count > 0) {
+                end(v);
+            }
+            long skipped = 0;
+            while (skipped < wanted) {
+                if (v.skipBuffer == null) {
+                    v.skipBuffer = new byte[(int) Math.min(remaining, STREAM_BUFFER_SIZE)];
+                }
+                // Read, to checksum what is skipped. Never -1 or 0: the entry has the bytes, or read throws.
+                skipped += read(v.skipBuffer, 0, (int) Math.min(v.skipBuffer.length, wanted - skipped));
+            }
             return skipped;
         }
 
@@ -1121,29 +1229,88 @@ public final class ArchiveSource implements AutoCloseable {
             }
         }
 
+        /** Runs when the recorded end is reached: the trailing data check, and the CRC-32 when verifying. */
+        private void end(Verification v) throws IOException {
+            checkTrailing();
+            if (v != null) {
+                v.verify();
+            }
+        }
+
         private void checkTrailing() throws IOException {
             if (checkedTrailing) {
                 return;
             }
             checkedTrailing = true;
             if (delegate.read() >= 0) {
-                throw new IOException("The entry holds more data than the index records");
+                throw fail("The entry holds more data than the index records");
             }
             if (inflater != null) {
                 if (!inflater.finished()) {
-                    throw new IOException("The deflate stream ended before its terminal block");
+                    throw fail("The deflate stream ended before its terminal block");
                 }
                 long unused = inflater.getRemaining() + raw.remaining();
                 if (unused != 0) {
-                    throw new IOException("The deflate stream ended with " + unused
-                            + " unused compressed bytes");
+                    throw fail("The deflate stream ended with " + unused + " unused compressed bytes");
                 }
             }
         }
 
         private IOException truncated() {
-            return new IOException("The entry ended " + remaining
-                    + " bytes before the size the index records");
+            return fail("The entry ended " + remaining + " bytes before the size the index records");
+        }
+
+        /** An integrity failure, which a verifying stream rethrows; an I/O failure of a read is not one. */
+        private IOException fail(String message) {
+            IOException failure = new IOException(message);
+            if (verification != null) {
+                verification.failure = failure;
+            }
+            return failure;
+        }
+    }
+
+    /**
+     * The state of a verifying {@link EntryInputStream}. Never held as a supertype, so it only loads to verify.
+     */
+    private static final class Verification {
+
+        private final CRC32 checksum = new CRC32();
+        private final long expected;
+        private final String description;
+        private boolean verified;
+        private IOException failure;
+        private byte[] skipBuffer;
+
+        private Verification(long expected, String description) {
+            this.expected = expected;
+            this.description = description;
+        }
+
+        private void rethrow() throws IOException {
+            if (failure != null) {
+                throw failure;
+            }
+        }
+
+        private void update(int value) {
+            checksum.update(value);
+        }
+
+        private void update(byte[] bytes, int offset, int count) {
+            checksum.update(bytes, offset, count);
+        }
+
+        private void verify() throws IOException {
+            if (!verified) {
+                long actual = checksum.getValue();
+                if (actual != expected) {
+                    failure = new IOException(description + " has checksum " + actual
+                            + " but the index records " + expected + "; " + Index.REBUILD_MESSAGE);
+                    throw failure;
+                }
+                verified = true;
+            }
         }
     }
 }

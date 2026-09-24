@@ -53,9 +53,8 @@ import java.util.function.Consumer;
  * <p>It is packaged as an ordinary application class, so the launcher's {@code Class.forName} on it runs
  * the static initialiser, which hands the launcher an instance, on which the launcher calls
  * {@link Entry#run(String[])}. Entering the application is then an {@code invokeinterface} followed by an
- * {@code invokestatic}: neither {@code java.lang.reflect} nor {@code java.lang.invoke} is pulled onto the
- * startup path, and no method handle bootstrap is paid for. {@code run} declares {@code Throwable} so that
- * whatever the application throws travels out of the launcher unchanged.</p>
+ * {@code invokestatic}, which costs no reflection and no method handle invocation. {@code run} declares
+ * {@code Throwable} so that whatever the application throws travels out of the launcher unchanged.</p>
  *
  * <h2>Class file version</h2>
  * <p>The version is set explicitly to {@value #CLASS_FILE_MAJOR_VERSION}.{@value #CLASS_FILE_MINOR_VERSION}

@@ -151,6 +151,19 @@ class NestedJarFileTest {
         jar = new NestedJarFile(archive, index, source, 1);
     }
 
+    /**
+     * Turns verification on and reopens the fixture on the same archive file, because an index reads
+     * {@value RunnerClassLoader#VERIFY_PROPERTY} once, when it is opened.
+     */
+    private void reopenVerifying() throws IOException {
+        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        jar.closeNested();
+        source.close();
+        source = ArchiveSource.open(archive);
+        index = Index.open(source);
+        jar = new NestedJarFile(archive, index, source, 1);
+    }
+
     @AfterEach
     void closeArchive() {
         System.clearProperty(RunnerClassLoader.VERIFY_PROPERTY);
@@ -356,7 +369,7 @@ class NestedJarFileTest {
         assertArrayEquals(CORRUPT_STORED, read(jar.getJarEntry("corrupt-stored.txt")));
         assertArrayEquals(CORRUPT_DEFLATED, read(jar.getJarEntry("corrupt-deflated.txt")));
 
-        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        reopenVerifying();
         IOException stored = assertThrows(IOException.class,
                 () -> read(jar.getJarEntry("corrupt-stored.txt")));
         assertTrue(stored.getMessage().contains("corrupt-stored.txt"), stored.getMessage());
@@ -369,7 +382,7 @@ class NestedJarFileTest {
 
     @Test
     void verificationCoversSkipAndDoesNotDrainPartialStreamsOnClose() throws IOException {
-        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        reopenVerifying();
 
         InputStream partial = jar.getInputStream(jar.getJarEntry("corrupt-deflated.txt"));
         assertTrue(partial.read() >= 0);
@@ -391,7 +404,7 @@ class NestedJarFileTest {
 
     @Test
     void verifiesZeroLengthAndExactLengthReads() throws IOException {
-        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        reopenVerifying();
         try (InputStream empty = jar.getInputStream(jar.getJarEntry("a/"))) {
             assertEquals(-1, empty.read());
             assertEquals(-1, empty.read());
@@ -410,10 +423,28 @@ class NestedJarFileTest {
 
     @Test
     void verificationFailuresDoNotPoisonRepeatedDeflatedReads() throws IOException {
-        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        reopenVerifying();
         for (int i = 0; i < 10; i++) {
             assertThrows(IOException.class, () -> read(jar.getJarEntry("corrupt-deflated.txt")));
             assertArrayEquals(TEXT, read(jar.getJarEntry(TEXT_NAME)));
+        }
+    }
+
+    @Test
+    void readsTheVerificationFlagOnceWhenTheIndexIsOpened() throws IOException {
+        assertFalse(index.verifies());
+        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        assertFalse(index.verifies(), "an open index keeps the value it read");
+        assertArrayEquals(CORRUPT_STORED, read(jar.getJarEntry("corrupt-stored.txt")));
+        assertArrayEquals(CORRUPT_DEFLATED, read(jar.getJarEntry("corrupt-deflated.txt")));
+
+        Index verifying = Index.open(source);
+        assertTrue(verifying.verifies(), "an index opened after the property is set verifies");
+        NestedJarFile verified = new NestedJarFile(archive, verifying, source, 1);
+        try (InputStream in = verified.getInputStream(verified.getJarEntry("corrupt-stored.txt"))) {
+            assertThrows(IOException.class, in::readAllBytes);
+        } finally {
+            verified.closeNested();
         }
     }
 

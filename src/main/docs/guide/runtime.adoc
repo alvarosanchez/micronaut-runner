@@ -41,7 +41,8 @@ publish new versions under new paths as described in the archive lifetime sectio
 
 |`micronaut.runner.verify`
 |`false`
-|Set to `true` to verify every entry's CRC-32 as it is read. Useful when you suspect a corrupted archive.
+|Set to `true` to verify every entry's CRC-32 as it is read. Read once, when the launcher opens the archive.
+Useful when you suspect a corrupted archive.
 
 |`micronaut.runner.parent`
 |`platform`

@@ -21,8 +21,8 @@ package io.micronaut.runner;
  * <p>When the packager can prove the application declares a {@code public static void main(String[])}
  * it generates an implementation of this interface into the application layer and records its name in
  * the index. The launcher then initialises that class and calls {@link #run(String[])} through an
- * {@code invokeinterface}, so starting the application costs no reflection and no method handle, and
- * pulls neither {@code java.lang.reflect} nor {@code java.lang.invoke} onto the startup path.</p>
+ * {@code invokeinterface}, so entering the application costs no reflection and no method handle
+ * invocation.</p>
  *
  * <p>The generated class registers itself from its static initialiser by calling
  * {@code Launcher.register(Entry)}, so the launcher never has to look up a constructor either.</p>
