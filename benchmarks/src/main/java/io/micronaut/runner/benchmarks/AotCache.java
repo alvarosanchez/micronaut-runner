@@ -96,17 +96,16 @@ final class AotCache {
                 System.getProperty("java.vm.name", "<unavailable>"),
                 System.getProperty("os.arch", "<unavailable>"),
                 identityFlags(source, request, creationFlags));
-        Path directory = request.cacheRoot().resolve(identity);
-        Path cache = directory.resolve("app.aot");
-        Files.createDirectories(directory);
+        Path cache = cacheFile(request.cacheRoot(), identity);
+        Files.createDirectories(cache.getParent());
 
-        boolean reuse = Files.isRegularFile(cache) && Files.size(cache) > 0;
+        boolean reuse = hasCandidate(cache);
         if (reuse) {
             try {
                 verify(source, cache, request);
-                request.log().println("[startup-benchmark] reusing AOT cache " + identity);
+                request.log().println("[startup-benchmark] reusing AOT cache " + identity + " for " + name);
             } catch (IOException failure) {
-                request.log().println("[startup-benchmark] invalid cached AOT cache " + identity
+                request.log().println("[startup-benchmark] invalid cached AOT cache " + identity + " for " + name
                         + "; retraining: " + oneLine(failure.getMessage()));
                 Files.deleteIfExists(cache);
                 reuse = false;
@@ -118,13 +117,17 @@ final class AotCache {
             long trainingStarted = System.nanoTime();
             train(source, cache, request, creationFlags);
             trainingMillis = elapsedMillis(trainingStarted);
-            request.log().println("[startup-benchmark] trained AOT cache " + identity);
+            request.log().println("[startup-benchmark] trained AOT cache " + identity + " for " + name
+                    + " in " + trainingMillis + " ms");
             verify(source, cache, request);
         }
+        String cacheSha256 = sha256(cache);
+        request.log().println("[startup-benchmark] " + name + " AOT cache sha256 " + cacheSha256
+                + (reuse ? " (reused)" : " (trained this run)"));
 
         List<Path> launchInputs = new ArrayList<>(source.launchInputs());
         launchInputs.add(cache);
-        CacheInfo cacheInfo = new CacheInfo("aot", identity, Files.size(cache),
+        CacheInfo cacheInfo = new CacheInfo("aot", identity, Files.size(cache), cacheSha256,
                 elapsedMillis(preparationStarted), trainingMillis, reuse,
                 "trained or reused after bounded readiness, workload and SIGTERM shutdown; verified before timing",
                 "application class reused from the AOT cache in a separate diagnostic launch");
@@ -138,6 +141,24 @@ final class AotCache {
                 source.requestedEntryMode(), source.effectiveEntryMode(), true, null, launchInputs, cacheInfo);
     }
 
+    /**
+     * The content identity of a cache: SHA-256 over each ordered input's name, length and bytes, plus the JDK
+     * build, VM, architecture and flags. It names the cache's directory, so a cache belongs to exactly one set
+     * of input contents.
+     *
+     * <p>Each input's modification time is pinned through {@link LaunchInputs#pin(Path)} as it is hashed, so the
+     * (size, time) pair the JDK validates at startup is the same in every run whose bytes are the same, and a
+     * cache trained in one run passes that check in the next. The time never has to tell two contents apart,
+     * because different bytes give a different identity and so a different directory.</p>
+     *
+     * @param orderedInputs  the launch inputs, in class path order; each must be a regular file
+     * @param jdkBuild       the exact JDK and VM build
+     * @param vmName         the VM name
+     * @param architecture   the CPU architecture
+     * @param relevantFlags  the launch options and workload that shape the trained cache
+     * @return the lowercase hexadecimal identity
+     * @throws IOException if an input is not a regular file, cannot be pinned or cannot be read
+     */
     static String identity(List<Path> orderedInputs,
                            String jdkBuild,
                            String vmName,
@@ -156,6 +177,7 @@ final class AotCache {
             if (!Files.isRegularFile(input)) {
                 throw new IOException("AOT cache input is not a regular file: " + input);
             }
+            LaunchInputs.pin(input);
             update(digest, "input-name:" + i, input.getFileName().toString());
             update(digest, "input-bytes:" + i, Long.toString(Files.size(input)));
             try (InputStream stream = Files.newInputStream(input)) {
@@ -164,6 +186,47 @@ final class AotCache {
                 while ((read = stream.read(buffer)) != -1) {
                     digest.update(buffer, 0, read);
                 }
+            }
+        }
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    /**
+     * Where the cache for an identity lives: one directory per identity under the cache root.
+     *
+     * @param cacheRoot the managed cache root
+     * @param identity  the cache's {@link #identity}
+     * @return the cache file, which may not exist yet
+     */
+    static Path cacheFile(Path cacheRoot, String identity) {
+        return cacheRoot.resolve(identity).resolve("app.aot");
+    }
+
+    /**
+     * Whether a nonempty cache file is there to verify and reuse. When it is not, the cache is trained.
+     *
+     * @param cache the cache file
+     * @return {@code true} when a reuse candidate exists
+     * @throws IOException if its size cannot be read
+     */
+    static boolean hasCandidate(Path cache) throws IOException {
+        return Files.isRegularFile(cache) && Files.size(cache) > 0;
+    }
+
+    /**
+     * The SHA-256 of a file's bytes. A trained cache is not byte-reproducible, so this names one training.
+     *
+     * @param file the file
+     * @return the lowercase hexadecimal digest
+     * @throws IOException if the file cannot be read
+     */
+    static String sha256(Path file) throws IOException {
+        MessageDigest digest = sha256();
+        try (InputStream stream = Files.newInputStream(file)) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = stream.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
             }
         }
         return HexFormat.of().formatHex(digest.digest());

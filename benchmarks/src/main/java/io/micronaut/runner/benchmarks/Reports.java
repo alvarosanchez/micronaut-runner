@@ -41,6 +41,9 @@ final class Reports {
     /** The file every raw sample goes to. */
     static final String RESULTS_FILE = "results.json";
 
+    /** How many leading hex digits of a cache's SHA-256 the summary shows. */
+    private static final int SHORT_DIGEST_LENGTH = 12;
+
     /** RSS counts mapped files' clean pages; the report says so wherever it shows RSS beside private memory. */
     private static final String RSS_VERSUS_PRIVATE = "RSS includes clean, file-backed pages of memory-mapped"
             + " files (the Runner archive, CDS/AOT archives, JDK libraries). Private memory (`phys_footprint` on"
@@ -198,6 +201,8 @@ final class Reports {
                 .append(quote(cache == null ? null : cache.verification())).append(",\n");
         out.append("      \"cacheBytes\": ")
                 .append(cache == null ? "null" : cache.bytes()).append(",\n");
+        out.append("      \"cacheSha256\": ")
+                .append(quote(cache == null ? null : cache.sha256())).append(",\n");
         out.append("      \"cachePreparationMillis\": ")
                 .append(cache == null ? "null" : cache.preparationMillis()).append(",\n");
         out.append("      \"trainingMillis\": ")
@@ -483,7 +488,7 @@ final class Reports {
                 out.append("Partial policy still exits nonzero because no measured run succeeded.\n\n");
             }
         }
-        appendRunnerVsShadow(out, comparisons);
+        appendRunnerVsShadow(out, comparisons, results);
 
         out.append("## Run conditions\n\n");
         out.append("Time from process spawn to the first successful HTTP response, for the same Micronaut")
@@ -721,8 +726,8 @@ final class Reports {
                 .append(" cache file. Training and preparation cost are build-time costs reported only here,")
                 .append(" separate from deployment bytes and runtime readiness. A reused cache has no training")
                 .append(" cost in this invocation; preparation still includes its verification launch.\n\n");
-        out.append("| Variant | Mode | Cache bytes | Training cost | Preparation cost | Reused |\n")
-                .append("|---|---|---:|---:|---:|---|\n");
+        out.append("| Variant | Mode | Cache bytes | Cache SHA-256 | Training cost | Preparation cost | Reused |\n")
+                .append("|---|---|---:|---|---:|---:|---|\n");
         for (VariantResult result : results) {
             CacheInfo cache = result.variant().cache();
             if (cache == null) {
@@ -731,17 +736,67 @@ final class Reports {
                 if (!result.variant().available() && !"none".equals(mode)) {
                     out.append(" (unavailable)");
                 }
-                out.append(" | — | — | — | — |\n");
+                out.append(" | — | — | — | — | — |\n");
                 continue;
             }
             out.append("| `").append(result.variant().name()).append("` | ").append(cache.mode())
                     .append(" | ").append(exactSize(cache.bytes()))
+                    .append(" | ").append(shortDigest(cache.sha256()))
                     .append(" | ").append(cache.trainingMillis() < 0 ? "not trained (reused)"
                             : cache.trainingMillis() + " ms")
                     .append(" | ").append(cache.preparationMillis()).append(" ms")
                     .append(" | ").append(cache.reused()).append(" |\n");
         }
         out.append('\n');
+        out.append("The SHA-256 column shows the first ").append(SHORT_DIGEST_LENGTH)
+                .append(" hex digits; `results.json` has the full `cacheSha256`. Trained caches are not")
+                .append(" byte-reproducible, so equal digests across runs mean the same training was measured.\n\n");
+    }
+
+    private static String shortDigest(String sha256) {
+        if (sha256 == null) {
+            return "—";
+        }
+        return "`" + sha256.substring(0, Math.min(SHORT_DIGEST_LENGTH, sha256.length())) + "`";
+    }
+
+    /**
+     * One line naming the cached variants whose caches this run reused and those it trained, so a cached row's
+     * Δ can be attributed to one training. Nothing when the results have no cached variant.
+     */
+    private static void appendCacheProvenance(StringBuilder out, List<VariantResult> results) {
+        List<String> reused = new ArrayList<>();
+        List<String> trained = new ArrayList<>();
+        List<String> unavailable = new ArrayList<>();
+        for (VariantResult result : results) {
+            Variant variant = result.variant();
+            CacheInfo cache = variant.cache();
+            if (cache != null) {
+                (cache.reused() ? reused : trained).add(variant.name());
+            } else if (!"none".equals(cacheMode(variant))) {
+                unavailable.add(variant.name());
+            }
+        }
+        if (reused.isEmpty() && trained.isEmpty() && unavailable.isEmpty()) {
+            return;
+        }
+        out.append("**AOT caches:** reused from an earlier run: ").append(variantList(reused))
+                .append("; trained this run: ").append(variantList(trained));
+        if (!unavailable.isEmpty()) {
+            out.append("; unavailable: ").append(variantList(unavailable));
+        }
+        out.append(". Each cache's SHA-256 is under Application-cache preparation.\n\n");
+    }
+
+    private static String variantList(List<String> names) {
+        if (names.isEmpty()) {
+            return "none";
+        }
+        StringBuilder list = new StringBuilder();
+        for (int i = 0; i < names.size(); i++) {
+            list.append(i == 0 ? "" : ", ").append('`').append(names.get(i)).append('`');
+        }
+        return list.toString();
     }
 
     private static String cacheMode(Variant variant) {
@@ -759,7 +814,9 @@ final class Reports {
      * directly after the status block. This is the only place the report explains what an interval does not
      * establish.
      */
-    private static void appendRunnerVsShadow(StringBuilder out, List<ComparisonRow> rows) {
+    private static void appendRunnerVsShadow(StringBuilder out,
+                                             List<ComparisonRow> rows,
+                                             List<VariantResult> results) {
         out.append("## Runner vs Shadow\n\n");
         if (rows.isEmpty()) {
             out.append("No declared comparison applies: these results do not contain both variants of any")
@@ -823,6 +880,7 @@ final class Reports {
         if (excluded) {
             out.append('\n');
         }
+        appendCacheProvenance(out, results);
         appendMemoryDifferences(out, rows);
     }
 
