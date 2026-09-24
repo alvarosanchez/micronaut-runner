@@ -25,7 +25,7 @@ import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Set;
 import java.util.zip.CRC32;
 
@@ -46,20 +46,32 @@ import java.util.zip.CRC32;
  *       class loader that loaded the launcher, so that {@link Entry}, {@link Index} and friends are the
  *       same types on both sides of the boundary.</li>
  *   <li>A class whose package belongs to a boot layer module of the boot or platform loader is
- *       <em>parent-visible</em>: the parent is asked first and the index is only a fallback. The set is
- *       built once from {@link ModuleLayer#boot()}, which is exact for the running JDK, unlike a prefix
- *       test on {@code java.}.</li>
+ *       <em>parent-visible</em>: the parent is asked first and the index is only a fallback. The package
+ *       map is built once from {@link ModuleLayer#boot()}, which is exact for the running JDK, unlike a
+ *       prefix test on {@code java.}. When the parent is one of the JDK's own loaders - the platform
+ *       loader, or the JDK's system loader - a package of a module of the boot loader skips both this
+ *       loader's per-name lock and the parent: {@link Class#forName(Module, String)} asks the boot loader
+ *       directly, which is where the parent would end up, and the lock and the archive are consulted only
+ *       when the boot loader does not have the class. Packages of the platform loader's modules, and every
+ *       package under any other parent, are asked of the parent.</li>
  *   <li>Everything else - that is, every application and dependency class - is looked up in the index
- *       <em>first</em>. This is the point of the whole design: a parent-first loader pays a failed parent
- *       lookup and a thrown {@link ClassNotFoundException} for every single application class, which is
- *       the dominant cost in naive nested jar loaders.</li>
+ *       <em>first</em>, and the parent is asked only after a miss. This is the point of the whole design: a
+ *       parent-first loader pays a failed parent lookup and a thrown {@link ClassNotFoundException} for
+ *       every single application class, which is the dominant cost in naive nested jar loaders.</li>
  * </ul>
+ *
+ * <p>A class neither side has costs one {@link ClassNotFoundException}, as it does with the JDK's own
+ * loaders: the parent's is rethrown rather than caught and replaced, and the one exception this loader
+ * builds itself is for a boot-module package whose class neither the boot loader nor the archive has.</p>
  *
  * <h2>Thread safety</h2>
  * <p>The loader is parallel capable, so the superclass hands out one lock per class name and several
  * threads define classes at once. The protection domain cache is guarded by its own monitor, which is
  * never held while a class is defined, and package definition relies on the superclass's concurrent
- * package map, catching the {@link IllegalArgumentException} that a lost race produces.</p>
+ * package map, catching the {@link IllegalArgumentException} that a lost race produces. The decoded
+ * manifest attributes of a jar are written under that same monitor, together with its protection domain,
+ * and read without it: every class definition acquires the monitor for the domain before it reads them,
+ * which orders the read after the write. The boot fast path defines nothing, so it takes no lock.</p>
  *
  * @since 1.0
  */
@@ -99,8 +111,10 @@ public final class RunnerClassLoader extends ClassLoader {
     private final ArchiveSource source;
     private final ClassLoader parent;
     private final ClassLoader launcherLoader;
-    private final HashSet<String> parentPackages;
+    private final HashMap<String, Module> parentModules;
+    private final boolean bootDirect;
     private final ProtectionDomain[] domains;
+    private final String[][] jarAttributes;
     private final int multiReleaseVersion;
     private final boolean verify;
 
@@ -108,8 +122,9 @@ public final class RunnerClassLoader extends ClassLoader {
      * Creates a loader over an open archive.
      *
      * <p>Everything that does not depend on the classes being loaded is computed here, once: the
-     * multi-release feature version, the set of parent-visible packages and the verification flag. The
-     * archive and the index are <em>not</em> owned by the loader and are never closed by it.</p>
+     * multi-release feature version, the modules of the parent-visible packages, whether boot-module
+     * packages may bypass the parent, and the verification flag. The archive and the index are <em>not</em>
+     * owned by the loader and are never closed by it.</p>
      *
      * @param index  the index of the archive, already validated
      * @param source the open archive the index describes
@@ -122,8 +137,10 @@ public final class RunnerClassLoader extends ClassLoader {
         this.source = source;
         this.parent = parent;
         this.launcherLoader = RunnerClassLoader.class.getClassLoader();
-        this.parentPackages = parentVisiblePackages();
+        this.parentModules = parentVisibleModules();
+        this.bootDirect = isBuiltinLoader(parent);
         this.domains = new ProtectionDomain[index.jarCount()];
+        this.jarAttributes = new String[index.jarCount()][];
         this.multiReleaseVersion = Index.effectiveMultiReleaseVersion();
         this.verify = "true".equals(System.getProperty(VERIFY_PROPERTY));
     }
@@ -144,6 +161,12 @@ public final class RunnerClassLoader extends ClassLoader {
     /**
      * Loads a class, deciding between the parent and the index by package.
      *
+     * <p>The package name is extracted once, here, and handed down to the definition of the class. A class
+     * of a boot-module package is looked up in the boot loader before the per-name lock is taken, when the
+     * parent is one of the JDK's own loaders: nothing is defined on that path, so neither the lock nor
+     * {@link #findLoadedClass(String)} is needed, and a hit costs no lock object in the superclass's lock
+     * map.</p>
+     *
      * @param name    the binary name of the class
      * @param resolve whether to link the class once it is loaded
      * @return the class
@@ -151,10 +174,23 @@ public final class RunnerClassLoader extends ClassLoader {
      */
     @Override
     protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+        String packageName = packageOf(name);
+        Module jdk = packageName == null ? null : parentModules.get(packageName);
+        boolean boot = bootDirect && jdk != null && jdk.getClassLoader() == null;
+        if (boot) {
+            // No lock and no exception: null on a miss, which the archive then gets to answer.
+            Class<?> found = Class.forName(jdk, name);
+            if (found != null) {
+                if (resolve) {
+                    resolveClass(found);
+                }
+                return found;
+            }
+        }
         synchronized (getClassLoadingLock(name)) {
             Class<?> loaded = findLoadedClass(name);
             if (loaded == null) {
-                loaded = load(name);
+                loaded = load(name, packageName, jdk != null, boot);
             }
             if (resolve) {
                 resolveClass(loaded);
@@ -175,7 +211,7 @@ public final class RunnerClassLoader extends ClassLoader {
      */
     @Override
     protected Class<?> findClass(String name) throws ClassNotFoundException {
-        Class<?> found = findInArchive(name);
+        Class<?> found = findInArchive(name, packageOf(name));
         if (found == null) {
             throw new ClassNotFoundException(name);
         }
@@ -334,32 +370,62 @@ public final class RunnerClassLoader extends ClassLoader {
      * @return {@code true} when the class's package belongs to the boot or platform loader
      */
     boolean isParentVisible(String className) {
-        int dot = className.lastIndexOf('.');
-        if (dot <= 0) {
-            return false;
-        }
-        return parentPackages.contains(className.substring(0, dot));
+        String packageName = packageOf(className);
+        return packageName != null && parentModules.containsKey(packageName);
     }
 
     /**
-     * The packages of every boot layer module loaded by the boot or the platform class loader.
+     * The package of a class.
+     *
+     * @param className the binary name of the class
+     * @return the package name, or {@code null} for a class of the unnamed package
+     */
+    private static String packageOf(String className) {
+        int dot = className.lastIndexOf('.');
+        return dot > 0 ? className.substring(0, dot) : null;
+    }
+
+    /**
+     * The packages of every boot layer module loaded by the boot or the platform class loader, each mapped
+     * to its module.
      *
      * <p>Modules of the system class loader are left out on purpose: in a runner jar those are the
      * launcher's own classes, which the application must not see.</p>
      *
-     * @return the package names
+     * @return the modules by package name
      */
-    private static HashSet<String> parentVisiblePackages() {
-        HashSet<String> packages = new HashSet<String>(1024);
+    private static HashMap<String, Module> parentVisibleModules() {
+        HashMap<String, Module> packages = new HashMap<String, Module>(2048);
         ClassLoader platform = ClassLoader.getPlatformClassLoader();
         Set<Module> modules = ModuleLayer.boot().modules();
         for (Module module : modules) {
             ClassLoader loader = module.getClassLoader();
             if (loader == null || loader == platform) {
-                packages.addAll(module.getPackages());
+                for (String packageName : module.getPackages()) {
+                    packages.put(packageName, module);
+                }
             }
         }
         return packages;
+    }
+
+    /**
+     * Whether a parent is one of the JDK's own loaders, whose lookup of a boot-module package ends in the
+     * boot loader without any other step: the platform loader, or the system loader when it is the JDK's
+     * rather than one installed with {@code -Djava.system.class.loader}.
+     *
+     * @param parent the parent loader
+     * @return {@code true} when a boot-module package may be looked up in the boot loader directly
+     */
+    private static boolean isBuiltinLoader(ClassLoader parent) {
+        if (parent == null) {
+            return false;
+        }
+        if (parent == ClassLoader.getPlatformClassLoader()) {
+            return true;
+        }
+        return parent == ClassLoader.getSystemClassLoader()
+                && parent.getClass().getModule() == Object.class.getModule();
     }
 
     private static boolean needsNormalising(String value) {
@@ -454,7 +520,21 @@ public final class RunnerClassLoader extends ClassLoader {
         }
     }
 
-    private Class<?> load(String name) throws ClassNotFoundException {
+    /**
+     * Loads a class that is not loaded yet, with its per-name lock held.
+     *
+     * <p>A miss costs one {@link ClassNotFoundException}: the parent's, which propagates or is rethrown
+     * after the archive fallback misses too, or, after a boot miss, the one built here.</p>
+     *
+     * @param name          the binary name of the class
+     * @param packageName   its package, or {@code null} for the unnamed package
+     * @param parentVisible whether the package belongs to a module of the boot or the platform loader
+     * @param bootMissed    whether the boot loader was already asked for the class and did not have it
+     * @return the class
+     * @throws ClassNotFoundException if neither the parent nor the archive has the class
+     */
+    private Class<?> load(String name, String packageName, boolean parentVisible, boolean bootMissed)
+            throws ClassNotFoundException {
         if (name.startsWith(LAUNCHER_PREFIX) && !name.startsWith(GENERATED_PREFIX)) {
             // The launcher's own loader is preferred, not imposed: Entry, Index and the rest must be the
             // same types on both sides of the boundary, and only the classes that loader actually has can
@@ -468,48 +548,48 @@ public final class RunnerClassLoader extends ClassLoader {
                 }
                 return owner.loadClass(name);
             } catch (ClassNotFoundException e) {
-                Class<?> found = findInArchive(name);
+                Class<?> found = findInArchive(name, packageName);
                 if (found != null) {
                     return found;
                 }
                 throw e;
             }
         }
-        if (isParentVisible(name)) {
-            Class<?> fromParent = loadFromParent(name);
-            if (fromParent != null) {
-                return fromParent;
-            }
-            Class<?> found = findInArchive(name);
+        if (bootMissed) {
+            // The parent is one of the JDK's loaders, and for a boot-module package it would only ask the
+            // boot loader again. The archive is the split-package fallback, as it is below.
+            Class<?> found = findInArchive(name, packageName);
             if (found != null) {
                 return found;
             }
             throw new ClassNotFoundException(name);
         }
-        Class<?> found = findInArchive(name);
+        if (parentVisible) {
+            try {
+                return fromParent(name);
+            } catch (ClassNotFoundException e) {
+                Class<?> found = findInArchive(name, packageName);
+                if (found != null) {
+                    return found;
+                }
+                throw e;
+            }
+        }
+        Class<?> found = findInArchive(name, packageName);
         if (found != null) {
             return found;
         }
-        Class<?> fromParent = loadFromParent(name);
-        if (fromParent != null) {
-            return fromParent;
-        }
-        throw new ClassNotFoundException(name);
+        // Still asked after an archive miss, so that classes appended to the boot class path stay
+        // reachable. Its ClassNotFoundException is the one the caller gets.
+        return fromParent(name);
     }
 
-    private Class<?> loadFromParent(String name) {
-        try {
-            ClassLoader delegate = parent;
-            if (delegate == null) {
-                return super.loadClass(name, false);
-            }
-            return delegate.loadClass(name);
-        } catch (ClassNotFoundException e) {
-            return null;
-        }
+    private Class<?> fromParent(String name) throws ClassNotFoundException {
+        ClassLoader delegate = parent;
+        return delegate != null ? delegate.loadClass(name) : super.loadClass(name, false);
     }
 
-    private Class<?> findInArchive(String name) throws ClassNotFoundException {
+    private Class<?> findInArchive(String name, String packageName) throws ClassNotFoundException {
         int head = index.findClass(name);
         if (head == IndexFormat.NO_INDEX) {
             return null;
@@ -519,7 +599,7 @@ public final class RunnerClassLoader extends ClassLoader {
             return null;
         }
         try {
-            return define(name, record);
+            return define(name, packageName, record);
         } catch (IOException e) {
             throw new ClassNotFoundException(name, e);
         }
@@ -533,12 +613,13 @@ public final class RunnerClassLoader extends ClassLoader {
      * loader still has the VM copy a direct buffer into its own memory before parsing it. A DEFLATE entry
      * is inflated into an exactly sized array, since it has to be materialised anyway.</p>
      *
-     * @param name   the binary name of the class
-     * @param record the entry record holding its bytes
+     * @param name        the binary name of the class
+     * @param packageName its package, or {@code null} for the unnamed package
+     * @param record      the entry record holding its bytes
      * @return the defined class
      * @throws IOException if the entry cannot be read, or fails verification when it is enabled
      */
-    private Class<?> define(String name, int record) throws IOException {
+    private Class<?> define(String name, String packageName, int record) throws IOException {
         int jarId = index.entryJarId(record);
         index.validateJar(jarId);
         long size = index.entryUncompressedSize(record);
@@ -547,7 +628,7 @@ public final class RunnerClassLoader extends ClassLoader {
                     + " bytes, which is larger than a class file can be");
         }
         ProtectionDomain domain = protectionDomain(jarId);
-        definePackageOf(name, jarId, domain);
+        definePackageOf(packageName, jarId, domain);
         int length = (int) size;
         if (index.entryMethod(record) == IndexFormat.METHOD_STORED) {
             ByteBuffer content = source.slice(index.entryDataOffset(record), length);
@@ -593,23 +674,30 @@ public final class RunnerClassLoader extends ClassLoader {
      * protection domain, so sealing costs no extra URL and a sealed package's base is exactly the
      * location every class of that jar reports.</p>
      *
-     * @param className the binary name of the class being defined
-     * @param jarId     the jar the class comes from
-     * @param domain    the protection domain of that jar
+     * <p>The common case is settled first: a package that is already defined and unsealed, joined by a
+     * class from a jar that has no package sections and is not sealed by default, can raise no sealing
+     * violation, so nothing else is looked up for it.</p>
+     *
+     * @param packageName the package of the class being defined, or {@code null} for the unnamed package
+     * @param jarId       the jar the class comes from
+     * @param domain      the protection domain of that jar
      */
-    private void definePackageOf(String className, int jarId, ProtectionDomain domain) {
-        int dot = className.lastIndexOf('.');
-        if (dot <= 0) {
+    private void definePackageOf(String packageName, int jarId, ProtectionDomain domain) {
+        if (packageName == null) {
             return;
         }
-        String packageName = className.substring(0, dot);
+        Package defined = getDefinedPackage(packageName);
+        if (defined != null && !defined.isSealed()
+                && index.jarPackageCount(jarId) == 0 && !index.jarSealedByDefault(jarId)) {
+            // No package section and no seal, so checkSealing could not throw.
+            return;
+        }
         int section = index.findPackage(jarId, packageName);
         boolean sealed = index.jarSealedByDefault(jarId);
         if (section != IndexFormat.NO_INDEX && index.packageSealedSpecified(section)) {
             sealed = index.packageSealedValue(section);
         }
         URL base = domain.getCodeSource() == null ? null : domain.getCodeSource().getLocation();
-        Package defined = getDefinedPackage(packageName);
         if (defined != null) {
             checkSealing(defined, packageName, base, sealed);
             return;
@@ -618,12 +706,14 @@ public final class RunnerClassLoader extends ClassLoader {
     }
 
     private void definePackageFromMetadata(String packageName, int jarId, int section, URL base, boolean sealed) {
-        String specTitle = index.jarSpecTitle(jarId);
-        String specVersion = index.jarSpecVersion(jarId);
-        String specVendor = index.jarSpecVendor(jarId);
-        String implTitle = index.jarImplTitle(jarId);
-        String implVersion = index.jarImplVersion(jarId);
-        String implVendor = index.jarImplVendor(jarId);
+        // Decoded once per jar by protectionDomain, which every definition calls first; see its Javadoc.
+        String[] attributes = jarAttributes[jarId];
+        String specTitle = attributes[0];
+        String specVersion = attributes[1];
+        String specVendor = attributes[2];
+        String implTitle = attributes[3];
+        String implVersion = attributes[4];
+        String implVendor = attributes[5];
         if (section != IndexFormat.NO_INDEX) {
             String value = index.packageSpecTitle(section);
             if (value != null) {
@@ -671,6 +761,12 @@ public final class RunnerClassLoader extends ClassLoader {
      * thread through a data race would not guarantee that thread sees its contents. The monitor is held
      * only while the domain is created, never while a class is defined.</p>
      *
+     * <p>The same block decodes the jar's six manifest main attributes into {@code jarAttributes}, once per
+     * jar rather than once per package, and every package of the jar then starts from those strings. They
+     * are read later without the monitor, and that read is safely published: a class definition always
+     * calls this method before it defines a package, so the reading thread acquires the monitor after the
+     * thread that wrote the attributes released it, or wrote them itself.</p>
+     *
      * @param jarId the jar index
      * @return the domain, whose code source location identifies the jar
      */
@@ -678,6 +774,10 @@ public final class RunnerClassLoader extends ClassLoader {
         synchronized (domains) {
             ProtectionDomain domain = domains[jarId];
             if (domain == null) {
+                jarAttributes[jarId] = new String[] {
+                    index.jarSpecTitle(jarId), index.jarSpecVersion(jarId), index.jarSpecVendor(jarId),
+                    index.jarImplTitle(jarId), index.jarImplVersion(jarId), index.jarImplVendor(jarId)
+                };
                 CodeSource code = new CodeSource(Handlers.codeSourceUrlFor(jarId), (CodeSigner[]) null);
                 domain = new ProtectionDomain(code, null, this, null);
                 domains[jarId] = domain;

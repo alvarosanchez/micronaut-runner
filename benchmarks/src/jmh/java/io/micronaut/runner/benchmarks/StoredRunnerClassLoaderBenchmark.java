@@ -33,7 +33,15 @@ import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
 
 import java.io.IOException;
+import java.net.URI;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 /**
  * Measures fresh runner class loaders against a matching STORED archive registration.
@@ -41,7 +49,8 @@ import java.util.concurrent.TimeUnit;
  * <p>The runner variants use separate benchmark classes because handler registration belongs to one outer
  * archive for the life of a JVM. JMH forks each benchmark independently. Registration and fixture sanity
  * checks happen once per trial, while every measured invocation still opens the archive, validates its
- * index, creates a loader, defines the sampled classes or performs resource lookups, and closes the mapping.</p>
+ * index, creates a loader, defines the sampled classes, looks up already loaded JDK classes or performs
+ * resource lookups, and closes the mapping.</p>
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
@@ -53,10 +62,13 @@ public class StoredRunnerClassLoaderBenchmark {
 
     private static final int CLASSES = 200;
     private static final int SAME_PACKAGE_CLASSES = 12;
+    private static final int JDK_BASE_CLASSES = 500;
+    private static final int JDK_SQL_CLASSES = 20;
 
     private SyntheticArchive archive;
     private String[] names;
     private String[] samePackageNames;
+    private String[] jdkNames;
     private RunnerRegistration registration;
 
     /** Opens the STORED registration outside measurement and keeps it alive for this trial. */
@@ -65,6 +77,7 @@ public class StoredRunnerClassLoaderBenchmark {
         archive = SyntheticArchive.shared();
         names = archive.spreadSample(CLASSES);
         samePackageNames = archive.samePackageSample(SAME_PACKAGE_CLASSES);
+        jdkNames = jdkNames();
         RunnerRegistration open = RunnerRegistration.open(archive.storedRunnerJar());
         try {
             ClassLoaderBenchmarkSanity.verifyRunnerArchive(archive.storedRunnerJar(), names[0]);
@@ -116,6 +129,79 @@ public class StoredRunnerClassLoaderBenchmark {
             }
         } finally {
             source.close();
+        }
+    }
+
+    /**
+     * Creates a fresh loader and archive mapping, then looks up JDK classes through it: 500 of
+     * {@code java.base}, whose packages belong to the boot loader, and 20 of {@code java.sql}, whose package
+     * belongs to the platform loader. Every one is already loaded, so this measures delegation alone.
+     *
+     * @param blackhole consumes the loaded classes
+     * @throws Exception if a class cannot be loaded
+     */
+    @Benchmark
+    public void runnerJdkDelegation(Blackhole blackhole) throws Exception {
+        ArchiveSource source = ArchiveSource.open(archive.storedRunnerJar().toFile());
+        try {
+            Index index = Index.open(source);
+            RunnerClassLoader loader = new RunnerClassLoader(index, source, RunnerClassLoader.defaultParent());
+            for (String name : jdkNames) {
+                blackhole.consume(loader.loadClass(name));
+            }
+        } finally {
+            source.close();
+        }
+    }
+
+    /**
+     * The JDK class names {@link #runnerJdkDelegation} looks up: the first {@value #JDK_BASE_CLASSES}
+     * top-level classes of {@code java.base} under {@code java/} and the first {@value #JDK_SQL_CLASSES} of
+     * {@code java.sql} under {@code java/sql/}, each in sorted order, all loaded once here so that nothing is
+     * defined while measuring.
+     *
+     * <p>Each name is loaded through the loader that defines it. Loading a {@code java.base} class through
+     * the platform loader would make the platform loader one of its initiating loaders, and its
+     * {@code findLoadedClass} would then answer at once: a startup rarely sees that, since the platform loader
+     * was already an initiating loader for 18 of the about 380 JDK names a benchmark-large startup asks
+     * {@link RunnerClassLoader} for.</p>
+     *
+     * @return the names
+     * @throws IOException            if the runtime image cannot be listed
+     * @throws ClassNotFoundException if one of the names cannot be loaded
+     */
+    private static String[] jdkNames() throws IOException, ClassNotFoundException {
+        FileSystem image = FileSystems.getFileSystem(URI.create("jrt:/"));
+        List<String> base = topLevelClasses(image.getPath("/modules", "java.base"), "java", JDK_BASE_CLASSES);
+        List<String> sql = topLevelClasses(image.getPath("/modules", "java.sql"), "java/sql", JDK_SQL_CLASSES);
+        for (String name : base) {
+            Class.forName(name, false, null);
+        }
+        for (String name : sql) {
+            Class.forName(name, false, ClassLoader.getPlatformClassLoader());
+        }
+        List<String> selected = new ArrayList<>(JDK_BASE_CLASSES + JDK_SQL_CLASSES);
+        selected.addAll(base);
+        selected.addAll(sql);
+        return selected.toArray(new String[0]);
+    }
+
+    private static List<String> topLevelClasses(Path module, String directory, int limit) throws IOException {
+        Path root = module.resolve(directory);
+        try (Stream<Path> files = Files.walk(root)) {
+            List<String> classes = files
+                    .map(file -> module.relativize(file).toString())
+                    .filter(name -> name.endsWith(".class") && name.indexOf('$') < 0
+                            && !name.endsWith("module-info.class") && !name.endsWith("package-info.class"))
+                    .map(name -> name.substring(0, name.length() - ".class".length()).replace('/', '.'))
+                    .sorted()
+                    .limit(limit)
+                    .toList();
+            if (classes.size() != limit) {
+                throw new IllegalStateException(root + " holds " + classes.size() + " top-level classes, fewer than "
+                        + limit);
+            }
+            return classes;
         }
     }
 
