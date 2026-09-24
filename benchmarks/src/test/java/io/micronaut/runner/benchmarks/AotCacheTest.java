@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.benchmarks;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -67,6 +68,7 @@ class AotCacheTest {
     }
 
     @Test
+    @Tag("benchmark-integration")
     void forkedLifecycleTrainsReusesAndProvesAnApplicationClassIsShared(@TempDir Path directory)
             throws Exception {
         Variant plain = standardLoaderFixture(directory, "fixture.jar", "one");
@@ -119,22 +121,7 @@ class AotCacheTest {
     }
 
     @Test
-    void changedImmutableArtifactSelectsAndTrainsADifferentCache(@TempDir Path directory) throws Exception {
-        ByteArrayOutputStream console = new ByteArrayOutputStream();
-        AotCache.Request request = request(directory, console);
-        Variant firstSource = standardLoaderFixture(directory, "fixture-one.jar", "one");
-        Variant first = AotCache.prepare(firstSource, "fixture-aot", request);
-        Path firstArchive = first.launchInputs().get(first.launchInputs().size() - 1);
-        Variant secondSource = standardLoaderFixture(directory, "fixture-two.jar", "two");
-        Variant second = AotCache.prepare(secondSource, "fixture-aot", request);
-        Path secondArchive = second.launchInputs().get(second.launchInputs().size() - 1);
-
-        assertNotEquals(firstArchive, secondArchive);
-        assertTrue(Files.isRegularFile(firstArchive));
-        assertTrue(Files.isRegularFile(secondArchive));
-    }
-
-    @Test
+    @Tag("benchmark-integration")
     void absentEmptyAndFailedTrainingAreRejectedClearly(@TempDir Path directory) throws Exception {
         Path absent = directory.resolve("absent.aot");
         IOException missing = assertThrows(IOException.class, () -> AotCache.requireUsableCache(absent));

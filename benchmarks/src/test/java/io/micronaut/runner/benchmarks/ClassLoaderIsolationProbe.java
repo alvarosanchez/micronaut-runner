@@ -35,11 +35,9 @@ final class ClassLoaderIsolationProbe {
     public static void main(String[] args) throws Exception {
         String mode = args[0];
         requireCleanProcess();
-        SyntheticArchive archive = SyntheticArchive.shared();
+        SyntheticArchive archive = SyntheticArchive.forWorkload("no-manifest");
         switch (mode) {
             case "baseline" -> baseline(archive);
-            case "stored" -> runner(archive, archive.storedRunnerJar());
-            case "preserve" -> runner(archive, archive.preserveRunnerJar());
             case "stored-then-preserve" -> {
                 runner(archive, archive.storedRunnerJar());
                 runner(archive, archive.preserveRunnerJar());

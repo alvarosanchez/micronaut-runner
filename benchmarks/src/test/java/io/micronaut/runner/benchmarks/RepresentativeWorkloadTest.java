@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.benchmarks;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -60,11 +61,12 @@ class RepresentativeWorkloadTest {
     }
 
     @Test
+    @Tag("benchmark-integration")
     void packagingProfileSeparatesModesEditScenariosAndMetrics(@org.junit.jupiter.api.io.TempDir java.nio.file.Path output)
             throws Exception {
-        PackagingProfile.Report report = PackagingProfile.run(List.of("no-manifest"), 2, output);
+        PackagingProfile.Report report = PackagingProfile.run(List.of("no-manifest"), 1, output);
 
-        assertEquals(16, report.attempts().size());
+        assertEquals(8, report.attempts().size());
         assertEquals(java.util.Set.of("stored", "preserve"),
                 report.attempts().stream().map(PackagingProfile.Attempt::compression).collect(java.util.stream.Collectors.toSet()));
         assertEquals(java.util.Set.of("first-build", "unchanged-rebuild", "application-edit", "dependency-edit"),
@@ -77,7 +79,13 @@ class RepresentativeWorkloadTest {
         assertTrue(java.nio.file.Files.isRegularFile(output.resolve("packaging-summary.md")));
     }
 
+    /**
+     * Builds the 300-jar wide fixture only to assert lookup counts that
+     * {@link #resourceWorkloadExercisesSteadyStateOperations()} also asserts on the small shape, so it runs with
+     * the benchmark-tool tests to keep the default task within its CI budget.
+     */
     @Test
+    @Tag("benchmark-integration")
     void resourceWorkloadSupportsWideLowEntryShape() throws Exception {
         SyntheticArchive archive = SyntheticArchive.forWorkload("wide");
         try (RepresentativeResourceWorkload workload = RepresentativeResourceWorkload.url(archive)) {

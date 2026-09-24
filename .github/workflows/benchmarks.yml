@@ -56,10 +56,12 @@ jobs:
       - name: "🔧 Setup Gradle"
         uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
 
+      # The benchmark-tool tests run first, in the same invocation and without --continue, so a broken
+      # tool fails the job before any measurement starts.
       - name: "📈 Run benchmarks"
         env:
           BENCHMARK_ITERATIONS: ${{ github.event.inputs.iterations || '20' }}
-        run: ./gradlew :benchmarks:jmh :benchmarks:packagingProfile :benchmarks:startupBenchmark "-Pbenchmarks.iterations=$BENCHMARK_ITERATIONS" --no-daemon
+        run: ./gradlew :benchmarks:benchmarkIntegrationTest :benchmarks:jmh :benchmarks:packagingProfile :benchmarks:startupBenchmark "-Pbenchmarks.iterations=$BENCHMARK_ITERATIONS" --no-daemon
 
       - name: "📝 Summarise"
         if: always()

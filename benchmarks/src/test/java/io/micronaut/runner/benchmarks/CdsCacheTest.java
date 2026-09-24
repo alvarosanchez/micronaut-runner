@@ -16,6 +16,7 @@
 package io.micronaut.runner.benchmarks;
 
 import io.micronaut.runner.build.Compression;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -57,6 +58,7 @@ class CdsCacheTest {
     }
 
     @Test
+    @Tag("benchmark-integration")
     void forkedLifecycleTrainsReusesAndProvesAnApplicationClassIsShared(@TempDir Path directory) throws Exception {
         Path classes = Path.of(CdsCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         Variant plain = SampleBuild.runnerJar(directory, "fixture-runner", CdsCacheFixture.class.getName(),
