@@ -147,11 +147,14 @@ class PublicationMetadataSmokeTest {
                         GROUP + ":" + BUILD + ":${micronaut.runner.version}"), managed,
                 "the BOM must manage both library modules at the smoke version");
 
+        // A Runner module is pinned to the smoke version; a third-party one is listed without its version,
+        // which the version catalog owns. The Maven plugin reads project.build.outputTimestamp with
+        // maven-archiver, as maven-jar-plugin does.
         Map<String, Set<String>> moduleDependencies = Map.of(
                 LAUNCHER, Set.of(),
                 BUILD, Set.of(coordinate(LAUNCHER)),
                 GRADLE_PLUGIN, Set.of(coordinate(BUILD)),
-                MAVEN_PLUGIN, Set.of(coordinate(BUILD)));
+                MAVEN_PLUGIN, Set.of(coordinate(BUILD), "org.apache.maven:maven-archiver"));
         for (Map.Entry<String, Set<String>> entry : moduleDependencies.entrySet()) {
             assertModuleMetadata(entry.getKey(), entry.getValue());
         }
@@ -270,9 +273,15 @@ class PublicationMetadataSmokeTest {
             for (Map<String, Object> dependency : dependencies) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> version = (Map<String, Object>) dependency.get("version");
-                assertEquals(VERSION, version.get("requires"));
-                foundDependencies.add(dependency.get("group") + ":" + dependency.get("module") + ":"
-                        + version.get("requires"));
+                if (GROUP.equals(dependency.get("group"))) {
+                    assertEquals(VERSION, version.get("requires"));
+                    foundDependencies.add(dependency.get("group") + ":" + dependency.get("module") + ":"
+                            + version.get("requires"));
+                } else {
+                    assertNotNull(version.get("requires"),
+                            () -> artifactId + " depends on " + dependency + " without a version");
+                    foundDependencies.add(dependency.get("group") + ":" + dependency.get("module"));
+                }
             }
         }
         assertTrue(libraryVariants >= 2, () -> artifactId + " has no API/runtime Gradle variants");
