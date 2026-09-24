@@ -56,6 +56,7 @@ loadScripts(document, 'script');</script>
 <ol class="toc-list">
 <li><a href="#two-passes-one-archive-heading" tabindex="0">Two passes, one archive</a></li>
 <li><a href="#dependency-staging-heading" tabindex="0">Dependency staging</a></li>
+<li><a href="#application-jars-heading" tabindex="0">Application jars</a></li>
 <li><a href="#dependency-files-heading" tabindex="0">Dependency files</a></li>
 <li><a href="#path-safety-heading" tabindex="0">Path safety</a></li>
 </ol>
@@ -102,17 +103,27 @@ where the dry run said it would.</p>
 reaches the bytes. Building the same inputs twice, in different time zones, produces identical files.</p>
 
 <h2 id="dependency-staging-heading">Dependency staging</h2>
-<p>Each dependency is repacked or copied into its nested jar on up to
-<code>min(availableProcessors(), 8)</code> daemon threads. The threads are created for each build and have
-stopped before <code>build</code> returns; with one processor, or at most one dependency, staging runs on the
-calling thread. A staging thread holds one open <code>ZipReader</code>: its parsed central directory and
-manifest and, outside the heap, a read-only mapping of the dependency, which is released when the stage
-closes the reader. It also holds at most one <code>Inflater</code> at a time and at most three 64 KiB buffers:
-the nested jar's output buffer and, in STORED, the reader's two transfer buffers. In PRESERVE the reader
-reads the manifest at its exact size and never allocates its transfer buffers, so the stage holds two: the
-output buffer and the copy buffer. The archive's bytes do not depend on the thread count: every nested
-jar's name and work file are fixed in class-path order before staging starts, warnings are emitted in that
-order afterwards, and the outer archive is written on one thread.</p>
+<p>Each dependency is staged on up to <code>min(availableProcessors(), 8)</code> daemon threads. In STORED its
+stage repacks it into a nested jar in the work directory. In PRESERVE the dependency is nested as it is:
+its stage writes nothing and only checksums the file, and the archive is written from the dependency
+itself, through a read that fails the build if the file no longer matches that checksum. The threads are
+created for each build and have stopped before <code>build</code> returns; with one processor, or at most one
+dependency, staging runs on the calling thread. A staging thread holds one open <code>ZipReader</code>: its
+parsed central directory and manifest and, outside the heap, a read-only mapping of the dependency, which
+is released when the stage closes the reader. It also holds at most one <code>Inflater</code> at a time and at
+most three 64 KiB buffers: in STORED, the nested jar's output buffer and the reader's two transfer buffers.
+In PRESERVE the reader reads the manifest at its exact size and never allocates its transfer buffers, so
+the stage holds one: the buffer it checksums the dependency through. The archive's bytes do not depend on
+the thread count: every nested jar's name and work file are fixed in class-path order before staging
+starts, warnings are emitted in that order afterwards, and the outer archive is written on one thread.</p>
+
+<h2 id="application-jars-heading">Application jars</h2>
+<p>An application output that is a jar is opened once, on the calling thread, and stays open until the
+archive has been written. Its entries are streamed from it into the archive, each inflated and checked
+against its size, CRC-32 and DEFLATE framing as it is written, so none of them is held in memory or copied
+to a work file; only the main class and the application's own manifest, which the build parses, are read
+into memory. The calling thread closes every such reader as soon as the archive has been written, before
+it is verified, or when the build fails, before the work directory is deleted.</p>
 
 <h2 id="dependency-files-heading">Dependency files</h2>
 <p>A dependency is nested when it is a ZIP archive, which is when its first four bytes are a local file
