@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
+import java.util.zip.ZipEntry;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -66,7 +67,9 @@ class BenchmarkEntryModeTest {
             "runner-stored-positional",
             "runner-stored-positional-aot",
             "runner-stored-joran",
-            "runner-stored-joran-aot");
+            "runner-stored-joran-aot",
+            "runner-stored-keepdebug",
+            "runner-stored-keepdebug-aot");
 
     @Test
     void matrixNamesPluginDefaults() {
@@ -95,6 +98,9 @@ class BenchmarkEntryModeTest {
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional-aot"));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran"));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran-aot"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-keepdebug"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-keepdebug-aot"));
+        assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("keepdebug")));
         assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-stored"));
         assertTrue(core.stream().noneMatch(OPT_IN_ROWS::contains), "opt-in rows never gate: " + core);
     }
@@ -256,6 +262,48 @@ class BenchmarkEntryModeTest {
     }
 
     @Test
+    void theLocalVariableTableControlKeepsTheTablesTheDefaultStrips(@TempDir Path output) throws Exception {
+        Path classes = compile(output.resolve("eligible"), "fixture.EligibleMain", """
+                package fixture;
+                public final class EligibleMain {
+                    public static void main(String[] args) {
+                        int unused = args.length;
+                    }
+                }
+                """);
+        Path library = output.resolve("library.jar");
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(library))) {
+            jar.putNextEntry(new ZipEntry("fixture/EligibleMain.class"));
+            jar.write(Files.readAllBytes(classes.resolve("fixture/EligibleMain.class")));
+            jar.closeEntry();
+        }
+
+        Variant stripped = SampleBuild.runnerJar(output, "runner-stored", "fixture.EligibleMain",
+                List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB);
+        Variant kept = SampleBuild.runnerJar(output, "runner-stored-keepdebug", "fixture.EligibleMain",
+                List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB,
+                SampleBuild.RunnerJarOptions.DEFAULTS.withStripLocalVariables(false));
+
+        assertNull(SampleBuild.RunnerJarOptions.DEFAULTS.stripLocalVariables(),
+                "a row that sets nothing follows the builder default");
+        assertTrue(kept.description().endsWith("; local-variable tables kept"), kept.description());
+        assertFalse(stripped.description().contains("local-variable"), stripped.description());
+        assertTrue(entryNames(stripped.artifact()).contains("MICRONAUT-INF/transforms.txt"),
+                "the default strips the -g compiled dependency");
+        assertFalse(entryNames(kept.artifact()).contains("MICRONAUT-INF/transforms.txt"));
+        assertTrue(SampleBuild.comparisons().contains(new SampleBuild.ComparisonSpec("runner-stored",
+                "runner-stored-keepdebug", "Local-variable tables stripped vs kept")));
+        assertTrue(SampleBuild.comparisons().stream().anyMatch(spec -> spec.candidate().equals("runner-stored-aot")
+                && spec.baseline().equals("runner-stored-keepdebug-aot")));
+    }
+
+    private static List<String> entryNames(Path artifact) throws IOException {
+        try (JarFile jar = new JarFile(artifact.toFile())) {
+            return jar.stream().map(ZipEntry::getName).toList();
+        }
+    }
+
+    @Test
     void requestedStubForIneligibleMainFailsBeforeMeasurement(@TempDir Path output) throws Exception {
         Path classes = compile(output.resolve("ineligible"), "fixture.IneligibleMain", """
                 package fixture;
@@ -302,8 +350,9 @@ class BenchmarkEntryModeTest {
         Files.createDirectories(sourceFile.getParent());
         Files.createDirectories(classes);
         Files.writeString(sourceFile, source, StandardCharsets.UTF_8);
+        // -g, so that a dependency built from a fixture carries local-variable tables.
         int exit = ToolProvider.getSystemJavaCompiler().run(null, null, null,
-                "-d", classes.toString(), sourceFile.toString());
+                "-g", "-d", classes.toString(), sourceFile.toString());
         assertEquals(0, exit, "fixture compilation failed");
         return classes;
     }

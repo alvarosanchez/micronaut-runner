@@ -19,11 +19,17 @@ import io.micronaut.runner.ArchiveSource;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.jar.JarFile;
+import java.util.zip.ZipEntry;
 
 /**
  * The {@code inspect} mode: prints, in a form a human reads, what a runner jar says about itself.
@@ -31,7 +37,8 @@ import java.util.List;
  * <p>Selected with {@code -Dmicronaut.runner.mode=inspect}, it answers the questions that come up when an
  * archive does not behave: which main class will be entered, whether the packager could generate an entry
  * stub, which version of the packaging library produced the archive, how many records the index holds and
- * how well they hash, and which dependency is at which position of the class path with which flags.</p>
+ * how well they hash, what the build-time class transforms did to the dependency classes, and which dependency
+ * is at which position of the class path with which flags.</p>
  *
  * <p>Nothing here is on any hot path. This class is loaded only when the mode selects it, so it is written
  * in ordinary Java: the rules that keep {@code io.micronaut.runner} free of lambdas, streams and
@@ -68,7 +75,43 @@ public final class Inspect {
         PrintStream out = System.out;
         printHeader(out, archive, index, source);
         out.println();
+        printTransforms(out, archive);
+        out.println();
         printJars(out, index);
+    }
+
+    /**
+     * Prints the lines of {@link IndexFormat#TRANSFORMS_ENTRY_NAME}, which the index does not describe, so the
+     * archive is opened as a jar, as {@code extract} opens it; or {@code none} when the archive has no such
+     * entry because no build-time transform changed a class.
+     *
+     * @param out     where to print
+     * @param archive the runner jar
+     * @throws IOException if the archive cannot be read as a jar
+     */
+    private static void printTransforms(PrintStream out, File archive) throws IOException {
+        List<String> lines = new ArrayList<>();
+        try (JarFile jar = new JarFile(archive, false)) {
+            ZipEntry entry = jar.getEntry(IndexFormat.TRANSFORMS_ENTRY_NAME);
+            if (entry != null) {
+                try (InputStream in = jar.getInputStream(entry);
+                     BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                    for (String line = reader.readLine(); line != null; line = reader.readLine()) {
+                        if (!line.isEmpty()) {
+                            lines.add(line);
+                        }
+                    }
+                }
+            }
+        }
+        if (lines.isEmpty()) {
+            label(out, "Build transforms", "none");
+            return;
+        }
+        out.println("Build transforms");
+        for (String line : lines) {
+            out.println("  " + line);
+        }
     }
 
     /**

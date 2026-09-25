@@ -112,8 +112,8 @@ class PackageMojoTest {
 
     /** The parameters that carry build-tool facts rather than packaging options. */
     private static final Set<String> BUILD_TOOL_PARAMETERS = Set.of(
-            "project", "session", "mainClass", "outputDirectory", "finalName", "classifier", "outputTimestamp",
-            "skip", "runnerOptions");
+            "project", "session", "reactorProjects", "mainClass", "outputDirectory", "finalName", "classifier",
+            "outputTimestamp", "skip", "runnerOptions");
 
     /** The entry that marks the jar produced by {@code maven-jar-plugin} in these fixtures. */
     private static final String JAR_PLUGIN_MARKER = "com/example/marker.txt";
@@ -274,6 +274,36 @@ class PackageMojoTest {
         assertEquals(Set.of(ZipEntry.STORED), nestedEntryMethods(archive, "MICRONAUT-INF/lib/lib-1.0.jar"),
                 "STORED is the default compression");
         assertNull(manifest(archive).getMainAttributes().getValue("Enable-Native-Access"));
+    }
+
+    // ------------------------------------------------------------ project modules
+
+    @Test
+    void anArtifactOfAReactorProjectIsAProjectModuleAndAnyOtherIsNot() throws Exception {
+        Path library = writeDependency("lib-1.0.jar");
+        Path module = writeDependency("module-1.0.jar");
+        project.setArtifacts(new java.util.LinkedHashSet<>(List.of(artifact("lib", library),
+                artifact("module", module))));
+        MavenProject reactorModule = new MavenProject();
+        reactorModule.setGroupId("com.example");
+        reactorModule.setArtifactId("module");
+        reactorModule.setVersion("1.0");
+        set("reactorProjects", List.of(project, reactorModule));
+
+        Map<String, Boolean> flags = new HashMap<>();
+        for (Dependency dependency : spec().dependencies()) {
+            flags.put(dependency.coordinates().orElseThrow(), dependency.projectModule());
+        }
+
+        assertEquals(Map.of("com.example:lib:1.0", false, "com.example:module:1.0", true), flags);
+    }
+
+    @Test
+    void withoutReactorProjectsNoArtifactIsAProjectModule() throws Exception {
+        project.setArtifacts(Set.of(artifact("module", writeDependency("module-1.0.jar"))));
+        set("reactorProjects", null);
+
+        assertFalse(spec().dependencies().get(0).projectModule());
     }
 
     // --------------------------------------------------------- passthrough options

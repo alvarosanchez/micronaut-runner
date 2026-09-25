@@ -1,0 +1,23 @@
+/*
+ * A standalone build that only resolves class paths. It is not part of the micronaut-runner build: the
+ * "Transform corpus" workflow writes each subproject's runtime class path with classpath.init.gradle and runs
+ * the build-time class transform pipeline over it (:micronaut-runner-build:transformCorpusTest). Each
+ * subproject is one family of Micronaut modules, on the Micronaut platform version the sample applications use.
+ */
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+    }
+    versionCatalogs {
+        libs {
+            from(files('../../gradle/libs.versions.toml'))
+        }
+    }
+}
+
+rootProject.name = 'transform-corpus'
+
+include 'data-jdbc'
+include 'security-jwt'
+include 'http-client'
+include 'kotlin'
