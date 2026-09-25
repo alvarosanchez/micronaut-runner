@@ -47,7 +47,7 @@ class BenchmarkProvenanceTest {
         String left = Files.readString(firstOutput.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         String right = Files.readString(secondOutput.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertEquals(left, right);
-        assertTrue(left.contains("\"schemaVersion\": 5"));
+        assertTrue(left.contains("\"schemaVersion\": 6"));
         assertTrue(left.contains("\"id\": \"input:0\""));
         assertTrue(left.contains("\"id\": \"input:1\""));
         assertTrue(left.indexOf("\"id\": \"input:0\"") < left.indexOf("\"id\": \"input:1\""));
