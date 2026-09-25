@@ -46,6 +46,11 @@ import java.util.Random;
  *   [ --diagnostics     ]  additionally make one -Xlog:class+load run per variant
  *   [ --allow-partial   ]  exploratory mode: exit zero if any measured run succeeds
  *   [ --optional-rows   ]  also build and measure the opt-in rows, which are reported but never gate
+ *   [ --variants   &lt;a,b&gt;]  build and measure only these rows (plus what they derive from, unreported); naming
+ *                         an opt-in row builds it; not combinable with --optional-rows
+ *   [ --cpus       &lt;n&gt;  ]  Linux: run every child JVM on the first n CPUs the harness may use (taskset) and
+ *                         pin the harness to the rest
+ *   [ --page-cache &lt;m&gt;  ]  uncontrolled (default), evict-artifacts (Linux) or drop-all (passwordless sudo)
  * </pre>
  *
  * <h2>The methodology, and why each rule is there</h2>
@@ -59,9 +64,11 @@ import java.util.Random;
  *       machine - a background build, a thermal dip, or a change in filesystem-cache state - entirely to
  *       whichever variant happened to be running then, and a block design cannot tell that apart from a
  *       real effect.</li>
- *   <li><strong>Warm-up runs are discarded, but cache state is not controlled.</strong> Every sample uses
- *       a fresh JVM. The harness neither evicts nor otherwise controls the OS page cache, so a discarded
- *       process run must not be interpreted as establishing a cold- or warm-filesystem-cache condition.</li>
+ *   <li><strong>Warm-up runs are discarded, but they do not set the cache state.</strong> Every sample uses
+ *       a fresh JVM. By default the harness neither evicts nor otherwise controls the OS page cache, so a
+ *       discarded process run must not be interpreted as establishing a cold- or warm-filesystem-cache
+ *       condition. {@code --page-cache evict-artifacts} or {@code drop-all} evicts before every launch, outside
+ *       the timed interval, and the readiness snapshot's major faults and storage reads confirm it.</li>
  *   <li><strong>Every raw sample is kept.</strong> {@code results.json} holds each run, warm-ups flagged,
  *       so the summary can be recomputed or disputed without running anything again.</li>
  *   <li><strong>A variant that cannot be built is reported, not dropped.</strong></li>
@@ -69,8 +76,9 @@ import java.util.Random;
  *
  * <p>The default required policy exits {@code 0} only when every required variant produced every requested
  * measured run. Explicit partial mode exits {@code 0} when at least one measured run succeeded. Both
- * reports are written before either decision. The required variants are the core rows,
- * {@link SampleBuild#variantNames()}; the opt-in rows that {@code --optional-rows} adds are never required.</p>
+ * reports are written before either decision. The required variants are the selected core rows,
+ * {@link Options#requiredVariants()}; an opt-in row, whether added by {@code --optional-rows} or named in
+ * {@code --variants}, is never required.</p>
  */
 public final class StartupBenchmark {
 
@@ -97,9 +105,14 @@ public final class StartupBenchmark {
      */
     public static void main(String[] args) throws Exception {
         PrintStream log = System.out;
+        String osName = System.getProperty("os.name", "");
         Options options;
+        CpuLimit cpuLimit;
         try {
             options = Options.parse(args);
+            // Validated before the sample build and before anything is pinned, with no fallbacks.
+            cpuLimit = options.cpus() == null ? null : CpuLimit.forThisMachine(options.cpus());
+            options.pageCache().validate(osName, PageCacheEviction::passwordlessSudo);
         } catch (IllegalArgumentException e) {
             System.err.println("micronaut-runner startup benchmark: " + e.getMessage());
             System.err.println(Options.usage());
@@ -107,41 +120,84 @@ public final class StartupBenchmark {
             return;
         }
 
+        // Once per invocation, before the sample build: no variant sets a GC flag, so one probe covers them all.
+        CpuLimit.Probe probe = null;
+        if (cpuLimit != null) {
+            try {
+                probe = cpuLimit.probe(SampleBuild.javaExecutable(), System.getProperty("java.class.path"));
+            } catch (IOException e) {
+                fail("the CPU limit does not hold: " + e.getMessage());
+                return;
+            }
+            log.println("[startup-benchmark] under " + String.join(" ", cpuLimit.commandPrefix()) + " the JVM sees "
+                    + probe.availableProcessors() + " CPU(s): " + probe.flags());
+        }
+
         Path artifacts = options.workDirectory();
         Files.createDirectories(artifacts);
 
+        List<String> selection = options.selection();
         List<Variant> variants;
         String buildFailure = null;
         try {
             SampleBuild build = SampleBuild.prepare(options.sample(), options.repository(),
-                    options.runnerVersion(), artifacts, log);
-            variants = build.variants(options.optionalRows());
+                    options.runnerVersion(), artifacts, cpuLimit, log);
+            variants = build.variants(selection);
         } catch (IOException | InterruptedException e) {
             buildFailure = e.getMessage();
             log.println("[startup-benchmark] the sample could not be built: " + buildFailure);
             String reason = "the sample's Gradle build failed: " + oneLine(buildFailure);
-            variants = SampleBuild.unavailableVariants(reason, options.optionalRows());
+            variants = SampleBuild.unavailableVariants(reason, selection);
+        }
+
+        // Captured before pinning: afterwards this JVM would report the harness's CPUs, not the machine's.
+        BenchmarkProvenance provenance = BenchmarkProvenance.capture(
+                configuredRunnerSource(), options.sample(), System.getenv());
+        RunConditions conditions = RunConditions.capture(cpuLimit, probe, options.pageCache(), artifacts);
+        try {
+            if (options.pageCache() == PageCacheMode.EVICT_ARTIFACTS) {
+                // POSIX_FADV_DONTNEED cannot drop dirty pages, and every artifact was just written.
+                PageCacheEviction.sync();
+            }
+            if (cpuLimit != null) {
+                cpuLimit.pinHarness();
+                log.println("[startup-benchmark] pinned the harness to CPUs " + conditions.harnessCpus()
+                        + "; children run on CPUs " + conditions.childCpus());
+            }
+        } catch (IOException e) {
+            fail(e.getMessage());
+            return;
         }
 
         List<VariantResult> results;
         List<StartupHarness.DiagnosticRun> diagnostics = new ArrayList<>();
-        try (StartupHarness harness = new StartupHarness(options.readinessPath(), options.timeout())) {
+        try (StartupHarness harness = new StartupHarness(options.readinessPath(), options.timeout(),
+                cpuLimit == null ? List.of() : cpuLimit.commandPrefix(),
+                PageCacheEviction.forMode(options.pageCache(), osName))) {
             results = measure(harness, variants, options, log);
             if (options.diagnostics()) {
                 diagnostics.addAll(collectDiagnostics(harness, variants, options, log));
             }
+        } catch (StartupHarness.LaunchPreparationFailure e) {
+            fail(e.getMessage());
+            return;
         }
 
         RunContext context = new RunContext(options.sample(), options.repository(),
                 options.runnerVersion(), options.outputDirectory(), options.iterations(),
                 options.warmupIterations(), options.seed(), options.readinessPath(),
-                options.diagnostics(), Instant.now().toString(), SampleBuild.variantNames(),
-                options.completenessPolicy(), BenchmarkProvenance.capture(
-                        configuredRunnerSource(), options.sample(), System.getenv()));
+                options.diagnostics(), Instant.now().toString(), options.requiredVariants(),
+                options.completenessPolicy(), provenance, conditions);
         int exitCode = finish(context, results, diagnostics, log);
         if (exitCode != 0) {
             System.exit(exitCode);
         }
+    }
+
+    /** Ends a run that cannot establish the conditions it promised; no report would describe it truthfully. */
+    private static void fail(String message) {
+        System.err.println("micronaut-runner startup benchmark: " + oneLine(message));
+        System.exit(1);
     }
 
     private static Path configuredRunnerSource() {
@@ -266,6 +322,8 @@ public final class StartupBenchmark {
                 + " | peak " + Reports.mebibytes(value.peakBytes())
                 + " | classes " + (value.loadedClasses() < 0 ? "—" : value.loadedClasses())
                 + " (" + (value.sharedClasses() < 0 ? "—" : value.sharedClasses()) + " shared)"
+                + " | majflt " + (value.majorFaults() < 0 ? "—" : value.majorFaults())
+                + " | read " + Reports.mebibytes(value.readBytes())
                 + " | probe " + (value.probeMillis() < 0
                         ? "—" : String.format(Locale.ROOT, "%.1f ms", value.probeMillis()));
     }
@@ -290,6 +348,9 @@ public final class StartupBenchmark {
      * @param diagnostics      whether to make separate {@code -Xlog:class+load} runs for per-class inspection
      * @param completenessPolicy whether incomplete measured results fail the invocation
      * @param optionalRows     whether to build and measure the opt-in rows as well as the core rows
+     * @param variants         the rows named with {@code --variants}, or {@code null} when none were
+     * @param cpus             the child CPU limit, or {@code null} for none
+     * @param pageCache        how the OS page cache is treated before each launch
      */
     record Options(Path sample,
                    String repository,
@@ -303,7 +364,40 @@ public final class StartupBenchmark {
                    Duration timeout,
                    boolean diagnostics,
                    CompletenessPolicy completenessPolicy,
-                   boolean optionalRows) {
+                   boolean optionalRows,
+                   List<String> variants,
+                   Integer cpus,
+                   PageCacheMode pageCache) {
+
+        Options {
+            variants = variants == null ? null : List.copyOf(variants);
+        }
+
+        /**
+         * The one resolved selection of rows this run builds and reports: the {@code --variants} rows when
+         * given, otherwise the core rows plus, with {@code --optional-rows}, the opt-in rows. It always follows
+         * report order, not the order on the command line.
+         *
+         * @return the selected row names, in report order
+         */
+        List<String> selection() {
+            List<String> core = SampleBuild.variantNames();
+            return SampleBuild.allVariantNames().stream()
+                    .filter(name -> variants != null ? variants.contains(name)
+                            : optionalRows || core.contains(name))
+                    .toList();
+        }
+
+        /**
+         * The selected core rows, which gate the exit code. A selected opt-in row is built and measured but never
+         * gates it.
+         *
+         * @return the required variant names, in report order
+         */
+        List<String> requiredVariants() {
+            List<String> core = SampleBuild.variantNames();
+            return selection().stream().filter(core::contains).toList();
+        }
 
         /**
          * Parses the command line.
@@ -326,6 +420,9 @@ public final class StartupBenchmark {
             boolean diagnostics = false;
             CompletenessPolicy completenessPolicy = CompletenessPolicy.REQUIRED;
             boolean optionalRows = false;
+            List<String> variants = null;
+            Integer cpus = null;
+            PageCacheMode pageCache = PageCacheMode.UNCONTROLLED;
 
             for (int i = 0; i < args.length; i++) {
                 String argument = args[i];
@@ -343,8 +440,15 @@ public final class StartupBenchmark {
                     case "--diagnostics" -> diagnostics = true;
                     case "--allow-partial" -> completenessPolicy = CompletenessPolicy.PARTIAL;
                     case "--optional-rows" -> optionalRows = true;
+                    case "--variants" -> variants = variants(value(args, ++i, argument));
+                    case "--cpus" -> cpus = number(value(args, ++i, argument), argument);
+                    case "--page-cache" -> pageCache = PageCacheMode.parse(value(args, ++i, argument));
                     default -> throw new IllegalArgumentException("unknown option " + argument);
                 }
+            }
+            if (variants != null && optionalRows) {
+                throw new IllegalArgumentException("--variants and --optional-rows cannot be combined:"
+                        + " name the opt-in rows to run in --variants");
             }
 
             require(sample, "--sample");
@@ -370,7 +474,37 @@ public final class StartupBenchmark {
             return new Options(sample.toAbsolutePath().normalize(), repository, version,
                     outputDirectory, workDirectory, iterations, effectiveWarmup, seed,
                     readiness.startsWith("/") ? readiness : "/" + readiness,
-                    Duration.ofSeconds(timeoutSeconds), diagnostics, completenessPolicy, optionalRows);
+                    Duration.ofSeconds(timeoutSeconds), diagnostics, completenessPolicy, optionalRows,
+                    variants, cpus, pageCache);
+        }
+
+        /**
+         * Parses a {@code --variants} value: comma-separated row names, each trimmed.
+         *
+         * @param value the value
+         * @return the names, in command-line order
+         * @throws IllegalArgumentException if a name is empty, unknown or repeated
+         */
+        private static List<String> variants(String value) {
+            List<String> valid = SampleBuild.allVariantNames();
+            List<String> names = new ArrayList<>();
+            for (String part : value.split(",", -1)) {
+                String name = part.trim();
+                if (name.isEmpty()) {
+                    throw new IllegalArgumentException("--variants has an empty name in '" + value
+                            + "'; valid names: " + String.join(", ", valid));
+                }
+                if (!valid.contains(name)) {
+                    throw new IllegalArgumentException("--variants names an unknown row '" + name
+                            + "'; valid names: " + String.join(", ", valid));
+                }
+                if (names.contains(name)) {
+                    throw new IllegalArgumentException("--variants names '" + name + "' twice; valid names: "
+                            + String.join(", ", valid));
+                }
+                names.add(name);
+            }
+            return List.copyOf(names);
         }
 
         /**
@@ -383,7 +517,10 @@ public final class StartupBenchmark {
                    Usage: StartupBenchmark --sample <dir> --repo <uri> --version <v> \
                    --iterations <n> --out <dir>
                                           [--work <dir>] [--warmup <n>] [--seed <n>] [--readiness <path>] \
-                   [--timeout <seconds>] [--diagnostics] [--allow-partial] [--optional-rows]""";
+                   [--timeout <seconds>] [--diagnostics] [--allow-partial] [--optional-rows | --variants <a,b>] \
+                   [--cpus <n>] [--page-cache uncontrolled|evict-artifacts|drop-all]
+                   Rows for --variants: \
+                   """ + String.join(", ", SampleBuild.allVariantNames());
         }
 
         private static String value(String[] args, int index, String option) {

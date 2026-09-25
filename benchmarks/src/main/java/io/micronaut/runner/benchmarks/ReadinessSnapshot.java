@@ -50,6 +50,11 @@ import static java.lang.foreign.ValueLayout.JAVA_LONG;
  *                           (macOS only)
  * @param loadedClasses      every class loaded so far, shared ones included
  * @param sharedClasses      the classes of those that came from a CDS or AOT archive
+ * @param majorFaults        the child's major page faults so far, {@code majflt} of {@code /proc/<pid>/stat} (Linux
+ *                           only): reads of a memory-mapped file, such as a Runner archive, that had to go to storage
+ * @param readBytes          the bytes the child caused to be fetched from storage so far, {@code read_bytes} of
+ *                           {@code /proc/<pid>/io} (Linux only); with {@code majorFaults} it confirms that a
+ *                           page-cache mode really evicted
  */
 record ReadinessSnapshot(double probeMillis,
                          long rssBytes,
@@ -59,10 +64,12 @@ record ReadinessSnapshot(double probeMillis,
                          long footprintBytes,
                          long peakFootprintBytes,
                          long loadedClasses,
-                         long sharedClasses) {
+                         long sharedClasses,
+                         long majorFaults,
+                         long readBytes) {
 
     /** A snapshot of which nothing could be read. */
-    static final ReadinessSnapshot UNAVAILABLE = new ReadinessSnapshot(-1, -1, -1, -1, -1, -1, -1, -1, -1);
+    static final ReadinessSnapshot UNAVAILABLE = new ReadinessSnapshot(-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1);
 
     /** How long {@code jstat} may take before the class counts are given up. */
     private static final long JSTAT_TIMEOUT_SECONDS = 5;
@@ -77,7 +84,7 @@ record ReadinessSnapshot(double probeMillis,
      */
     ReadinessSnapshot withProbeMillis(double probeMillis) {
         return new ReadinessSnapshot(probeMillis, rssBytes, peakRssBytes, anonBytes, fileBytes, footprintBytes,
-                peakFootprintBytes, loadedClasses, sharedClasses);
+                peakFootprintBytes, loadedClasses, sharedClasses, majorFaults, readBytes);
     }
 
     /**
@@ -99,8 +106,9 @@ record ReadinessSnapshot(double probeMillis,
     }
 
     /**
-     * Reads memory first, which takes microseconds and is therefore effectively at readiness, then class
-     * counts. It never throws: anything that cannot be read is {@code -1}.
+     * Reads memory and, on Linux, the fault and storage-read counters first, which takes microseconds and is
+     * therefore effectively at readiness, then class counts. It never throws: anything that cannot be read is
+     * {@code -1}.
      *
      * @param pid            the child JVM
      * @param javaExecutable the child's {@code java}, whose sibling {@code jstat} reads the class counts
@@ -108,9 +116,12 @@ record ReadinessSnapshot(double probeMillis,
      */
     static ReadinessSnapshot take(long pid, Path javaExecutable) {
         ReadinessSnapshot memory = memory(pid);
+        long majorFaults = linux() ? parseMajorFaults(readProc(pid, "stat")) : -1;
+        long readBytes = linux() ? parseReadBytes(readProc(pid, "io")) : -1;
         ReadinessSnapshot classes = classes(pid, javaExecutable);
         return new ReadinessSnapshot(-1, memory.rssBytes, memory.peakRssBytes, memory.anonBytes, memory.fileBytes,
-                memory.footprintBytes, memory.peakFootprintBytes, classes.loadedClasses, classes.sharedClasses);
+                memory.footprintBytes, memory.peakFootprintBytes, classes.loadedClasses, classes.sharedClasses,
+                majorFaults, readBytes);
     }
 
     /**
@@ -129,8 +140,17 @@ record ReadinessSnapshot(double probeMillis,
         return OS.contains("mac") || OS.contains("darwin");
     }
 
-    private static boolean linux() {
+    static boolean linux() {
         return OS.contains("linux");
+    }
+
+    /** A file of {@code /proc/<pid>/}, or {@code null} when it cannot be read. */
+    private static String readProc(long pid, String file) {
+        try {
+            return Files.readString(Path.of("/proc", Long.toString(pid), file), StandardCharsets.UTF_8);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     private static ReadinessSnapshot memory(long pid) {
@@ -215,7 +235,7 @@ record ReadinessSnapshot(double probeMillis,
                 }
             }
         }
-        return new ReadinessSnapshot(-1, rss, peak, anon, file, -1, -1, -1, -1);
+        return new ReadinessSnapshot(-1, rss, peak, anon, file, -1, -1, -1, -1, -1, -1);
     }
 
     /**
@@ -242,7 +262,45 @@ record ReadinessSnapshot(double probeMillis,
             }
         }
         long total = loaded < 0 || shared < 0 ? -1 : loaded + shared;
-        return new ReadinessSnapshot(-1, -1, -1, -1, -1, -1, -1, total, shared);
+        return new ReadinessSnapshot(-1, -1, -1, -1, -1, -1, -1, total, shared, -1, -1);
+    }
+
+    /**
+     * Parses {@code majflt}, field 12 of {@code /proc/<pid>/stat}: the tenth whitespace-separated token after the
+     * <em>last</em> {@code )}, because the command name in field 2 may itself contain spaces and parentheses.
+     *
+     * @param stat the file's text, or {@code null}
+     * @return the major faults, or {@code -1} when the text is missing or garbled
+     */
+    static long parseMajorFaults(String stat) {
+        if (stat == null) {
+            return -1;
+        }
+        int close = stat.lastIndexOf(')');
+        if (close < 0) {
+            return -1;
+        }
+        String[] fields = stat.substring(close + 1).trim().split("\\s+");
+        return fields.length < 10 ? -1 : count(fields[9]);
+    }
+
+    /**
+     * Parses the {@code read_bytes:} line of {@code /proc/<pid>/io}.
+     *
+     * @param io the file's text, or {@code null}
+     * @return the bytes read from storage, or {@code -1} when the line is missing or garbled
+     */
+    static long parseReadBytes(String io) {
+        if (io == null) {
+            return -1;
+        }
+        for (String line : io.split("\n")) {
+            int colon = line.indexOf(':');
+            if (colon > 0 && line.substring(0, colon).trim().equals("read_bytes")) {
+                return count(line.substring(colon + 1));
+            }
+        }
+        return -1;
     }
 
     /** {@code "   123456 kB"} as bytes, or {@code -1}. */
@@ -310,7 +368,7 @@ record ReadinessSnapshot(double probeMillis,
                 }
                 return new ReadinessSnapshot(-1, buffer.get(JAVA_LONG, RESIDENT_SIZE), -1, -1, -1,
                         buffer.get(JAVA_LONG, PHYS_FOOTPRINT), buffer.get(JAVA_LONG, LIFETIME_MAX_PHYS_FOOTPRINT),
-                        -1, -1);
+                        -1, -1, -1, -1);
             } catch (Throwable e) {
                 return UNAVAILABLE;
             }

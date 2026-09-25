@@ -59,6 +59,17 @@ final class AotCache {
     /**
      * Everything needed to exercise the training application deterministically. The lifecycle ends every
      * training and verification launch with SIGTERM, an orderly shutdown that writes the cache.
+     *
+     * @param cacheRoot        where caches live, one directory per identity
+     * @param readinessPath    the HTTP path polled for readiness
+     * @param workloadPaths    the paths requested once ready
+     * @param timeout          how long one lifecycle may take
+     * @param applicationClass the class verification requires to come from the cache
+     * @param relevantJvmFlags what else shapes the trained cache, hashed into its identity; {@code cpus=<n>} under
+     *                         a CPU limit, so a cache is only reused under the VM ergonomics it was trained with
+     * @param commandPrefix    what training and verification commands start with, for example
+     *                         {@code taskset -c 0}; the JVM arguments still go after the command's {@code java}
+     * @param log              where progress goes
      */
     record Request(Path cacheRoot,
                    String readinessPath,
@@ -66,11 +77,13 @@ final class AotCache {
                    Duration timeout,
                    String applicationClass,
                    List<String> relevantJvmFlags,
+                   List<String> commandPrefix,
                    PrintStream log) {
 
         Request {
             workloadPaths = List.copyOf(workloadPaths);
             relevantJvmFlags = List.copyOf(relevantJvmFlags);
+            commandPrefix = List.copyOf(commandPrefix);
         }
     }
 
@@ -90,12 +103,7 @@ final class AotCache {
         }
         List<String> creationFlags = creationFlags();
 
-        String identity = identity(source.launchInputs(),
-                System.getProperty("java.runtime.version", "<unavailable>") + "|"
-                        + System.getProperty("java.vm.version", "<unavailable>"),
-                System.getProperty("java.vm.name", "<unavailable>"),
-                System.getProperty("os.arch", "<unavailable>"),
-                identityFlags(source, request, creationFlags));
+        String identity = identity(source, request, creationFlags);
         Path directory = request.cacheRoot().resolve(identity);
         Path cache = directory.resolve("app.aot");
         Files.createDirectories(directory);
@@ -136,6 +144,25 @@ final class AotCache {
                 source.description() + "; verified JDK AOT cache",
                 launchCommand(source, cache), source.workingDirectory(), source.artifact(), deploymentSize,
                 source.requestedEntryMode(), source.effectiveEntryMode(), true, null, launchInputs, cacheInfo);
+    }
+
+    /**
+     * The identity of the cache a request trains for a variant on this JDK. The command prefix is not part of it;
+     * a CPU limit enters through {@link Request#relevantJvmFlags()}.
+     *
+     * @param source        the variant the cache is trained on
+     * @param request       the training request
+     * @param creationFlags the JDK-specific creation flags
+     * @return the identity
+     * @throws IOException if an input cannot be read
+     */
+    static String identity(Variant source, Request request, List<String> creationFlags) throws IOException {
+        return identity(source.launchInputs(),
+                System.getProperty("java.runtime.version", "<unavailable>") + "|"
+                        + System.getProperty("java.vm.version", "<unavailable>"),
+                System.getProperty("java.vm.name", "<unavailable>"),
+                System.getProperty("os.arch", "<unavailable>"),
+                identityFlags(source, request, creationFlags));
     }
 
     static String identity(List<Path> orderedInputs,
@@ -265,10 +292,8 @@ final class AotCache {
         // -XX:+AOTCompatibleOopCompression ... -XX:AOTMode=create", and the cache then reports
         // AOTCompatibleOopCompression = true. JDK_AOT_VM_OPTIONS cannot carry them: runLifecycle removes it
         // from every child JVM.
-        List<String> arguments = new ArrayList<>(creationFlags);
-        arguments.add("-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize());
-        ByteArrayOutputStream output = runLifecycle(source, withJvmArguments(source.command(), arguments), request,
-                null);
+        ByteArrayOutputStream output = runLifecycle(source, trainingCommand(source, temporary, creationFlags),
+                request, null);
         try {
             requireUsableCache(temporary);
         } catch (IOException failure) {
@@ -287,9 +312,7 @@ final class AotCache {
         requireUsableCache(cache);
         Path classLog = cache.resolveSibling("verification-class-load.log");
         Files.deleteIfExists(classLog);
-        List<String> command = withJvmArguments(launchCommand(source, cache),
-                List.of("-Xlog:class+load=info:file=" + classLog.toAbsolutePath().normalize()));
-        runLifecycle(source, command, request, cache);
+        runLifecycle(source, verificationCommand(source, cache, classLog), request, cache);
         if (!Files.isRegularFile(classLog)) {
             throw new IOException("AOT verification produced no class-load log");
         }
@@ -305,12 +328,53 @@ final class AotCache {
                 + " is reused from AOT cache");
     }
 
+    /**
+     * The training command, without the request's prefix: the creation flags and {@code -XX:AOTCacheOutput} go
+     * directly after the variant's {@code java}.
+     *
+     * @param source        the variant being trained
+     * @param temporary     where the JVM writes the cache
+     * @param creationFlags the JDK-specific creation flags
+     * @return the command
+     */
+    static List<String> trainingCommand(Variant source, Path temporary, List<String> creationFlags) {
+        List<String> arguments = new ArrayList<>(creationFlags);
+        arguments.add("-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize());
+        return withJvmArguments(source.command(), arguments);
+    }
+
+    /**
+     * The verification command, without the request's prefix: the measured command plus a class-load log.
+     *
+     * @param source   the variant the cache was trained on
+     * @param cache    the cache
+     * @param classLog where the class-load log goes
+     * @return the command
+     */
+    static List<String> verificationCommand(Variant source, Path cache, Path classLog) {
+        return withJvmArguments(launchCommand(source, cache),
+                List.of("-Xlog:class+load=info:file=" + classLog.toAbsolutePath().normalize()));
+    }
+
+    /**
+     * What a training or verification lifecycle spawns: the request's prefix, then the command unchanged, whose
+     * JVM arguments already follow its {@code java}. Training and verification thereby run under the same CPU
+     * limit as the measured launches, so the cache is trained under the VM configuration it is measured with.
+     *
+     * @param request the request
+     * @param command the prefix-free command
+     * @return the spawned command
+     */
+    static List<String> lifecycleCommand(Request request, List<String> command) {
+        return StartupHarness.processCommand(request.commandPrefix(), command, List.of());
+    }
+
     private static ByteArrayOutputStream runLifecycle(Variant source,
                                                       List<String> command,
                                                       Request request,
                                                       Path cache) throws IOException, InterruptedException {
         int port = StartupHarness.freePort();
-        ProcessBuilder builder = new ProcessBuilder(command)
+        ProcessBuilder builder = new ProcessBuilder(lifecycleCommand(request, command))
                 .directory(source.workingDirectory().toFile())
                 .redirectErrorStream(true);
         Map<String, String> environment = builder.environment();

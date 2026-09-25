@@ -118,6 +118,48 @@ class ReadinessSnapshotTest {
             sun.ci.findWitnessIn=81
             """;
 
+    /**
+     * {@code /proc/<pid>/stat} of a JVM whose command name contains {@code ") "}: field 12, {@code majflt}, is the
+     * tenth token after the last {@code )}, here 789.
+     */
+    private static final String PROC_STAT = "4242 (a) b) java) S 1 4242 4242 0 -1 4194304 23456 17 789 3 120 30 0 0"
+            + " 20 0 25 0 1234567 6073389056 31761 18446744073709551615 1 1 0 0 0 0 0 2 16800975 0 0 0 17 5 0 0 0"
+            + " 0 0 0 0 0 0 0 0 0 0\n";
+
+    /** {@code /proc/<pid>/io} of the same JVM. */
+    private static final String PROC_IO = """
+            rchar: 323934931
+            wchar: 1024
+            syscr: 632687
+            syscw: 12
+            read_bytes: 34164736
+            write_bytes: 4096
+            cancelled_write_bytes: 0
+            """;
+
+    @Test
+    void majorFaultsAreTheTenthTokenAfterTheLastParenthesis() {
+        assertEquals(789, ReadinessSnapshot.parseMajorFaults(PROC_STAT));
+        assertEquals(789, ReadinessSnapshot.parseMajorFaults(PROC_STAT.replace("(a) b) java)", "(java)")));
+    }
+
+    @Test
+    void readBytesAreTheReadBytesLineOfProcIo() {
+        assertEquals(34_164_736, ReadinessSnapshot.parseReadBytes(PROC_IO));
+    }
+
+    @Test
+    void missingOrGarbledCountersAreUnavailable() {
+        for (String garbage : new String[] {null, "", "4242 (java S 1", "4242 (java) S 1 4242",
+                "4242 (java) S 1 4242 4242 0 -1 4194304 23456 17 many 3", "\0\1)"}) {
+            assertEquals(-1, ReadinessSnapshot.parseMajorFaults(garbage), String.valueOf(garbage));
+        }
+        for (String garbage : new String[] {null, "", "rchar: 1\nwchar: 2\n", "read_bytes: lots\n",
+                "read_bytes:\n", "read_bytes: -5\n"}) {
+            assertEquals(-1, ReadinessSnapshot.parseReadBytes(garbage), String.valueOf(garbage));
+        }
+    }
+
     @Test
     void procStatusGivesResidentAnonymousAndFileBytes() {
         ReadinessSnapshot snapshot = ReadinessSnapshot.parseProcStatus(PROC_STATUS);
@@ -178,7 +220,8 @@ class ReadinessSnapshotTest {
         assertEquals(linux.anonBytes(), linux.privateBytes());
         assertEquals(linux.peakRssBytes(), linux.peakBytes());
 
-        ReadinessSnapshot macOs = new ReadinessSnapshot(-1, 168_312_832, -1, -1, -1, 118_522_960, 127_452_216, -1, -1);
+        ReadinessSnapshot macOs = new ReadinessSnapshot(-1, 168_312_832, -1, -1, -1, 118_522_960, 127_452_216, -1, -1,
+                -1, -1);
         assertEquals(118_522_960, macOs.privateBytes());
         assertEquals(127_452_216, macOs.peakBytes());
 
@@ -188,9 +231,9 @@ class ReadinessSnapshotTest {
 
     @Test
     void withProbeMillisKeepsEveryOtherField() {
-        ReadinessSnapshot snapshot = new ReadinessSnapshot(-1, 1, 2, 3, 4, 5, 6, 7, 8).withProbeMillis(12.5);
+        ReadinessSnapshot snapshot = new ReadinessSnapshot(-1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10).withProbeMillis(12.5);
 
-        assertEquals(new ReadinessSnapshot(12.5, 1, 2, 3, 4, 5, 6, 7, 8), snapshot);
+        assertEquals(new ReadinessSnapshot(12.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10), snapshot);
     }
 
     @Test

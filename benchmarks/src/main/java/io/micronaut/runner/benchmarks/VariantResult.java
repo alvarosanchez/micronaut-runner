@@ -120,7 +120,9 @@ record VariantResult(Variant variant,
                 medianCount(snapshots, ReadinessSnapshot::footprintBytes),
                 medianCount(snapshots, ReadinessSnapshot::peakFootprintBytes),
                 medianCount(snapshots, ReadinessSnapshot::loadedClasses),
-                medianCount(snapshots, ReadinessSnapshot::sharedClasses));
+                medianCount(snapshots, ReadinessSnapshot::sharedClasses),
+                medianCount(snapshots, ReadinessSnapshot::majorFaults),
+                medianCount(snapshots, ReadinessSnapshot::readBytes));
     }
 
     private static double medianMillis(List<ReadinessSnapshot> snapshots,

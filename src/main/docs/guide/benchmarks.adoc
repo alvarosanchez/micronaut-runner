@@ -68,9 +68,10 @@ cache
 |===
 
 Each sample starts a fresh JVM. This is a cold JVM process start, not a claim that storage or the OS page cache
-is cold. Readiness is measured externally, from process spawn to the first successful HTTP response, because
-that is what a user waits for and it captures class loading on the first request. The framework's own "startup
-completed" line is recorded separately rather than substituted for readiness.
+is cold, unless the run used `-Pbenchmarks.pageCache=evict-artifacts` or `drop-all`. Readiness is measured
+externally, from process spawn to the first successful HTTP response, because that is what a user waits for and
+it captures class loading on the first request. The framework's own "startup completed" line is recorded
+separately rather than substituted for readiness.
 
 The cache pairs are `runner-stored`/`runner-stored-aot`, `shadow`/`shadow-aot`, and
 `runner-extracted`/`runner-extracted-aot`. Each pair shares the exact artifact bytes, ordered class path,
@@ -90,10 +91,8 @@ warm-up runs, keeps every raw sample, and always reports descriptive counts, med
 Confidence intervals are omitted and the summary is labelled descriptive-only until there are at least ten
 successful measured samples. Ten is a reporting threshold, not a universal guarantee of precision; a
 zero-width interval over repeated observations cannot recover variability that was never observed.
-Discarding a process run does not evict or warm the OS page cache in a controlled way. The OS page cache is
-uncontrolled and is typically affected by the build and earlier starts; the harness has no page-cache eviction
-protocol on Linux, macOS or Windows and therefore reports neither a warm-cache nor a cold-filesystem-cache
-measurement.
+Discarding a process run does not evict or warm the OS page cache in a controlled way; by default the cache
+is uncontrolled, and <<benchmarkConditions,the page-cache modes>> below say what else a run can do.
 
 Readiness comparisons are a predeclared list of candidate minus baseline pairs, led by `runner-stored` minus
 `shadow`, so a negative difference means the candidate is faster. Each reports the median per-iteration
@@ -119,6 +118,60 @@ archive, CDS and AOT archives, JDK libraries) that the kernel can drop and re-re
 (`phys_footprint` or `RssAnon`) is the like-for-like comparison between a mapped archive and a flattened JAR. The
 `-Xlog` files that `-Pbenchmarks.diagnostics=true` writes still cover spawn through shutdown and are for per-class
 inspection; their readiness only shows the logging overhead and never enters measured timing distributions.
+
+[[benchmarkConditions]]
+=== Page cache, CPU limit and row selection
+
+`-Pbenchmarks.pageCache` chooses what happens to the OS page cache before every launch (warm-up, measured and
+diagnostic), always outside the timed interval:
+
+[cols="20,80"]
+|===
+|Mode |What it does
+
+|`uncontrolled`
+|The default. No eviction, no `sync` and no `sudo`: the cache holds whatever the build and earlier starts left in
+it, so the run is neither a warm-cache nor a cold-cache measurement.
+
+|`evict-artifacts`
+|Linux only, no root. After preparation the harness runs `sync` once, then before every launch it evicts every
+regular file of the variant's artifact and launch inputs with `posix_fadvise(POSIX_FADV_DONTNEED)`: the JAR, the
+AOT cache file, the thin and exploded `lib/` JARs and class trees, and the whole extracted layout. The JDK and the
+shared work directory stay cached, so only the packaging is cold.
+
+|`drop-all`
+|Needs passwordless `sudo`. Before every launch: `sync`, then `echo 3 > /proc/sys/vm/drop_caches` on Linux or
+`purge` on macOS. Pages a live process maps stay resident, including the parts of the JDK the harness JVM itself
+maps, so it is colder than `evict-artifacts` but not a fresh node.
+|===
+
+An unsupported combination (`evict-artifacts` off Linux, `drop-all` without passwordless `sudo`) fails at once
+with a usage error; there are no fallbacks. Every readiness snapshot also records `majorFaults` (`majflt` of
+`/proc/<pid>/stat`) and `readBytes` (`read_bytes` of `/proc/<pid>/io`), `null` off Linux. They confirm eviction:
+a cold launch reads its files from storage, and a memory-mapped Runner archive also takes major faults, while
+Shadow reads its JAR with `read` calls, which are not faults.
+
+`-Pbenchmarks.cpus=N` (Linux, needs `taskset`) runs every child JVM, the AOT-cache training and verification
+launches included, on the first `N` CPUs the harness may use, and pins the harness's own threads to the rest
+once the variants are prepared. `N` must leave the harness at least one CPU. Before the sample build the harness
+starts a probe JVM under the limit, requires it to see exactly `N` CPUs and records its ergonomic flags, the
+collector among them: below two CPUs, JDK 25 selects SerialGC and fewer compiler threads, and Netty and the
+fork-join pool size themselves from the CPU count. A limited AOT cache has its own identity, so a cache trained
+without a limit is never reused under one. `taskset` models CPU _affinity_, not CFS quota throttling: `docker --cpus`
+and Kubernetes limits set `cpu.max`, where the JVM sees `ceil(quota)` CPUs but its threads can burst across every
+core and are then throttled once per period. If the one-CPU margins look odd, cross-check once with
+`docker run --cpus=1`. Both reports record the limit, the machine, child and harness CPU lists, the child CPUs'
+SMT siblings, the CPU model and the probe's count and flags, along with the page-cache mode, the kernel and the
+storage under the work directory.
+
+`-Pbenchmarks.variants=a,b` builds and measures only the named rows, in report order. Naming an opt-in row
+builds it, so the property cannot be combined with `-Pbenchmarks.optionalRows`. A named row that derives from
+another (a cached row from its uncached twin, `runner-extracted` from `runner-stored`) builds that row too, but
+it is neither measured nor reported, and a declared comparison appears only when both of its rows were named.
+
+From this change on, a pull request that adds threads to the application startup path links a paired
+`-Pbenchmarks.cpus=1` result. Packaging-time parallelism does not run in the application and no harness mode
+covers it: it is checked at one CPU by hand with `taskset -c 0`.
 
 === Trained-cache matrix
 
@@ -152,10 +205,12 @@ Run it locally with:
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.optionalRows=true -Pbenchmarks.iterations=40
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20 -Pbenchmarks.cpus=1 -Pbenchmarks.variants=shadow,runner-stored
 ----
 
-The last command adds the opt-in rows, such as the entry-stub ablation. Run it with 40 iterations: at 20, the
-stub effect's interval still spanned zero.
+The fourth command adds the opt-in rows, such as the entry-stub ablation. Run it with 40 iterations: at 20, the
+stub effect's interval still spanned zero. The last one measures one pair on one CPU; see
+<<benchmarkConditions>>.
 
 `-Pbenchmarks.workloads=no-manifest,small,representative,wide` selects packaging shapes and
 `-Pbenchmarks.packagingIterations=2` changes the number of independent packaging workers. The JMH resource
@@ -166,7 +221,10 @@ claims.
 
 Reports are written to `benchmarks/build/reports/`. The startup task builds its variants and trains its caches
 in `benchmarks/build/tmp/startupBenchmark`. In CI the benchmarks run weekly and on demand rather than on every
-pull request, because shared runners are too noisy to gate a build on.
+pull request, because shared runners are too noisy to gate a build on. The weekly and on-demand runs also start
+four `startup-cpu-matrix` legs, each measuring the Runner and Shadow comparison rows at one CPU, at two CPUs,
+unlimited, and unlimited with `evict-artifacts`. The legs run on different machines, so compare their paired
+Runner − Shadow differences, never their absolute times.
 
 The startup harness uses a required, fail-closed matrix by default. Every required packaging variant must
 be built and complete every requested measured iteration; otherwise the task exits nonzero _after_ writing
@@ -175,8 +233,9 @@ counts separately for warm-up and measured phases. `results.json` also records e
 its variant, iteration, global schedule order, phase, outcome, failure and exit information, and timing only
 when the attempt produced a valid measurement. A build-unavailable variant is skipped, not mislabeled as a
 failed process attempt. A warm-up failure is visible but does not by itself invalidate a complete measured
-matrix. Opt-in rows are built only with `-Pbenchmarks.optionalRows=true`, and their failures are reported but
-never change the exit code.
+matrix. Opt-in rows are built only with `-Pbenchmarks.optionalRows=true` or when named in
+`-Pbenchmarks.variants`, and their failures are reported but never change the exit code. With
+`-Pbenchmarks.variants`, the required variants are the named core rows.
 
 `results.json` uses a versioned, relocatable provenance schema. It records runner and sample revisions plus
 clean/dirty state, exact JDK and platform identity, logical processor count and physical memory, cache policy,
@@ -209,13 +268,14 @@ compressing only resources could not close that gap.
 
 This guide does not retain the early prototype numbers because their raw samples and complete executable
 configuration were not archived publicly. They cannot substantiate a current speedup claim. In particular,
-allocation avoided by defining from a mapped buffer must not be restated as elapsed-time savings, and
-cold-storage performance has not been measured by this harness.
+allocation avoided by defining from a mapped buffer must not be restated as elapsed-time savings. A cold-cache
+result must name its page-cache mode and the storage the report recorded under the work directory: local NVMe
+can hide a difference that network block storage would not.
 
 A publishable result must link to an immutable source revision and the raw `results.json` and `summary.md`
 produced by that revision. It must identify the machine and operating system, exact JDK build, sample and
 dependency set, packaging variant, benchmark command and properties, warm-up and measured counts, timeout,
-and application-cache and OS-page-cache conditions. Startup numbers must say whether the metric is external
+the CPU limit, and application-cache and OS-page-cache conditions. Startup numbers must say whether the metric is external
 process-to-HTTP-readiness, process-to-startup-line, or framework-reported self-time.
 
 Attributing a difference to stored dependencies, merged discovery, mapped-buffer definition or another
