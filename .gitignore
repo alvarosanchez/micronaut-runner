@@ -13,6 +13,7 @@ build/
 # into an excluded directory, so negating the files inside it would not be enough.
 !**/src/main/java/io/micronaut/runner/build/
 !**/src/test/java/io/micronaut/runner/build/
+!**/src/logbackFrontend/java/io/micronaut/runner/build/
 classes/
 out/
 *.db
