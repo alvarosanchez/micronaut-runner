@@ -77,6 +77,9 @@ micronaut {
 
         // On by default: compiles logback.xml at packaging time; anything it cannot compile is left to Logback.
         // options.put('precompileLogback', 'false')
+
+        // Dependency local-variable tables are dropped by default; line numbers stay. See Build-Time Transformations.
+        // options.put('stripLocalVariables', 'false')
     }
 }
 ----
@@ -103,6 +106,7 @@ typed property, and an unknown name fails the build.
 |`manifestAttributes` |map |empty |typed |1.0
 |`archiveReads` |`MAPPED` or `POSITIONAL` |`MAPPED` |passthrough |1.0
 |`precompileLogback` |boolean |`true` |passthrough |1.0
+|`stripLocalVariables` |boolean |`true` |passthrough |1.0
 |===
 
 A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,
@@ -226,6 +230,8 @@ The typed options are parameters of the same names, except that `manifestAttribu
 scalar ones also read `-Dmicronaut.runner.<name>`. `<runnerOptions>` and `-Dmicronaut.runner.<name>` set the same
 options by name, `-Dmicronaut.runner.<name>` only for passthrough options, and a `<runnerOptions>` entry wins. For
 example, `-Dmicronaut.runner.precompileLogback=false` leaves `logback.xml` to Logback at startup.
+Dependency local-variable tables are dropped by default (see <<buildTransforms>>); pass
+`-Dmicronaut.runner.stripLocalVariables=false` to keep them.
 
 To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
 pass `-Dmicronaut.runner.archiveReads=positional` or set
