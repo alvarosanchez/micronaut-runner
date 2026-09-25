@@ -54,7 +54,55 @@ class BenchmarkClaimsTest {
         assertTrue(summary.contains("**JVM process**: fresh for every sample"));
         assertTrue(summary.contains("**OS page cache**: uncontrolled"));
         assertTrue(summary.contains("**Application cache**: per variant"));
-        assertTrue(summary.contains("| `runner-extracted-aot` | aot (unavailable) | — | — | — | — |"));
+        assertTrue(summary.contains("| `runner-extracted-aot` | aot (unavailable) | — | — | — | — | — |"));
+    }
+
+    @Test
+    void reportsAttributeEveryCachedRowToOneTraining(@TempDir Path output) throws Exception {
+        Path sample = Files.createDirectory(output.resolve("sample"));
+        Path artifact = Files.writeString(output.resolve("app.jar"), "application", StandardCharsets.UTF_8);
+        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
+                1, 0, 1, "/hello", false, "2026-09-25T00:00:00Z");
+        String reusedSha = "a".repeat(64);
+        String trainedSha = "0123456789ab" + "c".repeat(52);
+        Variant shadowAot = cached("shadow-aot", artifact, new CacheInfo("aot", "1".repeat(64), 1024, reusedSha,
+                900, -1, true, "lifecycle", "verification"));
+        Variant storedAot = cached("runner-stored-aot", artifact, new CacheInfo("aot", "2".repeat(64), 2048,
+                trainedSha, 9400, 8500, false, "lifecycle", "verification"));
+        Variant extractedAot = Variant.unavailable("runner-extracted-aot", "test", "training failed");
+        Variant uncached = Variant.unavailable("runner-stored", "test", "not built");
+        Reports.write(output, context,
+                List.of(result(uncached), result(shadowAot), result(storedAot), result(extractedAot)), List.of());
+
+        String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
+        assertTrue(json.contains("\"schemaVersion\": 6"), json);
+        assertTrue(json.contains("\"cacheBytes\": 1024,\n      \"cacheSha256\": \"" + reusedSha + "\""), json);
+        assertTrue(json.contains("\"cacheBytes\": 2048,\n      \"cacheSha256\": \"" + trainedSha + "\""), json);
+        assertTrue(json.contains("\"cacheBytes\": null,\n      \"cacheSha256\": null"), json);
+        assertTrue(json.contains("\"cacheReused\": true"), json);
+        assertTrue(json.contains("\"cacheReused\": false"), json);
+
+        String summary = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
+        String line = "**AOT caches:** reused from an earlier run: `shadow-aot`; trained this run:"
+                + " `runner-stored-aot`; unavailable: `runner-extracted-aot`.";
+        assertTrue(summary.contains(line), summary);
+        int headline = summary.indexOf("Runner + AOT cache vs Shadow + AOT cache: `runner-stored-aot`");
+        assertTrue(headline >= 0 && headline < summary.indexOf(line), "the line follows the cached rows");
+        assertTrue(summary.indexOf(line) < summary.indexOf("## Run conditions"), summary);
+        assertTrue(summary.contains("| `runner-stored-aot` | aot | 2048 B | `0123456789ab` | 8500 ms | 9400 ms"
+                + " | false |"), summary);
+        assertTrue(summary.contains("| `shadow-aot` | aot | 1024 B | `aaaaaaaaaaaa` | not trained (reused)"
+                + " | 900 ms | true |"), summary);
+    }
+
+    private static Variant cached(String name, Path artifact, CacheInfo cache) {
+        return new Variant(name, "test", List.of("java", "-jar", artifact.toString()), artifact.getParent(),
+                artifact, null, EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER, true, null,
+                List.of(artifact), cache);
+    }
+
+    private static VariantResult result(Variant variant) {
+        return new VariantResult(variant, -1, List.of(), null, null, null, List.of());
     }
 
     @Test

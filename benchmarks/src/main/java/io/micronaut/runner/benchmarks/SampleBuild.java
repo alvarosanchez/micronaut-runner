@@ -77,6 +77,12 @@ import java.util.zip.ZipEntry;
  * agent - runs {@code clean} and takes the artifacts out from under a run in flight. That failure mode is
  * genuinely confusing when it happens ("the jar was there when I checked"), and copying makes it
  * impossible.</p>
+ *
+ * <h2>Pinned modification times</h2>
+ * <p>Copying and rebuilding give every launch input a new modification time in every run, and the JDK rejects
+ * an AOT cache whose class-path JARs' times moved. Every copied, written, rebuilt or extracted launch input is
+ * therefore pinned to {@link LaunchInputs#PINNED_MODIFICATION_TIME}, so a cache trained in one run is reused in
+ * the next while the inputs' bytes are unchanged; see {@link LaunchInputs}.</p>
  */
 final class SampleBuild {
 
@@ -426,6 +432,7 @@ final class SampleBuild {
                 copyTree(root, jarOut, written);
             }
         }
+        LaunchInputs.pin(jar);
 
         List<String> command = List.of(javaExecutable().toString(), "-jar", jar.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(
@@ -457,8 +464,7 @@ final class SampleBuild {
             throw new IOException("The Shadow plugin produced no " + jar);
         }
         Path directory = recreate(artifacts.resolve(name));
-        Path copy = directory.resolve(jar.getFileName().toString());
-        Files.copy(jar, copy, StandardCopyOption.REPLACE_EXISTING);
+        Path copy = LaunchInputs.copy(jar, directory.resolve(jar.getFileName().toString()));
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 copy.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", copy));
@@ -488,6 +494,8 @@ final class SampleBuild {
                 .entryStub(requestedEntryMode == EntryMode.STUB)
                 .build();
         RunnerJarBuilder.build(spec, BuildLogger.noOp());
+        // Rebuilt in every run with the same bytes; the pin keeps the time a trained cache recorded.
+        LaunchInputs.pin(output);
         EntryMode effectiveEntryMode = inspectEntryMode(output, requestedEntryMode);
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 output.toAbsolutePath().toString());
@@ -558,6 +566,8 @@ final class SampleBuild {
         DeploymentSize deploymentSize = DeploymentSize.measure(
                 DeploymentSize.input("extracted-layout", destination));
         List<Path> launchInputs = manifestClassPath(applicationJar);
+        // Extraction already writes this instant; pinning states it rather than relying on it.
+        LaunchInputs.pin(launchInputs);
         return Variant.available(name,
                 "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
                 run, destination, destination, deploymentSize, launchInputs);
@@ -608,9 +618,7 @@ final class SampleBuild {
                 fileName = i + "-" + fileName;
                 used.add(fileName);
             }
-            Path copy = lib.resolve(fileName);
-            Files.copy(dependency, copy, StandardCopyOption.REPLACE_EXISTING);
-            copies.add(copy);
+            copies.add(LaunchInputs.copy(dependency, lib.resolve(fileName)));
         }
         return copies;
     }
@@ -624,7 +632,7 @@ final class SampleBuild {
         for (Path file : files) {
             Path destination = target.resolve(source.relativize(file).toString());
             Files.createDirectories(destination.getParent());
-            Files.copy(file, destination, StandardCopyOption.REPLACE_EXISTING);
+            LaunchInputs.copy(file, destination);
         }
     }
 

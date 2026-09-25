@@ -26,7 +26,9 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -123,6 +125,10 @@ class AotCacheTest {
                         null, null, null, List.of())), List.of());
         String json = Files.readString(report.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"cacheBytes\": " + Files.size(archive)), json);
+        assertTrue(json.contains("\"cacheSha256\": \"" + AotCache.sha256(archive) + "\""), json);
+        assertEquals(AotCache.sha256(archive), cached.cache().sha256());
+        assertEquals(cached.cache().sha256(), reused.cache().sha256());
+        assertTrue(json.contains("\"cacheReused\": false"), json);
         assertTrue(json.contains("\"trainingMillis\":"), json);
         assertTrue(json.contains("\"deploymentSize\":")
                 && json.contains("\"totalBytes\": " + (plainSize.totalBytes() + Files.size(archive))), json);
@@ -132,6 +138,43 @@ class AotCacheTest {
         assertTrue(summary.contains("## Application-cache preparation"), summary);
         assertTrue(summary.contains("Training cost"), summary);
         assertTrue(summary.contains("Cache bytes"), summary);
+    }
+
+    @Test
+    @Tag("benchmark-integration")
+    void rebuiltInputWithUnchangedBytesReusesTheTrainedCache(@TempDir Path directory) throws Exception {
+        Path classes = Path.of(AotCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        Variant plain = SampleBuild.runnerJar(directory, "runner-stored", AotCacheFixture.class.getName(),
+                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
+        ByteArrayOutputStream console = new ByteArrayOutputStream();
+        AotCache.Request request = request(directory, console);
+        Variant trained = AotCache.prepare(plain, "runner-stored-aot", request);
+        Path archive = trained.launchInputs().getLast();
+        FileTime trainedAt = Files.getLastModifiedTime(archive);
+
+        // The premise: the JDK checks the class-path JAR's time, so moving only the time breaks a strict launch.
+        Files.setLastModifiedTime(plain.artifact(), FileTime.from(Instant.now()));
+        Launch moved = launch(AotCache.launchCommand(plain, archive), directory.resolve("moved.log"));
+        assertNotEquals(0, moved.exit(), moved.output());
+        assertTrue(moved.output().contains("Unable to use AOT cache"), moved.output());
+        assertTrue(moved.output().contains("timestamp"), moved.output());
+
+        // The next run rebuilds the same bytes: the pinned time makes the earlier training valid again.
+        Variant rebuilt = SampleBuild.runnerJar(directory, "runner-stored", AotCacheFixture.class.getName(),
+                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
+        Variant reused = AotCache.prepare(rebuilt, "runner-stored-aot", request);
+
+        String output = console.toString(StandardCharsets.UTF_8);
+        assertTrue(output.contains("reusing AOT cache " + trained.cache().identity() + " for runner-stored-aot"),
+                output);
+        assertFalse(output.contains("invalid cached AOT cache"), output);
+        assertTrue(reused.cache().reused());
+        assertEquals(trained.cache().identity(), reused.cache().identity());
+        assertEquals(trained.cache().sha256(), reused.cache().sha256(),
+                "a reused cache is the same training, byte for byte");
+        assertEquals(AotCache.sha256(archive), reused.cache().sha256());
+        assertEquals(trainedAt, Files.getLastModifiedTime(archive), "the cache file was not rewritten");
+        assertEquals(LaunchInputs.PINNED_MODIFICATION_TIME, Files.getLastModifiedTime(rebuilt.artifact()));
     }
 
     @Test

@@ -131,7 +131,11 @@ Training and verification are bounded build-time operations outside all timing s
 HTTP readiness, exercises `/hello`, sends SIGTERM for an orderly shutdown, accepts exit status 0 or 143, requires a
 nonempty cache, then performs a strict diagnostic launch. The managed cache identity hashes the immutable
 final JAR (and therefore its embedded application and dependency bytes), exact JDK/VM build, architecture,
-launch options and workload paths. A changed input selects a different cache. A cached variant is measured only
+launch options and workload paths. A changed input selects a different cache. Trained caches are reused across
+runs while the inputs' bytes are unchanged, because the harness pins every launch input's modification time,
+which the JDK also checks; `rm -rf benchmarks/build/tmp/startupBenchmark/managed-aot` forces a retrain.
+`results.json` records each cache's `cacheSha256` and whether this run reused it (`cacheReused`), and
+`summary.md` names the reused and trained caches under the Runner vs Shadow table. A cached variant is measured only
 after a nonempty completed cache and a successful application-class verification launch; an unsupported JDK or
 any failed phase makes the variant unavailable, and the benchmark never silently substitutes a no-cache process.
 The launch cannot start without the trained cache file, so its bytes count toward the complete deployment;
