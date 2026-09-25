@@ -44,6 +44,7 @@ public final class RunnerJarResult {
     private final long archiveSize;
     private final List<String> warnings;
     private final Map<String, String> effectiveOptions;
+    private final boolean logbackPrecompiled;
 
     /**
      * Validates the result and makes its collections immutable.
@@ -56,13 +57,14 @@ public final class RunnerJarResult {
      * @param archiveSize             the length of the archive
      * @param warnings                the warnings reported during the build
      * @param effectiveOptions        the options the archive was built with
+     * @param logbackPrecompiled      whether a Logback configurator was generated
      * @throws NullPointerException     if {@code output}, {@code warnings} or {@code effectiveOptions} is
      *                                  {@code null}
      * @throws IllegalArgumentException if a count or the size is negative
      */
     RunnerJarResult(Path output, int jarCount, int entryCount, int applicationEntryCount,
             int mergedServiceEntryCount, long archiveSize, List<String> warnings,
-            Map<String, String> effectiveOptions) {
+            Map<String, String> effectiveOptions, boolean logbackPrecompiled) {
         this.output = Objects.requireNonNull(output, "output");
         this.warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
         this.effectiveOptions = Collections.unmodifiableMap(
@@ -76,6 +78,7 @@ public final class RunnerJarResult {
         this.applicationEntryCount = applicationEntryCount;
         this.mergedServiceEntryCount = mergedServiceEntryCount;
         this.archiveSize = archiveSize;
+        this.logbackPrecompiled = logbackPrecompiled;
     }
 
     /**
@@ -164,6 +167,17 @@ public final class RunnerJarResult {
      */
     public Map<String, String> effectiveOptions() {
         return effectiveOptions;
+    }
+
+    /**
+     * Whether the build compiled the application's {@code logback.xml} into a Logback {@code Configurator}, which
+     * {@link RunnerJarSpec#precompileLogback()} requests. It is {@code false} whenever nothing was generated; the
+     * build log names the reason.
+     *
+     * @return whether the archive carries a precompiled Logback configuration
+     */
+    public boolean logbackPrecompiled() {
+        return logbackPrecompiled;
     }
 
     /**

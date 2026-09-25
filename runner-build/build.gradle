@@ -24,6 +24,14 @@ configurations {
     }
 }
 
+// The Logback front end of LogbackPrecompiler, and the JoranFallback class it copies into runner jars. It is
+// compiled against Logback but never put on this library's class path: it ships as a jar resource, like the
+// launcher, and runs only in an isolated class loader next to the application's own Logback jars. So the main
+// code has no Logback dependency and the published POM does not change.
+sourceSets {
+    logbackFrontend
+}
+
 dependencies {
     // Shares the index reader and ZIP primitives with the launcher (which has no dependencies of its own).
     api projects.micronautRunnerLauncher
@@ -34,14 +42,34 @@ dependencies {
     compileOnly platform(libs.micronaut.core)
     compileOnly 'io.micronaut:micronaut-core'
 
+    logbackFrontendCompileOnly libs.logback.classic
+
     // micronaut-core is only needed by the service-discovery tests, never at packaging runtime.
     testImplementation platform(libs.micronaut.core)
     testImplementation 'io.micronaut:micronaut-inject'
+    // The differential tests of LogbackPrecompiler configure Logback with Joran and with the generated classes.
+    testImplementation libs.logback.classic
+}
+
+tasks.named('compileLogbackFrontendJava', JavaCompile) {
+    options.release = 25
+    // JoranFallback is copied into applications verbatim: no invokedynamic string concatenation in it.
+    options.compilerArgs.addAll(['-XDstringConcat=inline'])
+}
+
+def logbackFrontendJar = tasks.register('logbackFrontendJar', Jar) {
+    description = 'Packages the Logback front end that runner-build carries as a resource'
+    archiveFileName = 'logback-frontend.jar'
+    destinationDirectory = layout.buildDirectory.dir('logback-frontend')
+    from sourceSets.logbackFrontend.output
 }
 
 tasks.named('processResources', ProcessResources) {
     from(configurations.launcherJar) {
         into 'META-INF/micronaut-runner'
         rename { 'launcher.jar' }
+    }
+    from(logbackFrontendJar) {
+        into 'META-INF/micronaut-runner'
     }
 }

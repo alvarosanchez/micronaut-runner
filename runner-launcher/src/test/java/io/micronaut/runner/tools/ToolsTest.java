@@ -138,11 +138,20 @@ class ToolsTest {
             "META-INF/micronaut/io.other.Svc/org.depone.DepOne";
     private static final String CONFIGURATION = "application.yml";
     private static final String STUB_ENTRY = "io/micronaut/runner/generated/AppEntry.class";
+    private static final String STUB_NESTED_ENTRY = "io/micronaut/runner/generated/AppEntry$Helper.class";
+    /** Generated support that is not part of the format, such as a precompiled Logback configurator. */
+    private static final String GENERATED_SUPPORT_ENTRY =
+            "io/micronaut/runner/generated/logback/LogbackConfigurator.class";
+    private static final String GENERATED_SERVICE_ENTRY =
+            "META-INF/services/ch.qos.logback.classic.spi.Configurator";
     private static final long DOS_TIME = 0x00210000L;
 
     private static final byte[] EMPTY = new byte[0];
     private static final byte[] CONFIGURATION_BYTES = bytes("greeting: hello\n");
     private static final byte[] STUB_BYTES = bytes("not a real class file");
+    private static final byte[] SUPPORT_BYTES = bytes("not a real configurator");
+    private static final byte[] SERVICE_BYTES =
+            bytes("io.micronaut.runner.generated.logback.LogbackConfigurator\n");
     private static final byte[] BASE_DATA = bytes("base");
     private static final byte[] VERSIONED_DATA = bytes("v21");
     private static final byte[] RUNNER_MANIFEST = bytes("Manifest-Version: 1.0\r\n"
@@ -325,6 +334,10 @@ class ToolsTest {
             assertNull(jar.getEntry(DEPENDENCY_SERVICE));
             // The entry stub implements an interface that does not exist outside the runner format.
             assertNull(jar.getEntry(STUB_ENTRY));
+            assertNull(jar.getEntry(STUB_NESTED_ENTRY));
+            // Generated support runs on any class loader, and a service file of the layer names it: both stay.
+            assertArrayEquals(SUPPORT_BYTES, read(jar, GENERATED_SUPPORT_ENTRY));
+            assertArrayEquals(SERVICE_BYTES, read(jar, GENERATED_SERVICE_ENTRY));
             assertNull(jar.getEntry(IndexFormat.INDEX_ENTRY_NAME));
             assertNull(jar.getEntry(IndexFormat.CLASSES_PREFIX));
             assertArrayEquals(CONFIGURATION_BYTES, read(jar, CONFIGURATION));
@@ -334,7 +347,7 @@ class ToolsTest {
             assertEquals(time, jar.getEntry(CONFIGURATION).getTime());
         }
         assertTrue(output.contains("Extracted "), output);
-        assertTrue(output.contains("app.jar (3 entries, Main-Class " + MAIN_CLASS + ")"), output);
+        assertTrue(output.contains("app.jar (5 entries, Main-Class " + MAIN_CLASS + ")"), output);
         assertTrue(output.contains("lib/dep-one.jar (" + dependencyOneJar.length + " bytes)"), output);
         assertTrue(output.contains("2 dependencies"), output);
     }
@@ -410,6 +423,25 @@ class ToolsTest {
         assertTrue(run.output().contains("DEP dep-one"), run.output());
         assertTrue(run.output().contains("DEPENDENCY-SERVICE true"), run.output());
         assertTrue(run.output().contains("RESULT OK"), run.output());
+    }
+
+    @Test
+    void anArchiveWithoutAnEntryStubKeepsEveryGeneratedClass() throws Throwable {
+        File withoutStub = writeArchive(workspace.resolve("no-stub/app.jar"), Flavour.NO_STUB);
+        Path destination = workspace.resolve("extract/no-stub");
+        try (ArchiveSource other = ArchiveSource.open(withoutStub)) {
+            Index otherIndex = Index.open(other);
+            capture(() -> Extract.run(new String[] {Extract.OPTION_DESTINATION, destination.toString()},
+                    withoutStub, otherIndex, other));
+        }
+
+        try (JarFile jar = new JarFile(destination.resolve("app.jar").toFile())) {
+            // Only the class the index header names is the stub; with none named, nothing is left out.
+            assertArrayEquals(STUB_BYTES, read(jar, STUB_ENTRY));
+            assertArrayEquals(STUB_BYTES, read(jar, STUB_NESTED_ENTRY));
+            assertArrayEquals(SUPPORT_BYTES, read(jar, GENERATED_SUPPORT_ENTRY));
+            assertArrayEquals(SERVICE_BYTES, read(jar, GENERATED_SERVICE_ENTRY));
+        }
     }
 
     @Test
@@ -867,6 +899,9 @@ class ToolsTest {
         outer.stored(IndexFormat.CLASSES_PREFIX + CONFIGURATION, CONFIGURATION_BYTES);
         outer.stored(IndexFormat.CLASSES_PREFIX + "com/example/App.class", applicationClass);
         outer.stored(IndexFormat.CLASSES_PREFIX + STUB_ENTRY, STUB_BYTES);
+        outer.stored(IndexFormat.CLASSES_PREFIX + STUB_NESTED_ENTRY, STUB_BYTES);
+        outer.stored(IndexFormat.CLASSES_PREFIX + GENERATED_SUPPORT_ENTRY, SUPPORT_BYTES);
+        outer.stored(IndexFormat.CLASSES_PREFIX + GENERATED_SERVICE_ENTRY, SERVICE_BYTES);
         if (flavour == Flavour.ESCAPING_ENTRY) {
             outer.stored(IndexFormat.CLASSES_PREFIX + "../evil.txt", bytes("gotcha"));
         }
@@ -897,7 +932,7 @@ class ToolsTest {
     private static byte[] buildIndex(TestArchiveBuilder outer, long[] one, long[] two, Flavour flavour) {
         TestIndexBuilder builder = new TestIndexBuilder()
                 .startClass(MAIN_CLASS)
-                .entryStubClass(STUB_CLASS)
+                .entryStubClass(flavour == Flavour.NO_STUB ? null : STUB_CLASS)
                 .launcherVersion(LAUNCHER_VERSION)
                 .headerFlags(IndexFormat.HEADER_FLAG_NESTED_STORED
                         | (flavour == Flavour.MULTI_RELEASE ? IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE
@@ -931,6 +966,12 @@ class ToolsTest {
                 "com/example/App.class", applicationClass.length);
         entry(application, outer, IndexFormat.CLASSES_PREFIX + STUB_ENTRY, STUB_ENTRY,
                 STUB_BYTES.length);
+        entry(application, outer, IndexFormat.CLASSES_PREFIX + STUB_NESTED_ENTRY, STUB_NESTED_ENTRY,
+                STUB_BYTES.length);
+        entry(application, outer, IndexFormat.CLASSES_PREFIX + GENERATED_SUPPORT_ENTRY, GENERATED_SUPPORT_ENTRY,
+                SUPPORT_BYTES.length);
+        entry(application, outer, IndexFormat.CLASSES_PREFIX + GENERATED_SERVICE_ENTRY, GENERATED_SERVICE_ENTRY,
+                SERVICE_BYTES.length);
 
         if (flavour == Flavour.NO_DEPENDENCIES) {
             return builder.build();
@@ -1185,7 +1226,10 @@ class ToolsTest {
         ENCODED_DEPENDENCIES,
 
         /** An application with no dependencies at all, so the index holds only jar 0. */
-        NO_DEPENDENCIES
+        NO_DEPENDENCIES,
+
+        /** The index header names no entry stub, as when the packager generated none. */
+        NO_STUB
     }
 
     /**

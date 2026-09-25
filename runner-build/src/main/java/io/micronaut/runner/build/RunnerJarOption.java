@@ -97,7 +97,13 @@ public enum RunnerJarOption {
      * Extra main attributes of the runner jar's manifest. See
      * {@link RunnerJarSpec.Builder#manifestAttributes(Map)}.
      */
-    MANIFEST_ATTRIBUTES("manifestAttributes", Map.class, "", Exposure.TYPED, "1.0");
+    MANIFEST_ATTRIBUTES("manifestAttributes", Map.class, "", Exposure.TYPED, "1.0"),
+
+    /**
+     * Whether to compile the application's {@code logback.xml} into a Logback {@code Configurator} when it is
+     * packaged. See {@link RunnerJarSpec.Builder#precompileLogback(boolean)}.
+     */
+    PRECOMPILE_LOGBACK("precompileLogback", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
 
     private final String optionName;
     private final Class<?> valueType;

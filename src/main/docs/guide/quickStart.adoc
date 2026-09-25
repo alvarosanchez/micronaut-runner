@@ -71,6 +71,7 @@ micronaut {
 
         // Options without a typed property, by name (see the table below):
         // options.put('<name>', '<value>')
+        // options.put('precompileLogback', 'false') // On by default: compiles logback.xml at packaging time; anything it cannot compile is left to Logback.
     }
 }
 ----
@@ -95,6 +96,7 @@ typed property, and an unknown name fails the build.
 |`addOpens` |list |empty |typed |1.0
 |`addExports` |list |empty |typed |1.0
 |`manifestAttributes` |map |empty |typed |1.0
+|`precompileLogback` |boolean |`true` |passthrough |1.0
 |===
 
 A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,
@@ -107,6 +109,9 @@ Otherwise the packager reports why and the launcher calls `main` through reflect
 
 `addOpens` and `addExports` entries are `module/package` pairs in manifest syntax, with no `=ALL-UNNAMED` suffix,
 and invalid entries fail packaging.
+
+`precompileLogback` compiles `logback.xml` into a Logback `Configurator` when it is packaged, and leaves any file it
+cannot reproduce exactly to Logback; see <<precompiledLogback>>.
 
 The application's `+Implementation-*+`, `+Specification-*+` and `Sealed` attributes and package sections come from the
 `jar` task's manifest configuration, including `manifest.from(...)` merges; `micronautRunnerJar` does not build the
@@ -213,7 +218,8 @@ In Maven, each `addExports`/`addOpens` entry is its own element:
 
 The typed options are parameters of the same names, except that `manifestAttributes` is `<manifestEntries>`; the
 scalar ones also read `-Dmicronaut.runner.<name>`. `<runnerOptions>` and `-Dmicronaut.runner.<name>` set the same
-options by name, `-Dmicronaut.runner.<name>` only for passthrough options, and a `<runnerOptions>` entry wins.
+options by name, `-Dmicronaut.runner.<name>` only for passthrough options, and a `<runnerOptions>` entry wins. For
+example, `-Dmicronaut.runner.precompileLogback=false` leaves `logback.xml` to Logback at startup.
 
 == What to check first
 

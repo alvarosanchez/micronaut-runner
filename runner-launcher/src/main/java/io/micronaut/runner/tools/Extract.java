@@ -81,10 +81,13 @@ import java.util.zip.ZipEntry;
  *
  * <h2>What is left out of the application jar, and why</h2>
  * <ul>
- *   <li><strong>{@code io/micronaut/runner/generated/**}</strong> - the generated entry stub. It belongs
- *       to the runner format: it implements {@code io.micronaut.runner.Entry} and registers itself with
+ *   <li><strong>the generated entry stub</strong> - the class the index header names, and its nested classes. It
+ *       belongs to the runner format: it implements {@code io.micronaut.runner.Entry} and registers itself with
  *       {@code Launcher}, neither of which exists in the extracted layout. The manifest names the real
- *       application main class instead, so the stub would have no reader and could only fail to link.</li>
+ *       application main class instead, so the stub would have no reader and could only fail to link. Every
+ *       other class under {@code io/micronaut/runner/generated/}, such as a precompiled Logback configurator,
+ *       is generated support that runs on any class loader, and stays: a service file of the application layer
+ *       may name it, and a service file naming a missing class breaks the lookup.</li>
  *   <li><strong>the merged {@code META-INF/micronaut/} copy at the archive root</strong> - the packager
  *       writes one merged, zero-length copy of every Micronaut service entry of the application
  *       <em>and of every dependency</em> into the outer root, so that the runner class loader can answer
@@ -149,9 +152,6 @@ public final class Extract {
     /** The manifest entry name, as the jar specification spells it. */
     private static final String MANIFEST_NAME = "META-INF/MANIFEST.MF";
 
-    /** Entry name prefix of the generated entry stub, which belongs to the format and not to the app. */
-    private static final String GENERATED_PREFIX = "io/micronaut/runner/generated/";
-
     /** Attribute marking a multi-release jar. */
     private static final String MULTI_RELEASE = "Multi-Release";
 
@@ -215,7 +215,8 @@ public final class Extract {
             int entries;
             try (JarFile outer = new JarFile(archive, false)) {
                 Manifest manifest = manifest(outer, index, libraries);
-                entries = writeApplicationJar(resolveWithin(layout, applicationJar), outer, manifest);
+                entries = writeApplicationJar(resolveWithin(layout, applicationJar), outer, manifest,
+                        index.entryStubClass());
             }
             stamp(layout);
             publish(layout, destination, options.force());
@@ -443,16 +444,19 @@ public final class Extract {
     }
 
     /**
-     * Writes the application jar: the application layer at the root, manifest first.
+     * Writes the application jar: the application layer at the root, manifest first, without the entry stub.
      *
-     * @param target   where to write it
-     * @param outer    the runner jar, read as an ordinary jar
-     * @param manifest the manifest to give it
+     * @param target    where to write it
+     * @param outer     the runner jar, read as an ordinary jar
+     * @param manifest  the manifest to give it
+     * @param entryStub the binary name of the entry stub the index header names, or {@code null} for none
      * @return the number of entries written, not counting the manifest
      * @throws IOException if an entry name would escape the destination or the jar cannot be written
      */
-    private static int writeApplicationJar(Path target, JarFile outer, Manifest manifest)
+    private static int writeApplicationJar(Path target, JarFile outer, Manifest manifest, String entryStub)
             throws IOException {
+        String stubEntry = entryStub == null ? null : entryStub.replace('.', '/') + ".class";
+        String stubNestedPrefix = entryStub == null ? null : entryStub.replace('.', '/') + "$";
         int written = 0;
         try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(target))) {
             out.putNextEntry(entry(MANIFEST_NAME));
@@ -468,8 +472,9 @@ public final class Extract {
                     continue;
                 }
                 String logical = name.substring(IndexFormat.CLASSES_PREFIX.length());
-                if (logical.isEmpty() || MANIFEST_NAME.equals(logical)
-                        || logical.startsWith(GENERATED_PREFIX)) {
+                if (logical.isEmpty() || MANIFEST_NAME.equals(logical) || logical.equals(stubEntry)
+                        || stubNestedPrefix != null && logical.startsWith(stubNestedPrefix)
+                                && logical.endsWith(".class")) {
                     continue;
                 }
                 requireSafeName(logical);

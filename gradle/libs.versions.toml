@@ -21,6 +21,9 @@ maven-invoker = "3.3.0"
 maven-archiver = "3.6.6"            # MavenArchiver.parseBuildOutputTimestamp, as maven-jar-plugin applies it
 bouncycastle = "1.84"
 h2 = "2.4.240"
+# The Logback that runner-build's logback.xml compiler is built and tested against; the samples resolve the same
+# version from the Micronaut platform BOM. Widen LogbackPrecompiler's range only by testing another version here.
+logback = "1.5.37"
 
 # Gradle plugins placed on the buildSrc classpath and applied by id from convention plugins
 gradle-plugin-publish = "2.2.1"
@@ -44,6 +47,7 @@ maven-invoker = { module = "org.apache.maven.shared:maven-invoker", version.ref 
 maven-archiver = { module = "org.apache.maven:maven-archiver", version.ref = "maven-archiver" }
 bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 h2 = { module = "com.h2database:h2", version.ref = "h2" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 # Plugin marker coordinates for the buildSrc classpath
 plugin-gradle-publish = { module = "com.gradle.publish:plugin-publish-plugin", version.ref = "gradle-plugin-publish" }
