@@ -53,6 +53,7 @@ public final class TestIndexBuilder {
     private String launcherVersion;
     private long outerFileLength;
     private int headerFlags;
+    private long forcedLargestStoredClass = -1;
     private int forcedHashSlots;
     private int forcedMaxProbe = -1;
     private boolean synthesizeDirectories = true;
@@ -110,6 +111,19 @@ public final class TestIndexBuilder {
      */
     public TestIndexBuilder headerFlags(int value) {
         this.headerFlags = value;
+        return this;
+    }
+
+    /**
+     * Forces the {@code H_LARGEST_STORED_CLASS} value written to the header. Without it the builder writes the
+     * field exactly as the packager does: the largest STORED {@code .class} record when the header flags carry
+     * {@code HEADER_FLAG_POSITIONAL_READS}, and zero otherwise.
+     *
+     * @param value the size to record, or {@code -1} to derive it
+     * @return this builder
+     */
+    public TestIndexBuilder largestStoredClass(long value) {
+        this.forcedLargestStoredClass = value;
         return this;
     }
 
@@ -204,6 +218,17 @@ public final class TestIndexBuilder {
         out.putInt(IndexFormat.H_ENTRY_STUB_CLASS, strings.intern(entryStubClass));
         out.putInt(IndexFormat.H_LAUNCHER_VERSION, strings.intern(launcherVersion));
         out.putInt(IndexFormat.H_PACKAGE_COUNT, packageCount);
+        if (forcedLargestStoredClass >= 0) {
+            out.putInt(IndexFormat.H_LARGEST_STORED_CLASS, (int) forcedLargestStoredClass);
+        } else if ((headerFlags & IndexFormat.HEADER_FLAG_POSITIONAL_READS) != 0) {
+            long largest = 0;
+            for (Record record : records) {
+                if (record.method == IndexFormat.METHOD_STORED && record.name.endsWith(".class")) {
+                    largest = Math.max(largest, record.uncompressedSize);
+                }
+            }
+            out.putInt(IndexFormat.H_LARGEST_STORED_CLASS, (int) largest);
+        }
 
         int packageIndex = 0;
         for (Jar jar : jars) {

@@ -123,13 +123,25 @@ public final class IndexFormat {
     public static final int H_ENTRY_STUB_CLASS = 84;     // u32 strref, 0 when no stub was generated
     public static final int H_LAUNCHER_VERSION = 88;     // u32 strref
     public static final int H_PACKAGE_COUNT = 92;        // u32
-    public static final int H_RESERVED = 96;             // u8[32], zero
+    public static final int H_RESERVED = 96;             // u8[28], zero
+    /**
+     * The largest uncompressed size of a STORED {@code .class} record, which sizes the launcher's pooled read
+     * buffers. Written only together with {@link #HEADER_FLAG_POSITIONAL_READS}; {@code 0} means not recorded.
+     */
+    public static final int H_LARGEST_STORED_CLASS = 124; // u32
 
     /** Header flag: the nested jars were re-packed with all entries STORED. */
     public static final int HEADER_FLAG_NESTED_STORED = 1;
 
     /** Header flag: the application layer is itself multi-release. */
     public static final int HEADER_FLAG_APP_MULTI_RELEASE = 1 << 1;
+
+    /**
+     * Header flag: the packager chose positional reads, so a launcher left to decide maps only the index and
+     * reads every class with a positional read into a pooled buffer instead of mapping the whole archive.
+     * Launchers that predate the flag ignore it; {@code micronaut.runner.mmap} overrides it.
+     */
+    public static final int HEADER_FLAG_POSITIONAL_READS = 1 << 2;
 
     // ------------------------------------------------------------------------------------------------
     // Jar table. Jar 0 is always the application layer (the outer archive itself).

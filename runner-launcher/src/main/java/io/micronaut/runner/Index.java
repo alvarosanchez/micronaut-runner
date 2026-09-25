@@ -186,7 +186,8 @@ public final class Index {
         if (indexLength < IndexFormat.HEADER_SIZE || indexLength > ArchiveSource.MAX_SLICE_LENGTH) {
             throw stale("the index entry is " + indexLength + " bytes long");
         }
-        ByteBuffer buffer = source.slice(indexOffset, (int) indexLength);
+        // Where a source left to the archive settles its read mode, from the header's flag.
+        ByteBuffer buffer = source.indexRegion(indexOffset, (int) indexLength);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
         return new Index(source, buffer);
     }
@@ -250,6 +251,27 @@ public final class Index {
      */
     public boolean applicationMultiRelease() {
         return (flags & IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE) != 0;
+    }
+
+    /**
+     * Whether the packager chose positional reads, which makes a launcher left to decide map only the index
+     * and read classes with positional reads into pooled buffers.
+     *
+     * @return {@code true} when {@code IndexFormat.HEADER_FLAG_POSITIONAL_READS} is set
+     */
+    public boolean positionalReads() {
+        return (flags & IndexFormat.HEADER_FLAG_POSITIONAL_READS) != 0;
+    }
+
+    /**
+     * The largest uncompressed size of a STORED class the packager recorded, which sizes the pooled buffers
+     * of positional reads.
+     *
+     * @return the size in bytes, or {@code 0} when the archive recorded none, as every archive without
+     *         {@code IndexFormat.HEADER_FLAG_POSITIONAL_READS} does
+     */
+    public long largestStoredClass() {
+        return u32(IndexFormat.H_LARGEST_STORED_CLASS);
     }
 
     /**

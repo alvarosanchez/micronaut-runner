@@ -113,6 +113,38 @@ class IndexWriterTest {
     }
 
     @Test
+    void recordsTheLargestStoredClassOnlyForPositionalReads() {
+        for (boolean positional : new boolean[] {false, true}) {
+            int flags = IndexFormat.HEADER_FLAG_NESTED_STORED
+                    | (positional ? IndexFormat.HEADER_FLAG_POSITIONAL_READS : 0);
+            IndexWriter writer = new IndexWriter().startClass("com.example.App").headerFlags(flags);
+            IndexWriter.JarSpec application = writer.addJar(IndexFormat.CLASSES_PREFIX);
+            application.addEntry("com/example/App.class").sizes(120, 120);
+            // Larger, but not a class, or not STORED: neither sizes a pooled class buffer.
+            application.addEntry("payload.bin").sizes(90_000, 90_000);
+            application.addEntry("com/example/Deflated.class").sizes(20_000, 70_000)
+                    .method(IndexFormat.METHOD_DEFLATED);
+            IndexWriter.JarSpec dependency = writer.addJar("MICRONAUT-INF/lib/dep.jar");
+            dependency.addEntry("org/dep/Largest.class").sizes(5_000, 5_000);
+            dependency.addEntry("org/dep/Small.class").sizes(300, 300);
+
+            Decoded index = new Decoded(writer.write(writer.layout(), 9999));
+
+            assertEquals(flags, index.u16(IndexFormat.H_FLAGS));
+            if (positional) {
+                assertEquals(5_000L, index.u32(IndexFormat.H_LARGEST_STORED_CLASS));
+                for (int at = IndexFormat.H_RESERVED; at < IndexFormat.H_LARGEST_STORED_CLASS; at++) {
+                    assertEquals(0, index.u8(at), "reserved byte " + at);
+                }
+            } else {
+                for (int at = IndexFormat.H_RESERVED; at < IndexFormat.HEADER_SIZE; at++) {
+                    assertEquals(0, index.u8(at), "a mapped archive's header keeps byte " + at + " zero");
+                }
+            }
+        }
+    }
+
+    @Test
     void applicationRecordsKeepTheirOrderAndCarryTheirEntryData() {
         IndexWriter writer = new IndexWriter();
         IndexWriter.JarSpec application = writer.addJar(IndexFormat.CLASSES_PREFIX);
@@ -402,13 +434,19 @@ class IndexWriterTest {
         Assumptions.assumeTrue(type != null,
                 "the launcher's TestIndexBuilder is not on the class path and its source was not found");
 
-        byte[] mine = buildWithIndexWriter();
-        byte[] theirs = buildWithLauncherBuilder(type);
+        int mapped = IndexFormat.HEADER_FLAG_NESTED_STORED | IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE;
+        for (int flags : new int[] {mapped, mapped | IndexFormat.HEADER_FLAG_POSITIONAL_READS}) {
+            byte[] mine = buildWithIndexWriter(flags);
+            byte[] theirs = buildWithLauncherBuilder(type, flags);
 
-        assertArrayEquals(theirs, mine, () -> difference(theirs, mine));
-        Decoded index = new Decoded(mine);
-        assertTrue((index.entryFlags(index.find("resources")) & IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN) != 0,
-                "the fixture has to exercise the directory twin flag for the comparison to cover it");
+            assertArrayEquals(theirs, mine, () -> difference(theirs, mine));
+            Decoded index = new Decoded(mine);
+            assertTrue((index.entryFlags(index.find("resources")) & IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN) != 0,
+                    "the fixture has to exercise the directory twin flag for the comparison to cover it");
+            assertEquals((flags & IndexFormat.HEADER_FLAG_POSITIONAL_READS) != 0 ? 500L : 0L,
+                    index.u32(IndexFormat.H_LARGEST_STORED_CLASS),
+                    "both writers record the largest STORED class, and only for positional reads");
+        }
     }
 
     /**
@@ -420,14 +458,14 @@ class IndexWriterTest {
      * sections with and without sealing, and metadata strings that repeat so the string table has to
      * deduplicate them.
      *
+     * @param flags the header flags
      * @return the index as {@link IndexWriter} writes it
      */
-    private static byte[] buildWithIndexWriter() {
+    private static byte[] buildWithIndexWriter(int flags) {
         IndexWriter writer = new IndexWriter()
                 .startClass("com.example.Application")
                 .launcherVersion("1.0.0-SNAPSHOT")
-                .headerFlags(IndexFormat.HEADER_FLAG_NESTED_STORED
-                        | IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE);
+                .headerFlags(flags);
 
         IndexWriter.JarSpec application = writer.addJar(IndexFormat.CLASSES_PREFIX)
                 .addFlags(IndexFormat.JAR_FLAG_MULTI_RELEASE)
@@ -494,16 +532,16 @@ class IndexWriterTest {
      * Builds the same fixture with the launcher's own test builder, reached reflectively because it lives in
      * another module's test source set.
      *
-     * @param type the {@code TestIndexBuilder} class
+     * @param type  the {@code TestIndexBuilder} class
+     * @param flags the header flags
      * @return the index as that builder writes it
      * @throws Exception if the builder cannot be driven
      */
-    private static byte[] buildWithLauncherBuilder(Class<?> type) throws Exception {
+    private static byte[] buildWithLauncherBuilder(Class<?> type, int flags) throws Exception {
         Object writer = type.getConstructor().newInstance();
         call(writer, "startClass", "com.example.Application");
         call(writer, "launcherVersion", "1.0.0-SNAPSHOT");
-        call(writer, "headerFlags", IndexFormat.HEADER_FLAG_NESTED_STORED
-                | IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE);
+        call(writer, "headerFlags", flags);
         call(writer, "outerFileLength", 123456789L);
 
         Object application = call(writer, "addJar", IndexFormat.CLASSES_PREFIX);

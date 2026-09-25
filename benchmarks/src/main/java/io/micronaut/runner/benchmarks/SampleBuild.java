@@ -16,6 +16,7 @@
 package io.micronaut.runner.benchmarks;
 
 import io.micronaut.runner.IndexFormat;
+import io.micronaut.runner.build.ArchiveReads;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
@@ -88,6 +89,8 @@ final class SampleBuild {
     private static final String RUNNER_STORED = "runner-stored";
     private static final String RUNNER_STORED_AOT = "runner-stored-aot";
     private static final String RUNNER_STORED_REFLECTION = "runner-stored-reflection";
+    private static final String RUNNER_STORED_POSITIONAL = "runner-stored-positional";
+    private static final String RUNNER_STORED_POSITIONAL_AOT = "runner-stored-positional-aot";
     private static final String RUNNER_PRESERVE = "runner-preserve";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
     private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
@@ -95,6 +98,10 @@ final class SampleBuild {
     private static final String SHADOW_DESCRIPTION = "Everything flattened into one jar by the Shadow plugin";
     private static final String SHADOW_STORED_DESCRIPTION =
             "The same Shadow inputs written with STORED entries (compression-matched control)";
+    private static final String RUNNER_STORED_POSITIONAL_DESCRIPTION =
+            "Runner jar, nested dependencies re-packed uncompressed; archiveReads POSITIONAL (index mapped only)";
+    private static final String RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION =
+            "The same POSITIONAL Runner jar with a verified JDK AOT cache";
 
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
@@ -273,7 +280,14 @@ final class SampleBuild {
                 new ComparisonSpec(RUNNER_STORED, SHADOW_STORED,
                         "Runner default vs Shadow STORED (compression-matched)"),
                 new ComparisonSpec(SHADOW_STORED, SHADOW,
-                        "Shadow-only control: Shadow STORED vs Shadow default (compression only)"));
+                        "Shadow-only control: Shadow STORED vs Shadow default (compression only)"),
+                new ComparisonSpec(RUNNER_STORED_POSITIONAL, RUNNER_STORED,
+                        "Archive reads: POSITIONAL vs MAPPED"),
+                new ComparisonSpec(RUNNER_STORED_POSITIONAL_AOT, RUNNER_STORED_AOT,
+                        "Archive reads + AOT cache: POSITIONAL vs MAPPED"),
+                new ComparisonSpec(RUNNER_STORED_POSITIONAL, SHADOW, "Runner POSITIONAL vs Shadow"),
+                new ComparisonSpec(RUNNER_STORED_POSITIONAL_AOT, SHADOW_AOT,
+                        "Runner POSITIONAL + AOT cache vs Shadow + AOT cache"));
     }
 
     /**
@@ -300,6 +314,10 @@ final class SampleBuild {
         if (optionalRows) {
             variants.add(Variant.unavailable(RUNNER_STORED_REFLECTION,
                     "Runner jar, nested dependencies re-packed uncompressed; reflection ablation", reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_POSITIONAL, RUNNER_STORED_POSITIONAL_DESCRIPTION,
+                    reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_POSITIONAL_AOT,
+                    RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION, reason));
         }
         variants.add(Variant.unavailable(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub", reason));
@@ -343,6 +361,12 @@ final class SampleBuild {
             variants.add(attempt(RUNNER_STORED_REFLECTION,
                     "Runner jar, nested dependencies re-packed uncompressed; reflection ablation",
                     () -> runnerJar(RUNNER_STORED_REFLECTION, Compression.STORED, EntryMode.REFLECTION)));
+            Variant positional = attempt(RUNNER_STORED_POSITIONAL, RUNNER_STORED_POSITIONAL_DESCRIPTION,
+                    () -> runnerJar(RUNNER_STORED_POSITIONAL, Compression.STORED, EntryMode.STUB,
+                            RunnerJarOptions.DEFAULTS.withArchiveReads(ArchiveReads.POSITIONAL)));
+            variants.add(positional);
+            variants.add(attempt(RUNNER_STORED_POSITIONAL_AOT, RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION,
+                    () -> AotCache.prepare(positional, RUNNER_STORED_POSITIONAL_AOT, aotRequest())));
         }
         variants.add(attempt(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
@@ -466,8 +490,13 @@ final class SampleBuild {
     }
 
     private Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode) throws IOException {
+        return runnerJar(name, compression, requestedEntryMode, RunnerJarOptions.DEFAULTS);
+    }
+
+    private Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode,
+                              RunnerJarOptions options) throws IOException {
         return runnerJar(artifacts, name, mainClass, applicationOutput, dependencies,
-                compression, requestedEntryMode);
+                compression, requestedEntryMode, options);
     }
 
     static Variant runnerJar(Path artifacts,
@@ -477,18 +506,39 @@ final class SampleBuild {
                              List<Path> dependencies,
                              Compression compression,
                              EntryMode requestedEntryMode) throws IOException {
+        return runnerJar(artifacts, name, mainClass, applicationOutput, dependencies, compression,
+                requestedEntryMode, RunnerJarOptions.DEFAULTS);
+    }
+
+    /**
+     * Builds a runner jar straight from the packaging library, as the plugins would.
+     *
+     * @param options the packaging options a row sets on top of the builder defaults
+     */
+    static Variant runnerJar(Path artifacts,
+                             String name,
+                             String mainClass,
+                             List<Path> applicationOutput,
+                             List<Path> dependencies,
+                             Compression compression,
+                             EntryMode requestedEntryMode,
+                             RunnerJarOptions options) throws IOException {
         Path output = artifacts.resolve(name + ".jar");
         Files.deleteIfExists(output);
-        RunnerJarSpec spec = RunnerJarSpec.builder()
+        RunnerJarSpec.Builder builder = RunnerJarSpec.builder()
                 .mainClass(mainClass)
                 .applicationOutput(applicationOutput)
                 .dependencies(dependencies.stream().map(Dependency::of).toList())
                 .output(output)
                 .compression(compression)
-                .entryStub(requestedEntryMode == EntryMode.STUB)
-                .build();
+                .entryStub(requestedEntryMode == EntryMode.STUB);
+        if (options.archiveReads() != null) {
+            builder.archiveReads(options.archiveReads());
+        }
+        RunnerJarSpec spec = builder.build();
         RunnerJarBuilder.build(spec, BuildLogger.noOp());
         EntryMode effectiveEntryMode = inspectEntryMode(output, requestedEntryMode);
+        inspectArchiveReads(output, spec.archiveReads());
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 output.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", output));
@@ -497,8 +547,47 @@ final class SampleBuild {
                         ? "Runner jar, nested dependencies re-packed uncompressed"
                         : "Runner jar, nested dependencies copied byte for byte")
                         + (requestedEntryMode == EntryMode.STUB
-                        ? "; plugin-default entry stub" : "; reflection ablation"),
+                        ? "; plugin-default entry stub" : "; reflection ablation")
+                        + (options.archiveReads() == null ? ""
+                        : "; archiveReads " + options.archiveReads().name()),
                 command, artifacts, output, deploymentSize, requestedEntryMode, effectiveEntryMode);
+    }
+
+    /**
+     * Fails a row whose jar does not carry the archive read mode it asked for, so that a row meant to measure
+     * positional reads is reported unavailable rather than measuring the mapped launch under its name.
+     */
+    private static void inspectArchiveReads(Path output, ArchiveReads requested) throws IOException {
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            boolean positional = reader.index().positionalReads();
+            if (positional != (requested == ArchiveReads.POSITIONAL)) {
+                throw new IOException("archiveReads " + requested + " was requested, but the index of " + output
+                        + (positional ? " asks for positional reads" : " does not ask for positional reads"));
+            }
+        }
+    }
+
+    /**
+     * The packaging options a row sets on top of the packaging library's defaults. A {@code null} field leaves
+     * the builder default in place, so a row that does not set an option measures whatever default the option
+     * table declares.
+     *
+     * @param archiveReads how the launcher reads the archive, or {@code null} for the builder default
+     */
+    record RunnerJarOptions(ArchiveReads archiveReads) {
+
+        /** Every option at the builder default. */
+        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null);
+
+        /**
+         * These options with another archive read mode.
+         *
+         * @param value the archive read mode
+         * @return the new options
+         */
+        RunnerJarOptions withArchiveReads(ArchiveReads value) {
+            return new RunnerJarOptions(value);
+        }
     }
 
     private static EntryMode inspectEntryMode(Path output, EntryMode requestedEntryMode) throws IOException {

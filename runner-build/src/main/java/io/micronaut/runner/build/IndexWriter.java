@@ -158,7 +158,8 @@ final class IndexWriter {
     }
 
     /**
-     * Sets the header flags.
+     * Sets the header flags. With {@code IndexFormat.HEADER_FLAG_POSITIONAL_READS} the writer also records
+     * {@code IndexFormat.H_LARGEST_STORED_CLASS}; without it that field stays zero.
      *
      * @param value a mask of {@code IndexFormat.HEADER_FLAG_*}
      * @return this writer
@@ -326,6 +327,10 @@ final class IndexWriter {
         out.putInt(IndexFormat.H_ENTRY_STUB_CLASS, layout.entryStubClassRef);
         out.putInt(IndexFormat.H_LAUNCHER_VERSION, layout.launcherVersionRef);
         out.putInt(IndexFormat.H_PACKAGE_COUNT, layout.packageCount);
+        if ((headerFlags & IndexFormat.HEADER_FLAG_POSITIONAL_READS) != 0) {
+            // Only then, so that the index of a mapped archive stays byte for byte what it was before the field.
+            out.putInt(IndexFormat.H_LARGEST_STORED_CLASS, (int) largestStoredClass(layout.records));
+        }
 
         int packageIndex = 0;
         for (JarSpec jar : jars) {
@@ -403,6 +408,25 @@ final class IndexWriter {
      */
     private static int align(int value) {
         return (value + 7) & ~7;
+    }
+
+    /**
+     * The largest uncompressed size of a STORED {@code .class} record, which the launcher sizes the pooled
+     * buffers of positional reads from.
+     *
+     * @param records the records of the layout
+     * @return the size in bytes, or {@code 0} when no record is a STORED class
+     */
+    private static long largestStoredClass(List<Record> records) {
+        long largest = 0;
+        for (Record record : records) {
+            EntrySpec source = record.source;
+            if (source != null && source.method == IndexFormat.METHOD_STORED && record.name.endsWith(".class")
+                    && source.uncompressedSize > largest) {
+                largest = source.uncompressedSize;
+            }
+        }
+        return largest;
     }
 
     /**

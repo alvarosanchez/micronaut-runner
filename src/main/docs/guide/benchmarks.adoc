@@ -56,6 +56,15 @@ control
 |Opt-in, non-gating ablation: the same stored Runner JAR inputs with the entry stub disabled, which measures the
 plugin-default entry stub against reflective entry
 
+|`runner-stored-positional`
+|Opt-in, non-gating: the same stored Runner JAR inputs packaged with `archiveReads` set to `POSITIONAL`, so the
+launcher maps only the index and reads each class with one positional read; compared with `runner-stored` and
+`shadow`
+
+|`runner-stored-positional-aot`
+|Opt-in, non-gating: the identical `POSITIONAL` Runner JAR with a trained, application-class-verified JDK AOT cache;
+compared with `runner-stored-aot` and `shadow-aot`
+
 |`runner-preserve`
 |Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub
 

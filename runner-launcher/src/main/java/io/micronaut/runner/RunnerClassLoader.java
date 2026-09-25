@@ -612,10 +612,13 @@ public final class RunnerClassLoader extends ClassLoader {
     /**
      * Defines a class from one entry record.
      *
-     * <p>A STORED entry is defined from a buffer over the mapping, which saves materialising the class
-     * file as a {@code byte[]} and copying it there first. It is not a zero copy define: a non-builtin
-     * loader still has the VM copy a direct buffer into its own memory before parsing it. A DEFLATE entry
-     * is inflated into an exactly sized array, since it has to be materialised anyway.</p>
+     * <p>A STORED entry is defined from a buffer the source {@linkplain ArchiveSource#borrow(long, int)
+     * lends}: a window onto the mapping when the whole archive is mapped, which saves materialising the class
+     * file as a {@code byte[]} and copying it there first, and in the {@code index} mode a pooled direct buffer
+     * filled by one positional read, which keeps the class's pages out of the process's resident set. The
+     * buffer goes back to the source once {@code defineClass} returns, which is safe because the VM has parsed
+     * the bytes by then. A DEFLATE entry is inflated into an exactly sized array, since it has to be
+     * materialised anyway.</p>
      *
      * @param name        the binary name of the class
      * @param packageName its package, or {@code null} for the unnamed package
@@ -635,13 +638,17 @@ public final class RunnerClassLoader extends ClassLoader {
         definePackageOf(packageName, jarId, domain);
         int length = (int) size;
         if (index.entryMethod(record) == IndexFormat.METHOD_STORED) {
-            ByteBuffer content = source.slice(index.entryDataOffset(record), length);
-            if (verify) {
-                CRC32 checksum = new CRC32();
-                checksum.update(content.duplicate());
-                checkCrc(record, checksum.getValue());
+            ByteBuffer content = source.borrow(index.entryDataOffset(record), length);
+            try {
+                if (verify) {
+                    CRC32 checksum = new CRC32();
+                    checksum.update(content.duplicate());
+                    checkCrc(record, checksum.getValue());
+                }
+                return defineClass(name, content, domain);
+            } finally {
+                source.release(content);
             }
-            return defineClass(name, content, domain);
         }
         long compressed = index.entryCompressedSize(record);
         if (compressed > ArchiveSource.MAX_SLICE_LENGTH) {

@@ -53,7 +53,9 @@ inflating is not specific to this format; <<benchmarks>> measures the two effect
 mapping, with bounds checks but no parsing into objects. It consists of a fixed 128-byte header followed
 by five sections: a jar table, a package table, an entry table, a hash table and a string table. The exact
 byte layout is defined, as compile-time constants with documentation, in `IndexFormat` in the
-`micronaut-runner-launcher` artifact, which is the authoritative description.
+`micronaut-runner-launcher` artifact, which is the authoritative description. An archive packaged with
+`archiveReads` set to `POSITIONAL` carries a header flag that makes the launcher map only the index and read classes
+with positional reads, and its header records the largest `STORED` class, which sizes the launcher's read buffers.
 
 The parts worth understanding:
 

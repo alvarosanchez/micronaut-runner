@@ -219,6 +219,8 @@ class ToolsTest {
         assertEquals(Integer.toString(index.hashSlots()), header(output, "Hash slots"), output);
         assertEquals(Integer.toString(index.maxProbe()), header(output, "Maximum probe"), output);
         assertEquals(archive.length() + " bytes", header(output, "Outer file length"), output);
+        assertEquals("mapped", header(output, "Archive reads"), output);
+        assertEquals("a memory mapping", header(output, "Read through"), output);
 
         String[] application = columns(line(output, IndexFormat.CLASSES_PREFIX));
         assertEquals("0", application[0], output);
@@ -234,6 +236,31 @@ class ToolsTest {
         // Three entries, plus the alias of the versioned one and the directories derived from the names.
         assertEquals("3", second[3], output);
         assertEquals(Integer.toString(index.jarEntryCount(2)), second[4], output);
+    }
+
+    @Test
+    void inspectReportsPositionalReadsAndHowTheArchiveIsRead() throws Throwable {
+        File positional = writeArchive(workspace.resolve("positional/app.jar"), Flavour.POSITIONAL);
+        String[] properties = {null, "full", "index", "false"};
+        String[] readThrough = {"positional reads, index mapped", "a memory mapping",
+            "positional reads, index mapped", "positional reads"};
+        try {
+            for (int i = 0; i < properties.length; i++) {
+                if (properties[i] == null) {
+                    System.clearProperty(ArchiveSource.MMAP_PROPERTY);
+                } else {
+                    System.setProperty(ArchiveSource.MMAP_PROPERTY, properties[i]);
+                }
+                try (ArchiveSource other = ArchiveSource.open(positional)) {
+                    Index otherIndex = Index.open(other);
+                    String output = capture(() -> Inspect.run(new String[0], positional, otherIndex, other));
+                    assertEquals("positional", header(output, "Archive reads"), output);
+                    assertEquals(readThrough[i], header(output, "Read through"), properties[i] + "\n" + output);
+                }
+            }
+        } finally {
+            System.clearProperty(ArchiveSource.MMAP_PROPERTY);
+        }
     }
 
     @Test
@@ -901,7 +928,8 @@ class ToolsTest {
                 .launcherVersion(LAUNCHER_VERSION)
                 .headerFlags(IndexFormat.HEADER_FLAG_NESTED_STORED
                         | (flavour == Flavour.MULTI_RELEASE ? IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE
-                            : 0));
+                            : 0)
+                        | (flavour == Flavour.POSITIONAL ? IndexFormat.HEADER_FLAG_POSITIONAL_READS : 0));
 
         TestIndexBuilder.Jar application = builder.addJar(IndexFormat.CLASSES_PREFIX)
                 .flags(IndexFormat.JAR_FLAG_IS_OUTER | IndexFormat.JAR_FLAG_HAS_MANIFEST)
@@ -1185,7 +1213,10 @@ class ToolsTest {
         ENCODED_DEPENDENCIES,
 
         /** An application with no dependencies at all, so the index holds only jar 0. */
-        NO_DEPENDENCIES
+        NO_DEPENDENCIES,
+
+        /** A well-formed archive packaged for positional reads. */
+        POSITIONAL
     }
 
     /**

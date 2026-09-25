@@ -98,7 +98,9 @@ public final class Inspect {
         label(out, "Outer file length", index.outerFileLength() + " bytes");
         label(out, "Nested compression", index.nestedStored() ? "stored" : "preserved from the original");
         label(out, "Application layer", index.applicationMultiRelease() ? "multi-release" : "single release");
-        label(out, "Read through", source.mapped() ? "a memory mapping" : "positional reads");
+        label(out, "Archive reads", index.positionalReads() ? "positional" : "mapped");
+        label(out, "Read through", source.mapped() ? "a memory mapping"
+                : source.indexOnly() ? "positional reads, index mapped" : "positional reads");
     }
 
     /**

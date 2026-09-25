@@ -173,6 +173,49 @@ class RunnerJarSpecTest {
     }
 
     @Test
+    void archiveReadsDefaultsToTheGatesChoiceInTheBuilderAndTheTable() {
+        assertEquals(ArchiveReads.MAPPED, complete(RunnerJarSpec.builder()).build().archiveReads(),
+                "positional reads missed the default gate, so they are opt-in");
+        assertEquals(RunnerJarOption.Exposure.PASSTHROUGH, RunnerJarOption.ARCHIVE_READS.exposure());
+        assertEquals(ArchiveReads.class, RunnerJarOption.ARCHIVE_READS.valueType());
+        assertEquals(java.util.Optional.of(ArchiveReads.MAPPED.name()), RunnerJarOption.ARCHIVE_READS.defaultValue());
+        assertEquals(ArchiveReads.POSITIONAL, complete(RunnerJarSpec.builder()
+                .archiveReads(ArchiveReads.POSITIONAL)).build().archiveReads());
+        assertThrows(NullPointerException.class, () -> RunnerJarSpec.builder().archiveReads(null));
+    }
+
+    @Test
+    void archiveReadsIsSetByNameAndReportedInTheEffectiveOptions() {
+        RunnerJarSpec spec = complete(RunnerJarSpec.builder().option("archiveReads", "positional")).build();
+
+        assertEquals(ArchiveReads.POSITIONAL, spec.archiveReads());
+        assertEquals("POSITIONAL", spec.effectiveOptions().get("archiveReads"));
+        assertEquals("MAPPED", complete(RunnerJarSpec.builder()).build().effectiveOptions().get("archiveReads"));
+        assertEquals(ArchiveReads.MAPPED, complete(RunnerJarSpec.builder()
+                .option("archiveReads", "positional")
+                .archiveReads(ArchiveReads.MAPPED)).build().archiveReads(), "the last call wins");
+    }
+
+    @Test
+    void anUnknownArchiveReadsValueListsTheSupportedValues() {
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> RunnerJarSpec.builder().option("archiveReads", "bogus"));
+
+        assertEquals("Unknown archiveReads 'bogus'. Supported values are MAPPED and POSITIONAL.",
+                failure.getMessage());
+    }
+
+    @Test
+    void archiveReadsParsesIgnoringCaseAndSurroundingWhitespace() {
+        assertEquals(ArchiveReads.POSITIONAL, ArchiveReads.parse(" Positional "));
+        assertEquals(ArchiveReads.MAPPED, ArchiveReads.parse("MAPPED"));
+        for (ArchiveReads reads : ArchiveReads.values()) {
+            assertEquals(reads, ArchiveReads.parse(reads.name()));
+        }
+        assertThrows(NullPointerException.class, () -> ArchiveReads.parse(null));
+    }
+
+    @Test
     void aNullNameOrValueIsRejected() {
         assertThrows(NullPointerException.class, () -> RunnerJarSpec.builder().option(null, "true"));
         assertThrows(NullPointerException.class, () -> RunnerJarSpec.builder().option("entryStub", null));
