@@ -46,6 +46,7 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -93,6 +94,7 @@ public final class LogbackFrontend implements Function<byte[], Map<String, Objec
         Problems problems = new Problems();
         scratch.getStatusManager().add(problems);
         try {
+            requireMembers();
             return new Reader(scratch, problems).read(xml);
         } catch (Rejection e) {
             return rejection(e.getMessage());
@@ -103,6 +105,55 @@ public final class LogbackFrontend implements Function<byte[], Map<String, Objec
                     + e.getClass().getSimpleName() + ")");
         } finally {
             scratch.stop();
+        }
+    }
+
+    /**
+     * Looks up, in the Logback jars this front end runs against, every member the generated configurator and
+     * {@code JoranFallback} call whatever the configuration, so that a Logback release that changed one is rejected
+     * here instead of failing when the application starts. The members a configuration adds, its appenders'
+     * setters, are looked up as they are read.
+     *
+     * @throws Rejection if a member is missing
+     */
+    static void requireMembers() {
+        try {
+            ClassLoader loader = LogbackFrontend.class.getClassLoader();
+            Class<?> context = Class.forName("ch.qos.logback.core.Context", false, loader);
+            Class<?> loggerContext = Class.forName("ch.qos.logback.classic.LoggerContext", false, loader);
+            Class<?> logger = Class.forName("ch.qos.logback.classic.Logger", false, loader);
+            Class<?> level = Class.forName("ch.qos.logback.classic.Level", false, loader);
+            Class<?> appender = Class.forName("ch.qos.logback.core.Appender", false, loader);
+            Class<?> status = Class.forName("ch.qos.logback.core.status.Status", false, loader);
+            Class<?> statusManager = Class.forName("ch.qos.logback.core.status.StatusManager", false, loader);
+            loggerContext.getMethod("getLogger", String.class);
+            loggerContext.getMethod("setPackagingDataEnabled", boolean.class);
+            loggerContext.getMethod("getFrameworkPackages");
+            loggerContext.getMethod("getStatusManager");
+            Class<?> contextUtil = Class.forName("ch.qos.logback.core.util.ContextUtil", false, loader);
+            contextUtil.getConstructor(context);
+            contextUtil.getMethod("addGroovyPackages", List.class);
+            logger.getMethod("setLevel", level);
+            logger.getMethod("setAdditive", boolean.class);
+            logger.getMethod("addAppender", appender);
+            for (String name : LEVELS) {
+                level.getField(name);
+            }
+            appender.getMethod("setContext", context);
+            appender.getMethod("setName", String.class);
+            Class.forName("ch.qos.logback.core.spi.LifeCycle", false, loader).getMethod("start");
+            Class.forName("ch.qos.logback.core.spi.ContextAware", false, loader).getMethod("setContext", context);
+            Class.forName("ch.qos.logback.core.spi.ContextAwareBase", false, loader).getConstructor();
+            Class.forName("ch.qos.logback.core.status.WarnStatus", false, loader)
+                    .getConstructor(String.class, Object.class);
+            statusManager.getMethod("add", status);
+            Class.forName("ch.qos.logback.classic.spi.Configurator$ExecutionStatus", false, loader)
+                    .getField("DO_NOT_INVOKE_NEXT_IF_ANY");
+            Class<?> joran = Class.forName("ch.qos.logback.classic.util.DefaultJoranConfigurator", false, loader);
+            joran.getMethod("configure", loggerContext);
+            joran.getMethod("configureByResource", URL.class);
+        } catch (ReflectiveOperationException e) {
+            throw new Rejection("the Logback member " + e.getMessage() + " the generated code calls is missing");
         }
     }
 
