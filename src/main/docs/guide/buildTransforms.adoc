@@ -1,0 +1,78 @@
+A runner JAR re-packs every dependency, and with the default `STORED` compression it can also rewrite the
+dependency classes on the way: whatever a class carries that the application never needs at run time is paid for
+again on every start. This chapter lists what Runner changes in dependency classes at build time, the default
+and the opt-out of each change, and what an application can observe as a result.
+
+Every change runs in one pass: each dependency class is parsed once, every enabled transform is applied to it, and
+the result is written once. Before a rewritten class is accepted it is verified, with the JDK's class-file
+verifier, against the whole runtime class path and the JDK's own classes; a transform that fails on a class, or
+makes it verify worse than the class it replaces, is dropped for that class alone, and the build log says so.
+
+Nothing here applies to the application's own classes, to a project dependency (another project of a Gradle build,
+another module of a Maven reactor), or to any class of a signed JAR: they are nested exactly as they were built.
+With `PRESERVE` compression every dependency is nested byte for byte, so none of these transforms run.
+
+What a build changed is recorded in the archive, in `MICRONAUT-INF/transforms.txt` (see <<format>>), and printed
+by the `inspect` mode:
+
+[source,bash]
+----
+java -Dmicronaut.runner.mode=inspect -jar build/libs/my-app-0.1-all.jar
+----
+
+== Local-variable tables
+
+On by default. A dependency class loses the tables that name its local variables, and its constant pool is rebuilt
+without the names and signatures they pointed at.
+
+Dropped:: `LocalVariableTable`, `LocalVariableTypeTable` and `CharacterRangeTable`; the type annotations inside
+method code, which carry bytecode offsets; and the invisible type annotations of the class, its fields and its
+methods.
+Kept:: `LineNumberTable` and `SourceFile`, so stack traces keep their `(File.java:N)` frames; `MethodParameters`,
+so reflective parameter names survive; `Signature`, so generic types survive; `SourceDebugExtension`; and every
+annotation reflection can see.
+Left alone:: A class with an attribute the JDK does not know, whose constant pool references a rebuilt pool could
+break, and `module-info`.
+
+What an application can observe, in dependency frames only:
+
+* A helpful `NullPointerException` message names a local by position, `because "<local1>" is null`, instead of by
+name; the line number stays. A debugger shows no local-variable names in dependency code.
+* Stack traces, reflective parameter names and every annotation reflection exposes are unchanged.
+* The order of `getDeclaredMethods()` may change, because the JVM orders methods by the symbols a rebuilt pool
+interns. That order is unspecified, and it already differs with and without class data sharing, but code that
+depends on it can notice, for example reflection-based JSON property order of a dependency's classes.
+* A rewritten class has new bytes and a new CRC-32: on `benchmark-large` about 85% of the dependency classes.
+Class-level composition analysis may report such a class as modified rather than as an exact match. The opt-out
+keeps dependency class bytes as published, and `PRESERVE` keeps whole nested JARs byte for byte.
+* Output bytes depend on the JDK that runs the build, whose class-file library chooses the pool order: a stripped
+archive is byte-reproducible only when it is built with the same JDK build.
+
+Some libraries read local-variable tables at run time and find nothing once they are gone. When the class path
+contains one of them, the build keeps every table and warns once, naming the JAR and the class:
+
+* Paranamer's `com.thoughtworks.paranamer.BytecodeReadingParanamer`;
+* any class of AspectJ's weaver, under `org.aspectj.weaver`;
+* Spring's `org.springframework.core.LocalVariableTableParameterNameDiscoverer`, which Spring removed in 6.1.
+
+To keep the tables, and silence that warning, set the `stripLocalVariables` option to `false`. In Gradle:
+
+[source,groovy]
+----
+micronaut {
+    runner {
+        options.put('stripLocalVariables', 'false')
+    }
+}
+----
+
+In Maven, pass `-Dmicronaut.runner.stripLocalVariables=false`, or add a `<runnerOptions>` entry:
+
+[source,xml]
+----
+<configuration>
+    <runnerOptions>
+        <stripLocalVariables>false</stripLocalVariables>
+    </runnerOptions>
+</configuration>
+----

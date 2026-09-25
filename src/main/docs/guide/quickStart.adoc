@@ -71,6 +71,9 @@ micronaut {
 
         // Options without a typed property, by name (see the table below):
         // options.put('<name>', '<value>')
+
+        // Dependency local-variable tables are dropped by default; line numbers stay. See Build-time transforms.
+        // options.put('stripLocalVariables', 'false')
     }
 }
 ----
@@ -95,6 +98,7 @@ typed property, and an unknown name fails the build.
 |`addOpens` |list |empty |typed |1.0
 |`addExports` |list |empty |typed |1.0
 |`manifestAttributes` |map |empty |typed |1.0
+|`stripLocalVariables` |boolean |`true` |passthrough |1.0
 |===
 
 A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,
@@ -214,6 +218,8 @@ In Maven, each `addExports`/`addOpens` entry is its own element:
 The typed options are parameters of the same names, except that `manifestAttributes` is `<manifestEntries>`; the
 scalar ones also read `-Dmicronaut.runner.<name>`. `<runnerOptions>` and `-Dmicronaut.runner.<name>` set the same
 options by name, `-Dmicronaut.runner.<name>` only for passthrough options, and a `<runnerOptions>` entry wins.
+Dependency local-variable tables are dropped by default (see <<buildTransforms>>); pass
+`-Dmicronaut.runner.stripLocalVariables=false` to keep them.
 
 == What to check first
 
