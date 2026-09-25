@@ -178,8 +178,12 @@ class StartupHarnessTest {
         if (OS.MAC.isCurrentOs()) {
             assertTrue(snapshot.footprintBytes() > 0, snapshot.toString());
             assertTrue(snapshot.peakFootprintBytes() >= snapshot.footprintBytes(), snapshot.toString());
+            assertEquals(-1, snapshot.majorFaults(), snapshot.toString());
+            assertEquals(-1, snapshot.readBytes(), snapshot.toString());
         } else {
             assertTrue(snapshot.anonBytes() > 0, snapshot.toString());
+            assertTrue(snapshot.majorFaults() >= 0, snapshot.toString());
+            assertTrue(snapshot.readBytes() >= 0, snapshot.toString());
         }
         assertStopped(lifecycle);
     }
