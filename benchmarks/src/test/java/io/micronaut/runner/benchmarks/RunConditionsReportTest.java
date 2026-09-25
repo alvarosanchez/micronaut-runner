@@ -71,10 +71,10 @@ class RunConditionsReportTest {
         assertTrue(summary.contains("the probe JVM saw 1 CPU with ergonomic flags `-XX:ConcGCThreads=1"
                 + " -XX:+UseCompressedOops -XX:+UseSerialGC`"), summary);
         assertTrue(summary.contains("- **OS page cache**: `evict-artifacts`"), summary);
-        assertTrue(summary.contains("`posix_fadvise(POSIX_FADV_DONTNEED) per file`"), summary);
+        assertTrue(summary.contains("evicted (posix_fadvise(POSIX_FADV_DONTNEED) per file)"), summary);
         assertFalse(summary.contains("**OS page cache**: uncontrolled"), summary);
-        assertTrue(summary.contains("- **Storage**: kernel `6.8.0-1021-azure`; work directory on `/dev/root ext4`"),
-                summary);
+        assertTrue(summary.contains("- **Storage**: kernel `6.8.0-1021-azure`; work directory on `/dev/root ext4`"
+                + " (`lsblk -s` name, rotational, model: `root 0 Virtual Disk`, `└─sda 0 Virtual Disk`)\n"), summary);
     }
 
     @Test

@@ -692,7 +692,7 @@ final class Reports {
                     .append(" a controlled warm-cache or cold-filesystem-cache state\n");
             case EVICT_ARTIFACTS -> out.append("- **OS page cache**: `evict-artifacts`: before every launch, every")
                     .append(" regular file of the variant's artifact and launch inputs (AOT cache included) is")
-                    .append(" evicted with `").append(conditions.evictionMethod()).append("`, outside the timed")
+                    .append(" evicted (").append(conditions.evictionMethod()).append("), outside the timed")
                     .append(" interval; the JDK and the shared work directory are not, so only the packaging is cold.")
                     .append(" `majorFaults` and `readBytes` at readiness confirm it\n");
             case DROP_ALL -> out.append("- **OS page cache**: `drop-all`: `sync` and `")
@@ -704,8 +704,15 @@ final class Reports {
                 .append(conditions.storageMount() == null ? "unrecorded storage"
                         : "`" + conditions.storageMount() + "`");
         if (conditions.storageDevices() != null) {
-            out.append(" (`lsblk`: `").append(conditions.storageDevices().replace('\n', ';')
-                    .replaceAll("\\s+", " ")).append("`)");
+            out.append(" (`lsblk -s` name, rotational, model: ");
+            List<String> devices = conditions.storageDevices().lines()
+                    .map(line -> line.trim().replaceAll("\\s+", " "))
+                    .filter(line -> !line.isEmpty())
+                    .toList();
+            for (int i = 0; i < devices.size(); i++) {
+                out.append(i == 0 ? "" : ", ").append('`').append(devices.get(i)).append('`');
+            }
+            out.append(')');
         }
         out.append('\n');
     }
