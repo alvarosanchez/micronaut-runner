@@ -382,7 +382,8 @@ class LogbackPrecompilerTest {
             xml = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
         if (logFile != null) {
-            xml = xml.replace(LOG_FILE_TOKEN, logFile.toString());
+            // Forward slashes: a Windows backslash is not a character to put through variable substitution.
+            xml = xml.replace(LOG_FILE_TOKEN, logFile.toString().replace('\\', '/'));
         }
         Path copy = temporary.resolve("corpus").resolve(name);
         Files.createDirectories(copy.getParent());
