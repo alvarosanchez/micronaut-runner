@@ -159,8 +159,8 @@ class PackagingComparisonTest {
         assertFalse(Files.exists(copy.resolve("build")));
         assertFalse(Files.exists(copy.resolve(".gradle")));
         assertFalse(Files.exists(copy.resolve("left-over.txt")), "the copy is recreated on every run");
-        assertEquals("versionCatalogs { libs { from(files('" + catalog.toAbsolutePath().normalize()
-                + "')) } }\n", Files.readString(copy.resolve("settings.gradle")));
+        assertEquals("versionCatalogs { libs { from(files('" + catalog.toAbsolutePath().normalize().toString()
+                .replace('\\', '/') + "')) } }\n", Files.readString(copy.resolve("settings.gradle")));
 
         Files.writeString(sample.resolve("settings.gradle"), "'../../../gradle/libs.versions.toml'\n"
                 + "'../../../gradle/libs.versions.toml'\n");
