@@ -72,13 +72,19 @@ final class ClassPathModel implements ClassHierarchyResolver {
 
     private static final String CLASS_SUFFIX = ".class";
 
+    /**
+     * The JDK's own classes only, parsed from the platform class loader. The cache lives as long as the JVM that
+     * runs the packager, because its JDK does not change between two builds, and a Gradle daemon runs many; every
+     * stage of every build resolves the same few JDK classes.
+     */
+    private static final ClassHierarchyResolver JDK =
+            ClassHierarchyResolver.ofResourceParsing(ClassLoader.getPlatformClassLoader()).cached(ConcurrentHashMap::new);
+
     private final Map<String, Resolution> classes;
 
     private final List<String> layers;
 
     private final Watched watched;
-
-    private final ClassHierarchyResolver jdk;
 
     private final boolean members;
 
@@ -87,9 +93,6 @@ final class ClassPathModel implements ClassHierarchyResolver {
         this.layers = layers;
         this.watched = watched;
         this.members = members;
-        // The JDK's own classes only, and cached: every stage task resolves the same few JDK classes.
-        this.jdk = ClassHierarchyResolver.ofResourceParsing(ClassLoader.getPlatformClassLoader())
-                .cached(ConcurrentHashMap::new);
     }
 
     /**
@@ -257,7 +260,7 @@ final class ClassPathModel implements ClassHierarchyResolver {
                         ? null : ClassDesc.ofInternalName(winner.superName));
             }
         }
-        return jdk.getClassInfo(classDesc);
+        return JDK.getClassInfo(classDesc);
     }
 
     private static String packageOf(String internalName) {
