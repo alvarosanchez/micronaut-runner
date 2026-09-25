@@ -1,0 +1,50 @@
+/*
+ * Copyright 2017-2026 original authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * Applied with --init-script by PackagingComparison to its copy of benchmark-large.
+ *
+ * -PpackagingComparison.compression=<mode> sets micronautRunnerJar's compression and names its archive
+ * all-<mode>, so each Runner variant keeps its own file. The value is passed through: the task validates it.
+ *
+ * Each timed task prints one line after its last action, with the time since its first action:
+ *   PACKAGING_TASK <task path> <milliseconds> <absolute archive path>
+ * A task that does not execute (UP-TO-DATE, FROM-CACHE) prints nothing, and the harness fails the run.
+ */
+def timed = ['micronautRunnerJar', 'shadowJar', 'shadowJarStored']
+gradle.rootProject { project ->
+    def compression = project.providers.gradleProperty('packagingComparison.compression').orNull
+    if (compression != null) {
+        // configureEach runs before the sample registers its tasks and configures them when they are realized.
+        project.tasks.configureEach { task ->
+            if (task.name == 'micronautRunnerJar') {
+                task.compression = compression
+                task.archiveClassifier = "all-${compression.toLowerCase(Locale.ROOT)}"
+            }
+        }
+    }
+}
+// Added once the graph is final, so the markers enclose every action the build gave the task.
+gradle.taskGraph.whenReady { graph ->
+    graph.allTasks.findAll { it.name in timed }.each { task ->
+        long start = 0
+        task.doFirst { start = System.nanoTime() }
+        task.doLast {
+            def millis = String.format(Locale.ROOT, '%.3f', (System.nanoTime() - start) / 1_000_000d)
+            println "PACKAGING_TASK ${task.path} ${millis} ${task.archiveFile.get().asFile.absolutePath}"
+        }
+    }
+}
