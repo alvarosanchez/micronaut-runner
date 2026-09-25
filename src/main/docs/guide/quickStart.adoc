@@ -71,6 +71,9 @@ micronaut {
 
         // Options without a typed property, by name (see the table below):
         // options.put('<name>', '<value>')
+
+        // POSITIONAL maps only the index and reads classes with pooled positional reads: lower RSS, slightly slower start.
+        // options.put('archiveReads', 'positional')
     }
 }
 ----
@@ -95,6 +98,7 @@ typed property, and an unknown name fails the build.
 |`addOpens` |list |empty |typed |1.0
 |`addExports` |list |empty |typed |1.0
 |`manifestAttributes` |map |empty |typed |1.0
+|`archiveReads` |`MAPPED` or `POSITIONAL` |`MAPPED` |passthrough |1.0
 |===
 
 A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,
@@ -214,6 +218,10 @@ In Maven, each `addExports`/`addOpens` entry is its own element:
 The typed options are parameters of the same names, except that `manifestAttributes` is `<manifestEntries>`; the
 scalar ones also read `-Dmicronaut.runner.<name>`. `<runnerOptions>` and `-Dmicronaut.runner.<name>` set the same
 options by name, `-Dmicronaut.runner.<name>` only for passthrough options, and a `<runnerOptions>` entry wins.
+
+To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
+pass `-Dmicronaut.runner.archiveReads=positional` or set
+`<runnerOptions><archiveReads>positional</archiveReads></runnerOptions>`.
 
 == What to check first
 

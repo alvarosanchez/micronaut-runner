@@ -34,6 +34,7 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.SplittableRandom;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -99,7 +100,10 @@ class RunnerClassLoaderTest {
     private static final String INTERRUPT_STORED_PACKAGE = "org.interrupt.stored";
     private static final String INTERRUPT_DEFLATED_PACKAGE = "org.interrupt.deflated";
     private static final int INTERRUPT_CLASSES_PER_JAR = 256;
-    private static final int INTERRUPT_THREADS = 6;
+    private static final int INTERRUPT_THREADS = 8;
+    /** Threads that define classes at once in the pool test: twice the pool's buffers. */
+    private static final int POOL_THREADS = 32;
+    private static final String REENTRANT_PACKAGE = "org.reentrant";
     private static final long INTERRUPT_SPIN_NANOS = 20_000;
     private static final String AWKWARD = "MICRONAUT-INF/lib/a b-é.jar";
     private static final String AWKWARD_CLASS = "org.awkward.Awkward";
@@ -138,6 +142,7 @@ class RunnerClassLoaderTest {
             application.add("org/example/gen/C" + i + ".class",
                     classBytes("org.example.gen.C" + i, "gen" + i));
         }
+        addReentrantFixture(application);
 
         Fixture.Jar alpha = fixture.addJar(ALPHA).deflate()
                 .manifest("AlphaSpec", "1.0", "AlphaVendor", "AlphaImpl", "2.0", "AlphaImplVendor");
@@ -271,15 +276,16 @@ class RunnerClassLoaderTest {
         }
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void loadsClassesOnAnInterruptedThread(boolean mapped) throws Exception {
+    @ParameterizedTest(name = "mmap={0}")
+    @ValueSource(strings = {"true", "index", "false"})
+    void loadsClassesOnAnInterruptedThread(String mmap) throws Exception {
         // Future.cancel(true), ExecutorService.shutdownNow() or Thread.interrupt() leave a thread's interrupt
         // status set, and that thread may then load a class for the first time. A positional read used to
         // close the archive for every thread at that point.
-        System.setProperty(ArchiveSource.MMAP_PROPERTY, Boolean.toString(mapped));
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, mmap);
         try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
-            assertEquals(mapped, modeSource.mapped());
+            assertEquals("true".equals(mmap), modeSource.mapped());
+            assertEquals("index".equals(mmap), modeSource.indexOnly());
             RunnerClassLoader loader = new RunnerClassLoader(Index.open(modeSource), modeSource,
                     ClassLoader.getPlatformClassLoader());
 
@@ -296,9 +302,9 @@ class RunnerClassLoaderTest {
         }
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void definesClassesWhileThreadsAreInterrupted(boolean mapped) throws Exception {
+    @ParameterizedTest(name = "mmap={0}")
+    @ValueSource(strings = {"true", "index", "false"})
+    void definesClassesWhileThreadsAreInterrupted(String mmap) throws Exception {
         List<String> names = new ArrayList<>();
         List<String> ids = new ArrayList<>();
         for (int i = 0; i < INTERRUPT_CLASSES_PER_JAR; i++) {
@@ -307,9 +313,10 @@ class RunnerClassLoaderTest {
             names.add(INTERRUPT_DEFLATED_PACKAGE + ".C" + i);
             ids.add("deflated-" + i);
         }
-        System.setProperty(ArchiveSource.MMAP_PROPERTY, Boolean.toString(mapped));
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, mmap);
         try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
-            assertEquals(mapped, modeSource.mapped());
+            assertEquals("true".equals(mmap), modeSource.mapped());
+            assertEquals("index".equals(mmap), modeSource.indexOnly());
             RunnerClassLoader loader = new RunnerClassLoader(Index.open(modeSource), modeSource,
                     ClassLoader.getPlatformClassLoader());
             Class<?>[][] loaded = new Class<?>[INTERRUPT_THREADS][names.size()];
@@ -374,6 +381,18 @@ class RunnerClassLoaderTest {
                     assertSame(type, loaded[t][i], "every thread must see one class");
                 }
             }
+            // The interrupts must not have left the archive unreadable for anyone else.
+            AtomicReference<Object> later = new AtomicReference<>();
+            Thread fresh = new Thread(() -> {
+                try {
+                    later.set(id(loader.loadClass("org.example.gen.C0")));
+                } catch (Exception | LinkageError e) {
+                    later.set(e);
+                }
+            }, "fresh-class-loader");
+            fresh.start();
+            fresh.join(TimeUnit.SECONDS.toMillis(30));
+            assertEquals("gen0", later.get(), "a later load on a fresh thread");
         }
     }
 
@@ -769,6 +788,156 @@ class RunnerClassLoaderTest {
         }
     }
 
+    @ParameterizedTest(name = "mmap={0}")
+    @ValueSource(strings = {"true", "index", "false"})
+    void verifiesClassChecksumsInEveryMode(String mmap) throws Exception {
+        System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, mmap);
+        try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
+            RunnerClassLoader verifying = new RunnerClassLoader(Index.open(modeSource), modeSource,
+                    ClassLoader.getPlatformClassLoader());
+            assertEquals("index".equals(mmap), modeSource.indexOnly());
+            ClassNotFoundException failure = assertThrows(ClassNotFoundException.class,
+                    () -> verifying.loadClass("org.example.Corrupt"));
+            String message = failure.getCause().getMessage();
+            assertTrue(message.contains("org/example/Corrupt.class") && message.contains("has checksum"), message);
+            assertEquals("app", id(verifying.loadClass("org.example.App")),
+                    "an intact entry still loads with verification on");
+            if ("index".equals(mmap)) {
+                assertEquals(1, modeSource.createdBuffers(), "both classes were read into one pooled buffer");
+                assertEquals(1, modeSource.idleBuffers(), "the failed define returned its buffer too");
+            }
+        }
+    }
+
+    /**
+     * The VM resolves a class's supertypes while it is still parsing the class's bytes, so a define nests
+     * other defines on the same thread. A buffer reused per thread would be overwritten under the parser: the
+     * hierarchy here is the one that reproduced that as a {@link ClassFormatError}.
+     */
+    @ParameterizedTest(name = "mmap={0}")
+    @ValueSource(strings = {"true", "index", "false"})
+    void definesNestedSupertypesOnTheSameThread(String mmap) throws Exception {
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, mmap);
+        try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
+            RunnerClassLoader loader = new RunnerClassLoader(Index.open(modeSource), modeSource,
+                    ClassLoader.getPlatformClassLoader());
+
+            Class<?> type = loader.loadClass(REENTRANT_PACKAGE + ".A");
+            Object instance = type.getConstructor().newInstance();
+            for (String method : List.of("a", "b", "i", "j", "k")) {
+                assertEquals(method, type.getMethod(method).invoke(instance), method + "()");
+            }
+            assertSame(loader, type.getSuperclass().getClassLoader());
+            if ("index".equals(mmap)) {
+                assertTrue(modeSource.createdBuffers() >= 2,
+                        "a nested define borrows a buffer of its own: " + modeSource.createdBuffers());
+                assertEquals(modeSource.createdBuffers(), modeSource.idleBuffers(), "every buffer came back");
+            }
+        }
+    }
+
+    @Test
+    void thirtyTwoThreadsDefineClassesThroughAtMostSixteenPooledBuffers() throws Exception {
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, "index");
+        try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
+            RunnerClassLoader loader = new RunnerClassLoader(Index.open(modeSource), modeSource,
+                    ClassLoader.getPlatformClassLoader());
+            CountDownLatch start = new CountDownLatch(1);
+            ExecutorService threads = Executors.newFixedThreadPool(POOL_THREADS);
+            try {
+                List<Future<List<Class<?>>>> futures = new ArrayList<>();
+                for (int t = 0; t < POOL_THREADS; t++) {
+                    int offset = t * INTERRUPT_CLASSES_PER_JAR / POOL_THREADS;
+                    futures.add(threads.submit(() -> {
+                        start.await();
+                        List<Class<?>> loaded = new ArrayList<>();
+                        for (int i = 0; i < INTERRUPT_CLASSES_PER_JAR; i++) {
+                            int at = (offset + i) % INTERRUPT_CLASSES_PER_JAR;
+                            loaded.add(loader.loadClass(INTERRUPT_STORED_PACKAGE + ".C" + at));
+                        }
+                        return loaded;
+                    }));
+                }
+                start.countDown();
+                for (Future<List<Class<?>>> future : futures) {
+                    for (Class<?> type : future.get(60, TimeUnit.SECONDS)) {
+                        assertEquals("stored-" + type.getSimpleName().substring(1), id(type));
+                    }
+                }
+            } finally {
+                threads.shutdownNow();
+            }
+
+            assertTrue(modeSource.createdBuffers() >= 1, "the classes were read into pooled buffers");
+            assertTrue(modeSource.createdBuffers() <= ArchiveSource.POOL_MAX_BUFFERS,
+                    () -> modeSource.createdBuffers() + " direct buffers were created");
+            assertEquals(modeSource.createdBuffers(), modeSource.idleBuffers(), "every buffer came back");
+            modeSource.startupFinished();
+            assertTrue(modeSource.idleBuffers() <= ArchiveSource.POOL_IDLE_AFTER_STARTUP,
+                    () -> modeSource.idleBuffers() + " buffers are idle after startup");
+        }
+    }
+
+    @Test
+    void aClassLargerThanThePooledBuffersLoadsThroughTheHeap() throws Exception {
+        Fixture fixture = new Fixture().headerFlags(IndexFormat.HEADER_FLAG_POSITIONAL_READS).largestStoredClass(4096);
+        Fixture.Jar application = fixture.addJar(IndexFormat.CLASSES_PREFIX);
+        String longValue = "x".repeat(6_000);
+        byte[] large = classBytes("org.large.Large", longValue);
+        assertTrue(large.length > 4096, "the class must not fit a pooled buffer");
+        application.add("org/large/Large.class", large);
+        application.add("org/large/Small.class", classBytes("org.large.Small", "small"));
+        File file = fixture.writeTo(temporary.resolve("large-class.jar").toFile());
+
+        System.clearProperty(ArchiveSource.MMAP_PROPERTY);
+        try (ArchiveSource largeSource = ArchiveSource.open(file)) {
+            RunnerClassLoader loader = new RunnerClassLoader(Index.open(largeSource), largeSource,
+                    ClassLoader.getPlatformClassLoader());
+            assertTrue(largeSource.indexOnly());
+            assertEquals(4096, largeSource.poolBufferSize());
+
+            assertEquals(longValue, id(loader.loadClass("org.large.Large")));
+            assertEquals(0, largeSource.createdBuffers(), "the large class was read into a heap array");
+            assertEquals("small", id(loader.loadClass("org.large.Small")));
+            assertEquals(1, largeSource.createdBuffers());
+        }
+    }
+
+    @Test
+    void anArchiveThatAsksForPositionalReadsLoadsItsClassesAndCanBeDeletedOnceClosed() throws Exception {
+        Fixture fixture = new Fixture().headerFlags(IndexFormat.HEADER_FLAG_NESTED_STORED
+                | IndexFormat.HEADER_FLAG_POSITIONAL_READS);
+        Fixture.Jar application = fixture.addJar(IndexFormat.CLASSES_PREFIX);
+        application.add("org/switched/App.class", classBytes("org.switched.App", "switched-app"));
+        application.add("switched.txt", text("switched-resource"));
+        fixture.addJar("MICRONAUT-INF/lib/switched-stored.jar")
+                .add("org/switched/stored/S.class", classBytes("org.switched.stored.S", "switched-stored"));
+        fixture.addJar("MICRONAUT-INF/lib/switched-deflated.jar").deflate()
+                .add("org/switched/deflated/D.class", classBytes("org.switched.deflated.D", "switched-deflated"));
+        File file = fixture.writeTo(temporary.resolve("switched.jar").toFile());
+
+        System.clearProperty(ArchiveSource.MMAP_PROPERTY);
+        ArchiveSource switched = ArchiveSource.open(file);
+        try {
+            assertTrue(switched.mapped(), "until the index is read, the whole file is mapped");
+            RunnerClassLoader loader = new RunnerClassLoader(Index.open(switched), switched,
+                    ClassLoader.getPlatformClassLoader());
+            assertFalse(switched.mapped());
+            assertTrue(switched.indexOnly());
+
+            assertEquals("switched-app", id(loader.loadClass("org.switched.App")));
+            assertEquals("switched-stored", id(loader.loadClass("org.switched.stored.S")));
+            assertEquals("switched-deflated", id(loader.loadClass("org.switched.deflated.D")));
+            assertEquals("switched-resource", string(loader.getResourceAsStream("switched.txt")));
+            assertEquals(1, switched.createdBuffers());
+        } finally {
+            switched.close();
+        }
+        assertTrue(file.delete(), "an archive must be deletable once the source is closed");
+    }
+
+
     @Test
     void verifiesStoredAndDeflatedResourceStreamsOnlyWhenAskedTo() throws Exception {
         RunnerClassLoader unchecked = newLoader();
@@ -794,14 +963,16 @@ class RunnerClassLoaderTest {
     @Test
     void verifiesResourceStreamsInMappedAndPositionalModes() throws Exception {
         System.setProperty(RunnerClassLoader.VERIFY_PROPERTY, "true");
-        for (boolean mapped : List.of(true, false)) {
+        for (String mode : List.of("mapped", "false", "index")) {
+            boolean mapped = "mapped".equals(mode);
             if (mapped) {
                 System.clearProperty(ArchiveSource.MMAP_PROPERTY);
             } else {
-                System.setProperty(ArchiveSource.MMAP_PROPERTY, "false");
+                System.setProperty(ArchiveSource.MMAP_PROPERTY, mode);
             }
             try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
                 assertEquals(mapped, modeSource.mapped());
+                assertEquals("index".equals(mode), modeSource.indexOnly());
                 RunnerClassLoader loader = new RunnerClassLoader(Index.open(modeSource), modeSource,
                         ClassLoader.getPlatformClassLoader());
                 assertThrows(IOException.class,
@@ -974,6 +1145,46 @@ class RunnerClassLoaderTest {
         }
     }
 
+    /**
+     * {@code A extends B implements I, J}, with {@code J extends K} and {@code B implements K}: defining
+     * {@code A} defines its supertypes while the VM is still parsing {@code A}, and {@code J} defines
+     * {@code K} while it is being parsed in turn. Each declares one method returning its own lower-case name.
+     */
+    private static void addReentrantFixture(Fixture.Jar application) {
+        String path = REENTRANT_PACKAGE.replace('.', '/') + "/";
+        String name = REENTRANT_PACKAGE + ".";
+        application.add(path + "K.class", interfaceBytes(name + "K", List.of(), "k"));
+        application.add(path + "I.class", interfaceBytes(name + "I", List.of(), "i"));
+        application.add(path + "J.class", interfaceBytes(name + "J", List.of(name + "K"), "j"));
+        application.add(path + "B.class", subclassBytes(name + "B", "java.lang.Object", List.of(name + "K"), "b"));
+        application.add(path + "A.class", subclassBytes(name + "A", name + "B", List.of(name + "I", name + "J"),
+                "a"));
+    }
+
+    private static byte[] interfaceBytes(String binaryName, List<String> superinterfaces, String method) {
+        return ClassFile.of().build(ClassDesc.of(binaryName), builder -> builder
+                .withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_INTERFACE | ClassFile.ACC_ABSTRACT)
+                .withInterfaceSymbols(superinterfaces.stream().map(ClassDesc::of).toList())
+                .withMethodBody(method, MethodTypeDesc.of(ConstantDescs.CD_String), ClassFile.ACC_PUBLIC,
+                        code -> code.loadConstant(method).areturn()));
+    }
+
+    private static byte[] subclassBytes(String binaryName, String superclass, List<String> interfaces,
+                                        String method) {
+        ClassDesc parent = ClassDesc.of(superclass);
+        return ClassFile.of().build(ClassDesc.of(binaryName), builder -> builder
+                .withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER)
+                .withSuperclass(parent)
+                .withInterfaceSymbols(interfaces.stream().map(ClassDesc::of).toList())
+                .withMethodBody(ConstantDescs.INIT_NAME, ConstantDescs.MTD_void, ClassFile.ACC_PUBLIC,
+                        code -> code.aload(0)
+                                .invokespecial(parent, ConstantDescs.INIT_NAME, ConstantDescs.MTD_void)
+                                .return_())
+                .withMethodBody(method, MethodTypeDesc.of(ConstantDescs.CD_String), ClassFile.ACC_PUBLIC,
+                        code -> code.loadConstant(method).areturn()));
+    }
+
+
     private static RunnerClassLoader newLoader() {
         return new RunnerClassLoader(index, source, ClassLoader.getPlatformClassLoader());
     }
@@ -1135,6 +1346,18 @@ class RunnerClassLoaderTest {
     private static final class Fixture {
 
         private final List<Jar> jars = new ArrayList<>();
+        private int headerFlags;
+        private long largestStoredClass = -1;
+
+        Fixture headerFlags(int value) {
+            this.headerFlags = value;
+            return this;
+        }
+
+        Fixture largestStoredClass(long value) {
+            this.largestStoredClass = value;
+            return this;
+        }
 
         Jar addJar(String name) {
             Jar jar = new Jar(name, jars.size());
@@ -1178,7 +1401,8 @@ class RunnerClassLoaderTest {
         }
 
         private byte[] index() {
-            TestIndexBuilder builder = new TestIndexBuilder().startClass("org.example.App");
+            TestIndexBuilder builder = new TestIndexBuilder().startClass("org.example.App")
+                    .headerFlags(headerFlags).largestStoredClass(largestStoredClass);
             for (Jar jar : jars) {
                 TestIndexBuilder.Jar record = builder.addJar(jar.name).flags(jar.flags);
                 if (jar.manifest != null) {

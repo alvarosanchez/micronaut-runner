@@ -16,6 +16,7 @@
 package io.micronaut.runner.benchmarks;
 
 import io.micronaut.runner.IndexFormat;
+import io.micronaut.runner.build.ArchiveReads;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.RunnerJarReader;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,7 @@ import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -55,6 +57,12 @@ class BenchmarkEntryModeTest {
             "runner-extracted",
             "runner-extracted-aot");
 
+    /** The opt-in rows, in the order they follow {@code runner-stored-aot}. */
+    private static final List<String> OPT_IN_ROWS = List.of(
+            "runner-stored-reflection",
+            "runner-stored-positional",
+            "runner-stored-positional-aot");
+
     @Test
     void matrixNamesPluginDefaults() {
         assertEquals(CORE_ROWS, SampleBuild.variantNames());
@@ -72,11 +80,51 @@ class BenchmarkEntryModeTest {
         assertTrue(core.stream().noneMatch(name -> name.endsWith("-reflection")), core.toString());
 
         List<String> expected = new ArrayList<>(CORE_ROWS);
-        expected.add(expected.indexOf("runner-stored-aot") + 1, "runner-stored-reflection");
+        expected.addAll(expected.indexOf("runner-stored-aot") + 1, OPT_IN_ROWS);
         assertEquals(expected, withOptIn);
-        assertEquals(CORE_ROWS.size() + 1, withOptIn.size());
+        assertEquals(CORE_ROWS.size() + OPT_IN_ROWS.size(), withOptIn.size());
         assertEquals(EntryMode.REFLECTION, EntryMode.requestedBy("runner-stored-reflection"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional-aot"));
         assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-stored"));
+        assertTrue(core.stream().noneMatch(OPT_IN_ROWS::contains), "opt-in rows never gate: " + core);
+    }
+
+    @Test
+    void thePositionalRowsAreComparedWithTheMappedRowsAndWithShadow() {
+        List<String> pairs = SampleBuild.comparisons().stream()
+                .map(spec -> spec.candidate() + " - " + spec.baseline())
+                .toList();
+        assertTrue(pairs.containsAll(List.of(
+                "runner-stored-positional - runner-stored",
+                "runner-stored-positional-aot - runner-stored-aot",
+                "runner-stored-positional - shadow",
+                "runner-stored-positional-aot - shadow-aot")), pairs.toString());
+    }
+
+    @Test
+    void aPositionalRowPackagesAnIndexThatAsksForPositionalReads(@TempDir Path output) throws Exception {
+        Path classes = compile(output.resolve("positional"), "fixture.PositionalMain", """
+                package fixture;
+                public final class PositionalMain {
+                    public static void main(String[] args) { }
+                }
+                """);
+
+        Variant positional = SampleBuild.runnerJar(output, "runner-stored-positional", "fixture.PositionalMain",
+                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB,
+                SampleBuild.RunnerJarOptions.DEFAULTS.withArchiveReads(ArchiveReads.POSITIONAL));
+        Variant mapped = SampleBuild.runnerJar(output, "runner-stored", "fixture.PositionalMain",
+                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
+
+        assertTrue(positional.description().contains("archiveReads POSITIONAL"), positional.description());
+        try (RunnerJarReader reader = RunnerJarReader.open(positional.artifact())) {
+            assertTrue(reader.index().positionalReads());
+            assertTrue(reader.index().largestStoredClass() > 0);
+        }
+        try (RunnerJarReader reader = RunnerJarReader.open(mapped.artifact())) {
+            assertFalse(reader.index().positionalReads(), "a row that sets nothing follows the builder default");
+        }
     }
 
     @Test

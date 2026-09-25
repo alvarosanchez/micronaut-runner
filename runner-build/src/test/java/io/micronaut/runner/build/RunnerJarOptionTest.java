@@ -69,7 +69,8 @@ class RunnerJarOptionTest {
                 .enableNativeAccess(true)
                 .addOpens(List.of("java.base/java.lang", "java.base/java.util"))
                 .addExports(List.of("java.base/sun.nio.ch"))
-                .manifestAttributes(Map.of("Implementation-Vendor", "Example Ltd")));
+                .manifestAttributes(Map.of("Implementation-Vendor", "Example Ltd"))
+                .archiveReads(ArchiveReads.POSITIONAL));
 
         for (RunnerJarSpec spec : List.of(defaults, configured)) {
             RunnerJarSpec.Builder replayed = RunnerJarSpec.builder();
@@ -83,6 +84,7 @@ class RunnerJarOptionTest {
         assertEquals("STORED", RunnerJarOption.COMPRESSION.defaultDescription());
         assertEquals("true", RunnerJarOption.ENTRY_STUB.defaultDescription());
         assertEquals("empty", RunnerJarOption.ADD_OPENS.defaultDescription());
+        assertEquals("MAPPED", RunnerJarOption.ARCHIVE_READS.defaultDescription());
         for (RunnerJarOption option : RunnerJarOption.values()) {
             assertFalse(option.defaultDescription().isBlank(), () -> option + " has no default description");
             assertTrue(option.since().matches("\\d+\\.\\d+"), () -> option + " since " + option.since());

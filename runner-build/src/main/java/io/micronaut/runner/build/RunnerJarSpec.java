@@ -69,6 +69,7 @@ public final class RunnerJarSpec {
     private final List<String> addOpens;
     private final List<String> addExports;
     private final boolean enableNativeAccess;
+    private final ArchiveReads archiveReads;
     private final Instant timestamp;
     private final Map<String, String> effectiveOptions;
 
@@ -91,6 +92,7 @@ public final class RunnerJarSpec {
         this.addOpens = List.copyOf(builder.addOpens);
         this.addExports = List.copyOf(builder.addExports);
         this.enableNativeAccess = builder.enableNativeAccess;
+        this.archiveReads = builder.archiveReads;
         this.timestamp = builder.timestamp;
         Map<String, String> effective = new LinkedHashMap<>();
         for (RunnerJarOption option : RunnerJarOption.values()) {
@@ -267,6 +269,17 @@ public final class RunnerJarSpec {
     }
 
     /**
+     * How the launcher reads the archive when {@code micronaut.runner.mmap} does not say: by mapping all of it,
+     * or by mapping only the index and reading classes positionally. It is recorded as a flag of the index
+     * header.
+     *
+     * @return the read mode, {@link ArchiveReads#MAPPED} unless configured otherwise
+     */
+    public ArchiveReads archiveReads() {
+        return archiveReads;
+    }
+
+    /**
      * The instant every entry of the archive is dated with, converted to MS-DOS time in UTC.
      *
      * @return the reproducible timestamp
@@ -300,6 +313,7 @@ public final class RunnerJarSpec {
             case ADD_OPENS -> String.join(",", addOpens);
             case ADD_EXPORTS -> String.join(",", addExports);
             case MANIFEST_ATTRIBUTES -> formatAttributes(manifestAttributes);
+            case ARCHIVE_READS -> archiveReads.name();
         };
     }
 
@@ -340,6 +354,7 @@ public final class RunnerJarSpec {
         private List<String> addOpens;
         private List<String> addExports;
         private boolean enableNativeAccess;
+        private ArchiveReads archiveReads;
         private Instant timestamp = ZipWriter.DEFAULT_TIMESTAMP;
 
         /**
@@ -589,6 +604,23 @@ public final class RunnerJarSpec {
         }
 
         /**
+         * Sets how the launcher reads the archive when {@code micronaut.runner.mmap} does not say.
+         *
+         * <p>{@link ArchiveReads#POSITIONAL} maps only the index and reads each class with one positional read
+         * into a pooled buffer: the resident set size is lower and startup slightly slower. Defaults to
+         * {@link ArchiveReads#MAPPED}, because paired startup measurements found that slowdown larger than a
+         * default may cost; see {@link ArchiveReads}.</p>
+         *
+         * @param value the read mode
+         * @return this builder
+         * @throws NullPointerException if {@code value} is {@code null}
+         */
+        public Builder archiveReads(ArchiveReads value) {
+            this.archiveReads = Objects.requireNonNull(value, "archiveReads");
+            return this;
+        }
+
+        /**
          * Sets a packaging option by its {@linkplain RunnerJarOption#optionName() name}, whether it has a
          * typed setter or not. This is how a build plugin passes the options it has no typed property for.
          *
@@ -625,6 +657,7 @@ public final class RunnerJarSpec {
                 case ADD_OPENS -> addOpens(parseList(value));
                 case ADD_EXPORTS -> addExports(parseList(value));
                 case MANIFEST_ATTRIBUTES -> manifestAttributes(parseAttributes(option, value));
+                case ARCHIVE_READS -> archiveReads(ArchiveReads.parse(value));
             };
         }
 
