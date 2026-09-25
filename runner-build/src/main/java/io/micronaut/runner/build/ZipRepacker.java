@@ -36,10 +36,16 @@ import java.util.Objects;
  * the build-time cost because a stored nested entry can be handed to {@code ClassLoader.defineClass} as a
  * slice of the memory-mapped outer archive, with no inflater and no intermediate {@code byte[]} at all.</p>
  *
- * <p>What is preserved: entry names, their central directory order, their MS-DOS timestamps and their
- * CRC-32 values, and the manifest, verbatim, because a per-jar manifest carries package metadata and sealing, so
- * rewriting it would change the semantics of the classes in it. (Digest attributes left in the manifest of a
- * jar whose signature files were dropped are inert, so they are left alone too.)</p>
+ * <p>What is preserved: entry names, their central directory order, their MS-DOS timestamps, the CRC-32 value
+ * of every entry that no class transform changes, and the manifest, verbatim, because a per-jar manifest carries
+ * package metadata and sealing, so rewriting it would change the semantics of the classes in it. (Digest
+ * attributes left in the manifest of a jar whose signature files were dropped are inert, so they are left alone
+ * too.) Entry order is preserved too, except for entries a transform step adds.</p>
+ *
+ * <p>What a class transform changes: {@link #repack(ZipReader, OutputStream, ClassTransformPipeline.JarRun)}
+ * runs the {@link ClassTransformPipeline} over the jar's classes, so a class a step rewrites keeps its name,
+ * position and MS-DOS time and carries the size and CRC-32 of its new bytes. The public {@code repack} methods
+ * run no transform and keep every entry's bytes.</p>
  *
  * <p>What is dropped: every extra field, including ZIP64 ones, since {@link ZipWriter} re-derives what it
  * needs; data descriptors, because sizes are known up front and are written into the local header; the
@@ -76,6 +82,28 @@ final class ZipRepacker {
      *                     CRC-32, or the target cannot be written
      */
     public static RepackResult repack(ZipReader source, OutputStream target) throws IOException {
+        return repack(source, target, null);
+    }
+
+    /**
+     * Repacks an archive so that every entry is stored uncompressed, running a class transform pipeline over
+     * its classes.
+     *
+     * <p>A class the pipeline {@linkplain ClassTransformPipeline.JarRun#reads(long) reads} is read into memory
+     * once, inflated and checked against its CRC-32, and handed to the pipeline; every other entry, and a class
+     * above {@link ClassTransformPipeline#MAX_CLASS_SIZE}, is streamed as {@link #repack(ZipReader, OutputStream)}
+     * streams it, so the memory a repack needs stays bounded. A class the pipeline leaves alone is written from
+     * the bytes it read, with the same header, CRC-32 and data as the streaming path would write.</p>
+     *
+     * @param source the archive to read; it is neither closed nor modified
+     * @param target the stream the nested jar is written to; it is flushed but not closed
+     * @param run    the pipeline's run over this jar, or {@code null} to transform nothing
+     * @return the entries of the produced jar, with offsets relative to its first byte
+     * @throws IOException if the source cannot be read, an entry's content does not match its recorded
+     *                     CRC-32, or the target cannot be written
+     */
+    static RepackResult repack(ZipReader source, OutputStream target, ClassTransformPipeline.JarRun run)
+            throws IOException {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(target, "target");
         List<ZipEntryInfo> entries = new ArrayList<>();
@@ -104,7 +132,19 @@ final class ZipRepacker {
                 dataOffset = writer.writeDirectoryEntry(name, entry.dosTime());
                 size = 0;
                 crc = 0;
+            } else if (run != null && ClassTransformPipeline.isClass(entry)
+                    && run.reads(entry.uncompressedSize())) {
+                // Inflated at its exact size and checked against its CRC-32, so that CRC-32 describes the bytes
+                // whenever the pipeline hands them back unchanged.
+                byte[] original = source.read(entry);
+                byte[] output = run.process(name, original);
+                crc = output == original ? entry.crc32() : run.crc32(output);
+                size = output.length;
+                dataOffset = writer.writeEntry(name, output, 0, output.length, crc, entry.dosTime());
             } else {
+                if (run != null && ClassTransformPipeline.isClass(entry)) {
+                    run.skip();
+                }
                 dataOffset = writer.writeEntry(name, source, entry, entry.dosTime());
                 size = entry.uncompressedSize();
                 crc = entry.crc32();

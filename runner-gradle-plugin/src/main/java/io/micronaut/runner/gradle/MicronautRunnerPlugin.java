@@ -22,6 +22,7 @@ import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
 import org.gradle.api.artifacts.result.ResolvedArtifactResult;
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition;
 import org.gradle.api.attributes.Usage;
@@ -42,6 +43,7 @@ import org.jspecify.annotations.Nullable;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -170,6 +172,7 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
                     // Dependencies only: the application's own output is a separate layer of the archive.
                     task.getClasspath().from(runtimeClasspath);
                     task.getCoordinates().set(coordinatesOf(runtimeClasspath));
+                    task.getProjectModules().set(projectModulesOf(runtimeClasspath));
 
                     configureOptions(task, extension);
 
@@ -293,6 +296,23 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
                         artifact.getId().getComponentIdentifier().getDisplayName());
             }
             return byPath;
+        });
+    }
+
+    /**
+     * Captures the absolute path of every resolved dependency that another project of this build produced,
+     * which the packaging library never rewrites. A project is told apart by its component identifier, never
+     * by a display name, which an included build or a custom component can spell differently.
+     */
+    private Provider<Set<String>> projectModulesOf(Configuration runtimeClasspath) {
+        return runtimeClasspath.getIncoming().getArtifacts().getResolvedArtifacts().map(artifacts -> {
+            Set<String> modules = new LinkedHashSet<>();
+            for (ResolvedArtifactResult artifact : artifacts) {
+                if (artifact.getId().getComponentIdentifier() instanceof ProjectComponentIdentifier) {
+                    modules.add(artifact.getFile().getAbsolutePath());
+                }
+            }
+            return modules;
         });
     }
 

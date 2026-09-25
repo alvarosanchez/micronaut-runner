@@ -46,10 +46,12 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * Packages a Micronaut application as a runner jar: one executable archive in which every dependency
@@ -90,6 +92,13 @@ public class PackageMojo extends AbstractMojo {
     /** The build session, whose user properties ({@code -D}) set passthrough options. */
     @Parameter(defaultValue = "${session}", readonly = true, required = true)
     private MavenSession session;
+
+    /**
+     * The projects of the reactor. A dependency whose group, artifact and version match one of them is a
+     * module of this build, whose classes the packaging library never rewrites.
+     */
+    @Parameter(defaultValue = "${reactorProjects}", readonly = true)
+    private List<MavenProject> reactorProjects;
 
     /** Attaches the archive when a classifier is set. */
     @Component
@@ -279,6 +288,12 @@ public class PackageMojo extends AbstractMojo {
      *                              packaging library's or maven-archiver's message
      */
     RunnerJarSpec buildSpec(File classes, File target, File manifestSource) throws MojoFailureException {
+        Set<String> modules = new HashSet<>();
+        if (reactorProjects != null) {
+            for (MavenProject module : reactorProjects) {
+                modules.add(module.getGroupId() + ":" + module.getArtifactId() + ":" + module.getVersion());
+            }
+        }
         List<Dependency> dependencies = new ArrayList<>();
         for (Artifact artifact : project.getArtifacts()) {
             if (!Artifact.SCOPE_COMPILE.equals(artifact.getScope())
@@ -292,7 +307,10 @@ public class PackageMojo extends AbstractMojo {
                 // Runtime resolution never produces this; it is a broken reactor or extension.
                 throw new MojoFailureException("The dependency " + coordinates + " has no resolved file");
             }
-            dependencies.add(Dependency.of(file.toPath(), coordinates));
+            // The base version, because a snapshot resolved from a repository reports a timestamped version.
+            boolean module = modules.contains(artifact.getGroupId() + ":" + artifact.getArtifactId() + ":"
+                    + artifact.getBaseVersion());
+            dependencies.add(Dependency.of(file.toPath(), coordinates).projectModule(module));
         }
 
         try {

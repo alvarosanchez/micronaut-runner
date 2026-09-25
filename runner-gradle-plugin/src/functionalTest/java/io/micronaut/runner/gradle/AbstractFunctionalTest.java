@@ -661,10 +661,35 @@ abstract class AbstractFunctionalTest {
         return libraries;
     }
 
+    /**
+     * Compiles one class with {@code -g}, so that it carries local-variable tables, into a jar of its own.
+     *
+     * @param jar       the jar to write
+     * @param className the class's binary name
+     * @param source    its source
+     * @throws IOException if it cannot be compiled or written
+     */
+    static void debugJar(Path jar, String className, String source) throws IOException {
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        Assumptions.assumeTrue(compiler != null, "this JDK has no java compiler");
+        Path root = Files.createTempDirectory("runner-plugin-debug-lib");
+        String entry = className.replace('.', '/');
+        compile(compiler, root.resolve("sources"), root.resolve("classes"), List.of("-g"),
+                Map.of(entry + ".java", source));
+        Files.createDirectories(jar.getParent());
+        writeJar(jar, Map.of(entry + ".class", Files.readAllBytes(root.resolve("classes").resolve(entry + ".class"))));
+    }
+
     private static void compile(JavaCompiler compiler, Path sources, Path classes, Map<String, String> files)
             throws IOException {
+        compile(compiler, sources, classes, List.of(), files);
+    }
+
+    private static void compile(JavaCompiler compiler, Path sources, Path classes, List<String> options,
+                                Map<String, String> files) throws IOException {
         Files.createDirectories(classes);
-        List<String> arguments = new ArrayList<>(List.of("--release", "25", "-d", classes.toString()));
+        List<String> arguments = new ArrayList<>(options);
+        arguments.addAll(List.of("--release", "25", "-d", classes.toString()));
         for (Map.Entry<String, String> file : new TreeMap<>(files).entrySet()) {
             Path source = sources.resolve(file.getKey());
             write(source, file.getValue());

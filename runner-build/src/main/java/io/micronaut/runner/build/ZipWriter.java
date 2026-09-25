@@ -301,7 +301,26 @@ final class ZipWriter implements Closeable {
         Objects.checkFromIndexSize(offset, length, data.length);
         CRC32 crc = new CRC32();
         crc.update(data, offset, length);
-        long dataOffset = writeHeader(name, length, crc.getValue(), dosTime, false);
+        return writeEntry(name, data, offset, length, crc.getValue(), dosTime);
+    }
+
+    /**
+     * Writes a file entry from part of an array whose CRC-32 the caller already knows, because it read the
+     * content through a checked read or computed the checksum itself. The CRC-32 is written as given.
+     *
+     * @param name    the entry name, which must be safe and must not end with {@code '/'}
+     * @param data    the array holding the content
+     * @param offset  the first byte of the content
+     * @param length  the content length
+     * @param crc32   the CRC-32 of those bytes, as an unsigned 32-bit value
+     * @param dosTime the MS-DOS date and time to store
+     * @return the absolute offset of the entry's first data byte
+     * @throws IOException if the name is unsafe or duplicated, or the stream cannot be written
+     */
+    long writeEntry(String name, byte[] data, int offset, int length, long crc32, int dosTime) throws IOException {
+        Objects.requireNonNull(data, "data");
+        Objects.checkFromIndexSize(offset, length, data.length);
+        long dataOffset = writeHeader(name, length, crc32, dosTime, false);
         writeBytes(data, offset, length);
         return dataOffset;
     }

@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Timeout;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -36,6 +37,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
@@ -128,6 +130,7 @@ class HelloNettySampleTest {
                 () -> "the packaging task did not run:\n" + result.getOutput());
         assertTrue(Files.isRegularFile(archive),
                 () -> "the plugin did not write " + archive + ":\n" + result.getOutput());
+        assertDependencyClassesWereStripped(archive);
         Path unicodeArchive = sample.resolve("build/unicode-é/apps with a space/app.jar");
         Files.createDirectories(unicodeArchive.getParent());
         Files.copy(archive, unicodeArchive, StandardCopyOption.REPLACE_EXISTING);
@@ -200,6 +203,29 @@ class HelloNettySampleTest {
                 () -> "the launcher classes loaded before the entry stub changed; added " + added
                         + ", missing " + missing + ". See PRE_MAIN_LAUNCHER_CLASSES.");
         assertTrue(forbidden.isEmpty(), () -> "loaded before the entry stub: " + forbidden);
+    }
+
+    /**
+     * The default build strips the local-variable tables of dependency classes, and records what it did in
+     * {@code MICRONAUT-INF/transforms.txt}: one tab-separated line per nested jar and step, whose third column
+     * counts the classes that step rewrote.
+     *
+     * @param archive the runner jar
+     */
+    private static void assertDependencyClassesWereStripped(Path archive) throws IOException {
+        try (JarFile jar = new JarFile(archive.toFile())) {
+            JarEntry entry = jar.getJarEntry("MICRONAUT-INF/transforms.txt");
+            assertNotNull(entry, () -> archive + " records no build transforms");
+            String text;
+            try (InputStream in = jar.getInputStream(entry)) {
+                text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            long rewritten = text.lines()
+                    .filter(line -> line.startsWith("MICRONAUT-INF/lib/"))
+                    .mapToLong(line -> Long.parseLong(line.split("\t")[2]))
+                    .sum();
+            assertTrue(rewritten > 0, () -> "no dependency class was rewritten:\n" + text);
+        }
     }
 
     /** Checks the manifest the JVM will read before anything is started, so a failure names the cause. */

@@ -1,0 +1,11 @@
+/*
+ * Every subproject declares runtime dependencies only: nothing is compiled, the build exists so that Gradle
+ * resolves real class paths for the transform corpus.
+ */
+subprojects {
+    apply plugin: 'java'
+
+    dependencies {
+        implementation platform("io.micronaut.platform:micronaut-platform:${libs.versions.micronaut.platform.get()}")
+    }
+}

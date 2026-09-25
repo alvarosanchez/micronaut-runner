@@ -34,6 +34,7 @@ import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
+import org.gradle.api.provider.SetProperty;
 import org.gradle.api.tasks.CacheableTask;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
@@ -54,6 +55,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -194,11 +196,22 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract MapProperty<String, String> getCoordinates();
 
     /**
+     * The absolute paths of the dependencies that another project of this build produced. The packaging library
+     * never rewrites their classes: like the application's own, they are user code. Not an input: each
+     * dependency's flag is part of {@link #getDependencyInputs()}. A task registered by hand leaves it empty,
+     * which treats every dependency as a library.
+     *
+     * @return the paths of the project dependencies
+     */
+    @Internal
+    public abstract SetProperty<String> getProjectModules();
+
+    /**
      * The ordered, relocatable identity of every dependency used to build the archive.
      *
      * <p>The file collection above retains task dependency inference. This nested sequence adds the ordering
      * Gradle's file collection snapshot does not retain and pairs each position with its file name,
-     * coordinates and raw bytes. Path sensitivity is deliberately {@code NONE}: moving an otherwise
+     * coordinates, project-module flag and raw bytes. Path sensitivity is deliberately {@code NONE}: moving an otherwise
      * identical project must not change its cache key.</p>
      *
      * @return dependency inputs in runtime classpath order
@@ -206,10 +219,12 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     @Nested
     public List<DependencyInput> getDependencyInputs() {
         Map<String, String> coordinates = getCoordinates().get();
+        Set<String> projectModules = getProjectModules().getOrElse(Set.of());
         List<DependencyInput> inputs = new ArrayList<>();
         for (File file : getClasspath().getFiles()) {
-            String gav = coordinates.get(file.getAbsolutePath());
-            inputs.add(gav == null ? new DependencyInput(file) : new DependencyInput(file, gav));
+            String path = file.getAbsolutePath();
+            String gav = coordinates.get(path);
+            inputs.add(new DependencyInput(file, gav == null ? "" : gav, projectModules.contains(path)));
         }
         return inputs;
     }
@@ -365,11 +380,14 @@ public abstract class MicronautRunnerJar extends DefaultTask {
         }
 
         Map<String, String> coordinates = getCoordinates().get();
+        Set<String> projectModules = getProjectModules().getOrElse(Set.of());
         List<Dependency> dependencies = new ArrayList<>();
         for (File file : getClasspath().getFiles()) {
             // A file dependency resolves to no coordinates at all.
-            String gav = coordinates.get(file.getAbsolutePath());
-            dependencies.add(gav == null ? Dependency.of(file.toPath()) : Dependency.of(file.toPath(), gav));
+            String path = file.getAbsolutePath();
+            String gav = coordinates.get(path);
+            Dependency dependency = gav == null ? Dependency.of(file.toPath()) : Dependency.of(file.toPath(), gav);
+            dependencies.add(dependency.projectModule(projectModules.contains(path)));
         }
 
         RunnerJarSpec.Builder spec = RunnerJarSpec.builder()
@@ -456,14 +474,12 @@ public abstract class MicronautRunnerJar extends DefaultTask {
 
         private final File file;
         private final String coordinates;
+        private final boolean projectModule;
 
-        private DependencyInput(File file) {
-            this(file, "");
-        }
-
-        private DependencyInput(File file, String coordinates) {
+        private DependencyInput(File file, String coordinates, boolean projectModule) {
             this.file = file;
             this.coordinates = coordinates;
+            this.projectModule = projectModule;
         }
 
         /**
@@ -495,6 +511,17 @@ public abstract class MicronautRunnerJar extends DefaultTask {
         @Input
         public String getCoordinates() {
             return coordinates;
+        }
+
+        /**
+         * Whether another project of this build produced the dependency, which decides whether its classes are
+         * rewritten, so it is part of the cache key.
+         *
+         * @return whether the dependency is a project module
+         */
+        @Input
+        public boolean isProjectModule() {
+            return projectModule;
         }
     }
 

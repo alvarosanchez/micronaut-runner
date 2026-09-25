@@ -44,6 +44,7 @@ public final class RunnerJarResult {
     private final long archiveSize;
     private final List<String> warnings;
     private final Map<String, String> effectiveOptions;
+    private final List<TransformReport> transforms;
 
     /**
      * Validates the result and makes its collections immutable.
@@ -63,7 +64,30 @@ public final class RunnerJarResult {
     RunnerJarResult(Path output, int jarCount, int entryCount, int applicationEntryCount,
             int mergedServiceEntryCount, long archiveSize, List<String> warnings,
             Map<String, String> effectiveOptions) {
+        this(output, jarCount, entryCount, applicationEntryCount, mergedServiceEntryCount, archiveSize, warnings,
+                effectiveOptions, List.of());
+    }
+
+    /**
+     * Validates the result and makes its collections immutable.
+     *
+     * @param output                  the archive that was written
+     * @param jarCount                the number of jars in the index
+     * @param entryCount              the number of index records
+     * @param applicationEntryCount   the number of physical records of the application layer
+     * @param mergedServiceEntryCount the number of merged service entries
+     * @param archiveSize             the length of the archive
+     * @param warnings                the warnings reported during the build
+     * @param effectiveOptions        the options the archive was built with
+     * @param transforms              what each build-time class transform did, in the order they ran
+     * @throws NullPointerException     if a reference argument is {@code null}
+     * @throws IllegalArgumentException if a count or the size is negative
+     */
+    RunnerJarResult(Path output, int jarCount, int entryCount, int applicationEntryCount,
+            int mergedServiceEntryCount, long archiveSize, List<String> warnings,
+            Map<String, String> effectiveOptions, List<TransformReport> transforms) {
         this.output = Objects.requireNonNull(output, "output");
+        this.transforms = List.copyOf(Objects.requireNonNull(transforms, "transforms"));
         this.warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
         this.effectiveOptions = Collections.unmodifiableMap(
                 new LinkedHashMap<>(Objects.requireNonNull(effectiveOptions, "effectiveOptions")));
@@ -164,6 +188,18 @@ public final class RunnerJarResult {
      */
     public Map<String, String> effectiveOptions() {
         return effectiveOptions;
+    }
+
+    /**
+     * What each build-time class transform did to the dependency classes, one report per transform that
+     * ran, in the order they ran. It is empty when none ran: every transform is turned off, the dependencies
+     * are nested with {@link Compression#PRESERVE}, or a transform was turned off for the build because the
+     * class path needs what it would remove.
+     *
+     * @return the reports, unmodifiable
+     */
+    public List<TransformReport> transforms() {
+        return transforms;
     }
 
     /**

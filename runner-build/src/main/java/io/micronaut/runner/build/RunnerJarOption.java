@@ -97,7 +97,13 @@ public enum RunnerJarOption {
      * Extra main attributes of the runner jar's manifest. See
      * {@link RunnerJarSpec.Builder#manifestAttributes(Map)}.
      */
-    MANIFEST_ATTRIBUTES("manifestAttributes", Map.class, "", Exposure.TYPED, "1.0");
+    MANIFEST_ATTRIBUTES("manifestAttributes", Map.class, "", Exposure.TYPED, "1.0"),
+
+    /**
+     * Whether to drop the local-variable tables of dependency classes when they are re-packed. See
+     * {@link RunnerJarSpec.Builder#stripLocalVariables(boolean)}.
+     */
+    STRIP_LOCAL_VARIABLES("stripLocalVariables", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
 
     private final String optionName;
     private final Class<?> valueType;

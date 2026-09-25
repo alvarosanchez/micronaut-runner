@@ -69,7 +69,8 @@ class RunnerJarOptionTest {
                 .enableNativeAccess(true)
                 .addOpens(List.of("java.base/java.lang", "java.base/java.util"))
                 .addExports(List.of("java.base/sun.nio.ch"))
-                .manifestAttributes(Map.of("Implementation-Vendor", "Example Ltd")));
+                .manifestAttributes(Map.of("Implementation-Vendor", "Example Ltd"))
+                .stripLocalVariables(false));
 
         for (RunnerJarSpec spec : List.of(defaults, configured)) {
             RunnerJarSpec.Builder replayed = RunnerJarSpec.builder();
