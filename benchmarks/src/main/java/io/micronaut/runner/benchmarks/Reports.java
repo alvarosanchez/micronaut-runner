@@ -99,7 +99,8 @@ final class Reports {
         out.append("  \"interleaved\": true,\n");
         out.append("  \"timingRunsCarryLoggingFlags\": false,\n");
         out.append("  \"jvmProcessState\": \"fresh per sample\",\n");
-        out.append("  \"osPageCacheState\": \"uncontrolled\",\n");
+        out.append("  \"osPageCacheState\": ")
+                .append(quote(context.conditions().pageCache().externalName())).append(",\n");
         out.append("  \"applicationCacheMode\": \"per-variant\",\n");
         appendProvenance(out, context.provenance());
         out.append(",\n");
@@ -115,6 +116,8 @@ final class Reports {
         out.append("    \"availableProcessors\": ").append(provenance.availableProcessors()).append(",\n");
         out.append("    \"totalMemoryBytes\": ").append(provenance.totalMemoryBytes()).append('\n');
         out.append("  },\n");
+        appendConditions(out, context.conditions());
+        out.append(",\n");
         out.append("  \"variants\": [\n");
         for (int i = 0; i < results.size(); i++) {
             appendVariant(out, context, results.get(i));
@@ -147,6 +150,42 @@ final class Reports {
         out.append("  }\n");
         out.append("}\n");
         return out.toString();
+    }
+
+    /** The CPU and page-cache conditions; {@code null} marks what is unlimited, uncontrolled or unreadable. */
+    private static void appendConditions(StringBuilder out, RunConditions conditions) {
+        out.append("  \"conditions\": {\n");
+        out.append("    \"cpuLimit\": ").append(nullable(conditions.cpuLimit())).append(",\n");
+        out.append("    \"machineCpuCount\": ").append(conditions.machineCpuCount()).append(",\n");
+        out.append("    \"machineCpus\": ").append(quote(conditions.machineCpus())).append(",\n");
+        out.append("    \"childCpus\": ").append(quote(conditions.childCpus())).append(",\n");
+        out.append("    \"harnessCpus\": ").append(quote(conditions.harnessCpus())).append(",\n");
+        out.append("    \"childCpuSiblings\": ");
+        if (conditions.childCpuSiblings() == null) {
+            out.append("null");
+        } else {
+            out.append('{');
+            int index = 0;
+            for (Map.Entry<Integer, String> entry : conditions.childCpuSiblings().entrySet()) {
+                out.append(index++ == 0 ? "" : ", ").append(quote(Integer.toString(entry.getKey())))
+                        .append(": ").append(quote(entry.getValue()));
+            }
+            out.append('}');
+        }
+        out.append(",\n");
+        out.append("    \"cpuModel\": ").append(quote(conditions.cpuModel())).append(",\n");
+        out.append("    \"probeAvailableProcessors\": ").append(nullable(conditions.probeCpus())).append(",\n");
+        out.append("    \"probeFlags\": ").append(quote(conditions.probeFlags())).append(",\n");
+        out.append("    \"osPageCacheState\": ").append(quote(conditions.pageCache().externalName())).append(",\n");
+        out.append("    \"evictionMethod\": ").append(quote(conditions.evictionMethod())).append(",\n");
+        out.append("    \"kernel\": ").append(quote(conditions.kernel())).append(",\n");
+        out.append("    \"workDirectoryMount\": ").append(quote(conditions.storageMount())).append(",\n");
+        out.append("    \"workDirectoryDevices\": ").append(quote(conditions.storageDevices())).append('\n');
+        out.append("  }");
+    }
+
+    private static String nullable(Integer value) {
+        return value == null ? "null" : value.toString();
     }
 
     private static void appendProvenance(StringBuilder out, BenchmarkProvenance provenance) {
@@ -443,7 +482,7 @@ final class Reports {
                 + ", \"ciReason\": " + quote(statistics.ciReason()) + "}";
     }
 
-    /** All nine fields, each {@code null} where the value is unavailable ({@code -1}). */
+    /** All eleven fields, each {@code null} where the value is unavailable ({@code -1}). */
     private static String snapshot(ReadinessSnapshot snapshot) {
         ReadinessSnapshot value = snapshot == null ? ReadinessSnapshot.UNAVAILABLE : snapshot;
         return "{\"probeMillis\": " + (value.probeMillis() < 0 ? "null" : number(value.probeMillis()))
@@ -454,7 +493,9 @@ final class Reports {
                 + ", \"footprintBytes\": " + nullableCount(value.footprintBytes())
                 + ", \"peakFootprintBytes\": " + nullableCount(value.peakFootprintBytes())
                 + ", \"loadedClasses\": " + nullableCount(value.loadedClasses())
-                + ", \"sharedClasses\": " + nullableCount(value.sharedClasses()) + "}";
+                + ", \"sharedClasses\": " + nullableCount(value.sharedClasses())
+                + ", \"majorFaults\": " + nullableCount(value.majorFaults())
+                + ", \"readBytes\": " + nullableCount(value.readBytes()) + "}";
     }
 
     private static String nullableCount(long value) {
@@ -489,10 +530,14 @@ final class Reports {
         out.append("Time from process spawn to the first successful HTTP response, for the same Micronaut")
                 .append(" application across the required packaging and entry-path matrix.\n\n");
         out.append("- **Sample**: `sample` (relocatable identifier; source revision is in `results.json`)\n");
+        RunConditions conditions = context.conditions();
+        // The count captured before the harness pinned itself: the machine's, not the pinned harness's.
         out.append("- **Machine**: ").append(System.getProperty("os.name")).append(' ')
                 .append(System.getProperty("os.version")).append(" · ")
                 .append(System.getProperty("os.arch")).append(" · ")
-                .append(Runtime.getRuntime().availableProcessors()).append(" CPUs\n");
+                .append(conditions.machineCpuCount()).append(" CPUs")
+                .append(conditions.cpuModel() == null ? "" : " · " + conditions.cpuModel()).append('\n');
+        appendCpuLimit(out, conditions);
         out.append("- **JDK**: ").append(System.getProperty("java.version")).append(" (")
                 .append(System.getProperty("java.vendor")).append(")\n");
         out.append("- **Run**: ").append(context.iterations())
@@ -502,8 +547,7 @@ final class Reports {
         out.append("- **Completeness policy**: `")
                 .append(context.completenessPolicy().externalName()).append("`\n");
         out.append("- **JVM process**: fresh for every sample\n");
-        out.append("- **OS page cache**: uncontrolled; discarded warm-ups do not establish a controlled")
-                .append(" warm-cache or cold-filesystem-cache state\n");
+        appendPageCache(out, conditions);
         out.append("- **Application cache**: per variant. `shadow-aot`, `runner-stored-aot` and")
                 .append(" `runner-extracted-aot` use verified JDK AOT caches launched with `-XX:AOTMode=on`;")
                 .append(" classes defined by Runner's loader are cached but not AOT-linked. Their paired rows")
@@ -616,6 +660,56 @@ final class Reports {
         return out.toString();
     }
 
+    private static void appendCpuLimit(StringBuilder out, RunConditions conditions) {
+        if (conditions.cpuLimit() == null) {
+            out.append("- **CPU limit**: none; every child may run on every CPU the harness may use\n");
+            return;
+        }
+        out.append("- **CPU limit**: ").append(conditions.cpuLimit())
+                .append(conditions.cpuLimit() == 1 ? " CPU" : " CPUs")
+                .append(" by affinity (`taskset -c ").append(conditions.childCpus())
+                .append("`, not a CFS quota) for every child, AOT-cache training included: child CPUs `")
+                .append(conditions.childCpus()).append("`, harness CPUs `").append(conditions.harnessCpus())
+                .append("` (pinned after preparation), machine CPUs `").append(conditions.machineCpus()).append('`');
+        if (conditions.childCpuSiblings() != null) {
+            out.append("; SMT siblings:");
+            int index = 0;
+            for (Map.Entry<Integer, String> entry : conditions.childCpuSiblings().entrySet()) {
+                out.append(index++ == 0 ? " " : ", ").append("cpu").append(entry.getKey()).append(" `")
+                        .append(entry.getValue() == null ? "unavailable" : entry.getValue()).append('`');
+            }
+        }
+        out.append("; the probe JVM saw ")
+                .append(conditions.probeCpus() == null ? "an unrecorded number of" : conditions.probeCpus())
+                .append(conditions.probeCpus() != null && conditions.probeCpus() == 1 ? " CPU" : " CPUs")
+                .append(" with ergonomic flags `")
+                .append(conditions.probeFlags() == null ? "unavailable" : conditions.probeFlags()).append("`\n");
+    }
+
+    private static void appendPageCache(StringBuilder out, RunConditions conditions) {
+        switch (conditions.pageCache()) {
+            case UNCONTROLLED -> out.append("- **OS page cache**: uncontrolled; discarded warm-ups do not establish")
+                    .append(" a controlled warm-cache or cold-filesystem-cache state\n");
+            case EVICT_ARTIFACTS -> out.append("- **OS page cache**: `evict-artifacts`: before every launch, every")
+                    .append(" regular file of the variant's artifact and launch inputs (AOT cache included) is")
+                    .append(" evicted with `").append(conditions.evictionMethod()).append("`, outside the timed")
+                    .append(" interval; the JDK and the shared work directory are not, so only the packaging is cold.")
+                    .append(" `majorFaults` and `readBytes` at readiness confirm it\n");
+            case DROP_ALL -> out.append("- **OS page cache**: `drop-all`: `sync` and `")
+                    .append(conditions.evictionMethod()).append("` before every launch, outside the timed interval;")
+                    .append(" pages a live process maps, the harness JVM's own JDK among them, stay resident, so this")
+                    .append(" is colder than `evict-artifacts` but not a fresh node\n");
+        }
+        out.append("- **Storage**: kernel `").append(conditions.kernel()).append("`; work directory on ")
+                .append(conditions.storageMount() == null ? "unrecorded storage"
+                        : "`" + conditions.storageMount() + "`");
+        if (conditions.storageDevices() != null) {
+            out.append(" (`lsblk`: `").append(conditions.storageDevices().replace('\n', ';')
+                    .replaceAll("\\s+", " ")).append("`)");
+        }
+        out.append('\n');
+    }
+
     /**
      * One row per measured variant: the medians of its readiness snapshots. Memory is in MiB; the private
      * and peak columns name the platform's own counters, because they are not the same quantity on macOS and
@@ -625,11 +719,14 @@ final class Reports {
         out.append("## Memory and classes at readiness (not timed)\n\n");
         out.append("Read once per successful measured run, after readiness and outside the timed interval: memory")
                 .append(" from `/proc/<pid>/status` on Linux or `proc_pid_rusage` on macOS, loaded classes from")
-                .append(" `jstat -snap`. Medians over successful measured runs; `—` means unavailable. ")
+                .append(" `jstat -snap`. Major faults (`majflt` of `/proc/<pid>/stat`) and bytes read from storage")
+                .append(" (`read_bytes` of `/proc/<pid>/io`) are Linux only and show whether a launch found its")
+                .append(" files cached. Medians over successful measured runs; `—` means unavailable. ")
                 .append(RSS_VERSUS_PRIVATE).append("\n\n");
         out.append("| Variant | Runs | RSS, median | ").append(privateLabel()).append(", median | ")
-                .append(peakLabel()).append(", median | Loaded classes, median | From a shared archive, median |\n");
-        out.append("|---|---:|---:|---:|---:|---:|---:|\n");
+                .append(peakLabel()).append(", median | Loaded classes, median | From a shared archive, median |")
+                .append(" Major faults, median | Read from storage, median |\n");
+        out.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|\n");
         List<Double> probes = new ArrayList<>();
         boolean any = false;
         for (VariantResult result : results) {
@@ -645,6 +742,8 @@ final class Reports {
                     .append(" | ").append(mebibytes(medians.peakBytes()))
                     .append(" | ").append(medians.loadedClasses() < 0 ? "—" : medians.loadedClasses())
                     .append(" | ").append(medians.sharedClasses() < 0 ? "—" : medians.sharedClasses())
+                    .append(" | ").append(medians.majorFaults() < 0 ? "—" : medians.majorFaults())
+                    .append(" | ").append(mebibytes(medians.readBytes()))
                     .append(" |\n");
             for (StartupSample sample : result.samples()) {
                 if (!sample.warmup() && sample.atReadiness() != null && sample.atReadiness().probeMillis() >= 0) {
@@ -653,7 +752,7 @@ final class Reports {
             }
         }
         if (!any) {
-            out.append("| — | **not measured** | — | — | — | — | — |\n");
+            out.append("| — | **not measured** | — | — | — | — | — | — | — |\n");
         }
         out.append('\n');
         if (probes.isEmpty()) {

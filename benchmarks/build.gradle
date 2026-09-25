@@ -19,8 +19,9 @@ dependencies {
     pluginsUnderTest project(path: ':micronaut-runner-gradle-plugin', configuration: 'repository')
 }
 
-// ReadinessSnapshot reads macOS memory through an FFM downcall (proc_pid_rusage). The flag goes on the JVMs that
-// run the harness only, never on an application command.
+// ReadinessSnapshot reads macOS memory through an FFM downcall (proc_pid_rusage), and page-cache eviction calls
+// posix_fadvise the same way. The flag goes on the JVMs that run the harness only (test, benchmarkIntegrationTest
+// and startupBenchmark), never on an application command.
 tasks.withType(Test).configureEach {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
@@ -81,6 +82,22 @@ def startupBenchmark = tasks.register('startupBenchmark', JavaExec) {
         // Opt-in rows (ablations and experiments) are built and reported but never gate the exit code.
         if (providers.gradleProperty('benchmarks.optionalRows').map(String::toBoolean).getOrElse(false)) {
             arguments.add('--optional-rows')
+        }
+        // Each is passed only when set, so the default command line is unchanged.
+        // -Pbenchmarks.variants=shadow,runner-stored: only these rows (naming an opt-in row builds it).
+        def variants = providers.gradleProperty('benchmarks.variants')
+        if (variants.present) {
+            arguments.addAll(['--variants', variants.get()])
+        }
+        // -Pbenchmarks.cpus=N (Linux): every child JVM runs on N CPUs by affinity; the harness keeps the rest.
+        def cpus = providers.gradleProperty('benchmarks.cpus')
+        if (cpus.present) {
+            arguments.addAll(['--cpus', cpus.get()])
+        }
+        // -Pbenchmarks.pageCache=uncontrolled|evict-artifacts|drop-all
+        def pageCache = providers.gradleProperty('benchmarks.pageCache')
+        if (pageCache.present) {
+            arguments.addAll(['--page-cache', pageCache.get()])
         }
         arguments
     } as CommandLineArgumentProvider)

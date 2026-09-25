@@ -11,6 +11,14 @@ on:
         description: 'Measured iterations per packaging variant'
         required: false
         default: '20'
+      cpus:
+        description: 'Child JVM CPU limit for the benchmark job (taskset affinity); empty for none'
+        required: false
+        default: ''
+      pageCache:
+        description: 'OS page cache before each launch in the benchmark job: uncontrolled, evict-artifacts or drop-all'
+        required: false
+        default: 'uncontrolled'
   schedule:
     - cron: '0 4 * * 1'
   pull_request:
@@ -61,7 +69,14 @@ jobs:
       - name: "📈 Run benchmarks"
         env:
           BENCHMARK_ITERATIONS: ${{ github.event.inputs.iterations || '20' }}
-        run: ./gradlew :benchmarks:benchmarkIntegrationTest :benchmarks:jmh :benchmarks:packagingProfile :benchmarks:startupBenchmark "-Pbenchmarks.iterations=$BENCHMARK_ITERATIONS" --no-daemon
+          BENCHMARK_CPUS: ${{ github.event.inputs.cpus || '' }}
+          BENCHMARK_PAGE_CACHE: ${{ github.event.inputs.pageCache || '' }}
+        # The CPU and page-cache properties are added only when set, so the default command is unchanged.
+        run: |
+          conditions=()
+          if [ -n "$BENCHMARK_CPUS" ]; then conditions+=("-Pbenchmarks.cpus=$BENCHMARK_CPUS"); fi
+          if [ -n "$BENCHMARK_PAGE_CACHE" ]; then conditions+=("-Pbenchmarks.pageCache=$BENCHMARK_PAGE_CACHE"); fi
+          ./gradlew :benchmarks:benchmarkIntegrationTest :benchmarks:jmh :benchmarks:packagingProfile :benchmarks:startupBenchmark "-Pbenchmarks.iterations=$BENCHMARK_ITERATIONS" "${conditions[@]}" --no-daemon
 
       - name: "📝 Summarise"
         if: always()
@@ -89,5 +104,71 @@ jobs:
             benchmarks/build/reports/packaging/packaging-results.json
             benchmarks/build/reports/packaging/packaging-summary.md
             benchmarks/build/reports/jmh/results.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  # The Runner and Shadow comparison rows at one and two CPUs (taskset affinity) and with a cold page cache, on
+  # dispatch and schedule only. Each leg runs on its own machine, so compare the legs' paired Runner - Shadow
+  # differences, never their absolute times.
+  startup-cpu-matrix:
+    name: "Startup: cpus=${{ matrix.cpus || 'unlimited' }}, ${{ matrix.pageCache }}"
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cpus: '1'
+            pageCache: uncontrolled
+          - cpus: '2'
+            pageCache: uncontrolled
+          - cpus: ''
+            pageCache: uncontrolled
+          - cpus: ''
+            pageCache: evict-artifacts
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: "🔧 Setup JDK 25"
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: "🔧 Setup Gradle"
+        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+
+      - name: "📈 Run the startup benchmark"
+        env:
+          BENCHMARK_CPUS: ${{ matrix.cpus }}
+          BENCHMARK_PAGE_CACHE: ${{ matrix.pageCache }}
+        run: |
+          conditions=()
+          if [ -n "$BENCHMARK_CPUS" ]; then conditions+=("-Pbenchmarks.cpus=$BENCHMARK_CPUS"); fi
+          ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20 \
+            -Pbenchmarks.variants=shadow,shadow-stored,shadow-aot,runner-stored,runner-stored-aot,runner-preserve \
+            "${conditions[@]}" "-Pbenchmarks.pageCache=$BENCHMARK_PAGE_CACHE" --no-daemon
+
+      - name: "📝 Summarise"
+        if: always()
+        run: |
+          if [ -f benchmarks/build/reports/startup/summary.md ]; then
+            cat benchmarks/build/reports/startup/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No startup benchmark summary was produced.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: "📜 Upload results"
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: startup-cpus-${{ matrix.cpus || 'unlimited' }}-${{ matrix.pageCache }}
+          path: |
+            benchmarks/build/reports/startup/results.json
+            benchmarks/build/reports/startup/summary.md
           if-no-files-found: warn
           retention-days: 30

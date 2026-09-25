@@ -239,10 +239,11 @@ class BenchmarkCompletenessTest {
 
     @Test
     void sharedBuildFailurePreservesEveryRequiredVariantAsUnavailable(@TempDir Path output) throws Exception {
-        List<Variant> variants = SampleBuild.unavailableVariants("sample build failed", false);
+        List<Variant> variants = SampleBuild.unavailableVariants("sample build failed",
+                SampleBuild.variantNames());
         StartupBenchmark.Options options = new StartupBenchmark.Options(output, "file:/repo", "1.0", output,
                 output.resolve("artifacts"), 2, 1, 1234L, "/hello", Duration.ofSeconds(1), false,
-                CompletenessPolicy.REQUIRED, false);
+                CompletenessPolicy.REQUIRED, false, null, null, PageCacheMode.UNCONTROLLED);
         List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
             throw new AssertionError("an unavailable variant must not reach the runner");
         }), variants, options, log());
@@ -340,7 +341,8 @@ class BenchmarkCompletenessTest {
         Path sample = output.resolve("sample");
         Files.createDirectories(sample);
         return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, output.resolve("artifacts"),
-                iterations, warmup, 1234L, "/hello", Duration.ofSeconds(1), false, policy, false);
+                iterations, warmup, 1234L, "/hello", Duration.ofSeconds(1), false, policy, false, null, null,
+                PageCacheMode.UNCONTROLLED);
     }
 
     private static StartupBenchmark.Options options(Path output,
@@ -351,7 +353,7 @@ class BenchmarkCompletenessTest {
         Files.createDirectories(sample);
         return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, output.resolve("artifacts"),
                 iterations, warmup, seed, "/hello", Duration.ofSeconds(1), false, CompletenessPolicy.REQUIRED,
-                false);
+                false, null, null, PageCacheMode.UNCONTROLLED);
     }
 
     private static List<String> schedule(List<VariantResult> results) {

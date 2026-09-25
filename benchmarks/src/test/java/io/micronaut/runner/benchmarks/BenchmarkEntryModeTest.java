@@ -63,9 +63,11 @@ class BenchmarkEntryModeTest {
 
     @Test
     void sharedBuildFailureSchedulesTheCoreRowsAndOptInRowsOnlyOnRequest() {
-        List<String> core = SampleBuild.unavailableVariants("sample build failed", false).stream()
+        List<String> core = SampleBuild.unavailableVariants("sample build failed", SampleBuild.variantNames())
+                .stream()
                 .map(Variant::name).toList();
-        List<String> withOptIn = SampleBuild.unavailableVariants("sample build failed", true).stream()
+        List<String> withOptIn = SampleBuild.unavailableVariants("sample build failed",
+                SampleBuild.allVariantNames()).stream()
                 .map(Variant::name).toList();
 
         assertEquals(CORE_ROWS, core);
