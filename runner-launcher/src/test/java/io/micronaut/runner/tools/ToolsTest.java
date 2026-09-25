@@ -246,7 +246,8 @@ class ToolsTest {
             String output = capture(() -> Inspect.run(new String[0], transformed, transformedIndex,
                     transformedSource));
 
-            List<String> lines = List.of(output.split("\n"));
+            // Any line break: System.out ends each line with the platform's separator.
+            List<String> lines = List.of(output.split("\\R"));
             int heading = lines.indexOf("Build transforms");
             assertTrue(heading >= 0, output);
             assertEquals("  Micronaut-Runner-Version\t" + LAUNCHER_VERSION, lines.get(heading + 1), output);

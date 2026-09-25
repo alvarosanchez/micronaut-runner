@@ -48,6 +48,30 @@ keeps dependency class bytes as published, and `PRESERVE` keeps whole nested JAR
 * Output bytes depend on the JDK that runs the build, whose class-file library chooses the pool order: a stripped
 archive is byte-reproducible only when it is built with the same JDK build.
 
+On `test-suite/samples/benchmark-large`, stripping rewrites 7,102 of the 8,428 dependency classes and saves
+4,868,965 bytes, with no fallback. Measured by the startup harness (<<benchmarks>>) against the
+`runner-stored-keepdebug` control, 30 interleaved pairs on an Apple M4 Pro with Homebrew OpenJDK 25.0.4.1:
+
+[cols="40,60",options="header"]
+|===
+|Measure |Stripped minus tables kept
+
+|Readiness without a JDK cache
+|−12.6 ms paired median, 95% CI [−13.9, −8.1] (428.1 ms against 440.6 ms)
+
+|Readiness with the JDK AOT cache
+|−2.1 ms, 95% CI [−5.1, +1.1]: no measurable gain
+
+|RSS at readiness with the JDK AOT cache
+|−14.0 MiB (174.5 MB against 189.2 MB, median); the AOT cache is 1.7 MB smaller
+
+|Archive size
+|32,726,207 against 37,590,842 bytes raw (−12.9%), 8,344,903 against 9,686,906 bytes gzip -6 (−13.9%)
+|===
+
+Packaging does the extra work on the staging threads. With 8 of them, the sample's `micronautRunnerJar` task took
+0.24 s instead of 0.08 s (medians of ten warm-daemon rounds), against 0.73 s for its `shadowJar`.
+
 Some libraries read local-variable tables at run time and find nothing once they are gone. When the class path
 contains one of them, the build keeps every table and warns once, naming the JAR and the class:
 
