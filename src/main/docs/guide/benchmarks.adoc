@@ -22,6 +22,22 @@ Packaging:: Fresh-JVM profiles build STORED and PRESERVE Runner archives for det
 unchanged-rebuild, application-edit and dependency-edit scenarios. Elapsed time/allocation and process
 RSS/peak heap come from separate invocations. Logical input/output bytes are reported separately from time and
 memory and are not kernel I/O counters.
++
+`packagingComparison` packages a real application instead, a fresh copy of `test-suite/samples/benchmark-large`,
+in one warm Gradle daemon of its own, which is where developers and CI pay for packaging. It compares Runner with
+the Shadow JAR it replaces: `micronautRunnerJar` with STORED (`runner-stored`) and PRESERVE (`runner-preserve`)
+compression against `shadowJar` (`shadow`) and the sample's STORED control `shadowJarStored` (`shadow-stored`).
+The `rerun` scenario runs `<task> --rerun`, which re-executes only the packaging task; `micronautRunnerJar` keeps
+no packaging state between executions, so this is the cold packaging path and there is no separate cold
+scenario. The `edit` scenario makes a bytecode-changing edit to `Application.java` and runs `<task>`, so
+compilation and the packaging task's other dependencies execute as well. Each invocation records the packaging
+task's action time and the wall time of the whole `gradlew` process. The comparisons are `runner-stored`/`shadow`
+(the defaults) and the compression-matched `runner-stored`/`shadow-stored` (neither archive deflated) and
+`runner-preserve`/`shadow` (both deflated), each the median of per-round differences.
++
+Maven Shade is not compared. `test-suite/samples/maven-basic` configures no `maven-shade-plugin`, and in that
+small sample Maven's own startup would dominate the timings. The Maven plugin packages with the same
+`runner-build` code path as the Gradle task, which the Runner rows here and `packagingProfile` already cover.
 
 Startup:: The whole process, from spawn to readiness, for the same application packaged in each mode that the
 current harness implements:
@@ -149,6 +165,7 @@ Run it locally with:
 ----
 ./gradlew :benchmarks:jmh
 ./gradlew :benchmarks:packagingProfile
+./gradlew :benchmarks:packagingComparison
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.optionalRows=true -Pbenchmarks.iterations=40
@@ -164,8 +181,17 @@ benchmarks expose the same `workload` parameter. The startup task defaults to th
 explicit sample. Short smoke runs must remain labelled descriptive rather than being promoted to release
 claims.
 
+`packagingComparison` always uses `benchmark-large` and ignores `-Pbenchmarks.sample`. It runs 3 warm-up rounds
+and then 10 measured rounds, the fewest that give a 95% interval; `-Pbenchmarks.packagingComparisonIterations=20`
+changes the measured count. Each round runs one untimed `classes` build, then every variant in the `rerun`
+scenario and then in the `edit` scenario, each scenario in a fresh order shuffled from a seed that the report
+records. Its nested builds run with `--no-build-cache --no-configuration-cache` in a daemon that its unique JVM
+options keep apart from every other daemon and that stops itself 60 seconds after the task ends; the harness
+never runs `--stop`.
+
 Reports are written to `benchmarks/build/reports/`. The startup task builds its variants and trains its caches
-in `benchmarks/build/tmp/startupBenchmark`. In CI the benchmarks run weekly and on demand rather than on every
+in `benchmarks/build/tmp/startupBenchmark`, and the packaging comparison builds its copy of the sample in
+`benchmarks/build/tmp/packagingComparison`. In CI the benchmarks run weekly and on demand rather than on every
 pull request, because shared runners are too noisy to gate a build on.
 
 The startup harness uses a required, fail-closed matrix by default. Every required packaging variant must

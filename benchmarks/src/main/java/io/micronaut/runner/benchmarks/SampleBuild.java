@@ -164,9 +164,7 @@ final class SampleBuild {
             Files.copy(in, init, StandardCopyOption.REPLACE_EXISTING);
         }
 
-        Path gradlew = findGradlew(sample);
-        List<String> command = List.of(
-                gradlew.toString(),
+        List<String> arguments = List.of(
                 "--project-dir", sample.toAbsolutePath().toString(),
                 "-Prunner.repo=" + repo,
                 "-Prunner.version=" + version,
@@ -177,30 +175,15 @@ final class SampleBuild {
                 "--stacktrace",
                 METADATA_TASK,
                 "shadowJar");
-        log.println("[startup-benchmark] building the sample: " + String.join(" ", command));
-        ProcessBuilder builder = new ProcessBuilder(command)
-                .directory(sample.toFile())
-                .redirectErrorStream(true);
-        // The nested build must run on the same JDK as this harness, which is the JDK the packaged
-        // applications will be started with.
-        builder.environment().put("JAVA_HOME", System.getProperty("java.home"));
-        Process process = builder.start();
-        StringBuilder output = new StringBuilder();
-        Thread drain = drain(process, output);
-        boolean finished = process.waitFor(BUILD_TIMEOUT_MINUTES, java.util.concurrent.TimeUnit.MINUTES);
-        if (!finished) {
-            process.destroyForcibly();
-            throw new IOException("The sample build did not finish within " + BUILD_TIMEOUT_MINUTES
-                    + " minutes" + tail(output));
-        }
-        drain.join(5_000);
-        if (process.exitValue() != 0) {
-            throw new IOException("The sample build failed with status " + process.exitValue() + tail(output));
+        log.println("[startup-benchmark] building the sample: gradlew " + String.join(" ", arguments));
+        GradleResult result = gradle(sample, arguments, java.time.Duration.ofMinutes(BUILD_TIMEOUT_MINUTES));
+        if (result.exitCode() != 0) {
+            throw new IOException("The sample build failed with status " + result.exitCode() + result.tail());
         }
 
         Path metadataFile = sample.resolve(METADATA_FILE);
         if (!Files.isRegularFile(metadataFile)) {
-            throw new IOException("The sample build produced no " + metadataFile + tail(output));
+            throw new IOException("The sample build produced no " + metadataFile + result.tail());
         }
         Metadata metadata = Metadata.read(metadataFile);
         log.println("[startup-benchmark] sample built: " + metadata.dependencies().size()
@@ -711,6 +694,61 @@ final class SampleBuild {
         return candidate;
     }
 
+    /**
+     * Runs the repository's own Gradle wrapper on the harness JDK and waits for it. {@link #prepare} and
+     * {@link PackagingComparison} share this, so both nested builds are started, bounded and drained alike.
+     *
+     * @param projectDirectory the build to run, which is also the working directory; the wrapper is the
+     *                         nearest {@code gradlew} above it
+     * @param arguments        everything after {@code gradlew}
+     * @param timeout          how long the build may take; the client is killed after that
+     * @return the exit status and everything the build printed
+     * @throws IOException          if the build cannot start or does not finish in time
+     * @throws InterruptedException if the wait is interrupted
+     */
+    static GradleResult gradle(Path projectDirectory, List<String> arguments, java.time.Duration timeout)
+            throws IOException, InterruptedException {
+        List<String> command = new ArrayList<>(arguments.size() + 1);
+        command.add(findGradlew(projectDirectory).toString());
+        command.addAll(arguments);
+        ProcessBuilder builder = new ProcessBuilder(command)
+                .directory(projectDirectory.toFile())
+                .redirectErrorStream(true);
+        // The nested build must run on the same JDK as this harness, which is the JDK the packaged
+        // applications will be started with.
+        builder.environment().put("JAVA_HOME", System.getProperty("java.home"));
+        Process process = builder.start();
+        StringBuilder output = new StringBuilder();
+        Thread drain = drain(process, output);
+        if (!process.waitFor(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)) {
+            process.destroyForcibly();
+            throw new IOException("gradlew " + String.join(" ", arguments) + " did not finish within "
+                    + timeout + tail(output));
+        }
+        drain.join(5_000);
+        synchronized (output) {
+            return new GradleResult(process.exitValue(), output.toString());
+        }
+    }
+
+    /**
+     * How one nested Gradle build ended.
+     *
+     * @param exitCode the wrapper's exit status
+     * @param output   its standard output and error, interleaved
+     */
+    record GradleResult(int exitCode, String output) {
+
+        /**
+         * The last lines of the output, for an exception message.
+         *
+         * @return the tail, with a header line
+         */
+        String tail() {
+            return SampleBuild.tail(new StringBuilder(output));
+        }
+    }
+
     private static Path findGradlew(Path sample) throws IOException {
         String name = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
                 ? "gradlew.bat" : "gradlew";
@@ -766,7 +804,7 @@ final class SampleBuild {
         return message == null ? "no message" : message.replace('\n', ' ').replace('\r', ' ').trim();
     }
 
-    private static Path recreate(Path directory) throws IOException {
+    static Path recreate(Path directory) throws IOException {
         deleteRecursively(directory);
         return Files.createDirectories(directory);
     }
