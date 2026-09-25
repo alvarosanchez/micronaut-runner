@@ -47,7 +47,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -58,7 +57,6 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32;
-import java.util.zip.CheckedOutputStream;
 
 /**
  * Turns an application's own output and its resolved dependencies into a runner jar.
@@ -95,6 +93,15 @@ import java.util.zip.CheckedOutputStream;
  * the stage holds one: the buffer it checksums the dependency through. The archive's bytes do not depend on
  * the thread count: every nested jar's name and work file are fixed in class-path order before staging
  * starts, warnings are emitted in that order afterwards, and the outer archive is written on one thread.</p>
+ *
+ * <h2>Class transforms</h2>
+ * <p>In STORED, each stage also runs the {@link ClassTransforms} of the build over its dependency's classes, by
+ * default {@link RunnerJarSpec#stripLocalVariables()}. Before staging, one scan task per dependency runs on the
+ * same threads, with its own {@code ZipReader}, into a read-only {@link ClassPathModel} that every stage shares
+ * and that is discarded when {@code build} returns. A staging thread then also holds the original and the
+ * rewritten bytes of one class, at most {@link ClassTransformPipeline#MAX_CLASS_SIZE} each. What the stages
+ * did is logged on the calling thread in class-path order and written into {@code MICRONAUT-INF/transforms.txt}
+ * right after the launcher classes; with every transform off there is no scan and no such entry.</p>
  *
  * <h2>Application jars</h2>
  * <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
@@ -200,6 +207,8 @@ public final class RunnerJarBuilder {
     private String launcherVersion;
     private String entryStubClass;
     private int mergedServiceEntryCount;
+    /** The build's class transforms, decided before any dependency is staged. */
+    private ClassTransforms transforms;
 
     private RunnerJarBuilder(RunnerJarSpec spec, BuildLogger logger, int parallelism, Runnable beforeWrite) {
         this.spec = spec;
@@ -271,7 +280,7 @@ public final class RunnerJarBuilder {
         return crc.getValue();
     }
 
-    private static String attribute(Attributes attributes, Attributes.Name name) {
+    static String attribute(Attributes attributes, Attributes.Name name) {
         if (attributes == null) {
             return null;
         }
@@ -338,11 +347,17 @@ public final class RunnerJarBuilder {
             readApplicationManifest();
             collectDependencies(work);
             loadLauncher(work);
+            List<TransformReport> transformReports = transforms.report(logger);
+            byte[] transformsText = transforms.describe(launcherVersion);
 
             plan.add(PlannedEntry.ofBytes("META-INF/MANIFEST.MF", manifestBytes()));
             indexEntry = PlannedEntry.placeholder(IndexFormat.INDEX_ENTRY_NAME);
             plan.add(indexEntry);
             planLauncherClasses(work);
+            if (transformsText != null) {
+                // Not indexed: the launcher never reads it at run time and extraction ignores it.
+                plan.add(PlannedEntry.ofBytes(IndexFormat.TRANSFORMS_ENTRY_NAME, transformsText));
+            }
             describeApplicationJar();
             planMergedServices();
             planApplicationEntries();
@@ -371,7 +386,8 @@ public final class RunnerJarBuilder {
 
             // The caller reports the build with the result's summary(), so the builder logs no line of its own.
             return new RunnerJarResult(output, writer.jars().size(), layout.entryCount(),
-                    application.size(), mergedServiceEntryCount, archiveSize, warnings, spec.effectiveOptions());
+                    application.size(), mergedServiceEntryCount, archiveSize, warnings, spec.effectiveOptions(),
+                    transformReports);
         } catch (Throwable e) {
             failure = e;
             throw e;
@@ -854,64 +870,83 @@ public final class RunnerJarBuilder {
     /**
      * Prepares every dependency as a nested jar and reads what the index has to know about it: its manifest
      * attributes, its per-package sections, whether it was signed and where each of its entries ends up
-     * inside it. In STORED a dependency is repacked into a nested jar in the work directory; in PRESERVE the
-     * dependency itself is the nested jar, and is only checksummed.
+     * inside it. In STORED a dependency is repacked into a nested jar in the work directory, through the class
+     * transform pipeline when a transform is enabled; in PRESERVE the dependency itself is the nested jar, and
+     * is only checksummed.
      *
-     * <p>Every nested jar's entry name and work file are fixed first, in class-path order, so neither
-     * depends on which dependency is staged first. When {@link #parallelism} or the number of dependencies
-     * is at most one, the stages then run on the calling thread, one after the other; otherwise they run on
-     * a pool created for this build, largest dependency first. Either way each stage is joined in class-path
-     * order on the calling thread, which is the only thread that emits a warning or touches the builder.</p>
+     * <p>When {@link #parallelism} and the number of dependencies are both above one, a pool is created for
+     * this build and stopped before this method returns. The class path is scanned first, when a transform is
+     * enabled: one scan task per dependency on the pool, while the calling thread scans the application layer.
+     * Every nested jar's entry name and work file are then fixed in class-path order, so neither depends on
+     * which dependency is staged first, and the stages run on the pool, largest dependency first, or on the
+     * calling thread one after the other. Either way each stage is joined in class-path order on the calling
+     * thread, which is the only thread that emits a warning or touches the builder.</p>
      *
      * @param work the directory the repacked nested jars are built in
      * @throws IOException if a dependency cannot be read or its nested jar cannot be written; when several
      *                     cannot, the failure of the first one on the class path
      */
     private void collectDependencies(Path work) throws IOException {
-        List<DependencyStage> stages = new ArrayList<>(dependencies.size());
-        Set<String> taken = new HashSet<>();
-        for (int position = 0; position < dependencies.size(); position++) {
-            Dependency dependency = dependencies.get(position);
-            stages.add(new DependencyStage(dependency,
-                    IndexFormat.LIB_PREFIX + uniqueName(taken, fileName(dependency.path())),
-                    work.resolve("lib-" + position + ".jar"), spec.compression()));
-        }
-        int threads = Math.min(parallelism, stages.size());
-        if (threads <= 1) {
-            for (DependencyStage stage : stages) {
-                join(stage.call());
-            }
-        } else {
-            stageInParallel(stages, threads);
-        }
-    }
-
-    /**
-     * Runs the stages on a fixed pool of daemon threads created for this build, never on a shared pool, and
-     * stops that pool before returning, whether the stages succeeded or not.
-     *
-     * @param stages  every stage, in class-path order
-     * @param threads the size of the pool, at least two
-     * @throws IOException if a stage failed, the calling thread was interrupted or the pool did not stop
-     */
-    private void stageInParallel(List<DependencyStage> stages, int threads) throws IOException {
-        Integer[] submissionOrder = largestFirst(stages);
-        StageThreads factory = new StageThreads();
-        ExecutorService pool = Executors.newFixedThreadPool(threads, factory);
+        int threads = Math.min(parallelism, dependencies.size());
+        StageThreads factory = threads > 1 ? new StageThreads() : null;
+        ExecutorService pool = factory == null ? null : Executors.newFixedThreadPool(threads, factory);
         Throwable failure = null;
         try {
-            List<Future<StagedDependency>> futures = new ArrayList<>(Collections.nCopies(stages.size(), null));
-            for (int position : submissionOrder) {
-                futures.set(position, pool.submit(stages.get(position)));
+            transforms = ClassTransforms.prepare(spec, dependencies, pool, this::scanApplication, logger, this::warn);
+            List<DependencyStage> stages = new ArrayList<>(dependencies.size());
+            Set<String> taken = new HashSet<>();
+            for (int position = 0; position < dependencies.size(); position++) {
+                Dependency dependency = dependencies.get(position);
+                stages.add(new DependencyStage(dependency,
+                        IndexFormat.LIB_PREFIX + uniqueName(taken, fileName(dependency.path())),
+                        work.resolve("lib-" + position + ".jar"), spec.compression(), transforms.pipeline()));
             }
-            for (Future<StagedDependency> future : futures) {
-                join(awaitStage(future));
+            if (pool == null) {
+                for (DependencyStage stage : stages) {
+                    join(stage.call());
+                }
+            } else {
+                stageInParallel(stages, pool);
             }
         } catch (Throwable e) {
             failure = e;
             throw e;
         } finally {
-            stopStaging(pool, factory, failure, STAGE_SHUTDOWN_TIMEOUT);
+            if (pool != null) {
+                stopStaging(pool, factory, failure, STAGE_SHUTDOWN_TIMEOUT);
+            }
+        }
+    }
+
+    /**
+     * Hands the application layer's classes to the class path scan. Only the calling thread may call it: it
+     * reads the application jars through readers that belong to it.
+     *
+     * @param scan the application layer's scan
+     * @throws IOException if a class cannot be read
+     */
+    private void scanApplication(ClassPathModel.LayerScan scan) throws IOException {
+        for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
+            if (scan.wants(item.getKey(), item.getValue().size)) {
+                scan.accept(item.getKey(), applicationBytes(item.getValue()));
+            }
+        }
+    }
+
+    /**
+     * Runs the stages on the build's pool and joins them in class-path order.
+     *
+     * @param stages every stage, in class-path order
+     * @param pool   the pool created for this build, which the caller stops
+     * @throws IOException if a stage failed or the calling thread was interrupted
+     */
+    private void stageInParallel(List<DependencyStage> stages, ExecutorService pool) throws IOException {
+        List<Future<DependencyStage.Staged>> futures = new ArrayList<>(Collections.nCopies(stages.size(), null));
+        for (int position : largestFirst(dependencies)) {
+            futures.set(position, pool.submit(stages.get(position)));
+        }
+        for (Future<DependencyStage.Staged> future : futures) {
+            join(awaitStage(future));
         }
     }
 
@@ -922,16 +957,16 @@ public final class RunnerJarBuilder {
      * <p>A source whose size cannot be read goes last; its stage reports why it cannot be read, exactly as
      * it would on the calling thread.</p>
      *
-     * @param stages every stage, in class-path order
+     * @param dependencies every dependency, in class-path order
      * @return the class-path positions, in submission order
      */
-    private static Integer[] largestFirst(List<DependencyStage> stages) {
-        long[] sizes = new long[stages.size()];
+    static Integer[] largestFirst(List<Dependency> dependencies) {
+        long[] sizes = new long[dependencies.size()];
         Integer[] order = new Integer[sizes.length];
         for (int position = 0; position < sizes.length; position++) {
             order[position] = position;
             try {
-                sizes[position] = Files.size(stages.get(position).dependency.path());
+                sizes[position] = Files.size(dependencies.get(position).path());
             } catch (IOException e) {
                 sizes[position] = -1;
             }
@@ -1026,53 +1061,15 @@ public final class RunnerJarBuilder {
      *
      * @param staged what the stage produced
      */
-    private void join(StagedDependency staged) {
+    private void join(DependencyStage.Staged staged) {
         if (staged.classPathWarning() != null) {
             warn(staged.classPathWarning());
         }
         if (staged.signatureWarning() != null) {
             warn(staged.signatureWarning());
         }
+        transforms.add(staged.transforms());
         nested.add(staged.jar());
-    }
-
-    /**
-     * The warning for a dependency whose manifest declares {@code Class-Path}.
-     *
-     * @param dependency the dependency
-     * @param manifest   its manifest, or {@code null} when it has none
-     * @return the warning, or {@code null} when there is nothing to warn about
-     */
-    private static String classPathWarning(Dependency dependency, Manifest manifest) {
-        if (manifest == null) {
-            return null;
-        }
-        String classPath = attribute(manifest.getMainAttributes(), Attributes.Name.CLASS_PATH);
-        if (classPath == null) {
-            return null;
-        }
-        return "The dependency " + dependency.path() + " declares Class-Path: " + classPath
-                + ", which a nested jar cannot resolve. Add those jars to the class path instead";
-    }
-
-    /**
-     * The warning for a dependency that carried signature files.
-     *
-     * @param dependency  the dependency
-     * @param compression how it is nested
-     * @param result      what staging it produced
-     * @return the warning, or {@code null} when the dependency was not signed
-     */
-    private static String signatureWarning(Dependency dependency, Compression compression,
-                                           ZipRepacker.RepackResult result) {
-        if (!result.hadSignatureFiles()) {
-            return null;
-        }
-        return "The dependency " + dependency.path() + " is signed; its signature files "
-                + (compression == Compression.STORED
-                    ? "were removed because a repacked jar cannot verify against them"
-                    : "were kept but no longer verify, because the jar is nested")
-                + ". The classes it contains are not treated as signed code";
     }
 
     private static String uniqueName(Set<String> taken, String fileName) {
@@ -1662,7 +1659,7 @@ public final class RunnerJarBuilder {
         }
     }
 
-    private static void requireSafeName(String name, String origin) throws IOException {
+    static void requireSafeName(String name, String origin) throws IOException {
         if (!ZipReader.isSafeEntryName(name)) {
             throw new IOException("The entry name '" + name + "' from " + origin
                     + " cannot be stored in a runner jar");
@@ -1806,7 +1803,7 @@ public final class RunnerJarBuilder {
     /**
      * One dependency, as it has been prepared for nesting.
      */
-    private static final class NestedJar {
+    static final class NestedJar {
 
         private final Dependency dependency;
         private final String entryName;
@@ -1819,7 +1816,7 @@ public final class RunnerJarBuilder {
         private PlannedEntry entry;
         private IndexWriter.JarSpec jar;
 
-        private NestedJar(Dependency dependency, String entryName, Path file,
+        NestedJar(Dependency dependency, String entryName, Path file,
                           ZipRepacker.RepackResult result, Manifest manifest, boolean hasManifest,
                           long crc32) {
             this.dependency = dependency;
@@ -1829,112 +1826,6 @@ public final class RunnerJarBuilder {
             this.manifest = manifest;
             this.hasManifest = hasManifest;
             this.crc32 = crc32;
-        }
-    }
-
-    /**
-     * What one dependency's stage hands back to the calling thread: the nested jar and the texts of the
-     * warnings the calling thread emits for it.
-     *
-     * @param jar              the dependency, written as a nested jar
-     * @param classPathWarning the {@code Class-Path} warning, or {@code null}
-     * @param signatureWarning the signed-dependency warning, or {@code null}
-     */
-    private record StagedDependency(NestedJar jar, String classPathWarning, String signatureWarning) {
-    }
-
-    /**
-     * Stages one dependency: repacks it into its nested jar, or, in PRESERVE, checksums it where it is, and
-     * describes the result.
-     *
-     * <p>A stage may run on a worker thread, so it reads nothing but its own fields and touches no builder
-     * state. It opens, uses and closes its {@link ZipReader}, streams, {@link CRC32} and buffers on the
-     * thread that runs it; only the {@link StagedDependency} it returns reaches another thread.</p>
-     */
-    private static final class DependencyStage implements Callable<StagedDependency> {
-
-        private final Dependency dependency;
-        private final String entryName;
-        /** The work file a repacked nested jar is written to; a preserved dependency leaves it unused. */
-        private final Path target;
-        private final Compression compression;
-
-        private DependencyStage(Dependency dependency, String entryName, Path target, Compression compression) {
-            this.dependency = dependency;
-            this.entryName = entryName;
-            this.target = target;
-            this.compression = compression;
-        }
-
-        @Override
-        public StagedDependency call() throws IOException {
-            Path file;
-            long crc32;
-            ZipRepacker.RepackResult result;
-            Manifest manifest;
-            boolean hasManifest;
-            try (ZipReader reader = ZipReader.open(dependency.path())) {
-                manifest = reader.manifest().orElse(null);
-                hasManifest = reader.entry("META-INF/MANIFEST.MF").isPresent();
-                if (compression == Compression.PRESERVE) {
-                    // Nested as it is, so nothing is written: the reader has already resolved every offset
-                    // relative to the dependency's first byte, and the dependency is the nested jar.
-                    file = dependency.path();
-                    result = new ZipRepacker.RepackResult(reader.entries(), reader.fileLength(),
-                            reader.hasSignatureFiles(), List.of());
-                    crc32 = checksum(file, reader.fileLength(), new byte[BUFFER_SIZE]);
-                } else {
-                    file = target;
-                    CRC32 crc = new CRC32();
-                    try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(target), BUFFER_SIZE);
-                         CheckedOutputStream checked = new CheckedOutputStream(out, crc)) {
-                        result = ZipRepacker.repack(reader, checked);
-                    }
-                    crc32 = crc.getValue();
-                }
-            } catch (IOException e) {
-                // Without this the message names only the entry, and a build with dozens of dependencies
-                // says nothing about which jar has to be looked at. It covers a file that starts like a ZIP
-                // archive but whose central directory cannot be read, such as a truncated download, and a
-                // manifest that fails its CRC-32, which the reader only finds when manifest() first parses it.
-                throw new IOException("The dependency " + dependency.path() + " cannot be packaged: "
-                        + e.getMessage(), e);
-            }
-            for (ZipEntryInfo entry : result.entries()) {
-                requireSafeName(entry.name(), dependency.path().toString());
-            }
-            return new StagedDependency(
-                    new NestedJar(dependency, entryName, file, result, manifest, hasManifest, crc32),
-                    classPathWarning(dependency, manifest),
-                    signatureWarning(dependency, compression, result));
-        }
-
-        /**
-         * Computes the CRC-32 of a dependency that is nested as it is, through the stage's own buffer and
-         * {@link CRC32}, never the builder's: stages run on several threads at once.
-         *
-         * @param file   the dependency
-         * @param length its length when its reader opened it
-         * @param buffer the stage's buffer
-         * @return the CRC-32 of its content
-         * @throws IOException if it cannot be read, or its length is no longer {@code length}
-         */
-        private static long checksum(Path file, long length, byte[] buffer) throws IOException {
-            CRC32 crc = new CRC32();
-            long read = 0;
-            try (InputStream in = Files.newInputStream(file)) {
-                int count = in.read(buffer);
-                while (count > 0) {
-                    crc.update(buffer, 0, count);
-                    read += count;
-                    count = in.read(buffer);
-                }
-            }
-            if (read != length) {
-                throw new IOException("Read " + read + " of " + length + " bytes of " + file
-                        + "; it changed while it was being packaged");
-            }
-            return crc.getValue();
         }
     }
 

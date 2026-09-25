@@ -1,0 +1,3 @@
+dependencies {
+    implementation 'io.micronaut.security:micronaut-security-jwt'
+}

@@ -69,6 +69,7 @@ public final class RunnerJarSpec {
     private final List<String> addOpens;
     private final List<String> addExports;
     private final boolean enableNativeAccess;
+    private final boolean stripLocalVariables;
     private final Instant timestamp;
     private final Map<String, String> effectiveOptions;
 
@@ -91,6 +92,7 @@ public final class RunnerJarSpec {
         this.addOpens = List.copyOf(builder.addOpens);
         this.addExports = List.copyOf(builder.addExports);
         this.enableNativeAccess = builder.enableNativeAccess;
+        this.stripLocalVariables = builder.stripLocalVariables;
         this.timestamp = builder.timestamp;
         Map<String, String> effective = new LinkedHashMap<>();
         for (RunnerJarOption option : RunnerJarOption.values()) {
@@ -267,6 +269,18 @@ public final class RunnerJarSpec {
     }
 
     /**
+     * Whether the local-variable tables of dependency classes are dropped when they are re-packed.
+     *
+     * <p>See {@link Builder#stripLocalVariables(boolean)} for what is dropped, what is kept and what changes
+     * as a result.</p>
+     *
+     * @return whether local-variable tables are stripped, {@code true} unless configured otherwise
+     */
+    public boolean stripLocalVariables() {
+        return stripLocalVariables;
+    }
+
+    /**
      * The instant every entry of the archive is dated with, converted to MS-DOS time in UTC.
      *
      * @return the reproducible timestamp
@@ -300,6 +314,7 @@ public final class RunnerJarSpec {
             case ADD_OPENS -> String.join(",", addOpens);
             case ADD_EXPORTS -> String.join(",", addExports);
             case MANIFEST_ATTRIBUTES -> formatAttributes(manifestAttributes);
+            case STRIP_LOCAL_VARIABLES -> Boolean.toString(stripLocalVariables);
         };
     }
 
@@ -340,6 +355,7 @@ public final class RunnerJarSpec {
         private List<String> addOpens;
         private List<String> addExports;
         private boolean enableNativeAccess;
+        private boolean stripLocalVariables;
         private Instant timestamp = ZipWriter.DEFAULT_TIMESTAMP;
 
         /**
@@ -589,6 +605,57 @@ public final class RunnerJarSpec {
         }
 
         /**
+         * Drops the local-variable tables of dependency classes when they are re-packed.
+         *
+         * <p>Without a JDK AOT cache, parsing and defining classes is the largest single startup cost, and it
+         * grows with class bytes and with the symbols the JVM interns. The names and signatures of local
+         * variables are neither needed to run a class nor visible to reflection, so a re-packed dependency
+         * class is rewritten without them, with a rebuilt constant pool. On the benchmark sample that makes the
+         * dependency classes about 15% smaller; the user guide's build-time transforms section has the measured
+         * effect on startup.</p>
+         *
+         * <p>What is dropped from a dependency class:</p>
+         * <ul>
+         *     <li>{@code LocalVariableTable}, {@code LocalVariableTypeTable} and {@code CharacterRangeTable};</li>
+         *     <li>the type annotations of code, {@code RuntimeVisibleTypeAnnotations} and
+         *     {@code RuntimeInvisibleTypeAnnotations} inside {@code Code}, which carry bytecode offsets;</li>
+         *     <li>{@code RuntimeInvisibleTypeAnnotations} on the class, its fields and its methods.</li>
+         * </ul>
+         *
+         * <p>What is kept: {@code LineNumberTable} and {@code SourceFile}, so stack traces keep their
+         * {@code (File.java:N)} frames; {@code SourceDebugExtension}; {@code MethodParameters}, so reflective
+         * parameter names survive; {@code Signature}; and every annotation reflection can see.</p>
+         *
+         * <p>What changes observably, in dependency classes only:</p>
+         * <ul>
+         *     <li>helpful {@code NullPointerException} messages name a local as {@code <local1>} instead of by
+         *     its name, and a debugger shows no local names; the line number stays;</li>
+         *     <li>the order of {@code getDeclaredMethods()}, which is unspecified, may change, because the
+         *     constant pool is rebuilt;</li>
+         *     <li>libraries that read {@code LocalVariableTable} at run time, such as Paranamer's
+         *     {@code BytecodeReadingParanamer}, AspectJ load-time weaving and Spring's pre-6.1
+         *     {@code LocalVariableTableParameterNameDiscoverer}, find no names. When one of them is on the
+         *     class path, stripping is turned off for the build, with a warning;</li>
+         *     <li>a rewritten class has new bytes and a new CRC-32, and the archive is reproducible byte for
+         *     byte only when it is built with the same JDK build.</li>
+         * </ul>
+         *
+         * <p>The application's own classes, and a dependency marked {@link Dependency#projectModule()}, are
+         * never stripped: they are user code, whose locals users debug. A class of a signed jar, a class with
+         * an attribute the JDK does not know, and {@code module-info} are left alone too. With
+         * {@link Compression#PRESERVE}, which nests every dependency byte for byte, the option has no effect.</p>
+         *
+         * <p>Defaults to {@code true}.</p>
+         *
+         * @param value whether to strip the local-variable tables of dependency classes
+         * @return this builder
+         */
+        public Builder stripLocalVariables(boolean value) {
+            this.stripLocalVariables = value;
+            return this;
+        }
+
+        /**
          * Sets a packaging option by its {@linkplain RunnerJarOption#optionName() name}, whether it has a
          * typed setter or not. This is how a build plugin passes the options it has no typed property for.
          *
@@ -625,6 +692,7 @@ public final class RunnerJarSpec {
                 case ADD_OPENS -> addOpens(parseList(value));
                 case ADD_EXPORTS -> addExports(parseList(value));
                 case MANIFEST_ATTRIBUTES -> manifestAttributes(parseAttributes(option, value));
+                case STRIP_LOCAL_VARIABLES -> stripLocalVariables(parseBoolean(option, value));
             };
         }
 

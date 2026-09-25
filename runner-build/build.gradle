@@ -39,6 +39,37 @@ dependencies {
     testImplementation 'io.micronaut:micronaut-inject'
 }
 
+// The transform corpus runs the class transform pipeline over the class paths of real applications, which
+// only the "Transform corpus" workflow resolves: it is not part of check.
+tasks.named('test', Test) {
+    useJUnitPlatform { excludeTags 'transform-corpus' }
+}
+
+abstract class TransformCorpusArguments implements CommandLineArgumentProvider {
+    /** The directory of class-path files, one per application; each file lists jars that are read. */
+    @Input
+    abstract Property<String> getCorpus()
+
+    @Override
+    Iterable<String> asArguments() {
+        ["-Drunner.transformCorpus=${corpus.get()}".toString()]
+    }
+}
+
+tasks.register('transformCorpusTest', Test) {
+    group = 'verification'
+    description = 'Runs the class transform pipeline over the class paths named by -Prunner.transformCorpus=<dir>'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'transform-corpus' }
+    def arguments = objects.newInstance(TransformCorpusArguments)
+    arguments.corpus.set(providers.gradleProperty('runner.transformCorpus').orElse(''))
+    jvmArgumentProviders.add(arguments)
+    // The jars the class paths name are not inputs Gradle can see, so the result is never reused.
+    outputs.upToDateWhen { false }
+    testLogging.showStandardStreams = true
+}
+
 tasks.named('processResources', ProcessResources) {
     from(configurations.launcherJar) {
         into 'META-INF/micronaut-runner'

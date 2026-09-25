@@ -21,6 +21,11 @@ format version, `Micronaut-Runner-Start-Class` the application main class, for i
 |The launcher. Only class files are copied from the launcher library; its manifest and Maven metadata are
 not.
 
+|`MICRONAUT-INF/transforms.txt`
+|Present only when a build-time transform changed a dependency class or recorded a fallback: tab-separated lines,
+the first naming the Runner version, then one per nested JAR and transform with its counts. It is not indexed, the
+launcher never reads it at run time, and `extract` ignores it; `inspect` prints it. See <<buildTransforms>>.
+
 |`META-INF/micronaut/**`
 |The Micronaut bean metadata of the application and of every dependency, merged and de-duplicated, with
 explicit directory entries. See <<serviceDiscovery>>.
@@ -41,8 +46,9 @@ synthetic record for each one instead.
 By default each dependency is re-packed so that its own entries are `STORED` too, which removes
 decompression from class loading at the cost of a larger archive. Re-packing also drops signature files
 (`META-INF/*.SF`, `*.DSA`, `*.RSA`, `*.EC`, `META-INF/SIG-*`) and `META-INF/INDEX.LIST`. Manifests are
-never rewritten, so package metadata and sealing survive intact. The `PRESERVE` option copies each
-dependency byte for byte instead.
+never rewritten, so package metadata and sealing survive intact. By default, re-packing also strips
+local-variable tables from dependency classes, which then carry new CRC-32 values; see <<buildTransforms>>. The
+`PRESERVE` option copies each dependency byte for byte instead.
 
 Shadow can also write `STORED` entries (`entryCompression = ZipEntryCompression.STORED`), so the gain from not
 inflating is not specific to this format; <<benchmarks>> measures the two effects separately.

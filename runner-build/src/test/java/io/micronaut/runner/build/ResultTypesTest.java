@@ -25,8 +25,11 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link Dependency} and {@link RunnerJarResult}, the two value types a plugin handles, as final classes.
@@ -58,6 +61,38 @@ class ResultTypesTest {
         assertEquals(Dependency.of(jar, ""), Dependency.of(jar));
         assertNotEquals(first, Dependency.of(jar));
         assertNotEquals(first, Dependency.of(Path.of("other.jar"), "io.netty:netty-common:4.2.1"));
+    }
+
+    @Test
+    void theProjectModuleFlagIsPartOfTheValue() {
+        Path jar = Path.of("libs", "lib.jar");
+        Dependency plain = Dependency.of(jar, "com.example:lib:1.0");
+        Dependency module = plain.projectModule(true);
+
+        assertFalse(plain.projectModule());
+        assertFalse(Dependency.of(jar).projectModule());
+        assertTrue(module.projectModule());
+        assertEquals(plain.path(), module.path());
+        assertEquals(plain.coordinates(), module.coordinates());
+        assertNotEquals(plain, module);
+        assertEquals(module, Dependency.of(jar, "com.example:lib:1.0").projectModule(true));
+        assertEquals(module.hashCode(), Dependency.of(jar, "com.example:lib:1.0").projectModule(true).hashCode());
+        assertSame(plain, plain.projectModule(false));
+        assertEquals(plain, module.projectModule(false));
+    }
+
+    @Test
+    void theTransformReportsOfAResultAreUnmodifiableAndAddUp() {
+        TransformReport report = new TransformReport("stripLocalVariables", 7, 2, 1, 4096);
+        RunnerJarResult result = new RunnerJarResult(Path.of("app.jar"), 2, 10, 3, 0, 1024, List.of(), Map.of(),
+                new ArrayList<>(List.of(report)));
+
+        assertEquals(List.of(report), result.transforms());
+        assertEquals(10, report.classes());
+        assertThrows(UnsupportedOperationException.class, () -> result.transforms().clear());
+        assertEquals(List.of(), result(new ArrayList<>(), new LinkedHashMap<>()).transforms());
+        assertEquals(report, new TransformReport("stripLocalVariables", 7, 2, 1, 4096));
+        assertThrows(IllegalArgumentException.class, () -> new TransformReport("x", -1, 0, 0, 0));
     }
 
     @Test

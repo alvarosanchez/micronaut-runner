@@ -68,6 +68,14 @@ public final class IndexFormat {
     /** Outer archive prefix under which the dependencies are stored as intact nested jars. */
     public static final String LIB_PREFIX = "MICRONAUT-INF/lib/";
 
+    /**
+     * Outer archive entry, written right after the launcher classes, that records what the build-time class
+     * transforms did to the dependency classes: tab-separated lines, the first naming the Runner version. It is
+     * present only when a transform changed a class or noted a fallback, it is not indexed, and the launcher
+     * never reads it at run time; only the {@code inspect} mode prints it.
+     */
+    public static final String TRANSFORMS_ENTRY_NAME = "MICRONAUT-INF/transforms.txt";
+
     /** Manifest attribute carrying the format version, so tooling can detect a runner jar. */
     public static final String ATTR_FORMAT = "Micronaut-Runner-Format";
 

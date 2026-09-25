@@ -36,6 +36,20 @@ class RunnerJarSpecTest {
     }
 
     @Test
+    void stripsLocalVariablesByDefaultAndTheOptionTurnsItOff() {
+        assertTrue(complete(RunnerJarSpec.builder()).build().stripLocalVariables());
+        assertFalse(complete(RunnerJarSpec.builder().stripLocalVariables(false)).build().stripLocalVariables());
+        RunnerJarSpec off = complete(RunnerJarSpec.builder().option("stripLocalVariables", "false")).build();
+        assertFalse(off.stripLocalVariables());
+        assertEquals("false", off.effectiveOptions().get("stripLocalVariables"));
+        assertEquals("true", complete(RunnerJarSpec.builder()).build().effectiveOptions().get("stripLocalVariables"));
+        assertEquals(RunnerJarOption.Exposure.PASSTHROUGH, RunnerJarOption.STRIP_LOCAL_VARIABLES.exposure());
+        assertEquals("true", RunnerJarOption.STRIP_LOCAL_VARIABLES.defaultValue().orElseThrow());
+        assertTrue(complete(RunnerJarSpec.builder().compression(Compression.PRESERVE)).build().stripLocalVariables(),
+                "PRESERVE accepts the option, which then has no effect");
+    }
+
+    @Test
     void acceptsMultipleManifestModulePackagePairs() {
         RunnerJarSpec.Builder builder = RunnerJarSpec.builder()
                 .addExports(List.of("java.base/sun.nio.ch", "java.base/jdk.internal.misc"))
@@ -97,7 +111,7 @@ class RunnerJarSpecTest {
 
     @Test
     void aBooleanOptionAcceptsOnlyTrueOrFalse() {
-        for (String name : List.of("entryStub", "multiRelease", "enableNativeAccess")) {
+        for (String name : List.of("entryStub", "multiRelease", "enableNativeAccess", "stripLocalVariables")) {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                     () -> RunnerJarSpec.builder().option(name, "yes"));
             assertTrue(failure.getMessage().contains(name), failure::getMessage);

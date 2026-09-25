@@ -20,6 +20,7 @@ import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
+import io.micronaut.runner.build.RunnerJarOption;
 import io.micronaut.runner.build.RunnerJarReader;
 import io.micronaut.runner.build.RunnerJarSpec;
 
@@ -88,6 +89,8 @@ final class SampleBuild {
     private static final String RUNNER_STORED = "runner-stored";
     private static final String RUNNER_STORED_AOT = "runner-stored-aot";
     private static final String RUNNER_STORED_REFLECTION = "runner-stored-reflection";
+    private static final String RUNNER_STORED_KEEPDEBUG = "runner-stored-keepdebug";
+    private static final String RUNNER_STORED_KEEPDEBUG_AOT = "runner-stored-keepdebug-aot";
     private static final String RUNNER_PRESERVE = "runner-preserve";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
     private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
@@ -95,6 +98,11 @@ final class SampleBuild {
     private static final String SHADOW_DESCRIPTION = "Everything flattened into one jar by the Shadow plugin";
     private static final String SHADOW_STORED_DESCRIPTION =
             "The same Shadow inputs written with STORED entries (compression-matched control)";
+    private static final String RUNNER_STORED_KEEPDEBUG_DESCRIPTION =
+            "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub;"
+                    + " local-variable tables kept";
+    private static final String RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION =
+            "The same local-variable-table control with a verified JDK AOT cache";
 
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
@@ -273,7 +281,11 @@ final class SampleBuild {
                 new ComparisonSpec(RUNNER_STORED, SHADOW_STORED,
                         "Runner default vs Shadow STORED (compression-matched)"),
                 new ComparisonSpec(SHADOW_STORED, SHADOW,
-                        "Shadow-only control: Shadow STORED vs Shadow default (compression only)"));
+                        "Shadow-only control: Shadow STORED vs Shadow default (compression only)"),
+                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_KEEPDEBUG,
+                        "Local-variable tables stripped vs kept"),
+                new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_KEEPDEBUG_AOT,
+                        "Local-variable tables stripped vs kept, with the AOT cache"));
     }
 
     /**
@@ -300,6 +312,9 @@ final class SampleBuild {
         if (optionalRows) {
             variants.add(Variant.unavailable(RUNNER_STORED_REFLECTION,
                     "Runner jar, nested dependencies re-packed uncompressed; reflection ablation", reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_KEEPDEBUG, RUNNER_STORED_KEEPDEBUG_DESCRIPTION, reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_KEEPDEBUG_AOT, RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION,
+                    reason));
         }
         variants.add(Variant.unavailable(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub", reason));
@@ -343,6 +358,14 @@ final class SampleBuild {
             variants.add(attempt(RUNNER_STORED_REFLECTION,
                     "Runner jar, nested dependencies re-packed uncompressed; reflection ablation",
                     () -> runnerJar(RUNNER_STORED_REFLECTION, Compression.STORED, EntryMode.REFLECTION)));
+            // The default strips local-variable tables; this control keeps them. Drop both rows once the default
+            // has shipped for one release.
+            Variant keepDebug = attempt(RUNNER_STORED_KEEPDEBUG, RUNNER_STORED_KEEPDEBUG_DESCRIPTION,
+                    () -> runnerJar(RUNNER_STORED_KEEPDEBUG, Compression.STORED, EntryMode.STUB,
+                            new RunnerJarOptions(false)));
+            variants.add(keepDebug);
+            variants.add(attempt(RUNNER_STORED_KEEPDEBUG_AOT, RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION,
+                    () -> AotCache.prepare(keepDebug, RUNNER_STORED_KEEPDEBUG_AOT, aotRequest())));
         }
         variants.add(attempt(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
@@ -466,8 +489,13 @@ final class SampleBuild {
     }
 
     private Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode) throws IOException {
+        return runnerJar(name, compression, requestedEntryMode, RunnerJarOptions.defaults());
+    }
+
+    private Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode,
+                              RunnerJarOptions options) throws IOException {
         return runnerJar(artifacts, name, mainClass, applicationOutput, dependencies,
-                compression, requestedEntryMode);
+                compression, requestedEntryMode, options);
     }
 
     static Variant runnerJar(Path artifacts,
@@ -477,6 +505,18 @@ final class SampleBuild {
                              List<Path> dependencies,
                              Compression compression,
                              EntryMode requestedEntryMode) throws IOException {
+        return runnerJar(artifacts, name, mainClass, applicationOutput, dependencies, compression,
+                requestedEntryMode, RunnerJarOptions.defaults());
+    }
+
+    static Variant runnerJar(Path artifacts,
+                             String name,
+                             String mainClass,
+                             List<Path> applicationOutput,
+                             List<Path> dependencies,
+                             Compression compression,
+                             EntryMode requestedEntryMode,
+                             RunnerJarOptions options) throws IOException {
         Path output = artifacts.resolve(name + ".jar");
         Files.deleteIfExists(output);
         RunnerJarSpec spec = RunnerJarSpec.builder()
@@ -486,6 +526,7 @@ final class SampleBuild {
                 .output(output)
                 .compression(compression)
                 .entryStub(requestedEntryMode == EntryMode.STUB)
+                .stripLocalVariables(options.stripLocalVariables())
                 .build();
         RunnerJarBuilder.build(spec, BuildLogger.noOp());
         EntryMode effectiveEntryMode = inspectEntryMode(output, requestedEntryMode);
@@ -497,8 +538,28 @@ final class SampleBuild {
                         ? "Runner jar, nested dependencies re-packed uncompressed"
                         : "Runner jar, nested dependencies copied byte for byte")
                         + (requestedEntryMode == EntryMode.STUB
-                        ? "; plugin-default entry stub" : "; reflection ablation"),
+                        ? "; plugin-default entry stub" : "; reflection ablation")
+                        + (options.stripLocalVariables() ? "" : "; local-variable tables kept"),
                 command, artifacts, output, deploymentSize, requestedEntryMode, effectiveEntryMode);
+    }
+
+    /**
+     * The packaging options a Runner row sets beyond its compression and entry mode, each defaulting to what
+     * the packaging library defaults to. A row that varies one of them passes its own record.
+     *
+     * @param stripLocalVariables whether dependency classes lose their local-variable tables
+     */
+    record RunnerJarOptions(boolean stripLocalVariables) {
+
+        /**
+         * The packaging library's defaults, as its option table states them.
+         *
+         * @return the options every core Runner row is built with
+         */
+        static RunnerJarOptions defaults() {
+            return new RunnerJarOptions(Boolean.parseBoolean(
+                    RunnerJarOption.STRIP_LOCAL_VARIABLES.defaultValue().orElseThrow()));
+        }
     }
 
     private static EntryMode inspectEntryMode(Path output, EntryMode requestedEntryMode) throws IOException {

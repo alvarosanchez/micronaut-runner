@@ -25,8 +25,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -45,6 +50,7 @@ import static io.micronaut.runner.build.ZipReaderTest.stored;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -242,6 +248,146 @@ class ZipRepackerTest {
                         entry.name() + " read straight out of the outer archive");
             }
         }
+    }
+
+    /**
+     * The SHA-256 of {@link #parentCommitFixture(Path)} repacked by the public methods, as the parent commit of
+     * the class transform pipeline repacked it: the public methods run no transform and must keep their output.
+     */
+    private static final String PARENT_COMMIT_REPACK_SHA256 =
+            "814b96aa2eba3fb5a6106c5c824dd4fcb5c3b052a6054bda65ec4f0a86b9005c";
+
+    @Test
+    void thePublicRepackMethodsWriteTheBytesTheyWroteBeforeClassTransforms() throws Exception {
+        Path source = parentCommitFixture(temp.resolve("parent-commit.jar"));
+
+        ByteArrayOutputStream streamed = new ByteArrayOutputStream();
+        try (ZipReader reader = ZipReader.open(source)) {
+            ZipRepacker.repack(reader, streamed);
+        }
+        Path target = temp.resolve("parent-commit-repacked.jar");
+        ZipRepacker.repack(source, target);
+
+        assertEquals(PARENT_COMMIT_REPACK_SHA256, sha256(streamed.toByteArray()));
+        assertEquals(PARENT_COMMIT_REPACK_SHA256, sha256(Files.readAllBytes(target)));
+    }
+
+    @Test
+    void aRewrittenClassKeepsItsNamePositionAndTimeAndCarriesTheSizeAndCrcOfItsNewBytes() throws Exception {
+        Map<String, byte[]> compiled = ClassFixtures.classes(ClassFixtures.compile(temp.resolve("src"),
+                temp.resolve("classes"), List.of("-g", "--release", "25"), Map.of(
+                        "org/example/Debug.java", """
+                                package org.example;
+                                public class Debug {
+                                    public static int twice(int value) {
+                                        int doubled = value * 2;
+                                        return doubled;
+                                    }
+                                }
+                                """,
+                        "org/example/Plain.java", "package org.example; public interface Plain { }\n")));
+        Path source = temp.resolve("with-classes.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(source))) {
+            parentCommitEntry(zip, "META-INF/MANIFEST.MF", manifestBytes("Created-By", "test"), true, 0);
+            parentCommitEntry(zip, "org/example/Debug.class", compiled.get("org/example/Debug.class"), true, 1);
+            parentCommitEntry(zip, "org/example/data.txt", "data".getBytes(StandardCharsets.UTF_8), true, 2);
+            parentCommitEntry(zip, "org/example/Plain.class", compiled.get("org/example/Plain.class"), false, 3);
+        }
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "classes", false, false, name -> false,
+                new ClassPathModel.Interner());
+        compiled.forEach(scan::accept);
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LocalVariableStripper()),
+                ClassPathModel.merge(List.of(scan), false));
+
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        ZipRepacker.RepackResult result;
+        ZipRepacker.RepackResult plain;
+        ClassTransformPipeline.JarRun run = pipeline.start(
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/with-classes.jar", false, false, false));
+        try (ZipReader reader = ZipReader.open(source)) {
+            result = ZipRepacker.repack(reader, bytes, run);
+            plain = ZipRepacker.repack(reader, new ByteArrayOutputStream());
+        }
+        byte[] repacked = bytes.toByteArray();
+
+        assertEquals(plain.entries().stream().map(ZipEntryInfo::name).toList(),
+                result.entries().stream().map(ZipEntryInfo::name).toList(), "names and order are kept");
+        for (int i = 0; i < result.entries().size(); i++) {
+            ZipEntryInfo rewritten = result.entries().get(i);
+            ZipEntryInfo original = plain.entries().get(i);
+            assertEquals(original.dosTime(), rewritten.dosTime(), rewritten.name());
+            byte[] content = slice(repacked, rewritten);
+            java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+            crc.update(content);
+            assertEquals(crc.getValue(), rewritten.crc32(), rewritten.name() + " carries the CRC of its bytes");
+            assertEquals(content.length, rewritten.uncompressedSize(), rewritten.name());
+            if (rewritten.name().equals("org/example/Debug.class")) {
+                assertTrue(rewritten.uncompressedSize() < original.uncompressedSize(), "the class was stripped");
+                assertNotEquals(original.crc32(), rewritten.crc32());
+            } else {
+                assertEquals(original.crc32(), rewritten.crc32(), rewritten.name() + " is unchanged");
+                assertEquals(original.uncompressedSize(), rewritten.uncompressedSize(), rewritten.name());
+            }
+        }
+        Path nested = temp.resolve("with-classes-nested.jar");
+        Files.write(nested, repacked);
+        try (ZipReader reader = ZipReader.open(nested)) {
+            assertEquals(result.entries(), reader.entries(), "the reported entries describe the nested jar");
+        }
+        assertEquals(new ClassTransformPipeline.StepCount(LocalVariableStripper.NAME, 1, 1, 0,
+                compiled.get("org/example/Debug.class").length - result.entries().get(1).uncompressedSize()),
+                run.report().counts().get(0));
+    }
+
+    /**
+     * A jar whose every byte is fixed, whatever the zlib or the time zone: the DOS times are set as local
+     * times, and the repacked output carries no compressed byte.
+     */
+    private static Path parentCommitFixture(Path jar) throws IOException {
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            zip.setComment("the parent commit fixture");
+            parentCommitEntry(zip, "META-INF/MANIFEST.MF",
+                    "Manifest-Version: 1.0\r\nMulti-Release: true\r\n\r\n".getBytes(StandardCharsets.UTF_8), true,
+                    0);
+            parentCommitEntry(zip, "org/", new byte[0], false, 1);
+            parentCommitEntry(zip, "org/example/", new byte[0], false, 2);
+            parentCommitEntry(zip, "org/example/App.class", "class-bytes-".repeat(200)
+                    .getBytes(StandardCharsets.UTF_8), true, 3);
+            parentCommitEntry(zip, "org/example/data.bin", "already stored".getBytes(StandardCharsets.UTF_8), false, 4);
+            parentCommitEntry(zip, "org/example/empty.txt", new byte[0], true, 5);
+            parentCommitEntry(zip, "org/example/caf\u00e9-\u65e5\u672c.txt", "unicode".getBytes(StandardCharsets.UTF_8),
+                    true, 6);
+            parentCommitEntry(zip, "META-INF/versions/17/org/example/App.class", "v17-".repeat(100)
+                    .getBytes(StandardCharsets.UTF_8), true, 7);
+            parentCommitEntry(zip, "META-INF/INDEX.LIST", "JarIndex-Version: 1.0".getBytes(StandardCharsets.UTF_8),
+                    true, 8);
+            parentCommitEntry(zip, "META-INF/SIGNER.SF", "Signature-Version: 1.0".getBytes(StandardCharsets.UTF_8),
+                    true, 9);
+        }
+        return jar;
+    }
+
+    private static void parentCommitEntry(ZipOutputStream zip, String name, byte[] data, boolean deflated,
+                                          int minute) throws IOException {
+        ZipEntry entry = new ZipEntry(name);
+        entry.setTimeLocal(LocalDateTime.of(2020, 1, 2, 3, minute, 4));
+        if (deflated) {
+            entry.setMethod(ZipEntry.DEFLATED);
+        } else {
+            entry.setMethod(ZipEntry.STORED);
+            entry.setSize(data.length);
+            entry.setCompressedSize(data.length);
+            java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+            crc.update(data);
+            entry.setCrc(crc.getValue());
+        }
+        zip.putNextEntry(entry);
+        zip.write(data);
+        zip.closeEntry();
+    }
+
+    private static String sha256(byte[] bytes) throws NoSuchAlgorithmException {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     }
 
     private Path multiReleaseJar(String fileName) throws IOException {

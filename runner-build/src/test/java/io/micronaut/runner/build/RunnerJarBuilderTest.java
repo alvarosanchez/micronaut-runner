@@ -533,8 +533,24 @@ class RunnerJarBuilderTest {
         try (ZipWriter writer = ZipWriter.create(large, ZipWriter.DEFAULT_TIMESTAMP)) {
             writer.writeEntry("large/payload.bin", payload);
         }
+        // Compiled with -g, so the strip step rewrites its classes and the pipeline runs inside the stages.
+        Path debug = ClassFixtures.jar(directory.resolve("debug-lib.jar"), ClassFixtures.classes(
+                ClassFixtures.compile(directory.resolve("debug-src"), directory.resolve("debug-classes"),
+                        List.of("-g", "--release", "25"), Map.of(
+                                "com/example/debug/Debug.java", """
+                                        package com.example.debug;
+                                        public class Debug {
+                                            public static int sum(int[] values) {
+                                                int total = 0;
+                                                for (int value : values) {
+                                                    total += value;
+                                                }
+                                                return total;
+                                            }
+                                        }
+                                        """))));
         List<Dependency> dependencies = Stream.of(classPath, plainDependency, multiReleaseDependency,
-                        signedDependency, noManifest, duplicate, sameFileName, large)
+                        signedDependency, noManifest, duplicate, sameFileName, debug, large)
                 .map(Dependency::of)
                 .toList();
 
@@ -549,6 +565,13 @@ class RunnerJarBuilderTest {
                     .dependencies(dependencies).compression(compression).build(), pooled, 4);
 
             assertEquals(-1, Files.mismatch(sequential, parallel), compression + ": the same bytes");
+            assertEquals(sequentialResult.transforms(), parallelResult.transforms(),
+                    compression + ": the same transform reports");
+            if (compression == Compression.STORED) {
+                assertTrue(parallelResult.transforms().get(0).rewritten() > 0, parallelResult.transforms()::toString);
+            } else {
+                assertEquals(List.of(), parallelResult.transforms());
+            }
             List<String> warnings = parallelResult.warnings();
             assertEquals(sequentialResult.warnings(), warnings, compression + ": the same warnings");
             int classPathWarning = indexOfWarning(warnings, "declares Class-Path");
