@@ -103,10 +103,33 @@ tasks.register('packagingProfile', JavaExec) {
     ] } as CommandLineArgumentProvider)
 }
 
+// Always benchmark-large: -Pbenchmarks.sample does not apply. The sample is copied, never built in place.
+tasks.register('packagingComparison', JavaExec) {
+    group = 'benchmark'
+    description = 'Times Runner and Shadow packaging of benchmark-large in one warm, dedicated Gradle daemon'
+    dependsOn tasks.named('prepareRepository')
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.micronaut.runner.benchmarks.PackagingComparison'
+    def outDir = layout.buildDirectory.dir('reports/packaging-comparison')
+    outputs.dir(outDir)
+    outputs.upToDateWhen { false }
+    systemProperty 'runner.benchmark.sourceRoot', rootProject.layout.projectDirectory.asFile.absolutePath
+    argumentProviders.add({ -> [
+            '--sample', rootProject.file('test-suite/samples/benchmark-large').absolutePath,
+            '--repo', layout.buildDirectory.dir('aggregated-repo').get().asFile.toURI().toASCIIString(),
+            '--version', providers.gradleProperty('projectVersion').get().replace('-SNAPSHOT', '-DUMMY'),
+            '--iterations', providers.gradleProperty('benchmarks.packagingComparisonIterations').getOrElse('10'),
+            '--out', outDir.get().asFile.absolutePath,
+            '--work', layout.buildDirectory.dir('tmp/packagingComparison').get().asFile.absolutePath
+    ] } as CommandLineArgumentProvider)
+}
+
 // org.gradle.parallel=true: never let forked test JVMs overlap a measurement
-['jmh', 'packagingProfile', 'startupBenchmark'].each { name ->
+['jmh', 'packagingProfile', 'startupBenchmark', 'packagingComparison'].each { name ->
     tasks.named(name) { mustRunAfter benchmarkIntegrationTest }
 }
+// ...nor two measurements overlap each other.
+tasks.named('packagingComparison') { mustRunAfter 'jmh', 'packagingProfile', 'startupBenchmark' }
 
 // Same exclusions as micronaut-core/benchmarks
 ['spotlessJavaCheck', 'checkstyleMain', 'checkstyleJmh'].each { name ->
