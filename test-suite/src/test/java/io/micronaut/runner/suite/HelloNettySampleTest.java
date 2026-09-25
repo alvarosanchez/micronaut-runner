@@ -297,6 +297,10 @@ class HelloNettySampleTest {
             if (trimmed.startsWith("Path Taken:") || trimmed.startsWith("@") || trimmed.startsWith("\\--->")) {
                 continue;
             }
+            if (trimmed.startsWith("at ")) {
+                // Which of several candidate beans the failed injection went through varies from run to run.
+                line = line.replaceAll("\\$\\w+\\$Definition\\.", "\\$BEAN\\$Definition.");
+            }
             normalised.append(line.replaceAll("\\d{2}:\\d{2}:\\d{2}\\.\\d{3}", "TIME")
                     .replaceAll("Startup completed in \\d+ms", "Startup completed in Nms")
                     .replaceAll("localhost:\\d+", "localhost:PORT")
