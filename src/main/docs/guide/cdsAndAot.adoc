@@ -110,11 +110,12 @@ A failed check deletes `app.aot` and `app.jvmopts` and keeps the logs. `strict =
 `app.jvmopts`, which turns a later mismatch, such as rewritten modification times, into a failed launch instead of an
 uncached one.
 
-On `benchmark-large` (Micronaut 5.1.15, Netty 4.2.18; macOS on Apple silicon) with JDK 25.0.4.1, the cached layout was
-ready 15.9–22.8 ms sooner than the single JAR with its cache and 1.8–6.8 ms after a Shadow JAR with its cache (three
-replicates of 20 pairs), at 127.2 MiB maximum RSS against 167.8 and 134.1 MiB. On JDK 27 (build 27) it was at parity
-with Shadow (−0.5 ms, 95% CI −11.1 to +7.1, 20 pairs), at 116.2 against 126.8 MiB. Training and verifying it with
-`micronautRunnerJdkAotCache` took about 4 s of build time.
+On `benchmark-large` (Micronaut 5.1.15, Netty 4.2.18; macOS on Apple silicon) with JDK 25.0.4.1, the cached layout,
+which keeps the static service table (<<staticServices>>), was ready 32.0 ms sooner than the single JAR with its cache
+(95% CI 24.8 to 38.0) and 14.4 ms before a Shadow JAR with its cache (95% CI 7.8 to 16.3; 20 pairs each), at 121.0 MiB
+maximum RSS against 163.6 and 133.6 MiB. Without the table it was 1.8 to 6.8 ms behind Shadow. On JDK 27 (build 27) it
+was 26.0 ms ahead of Shadow (95% CI 18.9 to 52.3, 20 pairs), at 115.1 against 126.7 MiB. Training and verifying it
+with `micronautRunnerJdkAotCache` took about 4 s of build time.
 
 *Modification times.* The cache records each class-path JAR (the application JAR and each `lib/` JAR, or the single
 Runner JAR) by position, size and modification time. Extract stamps every file and directory with 1980-02-01T00:00:00Z,
