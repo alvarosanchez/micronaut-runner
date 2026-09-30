@@ -21,6 +21,7 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,10 +34,12 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -177,8 +180,12 @@ class StartupHarnessTest {
         if (OS.MAC.isCurrentOs()) {
             assertTrue(snapshot.footprintBytes() > 0, snapshot.toString());
             assertTrue(snapshot.peakFootprintBytes() >= snapshot.footprintBytes(), snapshot.toString());
+            assertEquals(-1, snapshot.majorFaults(), snapshot.toString());
+            assertEquals(-1, snapshot.readBytes(), snapshot.toString());
         } else {
             assertTrue(snapshot.anonBytes() > 0, snapshot.toString());
+            assertTrue(snapshot.majorFaults() >= 0, snapshot.toString());
+            assertTrue(snapshot.readBytes() >= 0, snapshot.toString());
         }
         assertStopped(lifecycle);
     }
@@ -206,7 +213,7 @@ class StartupHarnessTest {
         Path lifecycle = directory.resolve("slow-probe.pid");
         AtomicInteger calls = new AtomicInteger();
         AtomicBoolean aliveDuringProbe = new AtomicBoolean();
-        ReadinessSnapshot recorded = new ReadinessSnapshot(-1, 42, -1, -1, -1, -1, -1, 7, 3);
+        ReadinessSnapshot recorded = new ReadinessSnapshot(-1, 42, -1, -1, -1, -1, -1, 7, 3, -1, -1);
         StartupHarness.ReadinessProbe probe = (pid, java) -> {
             calls.incrementAndGet();
             try {
@@ -253,16 +260,99 @@ class StartupHarnessTest {
         assertStopped(lifecycle);
     }
 
+    @Test
+    void theLaunchHookRunsBeforeEveryLaunchAndItsFailureFailsTheRun(@TempDir Path directory) throws Exception {
+        List<String> prepared = new ArrayList<>();
+        StartupHarness.BeforeLaunch recording = variant -> prepared.add(variant.name());
+        try (StartupHarness harness = harness(Duration.ofSeconds(2), Map.of(), ReadinessSnapshot::take, recording)) {
+            harness.run(fixture("success", directory.resolve("first.pid")), 0, true);
+            harness.run(fixture("success", directory.resolve("second.pid")), 1, false);
+        }
+        assertEquals(List.of("success", "success"), prepared);
+
+        StartupHarness.BeforeLaunch failing = variant -> {
+            throw new IOException("posix_fadvise returned 9");
+        };
+        try (StartupHarness harness = harness(Duration.ofSeconds(2), Map.of(), ReadinessSnapshot::take, failing)) {
+            StartupHarness.LaunchPreparationFailure failure = assertThrows(
+                    StartupHarness.LaunchPreparationFailure.class,
+                    () -> harness.run(fixture("success", directory.resolve("never.pid")), 0, false));
+            assertTrue(failure.getMessage().contains("posix_fadvise returned 9"), failure.getMessage());
+        }
+        assertFalse(Files.exists(directory.resolve("never.pid")), "nothing was spawned");
+    }
+
+    /**
+     * The hook sleeps, so a hook inside the timed interval would add its sleep to the readiness time. The bound
+     * needs no guess about how fast the child starts: the clock starts after the hook returned and readiness is
+     * final before the probe runs, so the readiness time can never exceed the time between those two instants.
+     */
+    @Test
+    void theLaunchHookIsOutsideTheTimedInterval(@TempDir Path directory) throws Exception {
+        Path lifecycle = directory.resolve("timed.pid");
+        AtomicLong hookReturned = new AtomicLong();
+        AtomicLong probeCalled = new AtomicLong();
+        StartupHarness.BeforeLaunch slow = variant -> {
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+            hookReturned.set(System.nanoTime());
+        };
+        StartupHarness.ReadinessProbe probe = (pid, java) -> {
+            probeCalled.set(System.nanoTime());
+            return ReadinessSnapshot.UNAVAILABLE;
+        };
+        StartupSample sample;
+
+        try (StartupHarness harness = harness(Duration.ofSeconds(2), Map.of(), probe, slow)) {
+            sample = harness.run(fixture("success", lifecycle), 0, false);
+        }
+
+        double hookToProbeMillis = (probeCalled.get() - hookReturned.get()) / 1_000_000.0;
+        assertTrue(hookReturned.get() != 0 && probeCalled.get() != 0, "the hook and the probe both ran");
+        assertTrue(sample.readinessMillis() <= hookToProbeMillis, "readiness " + sample.readinessMillis()
+                + " ms includes the launch hook: only " + hookToProbeMillis + " ms passed between the hook's return"
+                + " and the readiness probe");
+        assertStopped(lifecycle);
+    }
+
+    @Test
+    void aChildAliveAfterTheForcedKillFailsTheAttemptOnlyUnderAnEvictingHook() throws Exception {
+        StartupHarness.BeforeLaunch evicting = variant -> { };
+
+        StartupHarness.RunFailure failure = assertThrows(StartupHarness.RunFailure.class,
+                () -> StartupHarness.requireGone("runner-stored", -1, evicting));
+        assertTrue(failure.getMessage().contains("runner-stored was still alive after a forced kill"),
+                failure.getMessage());
+        assertNull(failure.exitCode());
+
+        assertEquals(143, StartupHarness.requireGone("runner-stored", 143, evicting));
+        assertEquals(0, StartupHarness.requireGone("runner-stored", 0, evicting));
+        assertEquals(-1, StartupHarness.requireGone("runner-stored", -1, StartupHarness.BeforeLaunch.NONE),
+                "without eviction a surviving child is recorded, as before");
+    }
+
     private static StartupHarness harness(Duration startupTimeout, Map<String, String> environment) {
         return harness(startupTimeout, environment, ReadinessSnapshot::take);
     }
 
     private static StartupHarness harness(Duration startupTimeout,
                                           Map<String, String> environment,
-                                          StartupHarness.ReadinessProbe probe) {
+                                          StartupHarness.ReadinessProbe probe,
+                                          StartupHarness.BeforeLaunch beforeLaunch) {
         return new StartupHarness("/ready", startupTimeout, new StartupHarness.Settings(
                 Duration.ofMillis(2), Duration.ofMillis(100), Duration.ofMillis(250),
-                Duration.ofSeconds(2), Duration.ofMillis(50), StartupHarness::freePort, environment, probe));
+                Duration.ofSeconds(2), Duration.ofMillis(50), StartupHarness::freePort, environment, probe,
+                List.of(), beforeLaunch));
+    }
+
+    private static StartupHarness harness(Duration startupTimeout,
+                                          Map<String, String> environment,
+                                          StartupHarness.ReadinessProbe probe) {
+        return harness(startupTimeout, environment, probe, StartupHarness.BeforeLaunch.NONE);
     }
 
     private static Set<Long> childPids() {

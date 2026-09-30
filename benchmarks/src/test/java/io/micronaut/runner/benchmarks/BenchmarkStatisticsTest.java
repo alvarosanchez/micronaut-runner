@@ -73,7 +73,7 @@ class BenchmarkStatisticsTest {
         List<RunAttempt> attempts = new ArrayList<>();
         for (int iteration = 0; iteration < rss.length; iteration++) {
             ReadinessSnapshot snapshot = new ReadinessSnapshot(10 + iteration, rss[iteration],
-                    -1, -1, -1, -1, -1, -1, -1);
+                    -1, -1, -1, -1, -1, -1, -1, -1, -1);
             attempts.add(RunAttempt.success("a", iteration, iteration, new StartupSample(iteration, false,
                     8080 + iteration, 100 + iteration, -1, -1, 0.1, 143, snapshot)));
         }
@@ -94,7 +94,8 @@ class BenchmarkStatisticsTest {
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"atReadiness\": {\"probeMillis\": 11.000, \"rssBytes\": 200,"
                 + " \"peakRssBytes\": null, \"anonBytes\": null, \"fileBytes\": null, \"footprintBytes\": null,"
-                + " \"peakFootprintBytes\": null, \"loadedClasses\": null, \"sharedClasses\": null}"), json);
+                + " \"peakFootprintBytes\": null, \"loadedClasses\": null, \"sharedClasses\": null,"
+                + " \"majorFaults\": null, \"readBytes\": null}"), json);
         assertTrue(json.contains("\"atReadiness\": {\"probeMillis\": 11.000, \"rssBytes\": null,"), json);
         assertTrue(json.contains("\"atReadiness\": {\"probeMillis\": 10.000, \"rssBytes\": 100,"), json);
         String attemptsJson = json.substring(json.indexOf("\"attempts\": ["), json.indexOf("\"diagnostics\": {"));
@@ -115,10 +116,10 @@ class BenchmarkStatisticsTest {
         // Linux-shaped snapshots: RssAnon is the private memory and VmHWM the peak, whatever OS runs the test.
         VariantResult stored = withSnapshot("runner-stored",
                 new ReadinessSnapshot(5, 180 * mebibyte, 190 * mebibyte, 120 * mebibyte, 60 * mebibyte,
-                        -1, -1, 6200, 1280));
+                        -1, -1, 6200, 1280, 3, 12 * mebibyte));
         VariantResult shadow = withSnapshot("shadow",
                 new ReadinessSnapshot(5, 178 * mebibyte, 185 * mebibyte, 150 * mebibyte, 28 * mebibyte,
-                        -1, -1, 6100, 1270));
+                        -1, -1, 6100, 1270, 0, 4 * mebibyte));
         VariantResult preserve = withSnapshot("runner-preserve", ReadinessSnapshot.UNAVAILABLE);
 
         Path sample = Files.createDirectory(output.resolve("sample"));
@@ -143,12 +144,13 @@ class BenchmarkStatisticsTest {
         }
 
         String memory = section(markdown, "## Memory and classes at readiness (not timed)");
-        assertTrue(memory.contains("| `runner-stored` | 1 | 180.0 MiB | 120.0 MiB | 190.0 MiB | 6200 | 1280 |"),
-                memory);
-        assertTrue(memory.contains("| `runner-preserve` | 1 | — | — | — | — | — |"), memory);
+        assertTrue(memory.contains("| `runner-stored` | 1 | 180.0 MiB | 120.0 MiB | 190.0 MiB | 6200 | 1280 | 3"
+                + " | 12.0 MiB |"), memory);
+        assertTrue(memory.contains("| `runner-preserve` | 1 | — | — | — | — | — | — | — |"), memory);
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
-        assertTrue(json.contains("\"loadedClasses\": 6200, \"sharedClasses\": 1280}"), json);
+        assertTrue(json.contains("\"loadedClasses\": 6200, \"sharedClasses\": 1280, \"majorFaults\": 3,"
+                + " \"readBytes\": " + 12 * mebibyte + "}"), json);
     }
 
     @Test

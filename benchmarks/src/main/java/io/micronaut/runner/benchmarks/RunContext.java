@@ -18,7 +18,11 @@ package io.micronaut.runner.benchmarks;
 import java.nio.file.Path;
 import java.util.List;
 
-/** Invocation metadata and the explicit completeness contract for one benchmark run. */
+/**
+ * Invocation metadata and the explicit completeness contract for one benchmark run. The required variants are
+ * the selected core rows, which gate the exit code; the conditions are the CPU and page-cache conditions the run
+ * measured under.
+ */
 record RunContext(Path sample,
                   String repository,
                   String runnerVersion,
@@ -31,10 +35,29 @@ record RunContext(Path sample,
                   String generatedAt,
                   List<String> requiredVariants,
                   CompletenessPolicy completenessPolicy,
-                  BenchmarkProvenance provenance) {
+                  BenchmarkProvenance provenance,
+                  RunConditions conditions) {
 
     RunContext {
         requiredVariants = List.copyOf(requiredVariants);
+    }
+
+    RunContext(Path sample,
+               String repository,
+               String runnerVersion,
+               Path outputDirectory,
+               int iterations,
+               int warmupIterations,
+               long seed,
+               String readinessPath,
+               boolean diagnostics,
+               String generatedAt,
+               List<String> requiredVariants,
+               CompletenessPolicy completenessPolicy,
+               BenchmarkProvenance provenance) {
+        this(sample, repository, runnerVersion, outputDirectory, iterations, warmupIterations, seed,
+                readinessPath, diagnostics, generatedAt, requiredVariants, completenessPolicy, provenance,
+                RunConditions.defaults());
     }
 
     RunContext(Path sample,
