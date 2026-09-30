@@ -76,8 +76,8 @@ control
 plugin-default entry stub against reflective entry
 
 |`runner-stored-preload`
-|Opt-in, non-gating: the same stored Runner JAR inputs packaged with the startup class list that this run records
-from `runner-stored`; compared with `runner-stored` and `shadow`
+|Opt-in, non-gating: the same stored Runner JAR inputs packaged with the startup profile that this run records
+from `runner-stored`, with the recorder that `recordStartupProfile` uses; compared with `runner-stored` and `shadow`
 
 |`runner-stored-preload-aot`
 |Opt-in, non-gating: the identical preloading Runner JAR with a trained, application-class-verified JDK AOT cache;
@@ -208,7 +208,8 @@ Shadow reads its JAR with `read` calls, which are not faults.
 
 `-Pbenchmarks.cpus=N` (Linux, needs `taskset`) runs every child JVM, the AOT-cache training and verification
 launches included, on the first `N` CPUs the harness may use, and pins the harness's own threads to the rest
-once the variants are prepared. `N` must leave the harness at least one CPU. Before the sample build the harness
+once the variants are prepared. The one exception is the launch that records the preload rows' startup profile,
+which the build plugins' recorder starts itself, on every CPU; the class list barely depends on the CPU count. `N` must leave the harness at least one CPU. Before the sample build the harness
 starts a probe JVM under the limit, requires it to see exactly `N` CPUs and records its ergonomic flags, the
 collector among them: below two CPUs, JDK 25 selects SerialGC and fewer compiler threads, and Netty and the
 fork-join pool size themselves from the CPU count. A limited AOT cache has its own identity, so a cache trained

@@ -16,6 +16,7 @@
 package io.micronaut.runner.gradle;
 
 import io.micronaut.runner.build.RunnerJarOption;
+import io.micronaut.runner.build.StartupProfileRecorder;
 import org.gradle.api.Action;
 import org.gradle.api.GradleException;
 import org.gradle.api.Plugin;
@@ -26,17 +27,20 @@ import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
 import org.gradle.api.artifacts.result.ResolvedArtifactResult;
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition;
 import org.gradle.api.attributes.Usage;
+import org.gradle.api.file.RegularFile;
 import org.gradle.api.plugins.AppliedPlugin;
 import org.gradle.api.plugins.BasePluginExtension;
 import org.gradle.api.plugins.ExtensionAware;
 import org.gradle.api.plugins.JavaApplication;
 import org.gradle.api.plugins.JavaPlugin;
+import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.bundling.Jar;
+import org.gradle.jvm.toolchain.JavaToolchainService;
 import org.gradle.language.base.plugins.LifecycleBasePlugin;
 import org.jspecify.annotations.Nullable;
 
@@ -65,12 +69,22 @@ import java.util.Set;
  * runtime classpath in resolution order. Only a project that applies a Shadow plugin also gets
  * {@value #SHADOW_COLLISION_TASK_NAME}, which both archive tasks depend on.</p>
  *
+ * <p>It also registers {@value #RECORD_TASK_NAME}, which launches the archive and records the classes it loads
+ * at startup to {@value io.micronaut.runner.build.StartupProfileRecorder#PROFILE_LOCATION}. The task runs only
+ * when it is asked for. Once the file exists, the archive embeds it, and the launcher preloads its classes.</p>
+ *
  * @since 1.0
  */
 public class MicronautRunnerPlugin implements Plugin<Project> {
 
     /** The name of the task this plugin registers. */
     public static final String TASK_NAME = "micronautRunnerJar";
+
+    /**
+     * The task that records the startup profile. It launches the application, so it is never part of
+     * {@code assemble}, {@code build} or {@code check}.
+     */
+    public static final String RECORD_TASK_NAME = "recordStartupProfile";
 
     /**
      * The task that checks Runner and Shadow output locations before either producer executes. It exists
@@ -127,12 +141,20 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
         extension.getEnabled().convention(true);
         // The packaging library owns the defaults; the conventions only show them. addOpens, addExports and
         // manifestAttributes default to empty, which is a collection property's own initial value, and
-        // startupClasses has no default.
+        // startupClasses has no default of the library's.
         extension.getCompression().convention(defaultOf(RunnerJarOption.COMPRESSION));
         extension.getEntryStub().convention(Boolean.valueOf(defaultOf(RunnerJarOption.ENTRY_STUB)));
         extension.getMultiRelease().convention(Boolean.valueOf(defaultOf(RunnerJarOption.MULTI_RELEASE)));
         extension.getEnableNativeAccess().convention(
                 Boolean.valueOf(defaultOf(RunnerJarOption.ENABLE_NATIVE_ACCESS)));
+        // A committed startup profile is embedded by convention. The provider reads only whether the file
+        // exists, which the configuration cache records as an input; it must not read recordStartupProfile's
+        // output property, which would make the archive depend on the task that runs it.
+        RegularFile profile = project.getLayout().getProjectDirectory()
+                .file(StartupProfileRecorder.PROFILE_LOCATION);
+        extension.getStartupClasses().convention(project.getProviders().provider(
+                () -> profile.getAsFile().isFile() ? profile : null));
+        TrainingSpec.defaults(extension.getTraining());
 
         // A Micronaut plugin may be applied before or after this one, and whichever comes last adds the
         // alias. Both happen while plugins are applied, so the Kotlin DSL generates an accessor for it.
@@ -199,6 +221,23 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
                 });
 
         project.getTasks().named(LifecycleBasePlugin.ASSEMBLE_TASK_NAME, task -> task.dependsOn(runnerJar));
+
+        // Only on request: it launches the application.
+        JavaToolchainService toolchains = project.getExtensions().getByType(JavaToolchainService.class);
+        JavaPluginExtension java = project.getExtensions().getByType(JavaPluginExtension.class);
+        project.getTasks().register(RECORD_TASK_NAME, RecordStartupProfile.class, task -> {
+            task.setGroup(LifecycleBasePlugin.BUILD_GROUP);
+            task.setDescription("Launches the runner jar and records the classes it loads at startup to "
+                    + StartupProfileRecorder.PROFILE_LOCATION + ", which the next " + TASK_NAME + " embeds");
+            task.getArchiveFile().convention(runnerJar.flatMap(MicronautRunnerJar::getArchiveFile));
+            task.getJavaLauncher().convention(toolchains.launcherFor(java.getToolchain()));
+            TrainingSpec.conventions(task.getTraining(), extension.getTraining());
+            task.getProfileFile().convention(project.getLayout().getProjectDirectory()
+                    .file(StartupProfileRecorder.PROFILE_LOCATION));
+            task.getWorkDirectory().convention(project.getLayout().getBuildDirectory()
+                    .dir("micronaut-runner/record-startup-profile"));
+            onlyIfEnabled(task, extension);
+        });
 
         // Its own Usage keeps the archive out of every Java consumer's variant selection: a consumer asks for
         // this configuration by name.

@@ -16,10 +16,12 @@
 package io.micronaut.runner.gradle;
 
 import io.micronaut.runner.build.RunnerJarOption;
+import org.gradle.api.Action;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
+import org.gradle.api.tasks.Nested;
 
 /**
  * The packaging options of every archive the plugin builds, and its kill switch.
@@ -114,13 +116,36 @@ public abstract class MicronautRunnerExtension {
     public abstract MapProperty<String, String> getManifestAttributes();
 
     /**
-     * The recorded startup class list the launcher preloads on a background thread: the
-     * {@code -Xlog:class+load} output of a run of the archive, or a file of binary class names. It has no
-     * convention: without it nothing is preloaded.
+     * The recorded startup class list the launcher preloads on a background thread: the profile that
+     * {@code recordStartupProfile} writes, the {@code -Xlog:class+load} output of a run of the archive, or a
+     * file of binary class names. Without it nothing is preloaded.
+     *
+     * <p>The convention is the project's committed profile,
+     * {@value io.micronaut.runner.build.StartupProfileRecorder#PROFILE_LOCATION}, when that file exists, so a
+     * project that has recorded a profile preloads it with no configuration. Setting the property to
+     * {@code null} falls back to that convention: to build without the profile, delete the file.</p>
      *
      * @return the startup class list
      */
     public abstract RegularFileProperty getStartupClasses();
+
+    /**
+     * How a task that launches the application, such as {@code recordStartupProfile}, reaches, exercises and
+     * stops it. The API is experimental.
+     *
+     * @return the training settings
+     */
+    @Nested
+    public abstract TrainingSpec getTraining();
+
+    /**
+     * Configures {@link #getTraining()}.
+     *
+     * @param action the configuration
+     */
+    public void training(Action<? super TrainingSpec> action) {
+        action.execute(getTraining());
+    }
 
     /**
      * Packaging options by {@linkplain RunnerJarOption#optionName() name}, for the options that have no typed

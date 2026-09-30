@@ -50,7 +50,8 @@ import java.util.function.Consumer;
  *     ({@code shared objects file}), a hidden class ({@code __JVM_LookupDefineClass__} or the name of its
  *     host class) and the launcher's own classes ({@code file:}).</li>
  *     <li><strong>A binary class name.</strong> The line is trimmed, and a blank line or one that starts with
- *     {@code #} is ignored. A name written as {@code jrt:<binary name>} is a JDK class.</li>
+ *     {@code #} is ignored. A name written as {@code jrt:<binary name>} is a JDK class. This is the form of the
+ *     profile {@link StartupProfileRecorder} writes.</li>
  * </ul>
  *
  * <p>The order of the file is kept in each part, and of a name that appears more than once the first
@@ -69,6 +70,19 @@ final class StartupClassList {
 
     /** What marks a JDK class in a file of binary names. */
     private static final String JDK_NAME_PREFIX = "jrt:";
+
+    /**
+     * A list that loses more than one name in this many no longer describes the application. The threshold of
+     * 10% is a judgement, not a measurement: a dependency upgrade renames a few classes, a stale list many.
+     */
+    private static final int STALE_DENOMINATOR = 10;
+
+    /**
+     * What the dropped-names warning adds for such a list. It names no build tool, because the packaging
+     * library does not know which one called it.
+     */
+    private static final String STALE_HINT = "The startup profile looks stale; re-record it with the build's"
+            + " startup-profile task or goal.";
 
     /** What a build without a startup class list has: nothing to embed and nothing to report. */
     private static final StartupClassList NONE = new StartupClassList(null, Set.of(), Set.of(), 0, 0);
@@ -171,7 +185,8 @@ final class StartupClassList {
     /**
      * Lays the index out with this list in it, and reports what became of the list: one warning when the
      * recording holds no class of the archive, one when names were dropped, and one line with the numbers
-     * embedded. Without a list it only lays the index out.
+     * embedded. The warning about dropped names says that the profile looks stale when more than a tenth of
+     * them were dropped. Without a list it only lays the index out.
      *
      * <p>A recording without a single archive class was taken the wrong way, so none of it is embedded, its
      * JDK classes included.</p>
@@ -198,7 +213,8 @@ final class StartupClassList {
         int dropped = listed - layout.preloadCount();
         if (dropped > 0) {
             warn.accept("The startup class list " + file + " dropped " + dropped + " of " + listed
-                    + " startup classes: not in this archive or listed twice");
+                    + " startup classes: not in this archive or listed twice"
+                    + (dropped * STALE_DENOMINATOR > listed ? ". " + STALE_HINT : ""));
         }
         logger.info("Embedded " + layout.preloadCount() + " startup classes and " + layout.jdkPreloadCount()
                 + " JDK classes from " + file + " for the launcher to preload");

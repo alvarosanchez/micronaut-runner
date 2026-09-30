@@ -16,6 +16,13 @@ micronaut {
         incremental true
         annotations 'com.example.*'
     }
+    // recordStartupProfile's workload. The profile it records is never committed (see .gitignore): the
+    // startup harness records a fresh one in every run.
+    runner {
+        training {
+            workloadPaths = ['/hello']
+        }
+    }
 }
 
 dependencies {

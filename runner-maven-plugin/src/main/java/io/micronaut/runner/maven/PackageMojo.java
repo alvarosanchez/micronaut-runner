@@ -23,6 +23,7 @@ import io.micronaut.runner.build.RunnerJarOption;
 import io.micronaut.runner.build.RunnerJarReader;
 import io.micronaut.runner.build.RunnerJarResult;
 import io.micronaut.runner.build.RunnerJarSpec;
+import io.micronaut.runner.build.StartupProfileRecorder;
 import org.apache.maven.archiver.MavenArchiver;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.execution.MavenSession;
@@ -175,9 +176,11 @@ public class PackageMojo extends AbstractMojo {
     private Boolean enableNativeAccess;
 
     /**
-     * The recorded startup class list the launcher preloads on a background thread: the
-     * {@code -Xlog:class+load} output of a run of the archive, or a file of binary class names. Unset, nothing
-     * is preloaded.
+     * The recorded startup class list the launcher preloads on a background thread: the profile that
+     * {@code mn-runner:record-startup-profile} writes, the {@code -Xlog:class+load} output of a run of the
+     * archive, or a file of binary class names. Unset, the project's committed profile,
+     * {@value io.micronaut.runner.build.StartupProfileRecorder#PROFILE_LOCATION}, is embedded when that file
+     * exists, and otherwise nothing is preloaded.
      */
     @Parameter(property = "micronaut.runner.startupClasses")
     private File startupClasses;
@@ -224,7 +227,7 @@ public class PackageMojo extends AbstractMojo {
         }
 
         boolean replaceMainArtifact = classifier == null || classifier.isBlank();
-        File target = new File(outputDirectory, finalName + (replaceMainArtifact ? "" : "-" + classifier) + ".jar");
+        File target = archiveFile(outputDirectory, finalName, classifier);
         File mainArtifact = new File(outputDirectory, finalName + ".jar");
         File original = new File(outputDirectory, "original-" + finalName + ".jar");
 
@@ -278,6 +281,20 @@ public class PackageMojo extends AbstractMojo {
                 }
             }
         }
+    }
+
+    /**
+     * Where the goal writes the archive: {@code <outputDirectory>/<finalName>[-<classifier>].jar}. The goal that
+     * records the startup profile reads it from there.
+     *
+     * @param outputDirectory the directory the archive is written to
+     * @param finalName       the base name of the archive
+     * @param classifier      the classifier, or {@code null} or blank when the archive replaces the main artifact
+     * @return the archive
+     */
+    static File archiveFile(File outputDirectory, String finalName, String classifier) {
+        boolean replaceMainArtifact = classifier == null || classifier.isBlank();
+        return new File(outputDirectory, finalName + (replaceMainArtifact ? "" : "-" + classifier) + ".jar");
     }
 
     private static void replace(Path source, Path target) throws IOException {
@@ -354,8 +371,9 @@ public class PackageMojo extends AbstractMojo {
             if (manifestEntries != null) {
                 spec.manifestAttributes(new LinkedHashMap<>(manifestEntries));
             }
-            if (startupClasses != null) {
-                spec.startupClasses(startupClasses.toPath());
+            File list = startupClasses != null ? startupClasses : committedProfile();
+            if (list != null) {
+                spec.startupClasses(list.toPath());
             }
             List<String> passthrough = Arrays.stream(RunnerJarOption.values())
                     .filter(option -> option.exposure() == RunnerJarOption.Exposure.PASSTHROUGH)
@@ -377,6 +395,25 @@ public class PackageMojo extends AbstractMojo {
         } catch (IllegalArgumentException e) {
             throw new MojoFailureException(e.getMessage(), e);
         }
+    }
+
+    /**
+     * The startup profile the project has committed, which is embedded when {@code startupClasses} is unset.
+     *
+     * @return the profile, or {@code null} when the project has none
+     */
+    private File committedProfile() {
+        File basedir = project.getBasedir();
+        if (basedir == null) {
+            return null;
+        }
+        File profile = new File(basedir, StartupProfileRecorder.PROFILE_LOCATION);
+        if (!profile.isFile()) {
+            return null;
+        }
+        getLog().info("Embedding the startup profile " + StartupProfileRecorder.PROFILE_LOCATION + ", which "
+                + RecordStartupProfileMojo.RERECORD_COMMAND + " records");
+        return profile;
     }
 
     /**

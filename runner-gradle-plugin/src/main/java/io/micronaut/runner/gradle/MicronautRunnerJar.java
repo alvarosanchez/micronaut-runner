@@ -16,7 +16,6 @@
 package io.micronaut.runner.gradle;
 
 import io.micronaut.runner.build.ApplicationManifest;
-import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
@@ -30,7 +29,6 @@ import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.java.archives.Manifest;
-import org.gradle.api.logging.Logger;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
@@ -350,9 +348,10 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract MapProperty<String, String> getManifestAttributes();
 
     /**
-     * The recorded startup class list the launcher preloads on a background thread: the
-     * {@code -Xlog:class+load} output of a run of the archive, or a file of binary class names. It has no
-     * default, and without it nothing is preloaded. The plugin sets the extension's value as the convention.
+     * The recorded startup class list the launcher preloads on a background thread: the profile that
+     * {@code recordStartupProfile} writes, the {@code -Xlog:class+load} output of a run of the archive, or a
+     * file of binary class names. Without it nothing is preloaded. The plugin sets the extension's value as the
+     * convention, which is the project's committed profile when it has one.
      *
      * <p>Only the content is an input: editing the list rebuilds the archive, and moving it does not.</p>
      *
@@ -569,26 +568,6 @@ public abstract class MicronautRunnerJar extends DefaultTask {
         @Input
         public boolean isProjectModule() {
             return projectModule;
-        }
-    }
-
-    /** Bridges the packaging library's log calls to Gradle's logger. */
-    private static final class GradleBuildLogger implements BuildLogger {
-
-        private final Logger logger;
-
-        private GradleBuildLogger(Logger logger) {
-            this.logger = logger;
-        }
-
-        @Override
-        public void info(String message) {
-            logger.info(message);
-        }
-
-        @Override
-        public void warn(String message) {
-            logger.warn(message);
         }
     }
 }

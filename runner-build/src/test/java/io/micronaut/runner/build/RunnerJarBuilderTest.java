@@ -26,6 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -2898,6 +2899,38 @@ class RunnerJarBuilderTest {
         assertTrue(failure.getMessage().contains("startup class list") && failure.getMessage().contains("missing.log"),
                 failure.getMessage());
         assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output));
+    }
+
+    @ParameterizedTest(name = "{0} unknown names of 20, re-record hint {1}")
+    @CsvSource({"3, true", "1, false"})
+    void theDroppedNamesWarningSaysAProfileLooksStaleAboveATenth(int unknown, boolean hint) throws IOException {
+        // 20 names, none of them twice, because a repeat is dropped too: some the archive does not hold, and
+        // the rest from a dependency written for this test.
+        List<String> names = new ArrayList<>();
+        Map<String, byte[]> classes = new LinkedHashMap<>();
+        for (int i = 0; i < 20; i++) {
+            if (i < unknown) {
+                names.add("com.example.Gone" + i);
+            } else {
+                names.add("com.example.many.Known" + i);
+                classes.put("com/example/many/Known" + i + ".class", "known".getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        Path many = fixtures.resolve("libs/many-" + unknown + ".jar");
+        writeJar(many, manifest(attributes -> { }), classes);
+        Path list = startupClasses(String.join("\n", names) + "\n");
+        Path output = output();
+        List<Dependency> dependencies = new ArrayList<>(spec(output).build().dependencies());
+        dependencies.add(Dependency.of(many));
+        RecordingLogger logger = new RecordingLogger();
+
+        RunnerJarBuilder.build(spec(output).dependencies(dependencies).startupClasses(list).build(), logger);
+
+        List<String> warnings = logger.warnings.stream().filter(line -> line.contains("startup classes")).toList();
+        assertEquals(1, warnings.size(), () -> "one warning carries the count: " + logger.warnings);
+        assertTrue(warnings.get(0).contains("dropped " + unknown + " of 20 startup classes"), warnings.get(0));
+        assertEquals(hint, warnings.get(0).endsWith("The startup profile looks stale; re-record it with the"
+                + " build's startup-profile task or goal."), warnings.get(0));
     }
 
     private Path startupClasses(String content) throws IOException {

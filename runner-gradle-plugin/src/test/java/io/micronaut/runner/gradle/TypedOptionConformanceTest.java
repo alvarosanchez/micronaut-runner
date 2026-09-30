@@ -62,7 +62,7 @@ class TypedOptionConformanceTest {
             "archiveClassifier", "destinationDirectory", "options");
 
     /** The extension's members that are not typed options. */
-    private static final Set<String> EXTENSION_MEMBERS = Set.of("enabled", "options");
+    private static final Set<String> EXTENSION_MEMBERS = Set.of("enabled", "options", "training");
 
     @Test
     void everyTypedOptionIsAnOptionalInput() throws NoSuchMethodException {
