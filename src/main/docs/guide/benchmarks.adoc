@@ -407,8 +407,10 @@ with Joran.
 Size and memory go the other way in places. The `runner-maot` JAR is 2.22 times the `shadow-maot` JAR on disk
 (32,815,589 against 14,773,677 B) and 0.64 times gzipped (8,368,963 against 13,083,293 B); with their caches the
 deployments are 78,019,045 against 64,007,597 B raw (1.22 times) and 19,033,547 against 24,704,764 B gzipped (0.77
-times). At readiness `runner-maot` used 16.4 MiB less private memory than `shadow-maot`, and `runner-maot-aot` 17.7
-MiB more than `shadow-maot-aot` (paired medians).
+times). Private memory at readiness is not a paired result: the harness reports it as the difference of the two
+per-variant medians, with no interval, and the uncached gap moved between sessions. `runner-maot` used 16.4 MiB less
+than `shadow-maot` in the run above and 43.7 MiB less in the second session; `runner-maot-aot` used 17.7 and 17.1 MiB
+more than `shadow-maot-aot`.
 
 == Publishing results
 

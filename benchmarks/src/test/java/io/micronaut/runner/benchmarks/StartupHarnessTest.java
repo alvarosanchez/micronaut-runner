@@ -22,6 +22,10 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,16 +51,41 @@ class StartupHarnessTest {
 
     /**
      * A port with a listener on the loopback address alone is not free, because the readiness probe would reach that
-     * listener rather than the application; a port nobody listens on is.
+     * listener rather than the application: {@code freePort} passes over such a candidate and takes the next one.
      */
     @Test
-    void aPortTakenOnTheLoopbackAddressAloneIsNotFree() throws Exception {
-        try (java.net.ServerSocket foreign = new java.net.ServerSocket()) {
-            foreign.bind(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0));
-            assertFalse(StartupHarness.freeOnLoopback(foreign.getLocalPort()));
+    void freePortPassesOverACandidateTheLoopbackAddressHolds() throws Exception {
+        try (ServerSocket foreign = loopbackListener()) {
+            int taken = foreign.getLocalPort();
+            int free = StartupHarness.bindExclusively(new InetSocketAddress(0));
+            int[] candidates = {taken, free};
+            AtomicInteger offered = new AtomicInteger();
+
+            assertFalse(StartupHarness.freeOnLoopback(taken));
+            assertEquals(free, StartupHarness.freePort(() -> candidates[offered.getAndIncrement()]));
+            assertEquals(2, offered.get());
+            assertThrows(UncheckedIOException.class, () -> StartupHarness.freePort(() -> taken));
         }
-        int port = StartupHarness.freePort();
-        assertTrue(StartupHarness.freeOnLoopback(port), "freePort returned a port that the loopback address holds");
+    }
+
+    /**
+     * On macOS a wildcard bind that reuses addresses succeeds beside a listener on the loopback address alone, which
+     * once cost two measured runs to a local VM's port forward. The harness binds without reuse, so the port is
+     * refused; on Linux it is refused either way.
+     */
+    @Test
+    @EnabledOnOs({OS.MAC, OS.LINUX})
+    void aWildcardBindWithoutReuseIsRefusedBesideALoopbackListener() throws Exception {
+        try (ServerSocket foreign = loopbackListener()) {
+            assertThrows(IOException.class,
+                    () -> StartupHarness.bindExclusively(new InetSocketAddress(foreign.getLocalPort())));
+        }
+    }
+
+    private static ServerSocket loopbackListener() throws IOException {
+        ServerSocket socket = new ServerSocket();
+        socket.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+        return socket;
     }
 
     @Test

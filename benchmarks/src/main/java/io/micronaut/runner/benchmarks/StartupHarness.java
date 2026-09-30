@@ -506,15 +506,24 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
      * @return a port that was free a moment ago
      */
     static int freePort() {
-        for (int attempt = 0; attempt < 20; attempt++) {
-            int port;
-            try (ServerSocket socket = new ServerSocket()) {
-                socket.setReuseAddress(false);
-                socket.bind(new InetSocketAddress(0));
-                port = socket.getLocalPort();
+        return freePort(() -> {
+            try {
+                return bindExclusively(new InetSocketAddress(0));
             } catch (IOException e) {
                 throw new UncheckedIOException("Could not find a free port", e);
             }
+        });
+    }
+
+    /**
+     * The first candidate port that the loopback address can also be bound on.
+     *
+     * @param candidates ports that were free on the wildcard address a moment ago, one per call
+     * @return a candidate that was free on the loopback address a moment ago
+     */
+    static int freePort(IntSupplier candidates) {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            int port = candidates.getAsInt();
             if (freeOnLoopback(port)) {
                 return port;
             }
@@ -529,12 +538,28 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
      * @return whether the loopback address could be bound on it without address reuse
      */
     static boolean freeOnLoopback(int port) {
-        try (ServerSocket socket = new ServerSocket()) {
-            socket.setReuseAddress(false);
-            socket.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
+        try {
+            bindExclusively(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             return true;
         } catch (IOException e) {
             return false;
+        }
+    }
+
+    /**
+     * Binds an address without address reuse and lets it go again.
+     *
+     * <p>With reuse, macOS lets a wildcard bind share a port with a listener on the loopback address alone.</p>
+     *
+     * @param address the address, port {@code 0} for one the system picks
+     * @return the port that was bound
+     * @throws IOException if the address could not be bound, for example because something holds it
+     */
+    static int bindExclusively(InetSocketAddress address) throws IOException {
+        try (ServerSocket socket = new ServerSocket()) {
+            socket.setReuseAddress(false);
+            socket.bind(address);
+            return socket.getLocalPort();
         }
     }
 
