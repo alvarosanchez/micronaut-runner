@@ -15,6 +15,9 @@
  */
 package io.micronaut.runner.benchmarks;
 
+import io.micronaut.runner.build.aotcache.AotCacheGate;
+import io.micronaut.runner.build.aotcache.JdkProbe;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -43,15 +46,10 @@ final class AotCache {
 
     private static final Duration POLL_INTERVAL = Duration.ofMillis(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(2);
-    private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(60);
     private static final List<String> CACHE_FLAGS = List.of("AOTCacheOutput", "AOTCache");
 
     /** The exit status of a JVM ended by SIGTERM: 128 + 15. */
     private static final int SIGTERM_EXIT_STATUS = 143;
-
-    /** Creation flags that let strict JDK 27 launches accept the cache wherever ASLR places the heap. */
-    private static final List<String> COMPATIBLE_OOP_COMPRESSION = List.of(
-            "-XX:+UnlockDiagnosticVMOptions", "-XX:+AOTCompatibleOopCompression");
 
     /** The training JDK's probe result, taken once per harness run. */
     private static CreationProbe creationProbe;
@@ -277,27 +275,11 @@ final class AotCache {
                 List.of("-XX:AOTMode=on", "-XX:AOTCache=" + cache.toAbsolutePath().normalize()));
     }
 
-    /**
-     * Reads the output of {@code -XX:+UnlockDiagnosticVMOptions -XX:+PrintFlagsFinal -version}.
-     *
-     * @param printFlagsFinal the output lines
-     * @return {@code -XX:+UnlockDiagnosticVMOptions -XX:+AOTCompatibleOopCompression} when the JDK has that
-     *         flag, otherwise nothing
-     */
-    static List<String> compatibleOopCompressionFlags(List<String> printFlagsFinal) {
-        for (String line : printFlagsFinal) {
-            String[] tokens = line.trim().split("\\s+");
-            if (tokens.length > 1 && tokens[0].equals("bool") && tokens[1].equals("AOTCompatibleOopCompression")) {
-                return COMPATIBLE_OOP_COMPRESSION;
-            }
-        }
-        return List.of();
-    }
-
     private static synchronized List<String> creationFlags() throws IOException, InterruptedException {
         if (creationProbe == null) {
             try {
-                creationProbe = new CreationProbe(probeCreationFlags(SampleBuild.javaExecutable()), null);
+                // The engine's probe decides the flag, as it does for the plugins' caches.
+                creationProbe = new CreationProbe(JdkProbe.probe(SampleBuild.javaExecutable()).creationFlags(), null);
             } catch (IOException failure) {
                 creationProbe = new CreationProbe(List.of(), failure.getMessage());
             }
@@ -306,32 +288,6 @@ final class AotCache {
             throw new IOException(creationProbe.failure());
         }
         return creationProbe.flags();
-    }
-
-    private static List<String> probeCreationFlags(Path java) throws IOException, InterruptedException {
-        ProcessBuilder builder = new ProcessBuilder(java.toString(),
-                "-XX:+UnlockDiagnosticVMOptions", "-XX:+PrintFlagsFinal", "-version")
-                .redirectErrorStream(true);
-        StartupHarness.removeInheritedJvmOptions(builder);
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        AtomicReference<IOException> drainFailure = new AtomicReference<>();
-        Process process = builder.start();
-        Thread drain = drain(process, output, drainFailure);
-        try {
-            if (!process.waitFor(PROBE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
-                throw new IOException("JDK flag probe did not exit within " + PROBE_TIMEOUT + tail(output));
-            }
-            drain.join(REQUEST_TIMEOUT.toMillis());
-            if (process.exitValue() != 0 || drainFailure.get() != null) {
-                throw new IOException("JDK flag probe " + String.join(" ", builder.command())
-                        + " exited with status " + process.exitValue() + tail(output), drainFailure.get());
-            }
-        } finally {
-            if (process.isAlive()) {
-                process.destroyForcibly().waitFor(REQUEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-            }
-        }
-        return compatibleOopCompressionFlags(output.toString(StandardCharsets.UTF_8).lines().toList());
     }
 
     private static List<String> identityFlags(Variant source, Request request, List<String> creationFlags) {
@@ -389,6 +345,11 @@ final class AotCache {
         }
         request.log().println("[startup-benchmark] verified application class " + request.applicationClass()
                 + " is reused from AOT cache");
+        // Informational: the gate's coverage line. The one-step training logs no skipped classes, so nothing is
+        // allowlisted here and nothing is enforced.
+        AotCacheGate.Coverage coverage = AotCacheGate.coverage(
+                Files.readAllLines(classLog, StandardCharsets.ISO_8859_1), List.of());
+        request.log().println("[startup-benchmark] AOT cache of " + source.name() + ", coverage: " + coverage.summary());
     }
 
     /**

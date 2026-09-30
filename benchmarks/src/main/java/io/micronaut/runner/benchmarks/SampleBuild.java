@@ -16,6 +16,7 @@
 package io.micronaut.runner.benchmarks;
 
 import io.micronaut.runner.IndexFormat;
+import io.micronaut.runner.build.AotLayout;
 import io.micronaut.runner.build.ArchiveReads;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
@@ -39,13 +40,11 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.jar.Attributes;
-import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
@@ -463,6 +462,8 @@ final class SampleBuild implements SampleSteps {
                 new ComparisonSpec(RUNNER_STORED_AOT, SHADOW_AOT, "Runner + AOT cache vs Shadow + AOT cache"),
                 new ComparisonSpec(RUNNER_EXTRACTED_AOT, SHADOW_AOT,
                         "Extracted Runner + AOT cache vs Shadow + AOT cache"),
+                new ComparisonSpec(RUNNER_EXTRACTED_AOT, RUNNER_STORED_AOT,
+                        "Extracted layout + AOT vs single JAR + AOT"),
                 new ComparisonSpec(RUNNER_STORED, RUNNER_PRESERVE, "STORED vs PRESERVE"),
                 new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_REFLECTION, "Entry stub vs reflection"),
                 new ComparisonSpec(RUNNER_STORED, SHADOW_STORED,
@@ -1076,63 +1077,23 @@ final class SampleBuild implements SampleSteps {
         }
         Path destination = artifacts.resolve("extracted");
         deleteRecursively(destination);
-        List<String> command = List.of(
-                javaExecutable().toString(),
-                "-Dmicronaut.runner.mode=extract",
-                "-jar", stored.artifact().toAbsolutePath().toString(),
-                "--destination", destination.toAbsolutePath().toString(),
-                "--force");
-        ProcessBuilder builder = new ProcessBuilder(command)
-                .directory(artifacts.toFile())
-                .redirectErrorStream(true);
-        Process process = builder.start();
-        StringBuilder output = new StringBuilder();
-        Thread drain = drain(process, output);
-        if (!process.waitFor(EXTRACT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)) {
-            process.destroyForcibly();
-            throw new IOException("extraction did not finish within " + EXTRACT_TIMEOUT_SECONDS + "s");
-        }
-        drain.join(5_000);
-        if (process.exitValue() != 0) {
-            throw new IOException("extraction failed with status " + process.exitValue() + tail(output));
-        }
-        Path applicationJar = singleJarIn(destination);
+        // The plugins' layout, checks included: Class-Path in index order and the fixed modification times.
+        AotLayout.Result layout = AotLayout.write(javaExecutable(), stored.artifact(), destination,
+                java.time.Duration.ofSeconds(EXTRACT_TIMEOUT_SECONDS));
+        Path applicationJar = layout.applicationJar();
         List<String> run = List.of(javaExecutable().toString(), "-jar",
                 applicationJar.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(
                 DeploymentSize.input("extracted-layout", destination));
-        List<Path> launchInputs = manifestClassPath(applicationJar);
+        List<Path> launchInputs = new ArrayList<>();
+        launchInputs.add(applicationJar);
+        launchInputs.addAll(layout.libraries());
         // Extraction already writes this instant; pinning states it rather than relying on it.
         LaunchInputs.pin(launchInputs);
         return Variant.available(name,
                 "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader"
                         + staticServicesNote(stored.description()),
                 run, destination, destination, deploymentSize, launchInputs);
-    }
-
-    private static List<Path> manifestClassPath(Path applicationJar) throws IOException {
-        List<Path> inputs = new ArrayList<>();
-        inputs.add(applicationJar);
-        try (JarFile jar = new JarFile(applicationJar.toFile())) {
-            Manifest manifest = jar.getManifest();
-            String classPath = manifest == null ? null
-                    : manifest.getMainAttributes().getValue(Attributes.Name.CLASS_PATH);
-            if (classPath == null || classPath.isBlank()) {
-                return List.copyOf(inputs);
-            }
-            for (String entry : classPath.trim().split("\\s+")) {
-                java.net.URI resolved = applicationJar.toUri().resolve(entry);
-                if (!"file".equalsIgnoreCase(resolved.getScheme())) {
-                    throw new IOException("extracted manifest Class-Path entry is not a file URI: " + entry);
-                }
-                Path input = Path.of(resolved).toAbsolutePath().normalize();
-                if (!Files.isRegularFile(input)) {
-                    throw new IOException("extracted manifest Class-Path entry does not exist: " + entry);
-                }
-                inputs.add(input);
-            }
-        }
-        return List.copyOf(inputs);
     }
 
     /**
@@ -1171,21 +1132,6 @@ final class SampleBuild implements SampleSteps {
             Files.createDirectories(destination.getParent());
             LaunchInputs.copy(file, destination);
         }
-    }
-
-    private static Path singleJarIn(Path directory) throws IOException {
-        List<Path> jars;
-        try (var stream = Files.list(directory)) {
-            jars = stream.filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().endsWith(".jar"))
-                    .sorted(Comparator.comparing(Path::toString))
-                    .toList();
-        }
-        if (jars.size() != 1) {
-            throw new IOException("expected exactly one jar directly under " + directory
-                    + ", found " + jars.size());
-        }
-        return jars.get(0);
     }
 
     private static void copyTree(Path root, JarOutputStream out, Set<String> written) throws IOException {

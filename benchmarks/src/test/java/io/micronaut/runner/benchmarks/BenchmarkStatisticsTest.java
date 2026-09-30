@@ -383,7 +383,7 @@ class BenchmarkStatisticsTest {
                 .filter(spec -> SampleBuild.variantNames().contains(spec.candidate())
                         && SampleBuild.variantNames().contains(spec.baseline()))
                 .toList();
-        assertEquals(11, applicable.size());
+        assertEquals(12, applicable.size());
         assertEquals(applicable.size(), occurrences(comparisons, "\"candidateVariant\""));
         assertFalse(comparisons.contains("\"baselineVariant\": \"runner-stored-reflection\""));
         assertTrue(comparisons.length() < json.length() / 10,
