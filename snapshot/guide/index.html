@@ -345,6 +345,9 @@ archives under one name. The plugin fails the build if it detects that.
 
         // On by default: compiles logback.xml at packaging time; anything it cannot compile is left to Logback.
         // options.put('precompileLogback', 'false')
+
+        // Dependency local-variable tables are dropped by default; line numbers stay. See Build-Time Transformations.
+        // options.put('stripLocalVariables', 'false')
     }
 }</code></pre>
 </div>
@@ -436,6 +439,13 @@ typed property, and an unknown name fails the build.</p>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>precompileLogback</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">boolean</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">passthrough</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stripLocalVariables</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">boolean</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">passthrough</p></td>
@@ -594,7 +604,9 @@ attach it as an additional artifact instead and leave the main one untouched.</p
 <p>The typed options are parameters of the same names, except that <code>manifestAttributes</code> is <code>&lt;manifestEntries&gt;</code>; the
 scalar ones also read <code>-Dmicronaut.runner.&lt;name&gt;</code>. <code>&lt;runnerOptions&gt;</code> and <code>-Dmicronaut.runner.&lt;name&gt;</code> set the same
 options by name, <code>-Dmicronaut.runner.&lt;name&gt;</code> only for passthrough options, and a <code>&lt;runnerOptions&gt;</code> entry wins. For
-example, <code>-Dmicronaut.runner.precompileLogback=false</code> leaves <code>logback.xml</code> to Logback at startup.</p>
+example, <code>-Dmicronaut.runner.precompileLogback=false</code> leaves <code>logback.xml</code> to Logback at startup.
+Dependency local-variable tables are dropped by default (see <a href="#localVariableTables">Local-variable tables</a>); pass
+<code>-Dmicronaut.runner.stripLocalVariables=false</code> to keep them.</p>
 </div>
 <div class="paragraph">
 <p>To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
@@ -665,6 +677,13 @@ format version, <code>Micronaut-Runner-Start-Class</code> the application main c
 not.</p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>MICRONAUT-INF/transforms.txt</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Present only when a build-time transform changed a dependency class or recorded a fallback: tab-separated lines,
+the first naming the Runner version, then one per nested JAR and transform with its counts. It is not indexed, the
+launcher never reads it at run time, and <code>extract</code> ignores it; <code>inspect</code> prints it. See
+<a href="#classTransforms">Dependency class transforms</a>.</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>META-INF/micronaut/**</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The Micronaut bean metadata of the application and of every dependency, merged and de-duplicated, with
 explicit directory entries. See <a href="#serviceDiscovery">Micronaut service discovery</a>.</p></td>
@@ -690,8 +709,9 @@ synthetic record for each one instead.</p></td>
 <p>By default each dependency is re-packed so that its own entries are <code>STORED</code> too, which removes
 decompression from class loading at the cost of a larger archive. Re-packing also drops signature files
 (<code>META-INF/<strong>.SF</code>, <code></strong>.DSA</code>, <code><strong>.RSA</code>, <code></strong>.EC</code>, <code>META-INF/SIG-*</code>) and <code>META-INF/INDEX.LIST</code>. Manifests are
-never rewritten, so package metadata and sealing survive intact. The <code>PRESERVE</code> option copies each
-dependency byte for byte instead.</p>
+never rewritten, so package metadata and sealing survive intact. By default, re-packing also strips
+local-variable tables from dependency classes, which then carry new CRC-32 values; see
+<a href="#localVariableTables">Local-variable tables</a>. The <code>PRESERVE</code> option copies each dependency byte for byte instead.</p>
 </div>
 <div class="paragraph">
 <p>Shadow can also write <code>STORED</code> entries (<code>entryCompression = ZipEntryCompression.STORED</code>), so the gain from not
@@ -812,6 +832,13 @@ files through their URL, which works per JAR without any special handling.</p>
 transformation is an option of the Runner JAR, fails closed, and names in the build log why it did nothing when it
 does nothing.</p>
 </div>
+<div class="paragraph">
+<p>There are two kinds. <a href="#precompiledLogback">Precompiled Logback configuration</a> adds generated classes to the application layer, and
+<a href="#classTransforms">Dependency class transforms</a> rewrites the classes of the dependencies as they are re-packed, first of all by dropping their
+<a href="#localVariableTables">local-variable tables</a>. Both are on by default, and neither touches what the other produces:
+the class transforms never rewrite the application layer, where the generated Logback classes go, and the Logback
+front end runs the application&#8217;s Logback JARs as they were published, not their re-packed copies.</p>
+</div>
 <div class="sect1">
 <h2 id="precompiledLogback">Precompiled Logback configuration</h2>
 <div class="sectionbody">
@@ -922,6 +949,184 @@ with <code>-Dlogger.config</code> or <code>LOGGER_CONFIG</code> instead, or turn
 </div>
 </div>
 </div>
+<div class="sect1">
+<h2 id="classTransforms">Dependency class transforms</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>A runner JAR re-packs every dependency, and with the default <code>STORED</code> compression it can also rewrite the
+dependency classes on the way: whatever a class carries that the application never needs at run time is paid for
+again on every start. This section lists what Runner changes in dependency classes at build time, the default
+and the opt-out of each change, and what an application can observe as a result.</p>
+</div>
+<div class="paragraph">
+<p>Every change runs in one pass: each dependency class is parsed once, every enabled transform is applied to it, and
+the result is written once. Before a rewritten class is accepted it is verified, with the JDK&#8217;s class-file
+verifier, against the whole runtime class path and the JDK&#8217;s own classes; a transform that fails on a class, or
+makes it verify worse than the class it replaces, is dropped for that class alone, and the build log says so.</p>
+</div>
+<div class="paragraph">
+<p>Nothing here applies to the application&#8217;s own classes, the ones Runner generates into the application layer
+included, to a project dependency (another project of a Gradle build, another module of a Maven reactor), or to
+any class of a signed JAR: they are nested exactly as they were built. With <code>PRESERVE</code> compression every
+dependency is nested byte for byte, so none of these transforms run.</p>
+</div>
+<div class="paragraph">
+<p>What a build changed is recorded in the archive, in <code>MICRONAUT-INF/transforms.txt</code> (see
+<a href="#format">The Runner JAR Format</a>), and printed by the <code>inspect</code> mode:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -Dmicronaut.runner.mode=inspect -jar build/libs/my-app-0.1-all.jar</code></pre>
+</div>
+</div>
+<div class="sect2">
+<h3 id="localVariableTables">Local-variable tables</h3>
+<div class="paragraph">
+<p>On by default. A dependency class loses the tables that name its local variables, and its constant pool is rebuilt
+without the names and signatures they pointed at.</p>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">Dropped</dt>
+<dd>
+<p><code>LocalVariableTable</code>, <code>LocalVariableTypeTable</code> and <code>CharacterRangeTable</code>; the type annotations inside
+method code, which carry bytecode offsets; and the invisible type annotations of the class, its fields and its
+methods.</p>
+</dd>
+<dt class="hdlist1">Kept</dt>
+<dd>
+<p><code>LineNumberTable</code> and <code>SourceFile</code>, so stack traces keep their <code>(File.java:N)</code> frames; <code>MethodParameters</code>,
+so reflective parameter names survive; <code>Signature</code>, so generic types survive; <code>SourceDebugExtension</code>; and every
+annotation reflection can see.</p>
+</dd>
+<dt class="hdlist1">Left alone</dt>
+<dd>
+<p>A class with an attribute the JDK does not know, whose constant pool references a rebuilt pool could
+break, and <code>module-info</code>.</p>
+</dd>
+</dl>
+</div>
+<div class="paragraph">
+<p>What an application can observe, in dependency frames only:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>A helpful <code>NullPointerException</code> message names a local by position, <code>because "&lt;local1&gt;" is null</code>, instead of by
+name; the line number stays. A debugger shows no local-variable names in dependency code.</p>
+</li>
+<li>
+<p>Stack traces, reflective parameter names and every annotation reflection exposes are unchanged.</p>
+</li>
+<li>
+<p>The order of <code>getDeclaredMethods()</code> may change, because the JVM orders methods by the symbols a rebuilt pool
+interns. That order is unspecified, and it already differs with and without class data sharing, but code that
+depends on it can notice, for example reflection-based JSON property order of a dependency&#8217;s classes.</p>
+</li>
+<li>
+<p>A rewritten class has new bytes and a new CRC-32: on <code>benchmark-large</code> about 85% of the dependency classes.
+Class-level composition analysis may report such a class as modified rather than as an exact match. The opt-out
+keeps dependency class bytes as published, and <code>PRESERVE</code> keeps whole nested JARs byte for byte.</p>
+</li>
+<li>
+<p>Output bytes depend on the JDK that runs the build, whose class-file library chooses the pool order: a stripped
+archive is byte-reproducible only when it is built with the same JDK build.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>On <code>test-suite/samples/benchmark-large</code>, stripping rewrites 7,102 of the 8,428 dependency classes and saves
+4,868,965 bytes, with no fallback. Measured by the startup harness (<a href="#benchmarks">Benchmarks</a>) against the
+<code>runner-stored-keepdebug</code> control, 30 interleaved pairs on an Apple M4 Pro with Homebrew OpenJDK 25.0.4.1:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 40%;">
+<col style="width: 60%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Measure</th>
+<th class="tableblock halign-left valign-top">Stripped minus tables kept</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Readiness without a JDK cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−12.6 ms paired median, 95% CI [−13.9, −8.1] (428.1 ms against 440.6 ms)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Readiness with the JDK AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−2.1 ms, 95% CI [−5.1, +1.1]: no measurable gain</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Maximum RSS with the JDK AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−4.6 MB paired median, 95% CI [−4.9, −3.6] (181.9 MB against 186.3 MB); the AOT cache is 1.7 MB smaller</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Archive size</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">32,726,207 against 37,590,842 bytes raw (−12.9%), 8,344,903 against 9,686,906 bytes gzip -6 (−13.9%)</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>The memory row comes from a separate run, because the RSS of a cached start moves by several MB from one trained
+cache to the next, which is more than stripping saves. It is the paired median over 40 pairs of AOT caches, each
+pair trained afresh from the two archives and each archive then started three times; in 5 of the 40 pairs the
+stripped archive used more, by 2.0 MB at most.</p>
+</div>
+<div class="paragraph">
+<p>Packaging does the extra work on the staging threads. With 8 of them, the sample&#8217;s <code>micronautRunnerJar</code> task took
+0.24 s instead of 0.08 s (medians of ten warm-daemon rounds), against 0.73 s for its <code>shadowJar</code>.</p>
+</div>
+<div class="paragraph">
+<p>These figures were taken before Runner precompiled <code>logback.xml</code> (<a href="#precompiledLogback">Precompiled Logback configuration</a>): both archives of each
+pair configured Logback with Joran, and neither carried the generated configurator.</p>
+</div>
+<div class="paragraph">
+<p>Some libraries read local-variable tables at run time and find nothing once they are gone. When the class path
+contains one of them, the build keeps every table and warns once, naming the JAR and the class:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Paranamer&#8217;s <code>com.thoughtworks.paranamer.BytecodeReadingParanamer</code>;</p>
+</li>
+<li>
+<p>any class of AspectJ&#8217;s weaver, under <code>org.aspectj.weaver</code>;</p>
+</li>
+<li>
+<p>Spring&#8217;s <code>org.springframework.core.LocalVariableTableParameterNameDiscoverer</code>, which Spring removed in 6.1.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>To keep the tables, and silence that warning, set the <code>stripLocalVariables</code> option to <code>false</code>. In Gradle:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">micronaut {
+    runner {
+        options.put('stripLocalVariables', 'false')
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>In Maven, pass <code>-Dmicronaut.runner.stripLocalVariables=false</code>, or add a <code>&lt;runnerOptions&gt;</code> entry:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;configuration&gt;
+    &lt;runnerOptions&gt;
+        &lt;stripLocalVariables&gt;false&lt;/stripLocalVariables&gt;
+    &lt;/runnerOptions&gt;
+&lt;/configuration&gt;</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
 
 <h1 id="runtime"><a class="anchor" href="#runtime"></a>5 Running a Runner JAR</h1>
 
@@ -972,8 +1177,9 @@ constructor.</p>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.mode</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>run</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>run</code> starts the application. <code>inspect</code> prints the index header and jar table, <code>list</code> prints the entries,
-and <code>extract</code> writes an exploded copy. The non-<code>run</code> modes consume the remaining command line arguments.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>run</code> starts the application. <code>inspect</code> prints the index header, the build-time transforms (see
+<a href="#classTransforms">Dependency class transforms</a>) and the jar table, <code>list</code> prints the entries, and <code>extract</code> writes
+an exploded copy. The non-<code>run</code> modes consume the remaining command line arguments.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.timing</code></p></td>
@@ -1582,7 +1788,10 @@ scenario. The <code>edit</code> scenario makes a bytecode-changing edit to <code
 compilation and the packaging task&#8217;s other dependencies execute as well. Each invocation records the packaging
 task&#8217;s action time and the wall time of the whole <code>gradlew</code> process. The comparisons are <code>runner-stored</code>/<code>shadow</code>
 (the defaults) and the compression-matched <code>runner-stored</code>/<code>shadow-stored</code> (neither archive deflated) and
-<code>runner-preserve</code>/<code>shadow</code> (both deflated), each the median of per-round differences.</p>
+<code>runner-preserve</code>/<code>shadow</code> (both deflated), each the median of per-round differences.
+The <code>runner-stored</code> time includes the default class transform, which strips the local-variable tables of the
+dependency classes (see <a href="#localVariableTables">Local-variable tables</a>); <code>runner-preserve</code> nests the dependencies
+byte for byte and runs none.</p>
 </div>
 <div class="paragraph">
 <p>Maven Shade is not compared. <code>test-suite/samples/maven-basic</code> configures no <code>maven-shade-plugin</code>, and in that
@@ -1660,6 +1869,16 @@ compared with <code>runner-stored-aot</code> and <code>shadow-aot</code></p></td
 <td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in control: that Joran Runner JAR with a trained, application-class-verified JDK AOT cache</p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-keepdebug</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the same stored Runner JAR inputs with <code>stripLocalVariables</code> off, so dependency
+classes keep their local-variable tables (see <a href="#localVariableTables">Local-variable tables</a>)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-keepdebug-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the identical <code>runner-stored-keepdebug</code> JAR with a trained, application-class-verified
+JDK AOT cache</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub</p></td>
 </tr>
@@ -1690,6 +1909,12 @@ working directory, measured workload and JVM options except for the one applicat
 Default JDK class sharing remains enabled when the selected JDK enables it, but reuse of platform classes from
 the JDK&#8217;s default archive is not evidence of trained application-class AOT cache reuse; default JDK class
 sharing is a separate baseline condition.</p>
+</div>
+<div class="paragraph">
+<p>Every Runner row builds with the packaging library&#8217;s defaults, so <code>runner-stored</code> and the rows derived from it,
+<code>runner-stored-aot</code>, <code>runner-extracted</code> and <code>runner-extracted-aot</code>, measure dependency classes stripped of their
+local-variable tables. The opt-in pairs <code>runner-stored</code>/<code>runner-stored-keepdebug</code> and
+<code>runner-stored-aot</code>/<code>runner-stored-keepdebug-aot</code> measure that default against keeping the tables.</p>
 </div>
 <div class="paragraph">
 <p>The compression-matched pairs are <code>runner-stored</code>/<code>shadow-stored</code>, where neither side inflates class bytes, and
@@ -1783,8 +2008,8 @@ inferring it from default JDK class sharing.</p>
 </div>
 </div>
 <div class="paragraph">
-<p>The last command adds the opt-in rows, such as the entry-stub ablation. Run it with 40 iterations: at 20, the
-stub effect&#8217;s interval still spanned zero.</p>
+<p>The last command adds the opt-in rows, such as the entry-stub ablation and the local-variable-table controls. Run
+it with 40 iterations: at 20, the stub effect&#8217;s interval still spanned zero.</p>
 </div>
 <div class="paragraph">
 <p><code>-Pbenchmarks.workloads=no-manifest,small,representative,wide</code> selects packaging shapes and

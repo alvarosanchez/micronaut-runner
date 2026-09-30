@@ -198,6 +198,10 @@ or by mapping only the index and reading classes positionally.</div>
 <dd>
 <div class="block">Where the packaging library reports what it did and what looked wrong.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/TransformReport.html#bytesSaved()" class="member-name-link">bytesSaved()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
+<dd>
+<div class="block">How many bytes smaller the classes the transform rewrote became, together.</div>
+</dd>
 </dl>
 <h2 class="title" id="I:C">C</h2>
 <dl class="index">
@@ -273,10 +277,16 @@ or by mapping only the index and reading classes positionally.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#CENVER" class="member-name-link">CENVER</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/TransformReport.html#classes()" class="member-name-link">classes()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
+<dd>
+<div class="block">The number of dependency classes the transform considered.</div>
+</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#CLASSES_PREFIX" class="member-name-link">CLASSES_PREFIX</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">Outer archive prefix under which the application classes and resources are stored exploded.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#class-transforms-heading" class="search-tag-link">Class transforms</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#close()" class="member-name-link">close()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">Releases the mappings, the buffer pool and the file handle.</div>
@@ -641,6 +651,8 @@ for it.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/Dependency.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/TransformReport.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#equals(java.net.URL,java.net.URL)" class="member-name-link">equals(URL, URL)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>
 <div class="block">Compares two jar URLs, reference included, the way <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html" title="class or interface in java.net" class="external-link"><code>URLStreamHandler</code></a> defines it.</div>
@@ -689,6 +701,10 @@ layout that the JDK's own application class loader runs.</div>
 </dl>
 <h2 class="title" id="I:F">F</h2>
 <dl class="index">
+<dt><a href="io/micronaut/runner/build/TransformReport.html#fallbacks()" class="member-name-link">fallbacks()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
+<dd>
+<div class="block">The number of dependency classes the transform would have rewritten but gave up on.</div>
+</dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#file()" class="member-name-link">file()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">The archive this source reads.</div>
@@ -987,6 +1003,10 @@ property.</div>
 <div class="block">Packaging options by <a href="io/micronaut/runner/build/RunnerJarOption.html#optionName()">name</a>, for the options that have no
 typed property here.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getProjectModules()" class="member-name-link">getProjectModules()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
+<dd>
+<div class="block">The absolute paths of the dependencies that another project of this build produced.</div>
+</dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#getRealName()" class="member-name-link">getRealName()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>
 <div class="block">The name of the entry that physically holds the bytes: the same as <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/zip/ZipEntry.html#getName()" title="class or interface in java.util.zip" class="external-link"><code>ZipEntry.getName()</code></a> for an
@@ -1077,6 +1097,8 @@ every URL the class loader hands out.</div>
 <div class="block">The hash of a logical name, as stored in <a href="io/micronaut/runner/IndexFormat.html#E_NAME_HASH"><code>IndexFormat.E_NAME_HASH</code></a> and used to pick a hash table slot.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/Dependency.html#hashCode()" class="member-name-link">hashCode()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/TransformReport.html#hashCode()" class="member-name-link">hashCode()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#hashCode(java.net.URL)" class="member-name-link">hashCode(URL)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>
@@ -1170,6 +1192,11 @@ launcher never has to parse a nested archive's central directory at startup.</di
 <div class="block">Whether the packaging library reads an attribute: one of <code>Specification-Title</code>,
 <code>Specification-Version</code>, <code>Specification-Vendor</code>, <code>Implementation-Title</code>,
 <code>Implementation-Version</code>, <code>Implementation-Vendor</code> and <code>Sealed</code>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html#isProjectModule()" class="member-name-link">isProjectModule()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar.DependencyInput</a></dt>
+<dd>
+<div class="block">Whether another project of this build produced the dependency, which decides whether its classes are
+rewritten, so it is part of the cache key.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarReader.html#isRunnerJar(java.nio.file.Path)" class="member-name-link">isRunnerJar(Path)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></dt>
 <dd>
@@ -1918,6 +1945,15 @@ it is packaged.</div>
 <dd>
 <div class="block">Copy every dependency byte for byte, keeping its original compression.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/Dependency.html#projectModule()" class="member-name-link">projectModule()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dd>
+<div class="block">Whether the build that packages the application also produced this jar: another project of a Gradle
+build, or another module of a Maven reactor.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/Dependency.html#projectModule(boolean)" class="member-name-link">projectModule(boolean)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
+<dd>
+<div class="block">A copy of this dependency with the project-module flag set as given.</div>
+</dd>
 <dt><a href="io/micronaut/runner/Handlers.html#PROTOCOL_PACKAGE" class="member-name-link">PROTOCOL_PACKAGE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
 <div class="block">The package added to <a href="io/micronaut/runner/Handlers.html#HANDLER_PACKAGES_PROPERTY">"java.protocol.handler.pkgs"</a>.</div>
@@ -1965,6 +2001,10 @@ to serve it.</div>
 <dd>
 <div class="block">Picks the record a chain resolves to within one jar, for enumerating a resource per jar the way
 <code>ClassLoader.getResources</code> does.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/TransformReport.html#rewritten()" class="member-name-link">rewritten()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
+<dd>
+<div class="block">The number of dependency classes the transform rewrote.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#rules-heading" class="search-tag-link">Rules</a> - Section in enum class io.micronaut.runner.build.RunnerJarOption</dt>
 <dd>&nbsp;</dd>
@@ -2088,6 +2128,11 @@ after a connection is connected.</div>
 <div class="block">The end-to-end startup benchmark: builds the sample application in every packaging the runner competes
 with, starts each of them many times, and reports how long each takes to answer its first request.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/TransformReport.html#step()" class="member-name-link">step()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
+<dd>
+<div class="block">The transform's name, which is the name of the <a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> that enables it, such as
+<code>stripLocalVariables</code>.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/Compression.html#STORED" class="member-name-link">STORED</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
 <dd>
 <div class="block">Rewrite every dependency so that all of its entries are stored uncompressed.</div>
@@ -2108,6 +2153,18 @@ same way as the launcher's archive source.</div>
 <dt><a href="io/micronaut/runner/Index.html#string(int)" class="member-name-link">string(int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">Decodes a string from the string table.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#stripLocalVariables()" class="member-name-link">stripLocalVariables()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
+<dd>
+<div class="block">Whether the local-variable tables of dependency classes are dropped when they are re-packed.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#stripLocalVariables(boolean)" class="member-name-link">stripLocalVariables(boolean)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
+<dd>
+<div class="block">Drops the local-variable tables of dependency classes when they are re-packed.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarResult.html#summary()" class="member-name-link">summary()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
@@ -2164,6 +2221,23 @@ then the main attributes, then the package sections.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarResult.html#toString()" class="member-name-link">toString()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/TransformReport.html#toString()" class="member-name-link">toString()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
+<dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/TransformReport.html" class="type-name-link" title="class in io.micronaut.runner.build">TransformReport</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
+<dd>
+<div class="block">What one build-time class transform did to the dependency classes of a runner jar: how many it rewrote,
+how many it left as they were, and how many it had to give up on.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#transforms()" class="member-name-link">transforms()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dd>
+<div class="block">What each build-time class transform did to the dependency classes, one report per transform that
+ran, in the order they ran.</div>
+</dd>
+<dt><a href="io/micronaut/runner/IndexFormat.html#TRANSFORMS_ENTRY_NAME" class="member-name-link">TRANSFORMS_ENTRY_NAME</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
+<dd>
+<div class="block">Outer archive entry, written right after the launcher classes, that records what the build-time class
+transforms did to the dependency classes: tab-separated lines, the first naming the Runner version.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#two-passes-one-archive-heading" class="search-tag-link">Two passes, one archive</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html#TYPED" class="member-name-link">TYPED</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html" title="enum class in io.micronaut.runner.build">RunnerJarOption.Exposure</a></dt>
@@ -2190,6 +2264,11 @@ with the documented default.</div>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#u8(long)" class="member-name-link">u8(long)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">Reads one unsigned byte.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/TransformReport.html#unchanged()" class="member-name-link">unchanged()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
+<dd>
+<div class="block">The number of dependency classes the transform left byte for byte as they were: it had nothing to
+change in them, or it does not apply to them.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Handlers.html#unregister()" class="member-name-link">unregister()</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>

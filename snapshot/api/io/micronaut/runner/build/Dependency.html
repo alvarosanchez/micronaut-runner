@@ -58,8 +58,10 @@ loadScripts(document, 'script');</script>
 <ol class="toc-list">
 <li><a href="#of(java.nio.file.Path)" tabindex="0">of(Path)</a></li>
 <li><a href="#of(java.nio.file.Path,java.lang.String)" tabindex="0">of(Path, String)</a></li>
+<li><a href="#projectModule(boolean)" tabindex="0">projectModule(boolean)</a></li>
 <li><a href="#path()" tabindex="0">path()</a></li>
 <li><a href="#coordinates()" tabindex="0">coordinates()</a></li>
+<li><a href="#projectModule()" tabindex="0">projectModule()</a></li>
 <li><a href="#fileName()" tabindex="0">fileName()</a></li>
 <li><a href="#equals(java.lang.Object)" tabindex="0">equals(Object)</a></li>
 <li><a href="#hashCode()" tabindex="0">hashCode()</a></li>
@@ -83,12 +85,14 @@ loadScripts(document, 'script');</script>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
 <div class="block">One dependency to nest into the runner jar, together with the coordinates it was resolved from.
 
-<p>Four things about a dependency determine the archive, and a plugin's cache key must cover all four:</p>
+<p>Five things about a dependency determine the archive, and a plugin's cache key must cover all five:</p>
 <ul>
     <li>the file's bytes, which are nested as they are or repacked uncompressed;</li>
     <li>its <a href="#fileName()">file name</a>, which becomes the nested entry's name;</li>
     <li>its <a href="#coordinates()">coordinates</a>, which are written into the index so that
     <code>inspect</code> and any tool reading a runner jar can tell which module a nested jar came from;</li>
+    <li>whether it is a <a href="#projectModule()">project module</a>, which decides whether its classes
+    are rewritten;</li>
     <li>its position in <a href="RunnerJarSpec.html#dependencies()"><code>RunnerJarSpec.dependencies()</code></a>, which is the class path order.</li>
 </ul>
 
@@ -96,7 +100,8 @@ loadScripts(document, 'script');</script>
 warning. Build systems that can resolve coordinates (Gradle from <code>ResolvedArtifactResult</code>, Maven from
 the project artifacts) should pass them; a file dependency that has none uses <a href="#of(java.nio.file.Path)"><code>of(Path)</code></a>.</p>
 
-<p>A dependency is an immutable value: two dependencies with the same path and coordinates are equal.</p></div>
+<p>A dependency is an immutable value: two dependencies with the same path, coordinates and project-module
+flag are equal.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -148,6 +153,17 @@ the project artifacts) should pass them; a file dependency that has none uses <a
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#path()" class="member-name-link">path</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The file to nest.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#projectModule()" class="member-name-link">projectModule</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Whether the build that packages the application also produced this jar: another project of a Gradle
+build, or another module of a Maven reactor.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#projectModule(boolean)" class="member-name-link">projectModule</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">A copy of this dependency with the project-module flag set as given.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#toString()" class="member-name-link">toString</a>()</code></div>
@@ -207,6 +223,27 @@ the project artifacts) should pass them; a file dependency that has none uses <a
 </section>
 </li>
 <li>
+<section class="detail" id="projectModule(boolean)">
+<h3>projectModule</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></span>&nbsp;<span class="element-name">projectModule</span><wbr><span class="parameters">(boolean&nbsp;value)</span></div>
+<div class="block">A copy of this dependency with the project-module flag set as given.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>value</code> - whether the build that packages the application also produced this jar</dd>
+<dt>Returns:</dt>
+<dd>the flagged copy, or this instance when the flag already has that value</dd>
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="#projectModule()"><code>projectModule()</code></a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
 <section class="detail" id="path()">
 <h3>path</h3>
 <div class="horizontal-scroll">
@@ -228,6 +265,24 @@ the project artifacts) should pass them; a file dependency that has none uses <a
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the coordinates, or empty when they are unknown</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="projectModule()">
+<h3>projectModule</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">projectModule</span>()</div>
+<div class="block">Whether the build that packages the application also produced this jar: another project of a Gradle
+build, or another module of a Maven reactor.
+
+<p>Unlike the coordinates, the flag changes how the archive is built. A project module is user code,
+whose locals users debug, so its classes are nested as they are: <a href="RunnerJarSpec.html#stripLocalVariables()"><code>RunnerJarSpec.stripLocalVariables()</code></a> never rewrites them, just as it never rewrites the application's
+own classes. <a href="#of(java.nio.file.Path)"><code>of(Path)</code></a> and <a href="#of(java.nio.file.Path,java.lang.String)"><code>of(Path, String)</code></a> leave it unset.</p></div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>whether this dependency is a module of the same build</dd>
 </dl>
 </div>
 </section>

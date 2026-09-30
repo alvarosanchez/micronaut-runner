@@ -74,6 +74,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#enableNativeAccess(boolean)" tabindex="0">enableNativeAccess(boolean)</a></li>
 <li><a href="#archiveReads(io.micronaut.runner.build.ArchiveReads)" tabindex="0">archiveReads(ArchiveReads)</a></li>
 <li><a href="#precompileLogback(boolean)" tabindex="0">precompileLogback(boolean)</a></li>
+<li><a href="#stripLocalVariables(boolean)" tabindex="0">stripLocalVariables(boolean)</a></li>
 <li><a href="#option(java.lang.String,java.lang.String)" tabindex="0">option(String, String)</a></li>
 <li><a href="#timestamp(java.time.Instant)" tabindex="0">timestamp(Instant)</a></li>
 <li><a href="#build()" tabindex="0">build()</a></li>
@@ -225,8 +226,13 @@ typed setter or not.</div>
 it is packaged.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stripLocalVariables(boolean)" class="member-name-link">stripLocalVariables</a><wbr>(boolean&nbsp;value)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Drops the local-variable tables of dependency classes when they are re-packed.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the instant every entry is dated with.</div>
 </div>
 </div>
@@ -547,6 +553,61 @@ matches Joran's; see <a href="RunnerJarSpec.html#precompileLogback()"><code>Runn
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>value</code> - whether to precompile <code>logback.xml</code></dd>
+<dt>Returns:</dt>
+<dd>this builder</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="stripLocalVariables(boolean)">
+<h3>stripLocalVariables</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></span>&nbsp;<span class="element-name">stripLocalVariables</span><wbr><span class="parameters">(boolean&nbsp;value)</span></div>
+<div class="block">Drops the local-variable tables of dependency classes when they are re-packed.
+
+<p>Without a JDK AOT cache, parsing and defining classes is the largest single startup cost, and it
+grows with class bytes and with the symbols the JVM interns. The names and signatures of local
+variables are neither needed to run a class nor visible to reflection, so a re-packed dependency
+class is rewritten without them, with a rebuilt constant pool. On the benchmark sample that makes the
+dependency classes about 15% smaller; the user guide's build-time transforms section has the measured
+effect on startup.</p>
+
+<p>What is dropped from a dependency class:</p>
+<ul>
+    <li><code>LocalVariableTable</code>, <code>LocalVariableTypeTable</code> and <code>CharacterRangeTable</code>;</li>
+    <li>the type annotations of code, <code>RuntimeVisibleTypeAnnotations</code> and
+    <code>RuntimeInvisibleTypeAnnotations</code> inside <code>Code</code>, which carry bytecode offsets;</li>
+    <li><code>RuntimeInvisibleTypeAnnotations</code> on the class, its fields and its methods.</li>
+</ul>
+
+<p>What is kept: <code>LineNumberTable</code> and <code>SourceFile</code>, so stack traces keep their
+<code>(File.java:N)</code> frames; <code>SourceDebugExtension</code>; <code>MethodParameters</code>, so reflective
+parameter names survive; <code>Signature</code>; and every annotation reflection can see.</p>
+
+<p>What changes observably, in dependency classes only:</p>
+<ul>
+    <li>helpful <code>NullPointerException</code> messages name a local as <code>&lt;local1&gt;</code> instead of by
+    its name, and a debugger shows no local names; the line number stays;</li>
+    <li>the order of <code>getDeclaredMethods()</code>, which is unspecified, may change, because the
+    constant pool is rebuilt;</li>
+    <li>libraries that read <code>LocalVariableTable</code> at run time, such as Paranamer's
+    <code>BytecodeReadingParanamer</code>, AspectJ load-time weaving and Spring's pre-6.1
+    <code>LocalVariableTableParameterNameDiscoverer</code>, find no names. When one of them is on the
+    class path, stripping is turned off for the build, with a warning;</li>
+    <li>a rewritten class has new bytes and a new CRC-32, and the archive is reproducible byte for
+    byte only when it is built with the same JDK build.</li>
+</ul>
+
+<p>The application's own classes, and a dependency marked <a href="Dependency.html#projectModule()"><code>Dependency.projectModule()</code></a>, are
+never stripped: they are user code, whose locals users debug. A class of a signed jar, a class with
+an attribute the JDK does not know, and <code>module-info</code> are left alone too. With
+<a href="Compression.html#PRESERVE"><code>Compression.PRESERVE</code></a>, which nests every dependency byte for byte, the option has no effect.</p>
+
+<p>Defaults to <code>true</code>.</p></div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>value</code> - whether to strip the local-variable tables of dependency classes</dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
 </dl>

@@ -79,7 +79,8 @@ loadScripts(document, 'script');</script>
 <p>Selected with <code>-Dmicronaut.runner.mode=inspect</code>, it answers the questions that come up when an
 archive does not behave: which main class will be entered, whether the packager could generate an entry
 stub, which version of the packaging library produced the archive, how many records the index holds and
-how well they hash, and which dependency is at which position of the class path with which flags.</p>
+how well they hash, what the build-time class transforms did to the dependency classes, and which dependency
+is at which position of the class path with which flags.</p>
 
 <p>Nothing here is on any hot path. This class is loaded only when the mode selects it, so it is written
 in ordinary Java: the rules that keep <code>io.micronaut.runner</code> free of lambdas, streams and

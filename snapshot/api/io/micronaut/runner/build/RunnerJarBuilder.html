@@ -56,6 +56,7 @@ loadScripts(document, 'script');</script>
 <ol class="toc-list">
 <li><a href="#two-passes-one-archive-heading" tabindex="0">Two passes, one archive</a></li>
 <li><a href="#dependency-staging-heading" tabindex="0">Dependency staging</a></li>
+<li><a href="#class-transforms-heading" tabindex="0">Class transforms</a></li>
 <li><a href="#application-jars-heading" tabindex="0">Application jars</a></li>
 <li><a href="#dependency-files-heading" tabindex="0">Dependency files</a></li>
 <li><a href="#path-safety-heading" tabindex="0">Path safety</a></li>
@@ -116,6 +117,19 @@ In PRESERVE the reader reads the manifest at its exact size and never allocates 
 the stage holds one: the buffer it checksums the dependency through. The archive's bytes do not depend on
 the thread count: every nested jar's name and work file are fixed in class-path order before staging
 starts, warnings are emitted in that order afterwards, and the outer archive is written on one thread.</p>
+
+<h2 id="class-transforms-heading">Class transforms</h2>
+<p>In STORED, each stage also runs the <code>ClassTransforms</code> of the build over its dependency's classes, by
+default <a href="RunnerJarSpec.html#stripLocalVariables()"><code>RunnerJarSpec.stripLocalVariables()</code></a>. Before staging, one scan task per dependency runs on the
+same threads, with its own <code>ZipReader</code>, into a read-only <code>ClassPathModel</code> that every stage shares
+and that is discarded when <code>build</code> returns. A staging thread then also holds the original and the
+rewritten bytes of one class, at most <code>ClassTransformPipeline.MAX_CLASS_SIZE</code> each. What the stages
+did is logged on the calling thread in class-path order and written into <code>MICRONAUT-INF/transforms.txt</code>
+right after the launcher classes; with every transform off there is no scan and no such entry.</p>
+
+<p><code>LogbackPrecompiler</code> runs after the stages, because the staged dependencies decide whether it applies.
+The two do not meet: its front end loads Logback from the dependencies' own files, not from the staged copies,
+and the classes it generates join the application layer after the scan, where no transform rewrites them.</p>
 
 <h2 id="application-jars-heading">Application jars</h2>
 <p>An application output that is a jar is opened once, on the calling thread, and stays open until the

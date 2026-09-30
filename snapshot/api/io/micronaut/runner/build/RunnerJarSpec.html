@@ -73,6 +73,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#enableNativeAccess()" tabindex="0">enableNativeAccess()</a></li>
 <li><a href="#archiveReads()" tabindex="0">archiveReads()</a></li>
 <li><a href="#precompileLogback()" tabindex="0">precompileLogback()</a></li>
+<li><a href="#stripLocalVariables()" tabindex="0">stripLocalVariables()</a></li>
 <li><a href="#timestamp()" tabindex="0">timestamp()</a></li>
 <li><a href="#effectiveOptions()" tabindex="0">effectiveOptions()</a></li>
 </ol>
@@ -238,9 +239,14 @@ restricted method warnings a dependency using the foreign function API would oth
 <div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
 packaged, so that the application does not parse XML and run Joran on its main thread at every start.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp()" class="member-name-link">timestamp</a>()</code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stripLocalVariables()" class="member-name-link">stripLocalVariables</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Whether the local-variable tables of dependency classes are dropped when they are re-packed.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp()" class="member-name-link">timestamp</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The instant every entry of the archive is dated with, converted to MS-DOS time in UTC.</div>
 </div>
 </div>
@@ -526,6 +532,22 @@ not recorded, and every way to see them (<code>logback.debug</code>, a status li
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>whether to precompile <code>logback.xml</code></dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="stripLocalVariables()">
+<h3>stripLocalVariables</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">stripLocalVariables</span>()</div>
+<div class="block">Whether the local-variable tables of dependency classes are dropped when they are re-packed.
+
+<p>See <a href="RunnerJarSpec.Builder.html#stripLocalVariables(boolean)"><code>RunnerJarSpec.Builder.stripLocalVariables(boolean)</code></a> for what is dropped, what is kept and what changes
+as a result.</p></div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>whether local-variable tables are stripped, <code>true</code> unless configured otherwise</dd>
 </dl>
 </div>
 </section>

@@ -72,6 +72,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#getInheritedManifestAttributes()" tabindex="0">getInheritedManifestAttributes()</a></li>
 <li><a href="#getClasspath()" tabindex="0">getClasspath()</a></li>
 <li><a href="#getCoordinates()" tabindex="0">getCoordinates()</a></li>
+<li><a href="#getProjectModules()" tabindex="0">getProjectModules()</a></li>
 <li><a href="#getDependencyInputs()" tabindex="0">getDependencyInputs()</a></li>
 <li><a href="#getArchiveFile()" tabindex="0">getArchiveFile()</a></li>
 <li><a href="#getArchiveBaseName()" tabindex="0">getArchiveBaseName()</a></li>
@@ -306,14 +307,19 @@ the <code>jar</code> task's.</div>
 <div class="block">Packaging options by <a href="../build/RunnerJarOption.html#optionName()">name</a>, for the options that have no
 typed property here.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageArchive()" class="member-name-link">packageArchive</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Builds the archive.</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.SetProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getProjectModules()" class="member-name-link">getProjectModules</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="block">The absolute paths of the dependencies that another project of this build produced.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#setInheritedManifest(org.gradle.api.java.archives.Manifest)" class="member-name-link">setInheritedManifest</a><wbr>(@Nullable org.gradle.api.java.archives.Manifest&nbsp;manifest)</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageArchive()" class="member-name-link">packageArchive</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Builds the archive.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#setInheritedManifest(org.gradle.api.java.archives.Manifest)" class="member-name-link">setInheritedManifest</a><wbr>(@Nullable org.gradle.api.java.archives.Manifest&nbsp;manifest)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the manifest configuration the application's own manifest attributes are taken from.</div>
 </div>
 </div>
@@ -496,6 +502,23 @@ can report what an archive contains. Not an input: it is derived from <a href="#
 </section>
 </li>
 <li>
+<section class="detail" id="getProjectModules()">
+<h3>getProjectModules</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.SetProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getProjectModules</span>()</div>
+<div class="block">The absolute paths of the dependencies that another project of this build produced. The packaging library
+never rewrites their classes: like the application's own, they are user code. Not an input: each
+dependency's flag is part of <a href="#getDependencyInputs()"><code>getDependencyInputs()</code></a>. A task registered by hand leaves it empty,
+which treats every dependency as a library.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the paths of the project dependencies</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
 <section class="detail" id="getDependencyInputs()">
 <h3>getDependencyInputs</h3>
 <div class="horizontal-scroll">
@@ -504,7 +527,7 @@ can report what an archive contains. Not an input: it is derived from <a href="#
 
 <p>The file collection above retains task dependency inference. This nested sequence adds the ordering
 Gradle's file collection snapshot does not retain and pairs each position with its file name,
-coordinates and raw bytes. Path sensitivity is deliberately <code>NONE</code>: moving an otherwise
+coordinates, project-module flag and raw bytes. Path sensitivity is deliberately <code>NONE</code>: moving an otherwise
 identical project must not change its cache key.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>

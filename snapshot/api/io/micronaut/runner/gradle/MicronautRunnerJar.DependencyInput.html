@@ -60,6 +60,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#getFile()" tabindex="0">getFile()</a></li>
 <li><a href="#getFileName()" tabindex="0">getFileName()</a></li>
 <li><a href="#getCoordinates()" tabindex="0">getCoordinates()</a></li>
+<li><a href="#isProjectModule()" tabindex="0">isProjectModule()</a></li>
 </ol>
 </li>
 </ol>
@@ -115,6 +116,12 @@ loadScripts(document, 'script');</script>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#getFileName()" class="member-name-link">getFileName</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The file name retained in the runner archive.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#isProjectModule()" class="member-name-link">isProjectModule</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Whether another project of this build produced the dependency, which decides whether its classes are
+rewritten, so it is part of the cache key.</div>
 </div>
 </div>
 </div>
@@ -172,6 +179,21 @@ loadScripts(document, 'script');</script>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the coordinates, or an empty string for a file dependency</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="isProjectModule()">
+<h3>isProjectModule</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="annotations">@Input
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">isProjectModule</span>()</div>
+<div class="block">Whether another project of this build produced the dependency, which decides whether its classes are
+rewritten, so it is part of the cache key.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>whether the dependency is a project module</dd>
 </dl>
 </div>
 </section>

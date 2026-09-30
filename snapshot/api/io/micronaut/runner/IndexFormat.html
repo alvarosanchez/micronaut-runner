@@ -66,6 +66,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#INDEX_ENTRY_NAME" tabindex="0">INDEX_ENTRY_NAME</a></li>
 <li><a href="#CLASSES_PREFIX" tabindex="0">CLASSES_PREFIX</a></li>
 <li><a href="#LIB_PREFIX" tabindex="0">LIB_PREFIX</a></li>
+<li><a href="#TRANSFORMS_ENTRY_NAME" tabindex="0">TRANSFORMS_ENTRY_NAME</a></li>
 <li><a href="#ATTR_FORMAT" tabindex="0">ATTR_FORMAT</a></li>
 <li><a href="#ATTR_VERSION" tabindex="0">ATTR_VERSION</a></li>
 <li><a href="#ATTR_START_CLASS" tabindex="0">ATTR_START_CLASS</a></li>
@@ -671,29 +672,35 @@ reads every class with a positional read into a pooled buffer instead of mapping
 <div class="col-last odd-row-color">
 <div class="block">Size of one package record, in bytes.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE</a></code></div>
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="#TRANSFORMS_ENTRY_NAME" class="member-name-link">TRANSFORMS_ENTRY_NAME</a></code></div>
 <div class="col-last even-row-color">
+<div class="block">Outer archive entry, written right after the launcher classes, that records what the build-time class
+transforms did to the dependency classes: tab-separated lines, the first naming the Runner version.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">ZIP64 end of central directory locator signature, <code>PK\6\7</code>.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">ZIP64 end of central directory record signature, <code>PK\6\6</code>.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ZIP64_EXTRA_FIELD_ID" class="member-name-link">ZIP64_EXTRA_FIELD_ID</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ZIP64_EXTRA_FIELD_ID" class="member-name-link">ZIP64_EXTRA_FIELD_ID</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Header id of the ZIP64 extended information extra field.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ZIP64_LOCATOR_SIZE" class="member-name-link">ZIP64_LOCATOR_SIZE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ZIP64_LOCATOR_SIZE" class="member-name-link">ZIP64_LOCATOR_SIZE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Size of a ZIP64 end of central directory locator.</div>
 </div>
-<div class="col-first even-row-color"><code>static final long</code></div>
-<div class="col-second even-row-color"><code><a href="#ZIP64_MARKER" class="member-name-link">ZIP64_MARKER</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final long</code></div>
+<div class="col-second odd-row-color"><code><a href="#ZIP64_MARKER" class="member-name-link">ZIP64_MARKER</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Value a 32-bit ZIP field carries when the real value lives in a ZIP64 extra field.</div>
 </div>
 </div>
@@ -782,6 +789,26 @@ reads every class with a positional read into a pooled buffer instead of mapping
 <dd>
 <ul class="tag-list">
 <li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.LIB_PREFIX">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="TRANSFORMS_ENTRY_NAME">
+<h3>TRANSFORMS_ENTRY_NAME</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">TRANSFORMS_ENTRY_NAME</span></div>
+<div class="block">Outer archive entry, written right after the launcher classes, that records what the build-time class
+transforms did to the dependency classes: tab-separated lines, the first naming the Runner version. It is
+present only when a transform changed a class or noted a fallback, it is not indexed, and the launcher
+never reads it at run time; only the <code>inspect</code> mode prints it.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.TRANSFORMS_ENTRY_NAME">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>
