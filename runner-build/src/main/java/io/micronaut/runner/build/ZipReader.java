@@ -491,16 +491,22 @@ final class ZipReader implements Closeable {
         int resultSize = checkedArraySize(entry, entry.uncompressedSize());
         requirePayload(entry);
         byte[] result = new byte[resultSize];
-        if (entry.method() == IndexFormat.METHOD_STORED) {
-            copyFromMapping(entry.dataOffset(), result, 0, resultSize);
-            CRC32 crc = new CRC32();
-            crc.update(result, 0, resultSize);
-            verifyCrc(entry, crc.getValue());
+        try {
+            if (entry.method() == IndexFormat.METHOD_STORED) {
+                copyFromMapping(entry.dataOffset(), result, 0, resultSize);
+                CRC32 crc = new CRC32();
+                crc.update(result, 0, resultSize);
+                verifyCrc(entry, crc.getValue());
+                return result;
+            }
+            byte[] input = new byte[(int) Math.min(TRANSFER_BUFFER_SIZE, entry.compressedSize())];
+            inflate(entry, input, true, result, null);
             return result;
+        } catch (InternalError e) {
+            // The JVM raises the fault of a truncated mapping asynchronously. Compiled code can deliver it after
+            // the copy that caused it has returned, which is outside the handler in copyFromMapping.
+            throw unreadable(e);
         }
-        byte[] input = new byte[(int) Math.min(TRANSFER_BUFFER_SIZE, entry.compressedSize())];
-        inflate(entry, input, true, result, null);
-        return result;
     }
 
     /**

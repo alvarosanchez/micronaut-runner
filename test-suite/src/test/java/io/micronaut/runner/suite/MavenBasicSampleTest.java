@@ -177,6 +177,29 @@ class MavenBasicSampleTest {
             application.close();
         }
 
+        // The same archive once more, with the static service table checked against Micronaut's own scan. The
+        // sample runs on the micronaut-core the build passes in: when the packager serves that version, the
+        // launch must report a match; when it does not, the build log must say that this is why there is no table.
+        boolean table = log.toString().contains("Generated a static Micronaut service table: ");
+        if (!table) {
+            assertTrue(log.toString().contains("No static Micronaut service table was generated because micronaut-core ")
+                            && log.toString().contains(" is outside the supported range "),
+                    () -> "the build neither generated a static service table nor named the version gate:\n" + log);
+        }
+        ForkedApplication verified = ForkedApplication.start(archive, sample, Map.of(),
+                List.of("-Dmicronaut.runner.static-services.verify=true"));
+        try {
+            int exit = verified.awaitExit(RUN_TIMEOUT);
+            assertEquals(0, exit, () -> "the verified application exited with " + exit + verified.describe());
+            assertEquals(table, verified.output().contains("[micronaut-runner] static services verified: ")
+                            && verified.output().contains(" entries, 0 mismatches"),
+                    () -> "a static service table is verified exactly when the build generated one"
+                            + verified.describe());
+            assertTrue(verified.output().contains(EXPECTED_OUTPUT), verified::describe);
+        } finally {
+            verified.close();
+        }
+
         Path pom = sample.resolve("pom.xml");
         String secondPom = Files.readString(pom, StandardCharsets.UTF_8)
                 .replace("<fixture.main.version>v1</fixture.main.version>",

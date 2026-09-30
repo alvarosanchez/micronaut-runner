@@ -106,6 +106,14 @@ classes keep their local-variable tables (see <<localVariableTables,Local-variab
 |Opt-in, non-gating control: the identical `runner-stored-keepdebug` JAR with a trained, application-class-verified
 JDK AOT cache
 
+|`runner-stored-dynamic-services`
+|Opt-in, non-gating control: the same stored Runner JAR inputs packaged with `staticServices` set to `false`, so
+that Micronaut scans for its services; compared with `runner-stored`
+
+|`runner-stored-dynamic-services-aot`
+|Opt-in, non-gating control: the identical Runner JAR without a static service table, with a trained,
+application-class-verified JDK AOT cache; compared with `runner-stored-aot`
+
 |`runner-preserve`
 |Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub
 
@@ -272,6 +280,11 @@ Run it locally with:
 The `optionalRows` command adds the opt-in rows, such as the entry-stub ablation and the local-variable-table
 controls. Run it with 40 iterations: at 20, the stub effect's interval still spanned zero. The last command
 measures one pair on one CPU; see <<benchmarkConditions>>.
+
+The description of every Runner row says `static services: N slots (core V)` when its JAR carries a
+<<staticServices,static service table>>, and `dynamic service scan` when it does not.
+`-Pbenchmarks.micronautCore=<version>` builds the sample with every `io.micronaut` module aligned to that version,
+to measure the same application on another micronaut-core.
 
 `-Pbenchmarks.workloads=no-manifest,small,representative,wide` selects packaging shapes and
 `-Pbenchmarks.packagingIterations=2` changes the number of independent packaging workers. The JMH resource

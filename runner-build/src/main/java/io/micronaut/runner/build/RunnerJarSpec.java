@@ -74,6 +74,7 @@ public final class RunnerJarSpec {
     private final boolean precompileLogback;
     private final boolean stripLocalVariables;
     private final Path startupClasses;
+    private final boolean staticServices;
     private final Instant timestamp;
     private final Map<String, String> effectiveOptions;
 
@@ -100,6 +101,7 @@ public final class RunnerJarSpec {
         this.precompileLogback = builder.precompileLogback;
         this.stripLocalVariables = builder.stripLocalVariables;
         this.startupClasses = builder.startupClasses;
+        this.staticServices = builder.staticServices;
         this.timestamp = builder.timestamp;
         Map<String, String> effective = new LinkedHashMap<>();
         for (RunnerJarOption option : RunnerJarOption.values()) {
@@ -342,6 +344,30 @@ public final class RunnerJarSpec {
     }
 
     /**
+     * Whether the static service table was requested: generated classes that answer Micronaut's service
+     * lookups from names computed at packaging time, so that the application does not scan its class path for
+     * them when it starts.
+     *
+     * <p>A request does not guarantee a table. The packager generates one only for an application whose
+     * micronaut-core is in the range {@code [5.1.10, 5.2)} and has the hook the table plugs into. It generates
+     * none for a micronaut-core that carries its own service index, when another
+     * {@code StaticOptimizations$Loader} of the application already supplies service loaders, or when a
+     * generated class name is taken; it reports why, and Micronaut then scans as it does without a table.
+     * Within a table, a service type is left to the scan when the packager cannot prove the table equal to
+     * it, for example when a listed class or one of its supertypes is in no JAR of the application.</p>
+     *
+     * <p>The table describes the class path the application was packaged with. At run time it therefore
+     * ignores the class loader a lookup names, and does not see a provider added after packaging; it stands
+     * down when the application starts with {@code -Dmicronaut.runner.static-services=false} or with
+     * {@code -Dmicronaut.runner.parent=system}.</p>
+     *
+     * @return whether a static service table was requested
+     */
+    public boolean staticServices() {
+        return staticServices;
+    }
+
+    /**
      * The instant every entry of the archive is dated with, converted to MS-DOS time in UTC.
      *
      * @return the reproducible timestamp
@@ -379,6 +405,7 @@ public final class RunnerJarSpec {
             case PRECOMPILE_LOGBACK -> Boolean.toString(precompileLogback);
             case STRIP_LOCAL_VARIABLES -> Boolean.toString(stripLocalVariables);
             case STARTUP_CLASSES -> startupClasses == null ? "" : startupClasses.toString();
+            case STATIC_SERVICES -> Boolean.toString(staticServices);
         };
     }
 
@@ -423,6 +450,7 @@ public final class RunnerJarSpec {
         private boolean precompileLogback;
         private boolean stripLocalVariables;
         private Path startupClasses;
+        private boolean staticServices;
         private Instant timestamp = ZipWriter.DEFAULT_TIMESTAMP;
 
         /**
@@ -777,6 +805,26 @@ public final class RunnerJarSpec {
         }
 
         /**
+         * Requests the static service table.
+         *
+         * <p>Setting this to {@code true} asks the packager to generate classes that answer Micronaut's
+         * service lookups from names it computes while packaging. It does so only when it can reproduce the
+         * order of Micronaut's own scan, which it does for micronaut-core {@code [5.1.10, 5.2)}; in every other
+         * case it reports why there is no table, and Micronaut scans. {@link RunnerJarSpec#staticServices()}
+         * lists those cases and what a table changes at run time. Setting this to {@code false} generates
+         * nothing.</p>
+         *
+         * <p>Defaults to {@code true}.</p>
+         *
+         * @param value whether to generate the table when the application is eligible
+         * @return this builder
+         */
+        public Builder staticServices(boolean value) {
+            this.staticServices = value;
+            return this;
+        }
+
+        /**
          * Sets a packaging option by its {@linkplain RunnerJarOption#optionName() name}, whether it has a
          * typed setter or not. This is how a build plugin passes the options it has no typed property for.
          *
@@ -817,6 +865,7 @@ public final class RunnerJarSpec {
                 case PRECOMPILE_LOGBACK -> precompileLogback(parseBoolean(option, value));
                 case STRIP_LOCAL_VARIABLES -> stripLocalVariables(parseBoolean(option, value));
                 case STARTUP_CLASSES -> startupClasses(parsePath(option, value));
+                case STATIC_SERVICES -> staticServices(parseBoolean(option, value));
             };
         }
 

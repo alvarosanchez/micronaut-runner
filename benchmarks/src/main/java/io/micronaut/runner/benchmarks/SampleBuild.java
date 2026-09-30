@@ -22,6 +22,7 @@ import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
 import io.micronaut.runner.build.RunnerJarReader;
+import io.micronaut.runner.build.RunnerJarResult;
 import io.micronaut.runner.build.RunnerJarSpec;
 import io.micronaut.runner.build.StartupProfileRecorder;
 import io.micronaut.runner.build.training.TrainingSettings;
@@ -108,6 +109,8 @@ final class SampleBuild implements SampleSteps {
     private static final String RUNNER_STORED_JORAN_AOT = "runner-stored-joran-aot";
     private static final String RUNNER_STORED_KEEPDEBUG = "runner-stored-keepdebug";
     private static final String RUNNER_STORED_KEEPDEBUG_AOT = "runner-stored-keepdebug-aot";
+    private static final String RUNNER_STORED_DYNAMIC_SERVICES = "runner-stored-dynamic-services";
+    private static final String RUNNER_STORED_DYNAMIC_SERVICES_AOT = "runner-stored-dynamic-services-aot";
     private static final String RUNNER_PRESERVE = "runner-preserve";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
     private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
@@ -134,6 +137,16 @@ final class SampleBuild implements SampleSteps {
             "The same stored Runner jar with precompileLogback=false: logback.xml read by Joran (control)";
     private static final String RUNNER_STORED_JORAN_AOT_DESCRIPTION =
             "The same Joran control Runner jar with a verified JDK AOT cache";
+    private static final String RUNNER_STORED_DYNAMIC_SERVICES_DESCRIPTION =
+            "Runner jar, nested dependencies re-packed uncompressed; staticServices false (control)";
+    private static final String RUNNER_STORED_DYNAMIC_SERVICES_AOT_DESCRIPTION =
+            "The same Runner jar without a static service table, with a verified JDK AOT cache";
+
+    /** What a Runner row's description says when its jar carries no static service table. */
+    private static final String DYNAMIC_SERVICE_SCAN = "; dynamic service scan";
+
+    /** What starts the part of a Runner row's description that counts its static service table. */
+    private static final String STATIC_SERVICES = "; static services: ";
 
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
@@ -214,6 +227,26 @@ final class SampleBuild implements SampleSteps {
      */
     static SampleBuild prepare(Path sample, String repo, String version, Path artifacts, CpuLimit cpuLimit,
                                PrintStream log) throws IOException, InterruptedException {
+        return prepare(sample, repo, version, null, artifacts, cpuLimit, log);
+    }
+
+    /**
+     * Builds the sample, optionally against another micronaut-core, and reads back what it produced.
+     *
+     * @param sample        the sample's project directory
+     * @param repo          the Maven repository the runner plugins are published to, as a URI string
+     * @param version       the version they were published under
+     * @param micronautCore the version every {@code io.micronaut} module of the sample is aligned to, or
+     *                      {@code null} for the versions the sample's platform selects
+     * @param artifacts     where the variants' artifacts are written
+     * @param cpuLimit      the CPU limit AOT caches are trained under and identified by, or {@code null} for none
+     * @param log           where build progress goes
+     * @return the prepared build
+     * @throws IOException          if the build fails, times out, or writes no metadata
+     * @throws InterruptedException if the wait is interrupted
+     */
+    static SampleBuild prepare(Path sample, String repo, String version, String micronautCore, Path artifacts,
+                               CpuLimit cpuLimit, PrintStream log) throws IOException, InterruptedException {
         Path init = artifacts.resolve("sample-metadata.init.gradle");
         Files.createDirectories(artifacts);
         try (InputStream in = SampleBuild.class.getResourceAsStream(INIT_SCRIPT)) {
@@ -223,17 +256,7 @@ final class SampleBuild implements SampleSteps {
             Files.copy(in, init, StandardCopyOption.REPLACE_EXISTING);
         }
 
-        List<String> arguments = List.of(
-                "--project-dir", sample.toAbsolutePath().toString(),
-                "-Prunner.repo=" + repo,
-                "-Prunner.version=" + version,
-                "--init-script", init.toAbsolutePath().toString(),
-                // The init script's task reads the project at execution time, which a configuration cache
-                // would refuse. Nothing here is hot enough to want the cache.
-                "--no-configuration-cache",
-                "--stacktrace",
-                METADATA_TASK,
-                "shadowJar");
+        List<String> arguments = sampleBuildArguments(sample, repo, version, micronautCore, init);
         log.println("[startup-benchmark] building the sample: gradlew " + String.join(" ", arguments));
         GradleResult result = gradle(sample, arguments, java.time.Duration.ofMinutes(BUILD_TIMEOUT_MINUTES));
         if (result.exitCode() != 0) {
@@ -248,6 +271,32 @@ final class SampleBuild implements SampleSteps {
         log.println("[startup-benchmark] sample built: " + metadata.dependencies().size()
                 + " dependency jars, main class " + metadata.mainClass());
         return new SampleBuild(sample, artifacts, cpuLimit, log, metadata);
+    }
+
+    /**
+     * The Gradle arguments that build the sample.
+     *
+     * @param micronautCore the micronaut-core override, or {@code null} for none
+     */
+    static List<String> sampleBuildArguments(Path sample, String repo, String version, String micronautCore,
+                                             Path init) {
+        List<String> command = new ArrayList<>(List.of(
+                "--project-dir", sample.toAbsolutePath().toString(),
+                "-Prunner.repo=" + repo,
+                "-Prunner.version=" + version));
+        if (micronautCore != null) {
+            // Read by the sample's build, which aligns every io.micronaut module to it.
+            command.add("-PbenchmarkMicronautCore=" + micronautCore);
+        }
+        command.addAll(List.of(
+                "--init-script", init.toAbsolutePath().toString(),
+                // The init script's task reads the project at execution time, which a configuration cache
+                // would refuse. Nothing here is hot enough to want the cache.
+                "--no-configuration-cache",
+                "--stacktrace",
+                METADATA_TASK,
+                "shadowJar"));
+        return List.copyOf(command);
     }
 
     /**
@@ -308,6 +357,13 @@ final class SampleBuild implements SampleSteps {
             optIn(RUNNER_STORED_KEEPDEBUG_AOT, RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION,
                     (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_KEEPDEBUG),
                             RUNNER_STORED_KEEPDEBUG_AOT)),
+            // Today's jar without the table: whatever else the builder defaults to, it has too.
+            optIn(RUNNER_STORED_DYNAMIC_SERVICES, RUNNER_STORED_DYNAMIC_SERVICES_DESCRIPTION,
+                    (steps, rows) -> steps.runnerJar(RUNNER_STORED_DYNAMIC_SERVICES, Compression.STORED,
+                            EntryMode.STUB, RunnerJarOptions.DEFAULTS.withStaticServices(false))),
+            optIn(RUNNER_STORED_DYNAMIC_SERVICES_AOT, RUNNER_STORED_DYNAMIC_SERVICES_AOT_DESCRIPTION,
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_DYNAMIC_SERVICES),
+                            RUNNER_STORED_DYNAMIC_SERVICES_AOT)),
             core(RUNNER_PRESERVE,
                     "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
                     (steps, rows) -> steps.runnerJar(RUNNER_PRESERVE, Compression.PRESERVE, EntryMode.STUB,
@@ -392,6 +448,10 @@ final class SampleBuild implements SampleSteps {
                         "Local-variable tables stripped vs kept"),
                 new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_KEEPDEBUG_AOT,
                         "Local-variable tables stripped vs kept, with the AOT cache"),
+                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_DYNAMIC_SERVICES,
+                        "Static service table vs Micronaut's scan"),
+                new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_DYNAMIC_SERVICES_AOT,
+                        "Static service table + AOT cache vs Micronaut's scan + AOT cache"),
                 new ComparisonSpec(RUNNER_STORED_PRELOAD, RUNNER_STORED,
                         "Startup class preload vs none"),
                 new ComparisonSpec(RUNNER_STORED_PRELOAD, SHADOW, "Runner + startup class preload vs Shadow"),
@@ -720,8 +780,15 @@ final class SampleBuild implements SampleSteps {
             builder.stripLocalVariables(options.stripLocalVariables());
         }
         builder.startupClasses(options.startupClasses());
+        if (options.staticServices() != null) {
+            builder.staticServices(options.staticServices());
+        }
         RunnerJarSpec spec = builder.build();
-        RunnerJarBuilder.build(spec, BuildLogger.noOp());
+        RunnerJarResult result = RunnerJarBuilder.build(spec, BuildLogger.noOp());
+        if (Boolean.FALSE.equals(options.staticServices()) && result.staticServiceSlots() != 0) {
+            throw new IOException("staticServices false was requested, but " + output + " carries a table of "
+                    + result.staticServiceSlots() + " slots");
+        }
         // Rebuilt in every run with the same bytes; the pin keeps the time a trained cache recorded.
         LaunchInputs.pin(output);
         EntryMode effectiveEntryMode = inspectEntryMode(output, requestedEntryMode);
@@ -739,10 +806,44 @@ final class SampleBuild implements SampleSteps {
                         + (options.archiveReads() == null ? ""
                         : "; archiveReads " + options.archiveReads().name())
                         + (Boolean.FALSE.equals(options.precompileLogback()) ? "; logback.xml left to Joran" : "")
+                        + staticServicesNote(result)
                         + (spec.stripLocalVariables() ? "" : "; local-variable tables kept")
                         + (options.startupClasses() == null ? ""
                         : "; " + preloaded + " recorded startup classes preloaded"),
                 command, artifacts, output, deploymentSize, requestedEntryMode, effectiveEntryMode);
+    }
+
+    /**
+     * What a Runner row's description says about service discovery, so that a jar whose table silently stood
+     * down is not measured under the name of a row that has one.
+     *
+     * @param result the build of the row's jar
+     * @return {@code ; static services: N slots (core V)}, or {@code ; dynamic service scan}
+     */
+    static String staticServicesNote(RunnerJarResult result) {
+        if (result.staticServiceSlots() == 0) {
+            return DYNAMIC_SERVICE_SCAN;
+        }
+        return STATIC_SERVICES + result.staticServiceSlots() + " slots (core "
+                + result.staticServicesCoreVersion().orElse("unknown") + ")";
+    }
+
+    /**
+     * The service discovery part of a Runner row's description, for a row derived from that jar.
+     *
+     * @param description the description of the row the jar was built for
+     * @return the part {@link #staticServicesNote(RunnerJarResult)} added, or the empty string
+     */
+    static String staticServicesNote(String description) {
+        if (description.contains(DYNAMIC_SERVICE_SCAN)) {
+            return DYNAMIC_SERVICE_SCAN;
+        }
+        int start = description.indexOf(STATIC_SERVICES);
+        if (start < 0) {
+            return "";
+        }
+        int end = description.indexOf(';', start + 1);
+        return end < 0 ? description.substring(start) : description.substring(start, end);
     }
 
     /**
@@ -790,12 +891,14 @@ final class SampleBuild implements SampleSteps {
      * @param stripLocalVariables whether dependency classes lose their local-variable tables, or {@code null}
      *                            for the builder default
      * @param startupClasses      the recorded startup class list to embed, or {@code null} for none
+     * @param staticServices      whether to generate the static service table, or {@code null} for the builder
+     *                            default
      */
     record RunnerJarOptions(ArchiveReads archiveReads, Boolean precompileLogback, Boolean stripLocalVariables,
-                            Path startupClasses) {
+                            Path startupClasses, Boolean staticServices) {
 
         /** Every option at the builder default. */
-        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null, null);
+        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null, null, null);
 
         /**
          * These options with another archive read mode.
@@ -804,7 +907,8 @@ final class SampleBuild implements SampleSteps {
          * @return the new options
          */
         RunnerJarOptions withArchiveReads(ArchiveReads value) {
-            return new RunnerJarOptions(value, precompileLogback, stripLocalVariables, startupClasses);
+            return new RunnerJarOptions(value, precompileLogback, stripLocalVariables, startupClasses,
+                    staticServices);
         }
 
         /**
@@ -814,7 +918,8 @@ final class SampleBuild implements SampleSteps {
          * @return the new options
          */
         RunnerJarOptions withPrecompileLogback(boolean value) {
-            return new RunnerJarOptions(archiveReads, value, stripLocalVariables, startupClasses);
+            return new RunnerJarOptions(archiveReads, value, stripLocalVariables, startupClasses,
+                    staticServices);
         }
 
         /**
@@ -824,7 +929,8 @@ final class SampleBuild implements SampleSteps {
          * @return the new options
          */
         RunnerJarOptions withStripLocalVariables(boolean value) {
-            return new RunnerJarOptions(archiveReads, precompileLogback, value, startupClasses);
+            return new RunnerJarOptions(archiveReads, precompileLogback, value, startupClasses,
+                    staticServices);
         }
 
         /**
@@ -834,7 +940,19 @@ final class SampleBuild implements SampleSteps {
          * @return the new options
          */
         RunnerJarOptions withStartupClasses(Path value) {
-            return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, value);
+            return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, value,
+                    staticServices);
+        }
+
+        /**
+         * These options with the static service table requested or not.
+         *
+         * @param value whether to generate the table
+         * @return the new options
+         */
+        RunnerJarOptions withStaticServices(boolean value) {
+            return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
+                    value);
         }
     }
 
@@ -899,7 +1017,8 @@ final class SampleBuild implements SampleSteps {
         // Extraction already writes this instant; pinning states it rather than relying on it.
         LaunchInputs.pin(launchInputs);
         return Variant.available(name,
-                "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
+                "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader"
+                        + staticServicesNote(stored.description()),
                 run, destination, destination, deploymentSize, launchInputs);
     }
 

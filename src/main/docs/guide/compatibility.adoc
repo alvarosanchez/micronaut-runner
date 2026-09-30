@@ -31,7 +31,9 @@ tree, and `getResources("META-INF/micronaut/")` returns one merged URL rather th
 JAR. When contributors provide the same file name, the first content in classpath order is retained and a
 warning reports differing later content. This is intentional build-time aggregation for Micronaut bean
 discovery, not ordinary resource enumeration. Classic `META-INF/services/**` resources are not merged and
-keep the classpath behavior described above.
+keep the classpath behavior described above. Micronaut's own service lookups are answered from a table of those
+names computed when the application is packaged (<<staticServices>>); `-Dmicronaut.runner.static-services=false`
+switches it off.
 
 == Archive path URLs
 

@@ -73,7 +73,8 @@ class RunnerJarOptionTest {
                 .archiveReads(ArchiveReads.POSITIONAL)
                 .precompileLogback(false)
                 .stripLocalVariables(false)
-                .startupClasses(Path.of("profiles", "startup-classes.log")));
+                .startupClasses(Path.of("profiles", "startup-classes.log"))
+                .staticServices(false));
 
         for (RunnerJarSpec spec : List.of(defaults, configured)) {
             RunnerJarSpec.Builder replayed = RunnerJarSpec.builder();
@@ -89,6 +90,7 @@ class RunnerJarOptionTest {
         assertEquals("empty", RunnerJarOption.ADD_OPENS.defaultDescription());
         assertEquals("MAPPED", RunnerJarOption.ARCHIVE_READS.defaultDescription());
         assertEquals("none", RunnerJarOption.STARTUP_CLASSES.defaultDescription());
+        assertEquals("true", RunnerJarOption.STATIC_SERVICES.defaultDescription());
         for (RunnerJarOption option : RunnerJarOption.values()) {
             assertFalse(option.defaultDescription().isBlank(), () -> option + " has no default description");
             assertTrue(option.since().matches("\\d+\\.\\d+"), () -> option + " since " + option.since());

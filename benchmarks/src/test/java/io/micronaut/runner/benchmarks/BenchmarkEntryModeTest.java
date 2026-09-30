@@ -71,7 +71,9 @@ class BenchmarkEntryModeTest {
             "runner-stored-joran",
             "runner-stored-joran-aot",
             "runner-stored-keepdebug",
-            "runner-stored-keepdebug-aot");
+            "runner-stored-keepdebug-aot",
+            "runner-stored-dynamic-services",
+            "runner-stored-dynamic-services-aot");
 
     @Test
     void matrixNamesPluginDefaults() {
@@ -111,6 +113,8 @@ class BenchmarkEntryModeTest {
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-keepdebug"));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-keepdebug-aot"));
         assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("keepdebug")));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-dynamic-services"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-dynamic-services-aot"));
         assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-stored"));
         assertTrue(core.stream().noneMatch(OPT_IN_ROWS::contains), "opt-in rows never gate: " + core);
     }
@@ -172,6 +176,123 @@ class BenchmarkEntryModeTest {
                 "runner-stored-preload", "fixture.PreloadMain", List.of(classes), List.of(), Compression.STORED,
                 EntryMode.STUB, SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(cached)));
         assertTrue(failure.getMessage().contains("embeds no class"), failure.getMessage());
+    }
+
+    @Test
+    void theStaticServiceTableIsComparedWithTheScanWithAndWithoutTheAotCache() {
+        List<String> pairs = SampleBuild.comparisons().stream()
+                .map(spec -> spec.candidate() + " - " + spec.baseline())
+                .toList();
+        assertTrue(pairs.containsAll(List.of(
+                "runner-stored - runner-stored-dynamic-services",
+                "runner-stored-aot - runner-stored-dynamic-services-aot")), pairs.toString());
+    }
+
+    @Test
+    void everyRunnerRowSaysWhetherItsJarCarriesAStaticServiceTable(@TempDir Path output) throws Exception {
+        Path classes = compile(output.resolve("services"), "fixture.ServicesMain", """
+                package fixture;
+                public final class ServicesMain {
+                    public static void main(String[] args) { }
+                }
+                """);
+        Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
+
+        Variant table = SampleBuild.runnerJar(output, "runner-stored", "fixture.ServicesMain",
+                List.of(classes), List.of(core), Compression.STORED, EntryMode.STUB);
+        Variant dynamic = SampleBuild.runnerJar(output, "runner-stored-dynamic-services", "fixture.ServicesMain",
+                List.of(classes), List.of(core), Compression.STORED, EntryMode.STUB,
+                SampleBuild.RunnerJarOptions.DEFAULTS.withStaticServices(false));
+        Variant noCore = SampleBuild.runnerJar(output, "runner-preserve", "fixture.ServicesMain",
+                List.of(classes), List.of(), Compression.PRESERVE, EntryMode.STUB);
+
+        // The one slot is the table's own registration, which its closed world includes.
+        assertTrue(table.description().endsWith("; static services: 1 slots (core 5.1.15)"), table.description());
+        assertTrue(dynamic.description().endsWith("; dynamic service scan"), dynamic.description());
+        assertTrue(noCore.description().endsWith("; dynamic service scan"),
+                "a table that stood down shows in the report: " + noCore.description());
+        String tableEntry = IndexFormat.CLASSES_PREFIX + "io/micronaut/runner/generated/services/RunnerServiceTable.class";
+        try (JarFile jar = new JarFile(table.artifact().toFile())) {
+            assertTrue(jar.getEntry(tableEntry) != null);
+        }
+        try (JarFile jar = new JarFile(dynamic.artifact().toFile())) {
+            assertNull(jar.getEntry(tableEntry));
+        }
+
+        assertEquals("; static services: 1 slots (core 5.1.15)", SampleBuild.staticServicesNote(table.description()));
+        assertEquals("; static services: 489 slots (core 5.1.15)", SampleBuild.staticServicesNote(
+                "Runner jar; plugin-default entry stub; static services: 489 slots (core 5.1.15); verified JDK AOT cache"));
+        assertEquals("; dynamic service scan", SampleBuild.staticServicesNote(dynamic.description()));
+        assertEquals("", SampleBuild.staticServicesNote("Everything flattened into one jar by the Shadow plugin"));
+
+        Variant extracted = SampleBuild.extractedRunner(output, table, "runner-extracted");
+        assertTrue(extracted.description().endsWith("; static services: 1 slots (core 5.1.15)"),
+                "the extracted layout carries the table of the jar it was extracted from: " + extracted.description());
+    }
+
+    /**
+     * A jar that looks like micronaut-core to the static service table generator: the hook classes with the
+     * members the table is compiled against, and a manifest that states a version.
+     */
+    private static Path micronautCoreLookalike(Path fixture, String version) throws IOException {
+        Path classes = compile(fixture, "io.micronaut.core.io.service.SoftServiceLoader", """
+                package io.micronaut.core.io.service;
+
+                import java.util.List;
+                import java.util.Map;
+                import java.util.function.Predicate;
+                import java.util.function.Supplier;
+                import java.util.stream.Stream;
+
+                public final class SoftServiceLoader {
+                    public interface StaticServiceLoader<S> {
+                        Stream<StaticDefinition<S>> findAll(Predicate<String> predicate);
+                        List<S> load(Predicate<S> predicate);
+                        List<S> load(Predicate<String> condition, Predicate<S> predicate);
+                    }
+
+                    public static final class StaticDefinition<S> {
+                        public static <S> StaticDefinition<S> of(String name, Class<S> value) {
+                            return null;
+                        }
+
+                        public static <S> StaticDefinition<S> of(String name, Supplier<S> value) {
+                            return null;
+                        }
+
+                        public S load() {
+                            return null;
+                        }
+                    }
+
+                    public static final class Optimizations {
+                        public Optimizations(Map<String, StaticServiceLoader<?>> serviceLoaders) {
+                        }
+                    }
+                }
+                """);
+        compile(fixture, "io.micronaut.core.optim.StaticOptimizations", """
+                package io.micronaut.core.optim;
+
+                public abstract class StaticOptimizations {
+                    public interface Loader<T> {
+                        T load();
+                    }
+                }
+                """);
+        Path jar = fixture.resolve("micronaut-core-" + version + ".jar");
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().putValue("Manifest-Version", "1.0");
+        manifest.getMainAttributes().putValue("Implementation-Version", version);
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar), manifest);
+             var files = Files.walk(classes)) {
+            for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {
+                out.putNextEntry(new java.util.zip.ZipEntry(classes.relativize(file).toString().replace('\\', '/')));
+                Files.copy(file, out);
+                out.closeEntry();
+            }
+        }
+        return jar;
     }
 
     @Test

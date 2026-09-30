@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * What {@link RunnerJarBuilder#build(RunnerJarSpec, BuildLogger)} produced.
@@ -46,6 +47,8 @@ public final class RunnerJarResult {
     private final Map<String, String> effectiveOptions;
     private final boolean logbackPrecompiled;
     private final List<TransformReport> transforms;
+    private final int staticServiceSlots;
+    private final String staticServicesCoreVersion;
 
     /**
      * Validates the result and makes its collections immutable.
@@ -67,7 +70,7 @@ public final class RunnerJarResult {
             int mergedServiceEntryCount, long archiveSize, List<String> warnings,
             Map<String, String> effectiveOptions, boolean logbackPrecompiled) {
         this(output, jarCount, entryCount, applicationEntryCount, mergedServiceEntryCount, archiveSize, warnings,
-                effectiveOptions, logbackPrecompiled, List.of());
+                effectiveOptions, logbackPrecompiled, List.of(), 0, null);
     }
 
     /**
@@ -83,19 +86,24 @@ public final class RunnerJarResult {
      * @param effectiveOptions        the options the archive was built with
      * @param logbackPrecompiled      whether a Logback configurator was generated
      * @param transforms              what each build-time class transform did, in the order they ran
-     * @throws NullPointerException     if a reference argument is {@code null}
+     * @param staticServiceSlots      the number of names the static service table lists
+     * @param staticServicesCoreVersion the micronaut-core the static service table was generated for, or
+     *                                  {@code null} when there is no table
+     * @throws NullPointerException     if a reference argument other than {@code staticServicesCoreVersion} is
+     *                                  {@code null}
      * @throws IllegalArgumentException if a count or the size is negative
      */
     RunnerJarResult(Path output, int jarCount, int entryCount, int applicationEntryCount,
             int mergedServiceEntryCount, long archiveSize, List<String> warnings,
-            Map<String, String> effectiveOptions, boolean logbackPrecompiled, List<TransformReport> transforms) {
+            Map<String, String> effectiveOptions, boolean logbackPrecompiled, List<TransformReport> transforms,
+            int staticServiceSlots, String staticServicesCoreVersion) {
         this.output = Objects.requireNonNull(output, "output");
         this.transforms = List.copyOf(Objects.requireNonNull(transforms, "transforms"));
         this.warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
         this.effectiveOptions = Collections.unmodifiableMap(
                 new LinkedHashMap<>(Objects.requireNonNull(effectiveOptions, "effectiveOptions")));
         if (jarCount < 0 || entryCount < 0 || applicationEntryCount < 0 || mergedServiceEntryCount < 0
-                || archiveSize < 0) {
+                || archiveSize < 0 || staticServiceSlots < 0) {
             throw new IllegalArgumentException("Negative count in the result of packaging " + output);
         }
         this.jarCount = jarCount;
@@ -104,6 +112,8 @@ public final class RunnerJarResult {
         this.mergedServiceEntryCount = mergedServiceEntryCount;
         this.archiveSize = archiveSize;
         this.logbackPrecompiled = logbackPrecompiled;
+        this.staticServiceSlots = staticServiceSlots;
+        this.staticServicesCoreVersion = staticServicesCoreVersion;
     }
 
     /**
@@ -215,6 +225,27 @@ public final class RunnerJarResult {
      */
     public List<TransformReport> transforms() {
         return transforms;
+    }
+
+    /**
+     * The number of implementation names the static service table lists, which
+     * {@link RunnerJarSpec#staticServices()} requests. It is {@code 0} when no table was generated; the build
+     * log names the reason.
+     *
+     * @return the slot count of the static service table
+     */
+    public int staticServiceSlots() {
+        return staticServiceSlots;
+    }
+
+    /**
+     * The micronaut-core version the static service table was generated for, as that JAR's manifest states
+     * it.
+     *
+     * @return the version, or empty when no table was generated
+     */
+    public Optional<String> staticServicesCoreVersion() {
+        return Optional.ofNullable(staticServicesCoreVersion);
     }
 
     /**

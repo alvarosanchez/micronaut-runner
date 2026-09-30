@@ -45,6 +45,7 @@ import java.util.jar.Manifest;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -119,6 +120,21 @@ class HelloNettySampleTest {
             // linking, the connection its openConnection returns.
             "io.micronaut.runner.protocol.jar.Handler",
             "io.micronaut.runner.protocol.jar.RunnerJarURLConnection");
+
+    /** Compares the static service table with Micronaut's scan on the first lookup. */
+    private static final String VERIFY_STATIC_SERVICES = "-Dmicronaut.runner.static-services.verify=true";
+
+    /** Makes a packaged table stand down, so that Micronaut scans as it does without one. */
+    private static final String NO_STATIC_SERVICES = "-Dmicronaut.runner.static-services=false";
+
+    /** What a launch prints once the table matched the scan; the counts sit between the two. */
+    private static final String VERIFIED = "[micronaut-runner] static services verified: ";
+    private static final String NO_MISMATCH = " entries, 0 mismatches";
+
+    /** The classes of the static service table inside an application layer or an extracted application jar. */
+    private static final String STATIC_SERVICES_PACKAGE = "io/micronaut/runner/generated/services/";
+    private static final String STATIC_SERVICES_REGISTRATION =
+            "META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader";
 
     @BeforeAll
     static void assumeTheSuiteCanRun() {
@@ -343,6 +359,101 @@ class HelloNettySampleTest {
      * @param output everything the process printed
      */
     private record Run(String body, String output) {
+    }
+
+    /**
+     * Starts the sample four ways: the runner jar and the layout extracted from it, each once with the static
+     * service table checked against Micronaut's own scan and once with the table switched off.
+     *
+     * <p>The sample records the order of its bean definitions in every launch. The table must not change it,
+     * and an extracted application must register its beans in the order the jar it came from does.</p>
+     */
+    @Test
+    void theStaticServiceTableAnswersAsTheScanInTheJarAndExtracted() throws Exception {
+        Path sample = Samples.sample("hello-netty");
+        Path archive = sample.resolve(ARCHIVE);
+        BuildResult result = gradle(sample, TASK);
+        assertTrue(Files.isRegularFile(archive),
+                () -> "the plugin did not write " + archive + ":\n" + result.getOutput());
+        try (JarFile jar = new JarFile(archive.toFile())) {
+            assertNotNull(jar.getEntry("MICRONAUT-INF/classes/" + STATIC_SERVICES_PACKAGE + "RunnerServiceTable.class"),
+                    () -> "the default configuration did not generate the static service table:\n"
+                            + result.getOutput());
+        }
+
+        List<String> table = beanOrder(archive, sample, "build/bean-order-table.txt", VERIFY_STATIC_SERVICES, true);
+        List<String> scan = beanOrder(archive, sample, "build/bean-order-scan.txt", NO_STATIC_SERVICES, false);
+        assertFalse(scan.isEmpty(), "the sample recorded no bean definitions");
+        assertEquals(scan, table, "the table must register the bean definitions in the order the scan does");
+
+        Path extracted = sample.resolve("build/extracted-static-services");
+        extract(archive, extracted, sample);
+        Path applicationJar = extracted.resolve(archive.getFileName());
+        try (JarFile jar = new JarFile(applicationJar.toFile())) {
+            assertNotNull(jar.getEntry(STATIC_SERVICES_PACKAGE + "RunnerStaticServices.class"),
+                    "the extracted application keeps the table's classes");
+            assertNotNull(jar.getEntry(STATIC_SERVICES_PACKAGE + "RunnerServiceTable.class"));
+            assertNotNull(jar.getEntry(STATIC_SERVICES_REGISTRATION), "and the line that registers them");
+            assertNull(jar.getEntry("io/micronaut/runner/generated/AppEntry.class"),
+                    "the entry stub belongs to the runner format");
+        }
+        List<String> extractedTable = beanOrder(applicationJar, sample, "build/bean-order-extracted-table.txt",
+                VERIFY_STATIC_SERVICES, true);
+        beanOrder(applicationJar, sample, "build/bean-order-extracted-scan.txt", NO_STATIC_SERVICES, false);
+        assertEquals(table, extractedTable,
+                "an extracted application registers its beans in the order its runner jar does");
+    }
+
+    /**
+     * Starts an application, waits for {@code /hello} and reads back the bean order it recorded.
+     *
+     * @param jar      the runner jar, or the application jar of an extracted layout
+     * @param sample   the working directory
+     * @param file     where the sample writes its bean order, relative to the working directory
+     * @param option   the static service switch to start with
+     * @param verified whether the launch must report that the table matched the scan
+     * @return the names of the bean definitions, in registration order
+     */
+    private static List<String> beanOrder(Path jar, Path sample, String file, String option, boolean verified)
+            throws IOException {
+        Path order = sample.resolve(file);
+        Files.deleteIfExists(order);
+        int port = Samples.freePort();
+        ForkedApplication application = ForkedApplication.start(jar, sample, Map.of(
+                "SERVER_PORT", Integer.toString(port)), List.of(option, "-Drunner.test.bean-order=" + file));
+        try {
+            String body = application.awaitBody(URI.create("http://localhost:" + port + "/hello"), STARTUP_TIMEOUT);
+            assertTrue(body.startsWith("hello from "), () -> "unexpected answer " + body + application.describe());
+            String output = application.output();
+            assertEquals(verified, output.contains(VERIFIED) && output.contains(NO_MISMATCH),
+                    () -> "with " + option + application.describe());
+        } finally {
+            application.close();
+        }
+        assertTrue(Files.isRegularFile(order), () -> "the sample did not write " + order);
+        return Files.readAllLines(order, StandardCharsets.UTF_8);
+    }
+
+    private static void extract(Path archive, Path destination, Path workingDirectory) throws Exception {
+        Path log = workingDirectory.resolve("build/extract-static-services.log");
+        Process process = new ProcessBuilder(Samples.javaExecutable().toString(), "-Dmicronaut.runner.mode=extract",
+                "-jar", archive.toAbsolutePath().toString(), "--destination", destination.toAbsolutePath().toString(),
+                "--force")
+                .directory(workingDirectory.toFile())
+                .redirectErrorStream(true)
+                .redirectOutput(log.toFile())
+                .start();
+        if (!process.waitFor(2, TimeUnit.MINUTES)) {
+            process.destroyForcibly();
+            throw new AssertionError("extraction did not finish: " + Files.readString(log));
+        }
+        assertEquals(0, process.exitValue(), () -> {
+            try {
+                return "extraction failed: " + Files.readString(log);
+            } catch (IOException e) {
+                return "extraction failed, and its log cannot be read: " + e;
+            }
+        });
     }
 
     /**

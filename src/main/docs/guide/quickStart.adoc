@@ -85,6 +85,9 @@ micronaut {
 
         // Dependency local-variable tables are dropped by default; line numbers stay. See Build-Time Transformations.
         // options.put('stripLocalVariables', 'false')
+
+        // On by default; false builds no static service table. See "Static service table".
+        // options.put('staticServices', 'false')
     }
 }
 ----
@@ -115,6 +118,7 @@ tool resolve the path against the project and, in Gradle, rebuild the archive wh
 |`precompileLogback` |boolean |`true` |passthrough |1.0
 |`stripLocalVariables` |boolean |`true` |passthrough |1.0
 |`startupClasses` |file |`src/main/micronaut-runner/startup-classes.txt` if it exists |typed |1.0
+|`staticServices` |boolean |`true` |passthrough |1.0
 |===
 
 A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,
@@ -244,6 +248,9 @@ Dependency local-variable tables are dropped by default (see <<localVariableTabl
 To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
 pass `-Dmicronaut.runner.archiveReads=positional` or set
 `<runnerOptions><archiveReads>positional</archiveReads></runnerOptions>`.
+
+To build no <<staticServices,static service table>>, pass `-Dmicronaut.runner.staticServices=false` or set
+`<runnerOptions><staticServices>false</staticServices></runnerOptions>`.
 
 == What to check first
 

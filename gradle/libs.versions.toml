@@ -9,6 +9,9 @@ micronaut-docs = "3.0.0"
 micronaut-test = "5.1.1"
 micronaut-logging = "2.1.0"
 micronaut-platform = "5.1.5"        # sample applications only
+# The micronaut-core 5.1.x that runner-build's static service table is compiled against and that its tests
+# package, next to the 5.2.x above. The samples resolve the same version from the platform BOM.
+micronaut-core51 = "5.1.15"
 micronaut-gradle-plugin = "5.0.2"   # io.micronaut.application, used by the sample applications
 micronaut-flyway = "8.1.1"
 micronaut-sql = "7.1.3"

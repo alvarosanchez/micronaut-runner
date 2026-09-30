@@ -2961,6 +2961,187 @@ class RunnerJarBuilderTest {
      * Records, at every warning, the thread that emitted it and the daemon staging threads alive then. The
      * pool is only shut down after every stage has been joined, so its threads are all still alive.
      */
+    // ------------------------------------------------------------------------ static service table
+
+    private static final String GENERATED_SERVICES = "io/micronaut/runner/generated/services/";
+    private static final String LOADER_REGISTRATION =
+            "META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader";
+    private static final String STATIC_SERVICES_LOADER =
+            "io.micronaut.runner.generated.services.RunnerStaticServices";
+
+    /** The fixture plus a micronaut-core the table serves: an application that gets a table. */
+    private RunnerJarSpec.Builder specWithMicronautCore(Path output) {
+        return spec(output).dependencies(List.of(
+                Dependency.of(StaticServiceTableGeneratorTest.micronautCore51().get(0)),
+                Dependency.of(plainDependency, "com.example:dep-lib:2.0.1")));
+    }
+
+    @ParameterizedTest
+    @EnumSource(Compression.class)
+    void generatesAStaticServiceTableForAnApplicationWithMicronautCore(Compression compression)
+            throws IOException {
+        List<String> info = new ArrayList<>();
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(
+                specWithMicronautCore(output).compression(compression).build(), recording(info));
+
+        assertEquals(4, result.staticServiceSlots());
+        String version = result.staticServicesCoreVersion().orElseThrow();
+        assertEquals(List.of(), result.warnings());
+        List<String> generated = info.stream().filter(line -> line.contains("static Micronaut service table")).toList();
+        assertEquals(1, generated.size(), info::toString);
+        assertTrue(generated.get(0).startsWith("Generated a static Micronaut service table: 3 types, 4 slots"
+                + " (none left to Micronaut's scan) for micronaut-core " + version + " in "), generated::toString);
+        assertTrue(generated.get(0).endsWith(" ms"), generated::toString);
+
+        try (RunnerJarReader reader = RunnerJarReader.open(output); ZipReader archive = ZipReader.open(output)) {
+            Index index = reader.index();
+            List<String> application = logicalNames(index, 0);
+            assertTrue(application.contains(GENERATED_SERVICES + "RunnerStaticServices.class"), application::toString);
+            assertTrue(application.contains(GENERATED_SERVICES + "RunnerServiceTable.class"), application::toString);
+            assertNotEquals(IndexFormat.NO_INDEX, index.findClass(STATIC_SERVICES_LOADER),
+                    "the application layer defines the loader Micronaut's hook instantiates");
+            assertEquals(STATIC_SERVICES_LOADER + "\n", new String(archive.read(archive.entry(
+                    IndexFormat.CLASSES_PREFIX + LOADER_REGISTRATION).orElseThrow()), StandardCharsets.UTF_8));
+
+            StaticServiceTableGeneratorTest.Table table = StaticServiceTableGeneratorTest.Table.of(archive.read(
+                    archive.entry(IndexFormat.CLASSES_PREFIX + GENERATED_SERVICES + "RunnerServiceTable.class")
+                            .orElseThrow()));
+            // The order is derived from what planMergedServices stored, not sorted a second time.
+            List<String> stored = new ArrayList<>();
+            for (String name : names(archive)) {
+                if (name.startsWith(SERVICE_DIRECTORY) && !name.endsWith("/")) {
+                    stored.add(name.substring(SERVICE_DIRECTORY.length()));
+                }
+            }
+            assertEquals(List.of("com.example.$Application$Definition", "com.example.dep.DepBean"), stored);
+            assertEquals(stored.reversed(), table.names("io.micronaut.inject.BeanDefinitionReference"));
+            assertEquals(List.of("com.example.dep.Dep"), table.names("com.example.Service"));
+            assertEquals(List.of(STATIC_SERVICES_LOADER),
+                    table.names("io.micronaut.core.optim.StaticOptimizations$Loader"));
+        }
+    }
+
+    @Test
+    void generatesNoStaticServiceTableWhenTheOptionIsOff() throws IOException {
+        List<String> info = new ArrayList<>();
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(
+                specWithMicronautCore(output).option("staticServices", "false").build(), recording(info));
+
+        assertEquals(0, result.staticServiceSlots());
+        assertEquals(java.util.Optional.empty(), result.staticServicesCoreVersion());
+        assertEquals("false", result.effectiveOptions().get("staticServices"));
+        assertNoStaticServiceTable(output);
+        assertTrue(info.contains("No static Micronaut service table was generated because it was not requested;"
+                + " Micronaut will scan for its services when the application starts"), info::toString);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Compression.class)
+    void generatesNoStaticServiceTableWithoutMicronautCore(Compression compression) throws IOException {
+        List<String> info = new ArrayList<>();
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(spec(output).compression(compression).build(),
+                recording(info));
+
+        assertTrue(spec(output).build().staticServices(), "the option is on, and the archive is what it was");
+        assertEquals(0, result.staticServiceSlots());
+        assertEquals(java.util.Optional.empty(), result.staticServicesCoreVersion());
+        assertNoStaticServiceTable(output);
+        assertTrue(info.contains("No static Micronaut service table was generated because the application has no"
+                + " micronaut-core; Micronaut will scan for its services when the application starts"),
+                info::toString);
+    }
+
+    @Test
+    void putsItsRegistrationInFrontOfTheOneTheApplicationAlreadyHas() throws IOException {
+        Path resources = fixtures.resolve("app/own-loader");
+        write(resources.resolve(LOADER_REGISTRATION), "com.example.OwnLoader");
+        Path loaderClass = resources.resolve("com/example/OwnLoader.class");
+        Files.createDirectories(loaderClass.getParent());
+        Files.write(loaderClass, StaticServiceTableGeneratorTest.classFile("com.example.OwnLoader",
+                "java.lang.Object", "io.micronaut.core.optim.StaticOptimizations$Loader"));
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output)
+                .applicationOutput(List.of(applicationClasses, applicationResources, resources))
+                .build(), BuildLogger.noOp());
+
+        assertEquals(5, result.staticServiceSlots());
+        assertEquals(List.of(), result.warnings());
+        try (ZipReader archive = ZipReader.open(output)) {
+            assertEquals(STATIC_SERVICES_LOADER + "\ncom.example.OwnLoader\n", new String(archive.read(
+                    archive.entry(IndexFormat.CLASSES_PREFIX + LOADER_REGISTRATION).orElseThrow()),
+                    StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
+    void warnsAndGeneratesNoStaticServiceTableWhenAGeneratedNameIsTaken() throws IOException {
+        Path resources = fixtures.resolve("app/taken");
+        byte[] own = "not a class".getBytes(StandardCharsets.UTF_8);
+        Path taken = resources.resolve(GENERATED_SERVICES + "RunnerStaticServices.class");
+        Files.createDirectories(taken.getParent());
+        Files.write(taken, own);
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output)
+                .applicationOutput(List.of(applicationClasses, applicationResources, resources))
+                .build(), BuildLogger.noOp());
+
+        assertEquals(0, result.staticServiceSlots());
+        assertEquals(List.of("No static Micronaut service table was generated because the application output"
+                + " already carries '" + GENERATED_SERVICES + "RunnerStaticServices.class'; Micronaut will scan for"
+                + " its services when the application starts"), result.warnings());
+        try (RunnerJarReader reader = RunnerJarReader.open(output); ZipReader archive = ZipReader.open(output)) {
+            assertEquals(List.of(GENERATED_SERVICES + "RunnerStaticServices.class"),
+                    logicalNames(reader.index(), 0).stream()
+                            .filter(name -> name.startsWith(GENERATED_SERVICES) && !name.endsWith("/")).toList());
+            assertArrayEquals(own, archive.read(archive.entry(IndexFormat.CLASSES_PREFIX + GENERATED_SERVICES
+                    + "RunnerStaticServices.class").orElseThrow()), "the application's own entry is untouched");
+            assertTrue(archive.entry(IndexFormat.CLASSES_PREFIX + LOADER_REGISTRATION).isEmpty());
+        }
+    }
+
+    @Test
+    void theStaticServiceTableIsReproducible() throws IOException {
+        Path first = output();
+        Path second = output();
+        RunnerJarBuilder.build(specWithMicronautCore(first).build(), BuildLogger.noOp());
+        RunnerJarBuilder.build(specWithMicronautCore(second).build(), BuildLogger.noOp(), 1);
+
+        assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(second));
+    }
+
+    private static void assertNoStaticServiceTable(Path output) throws IOException {
+        try (RunnerJarReader reader = RunnerJarReader.open(output); ZipReader archive = ZipReader.open(output)) {
+            for (String name : logicalNames(reader.index(), 0)) {
+                assertFalse(name.startsWith(GENERATED_SERVICES), name);
+                assertNotEquals(LOADER_REGISTRATION, name, "no loader line without a table");
+            }
+            for (String name : names(archive)) {
+                assertFalse(name.contains(GENERATED_SERVICES), name);
+            }
+        }
+    }
+
+    private static BuildLogger recording(List<String> info) {
+        return new BuildLogger() {
+            @Override
+            public void info(String message) {
+                info.add(message);
+            }
+
+            @Override
+            public void warn(String message) {
+            }
+        };
+    }
+
     private static final class StagingLogger implements BuildLogger {
 
         private final Set<Thread> warningThreads = ConcurrentHashMap.newKeySet();

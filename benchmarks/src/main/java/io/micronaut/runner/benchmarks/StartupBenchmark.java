@@ -143,7 +143,7 @@ public final class StartupBenchmark {
         String buildFailure = null;
         try {
             SampleBuild build = SampleBuild.prepare(options.sample(), options.repository(),
-                    options.runnerVersion(), artifacts, cpuLimit, log);
+                    options.runnerVersion(), options.micronautCore(), artifacts, cpuLimit, log);
             variants = build.variants(selection);
         } catch (IOException | InterruptedException e) {
             buildFailure = e.getMessage();
@@ -355,6 +355,8 @@ public final class StartupBenchmark {
      * @param variants         the rows named with {@code --variants}, or {@code null} when none were
      * @param cpus             the child CPU limit, or {@code null} for none
      * @param pageCache        how the OS page cache is treated before each launch
+     * @param micronautCore    the version every {@code io.micronaut} module of the sample is aligned to, or
+     *                         {@code null} to build the sample as it is
      */
     record Options(Path sample,
                    String repository,
@@ -371,7 +373,8 @@ public final class StartupBenchmark {
                    boolean optionalRows,
                    List<String> variants,
                    Integer cpus,
-                   PageCacheMode pageCache) {
+                   PageCacheMode pageCache,
+                   String micronautCore) {
 
         Options {
             variants = variants == null ? null : List.copyOf(variants);
@@ -428,6 +431,7 @@ public final class StartupBenchmark {
             List<String> variants = null;
             Integer cpus = null;
             PageCacheMode pageCache = PageCacheMode.UNCONTROLLED;
+            String micronautCore = null;
 
             for (int i = 0; i < args.length; i++) {
                 String argument = args[i];
@@ -448,6 +452,7 @@ public final class StartupBenchmark {
                     case "--variants" -> variants = variants(value(args, ++i, argument));
                     case "--cpus" -> cpus = number(value(args, ++i, argument), argument);
                     case "--page-cache" -> pageCache = PageCacheMode.parse(value(args, ++i, argument));
+                    case "--micronaut-core" -> micronautCore = value(args, ++i, argument);
                     default -> throw new IllegalArgumentException("unknown option " + argument);
                 }
             }
@@ -473,6 +478,9 @@ public final class StartupBenchmark {
             if (effectiveWarmup < 0) {
                 throw new IllegalArgumentException("--warmup cannot be negative");
             }
+            if (micronautCore != null && !micronautCore.matches("[0-9A-Za-z][0-9A-Za-z.+-]*")) {
+                throw new IllegalArgumentException("--micronaut-core needs a version, got '" + micronautCore + "'");
+            }
             Path outputDirectory = out.toAbsolutePath().normalize();
             Path workDirectory = work != null ? work.toAbsolutePath().normalize()
                     : outputDirectory.resolve("artifacts");
@@ -480,7 +488,7 @@ public final class StartupBenchmark {
                     outputDirectory, workDirectory, iterations, effectiveWarmup, seed,
                     readiness.startsWith("/") ? readiness : "/" + readiness,
                     Duration.ofSeconds(timeoutSeconds), diagnostics, completenessPolicy, optionalRows,
-                    variants, cpus, pageCache);
+                    variants, cpus, pageCache, micronautCore);
         }
 
         /**
@@ -523,7 +531,8 @@ public final class StartupBenchmark {
                    --iterations <n> --out <dir>
                                           [--work <dir>] [--warmup <n>] [--seed <n>] [--readiness <path>] \
                    [--timeout <seconds>] [--diagnostics] [--allow-partial] [--optional-rows | --variants <a,b>] \
-                   [--cpus <n>] [--page-cache uncontrolled|evict-artifacts|drop-all]
+                   [--cpus <n>] [--page-cache uncontrolled|evict-artifacts|drop-all] \
+                   [--micronaut-core <version>]
                    Rows for --variants: \
                    """ + String.join(", ", SampleBuild.allVariantNames());
         }
