@@ -73,6 +73,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#ARCHIVE_READS" tabindex="0">ARCHIVE_READS</a></li>
 <li><a href="#PRECOMPILE_LOGBACK" tabindex="0">PRECOMPILE_LOGBACK</a></li>
 <li><a href="#STRIP_LOCAL_VARIABLES" tabindex="0">STRIP_LOCAL_VARIABLES</a></li>
+<li><a href="#STARTUP_CLASSES" tabindex="0">STARTUP_CLASSES</a></li>
 </ol>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
@@ -138,6 +139,10 @@ and <a href="RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiv
     <li><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a>: one <code>Name: value</code> pair per line, as in <code>MANIFEST.MF</code> but without
     continuation lines. Surrounding whitespace of names and values is ignored and blank lines are
     skipped, so the empty string is the empty map.</li>
+    <li><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a>: a file path, as <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html#of(java.lang.String,java.lang.String...)" title="class or interface in java.nio.file" class="external-link"><code>Path.of(String, String...)</code></a> reads it, so a relative path is
+    read against the working directory of the process. The empty string is no file. A build plugin does
+    not take a <a href="RunnerJarOption.Exposure.html#TYPED"><code>RunnerJarOption.Exposure.TYPED</code></a> option of this type by name: only its typed property lets the build
+    tool resolve the path against the project and track the file's content.</li>
 </ul></div>
 <dl class="notes">
 <dt>Since:</dt>
@@ -213,8 +218,13 @@ and <a href="RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiv
 <div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
 packaged.</div>
 </div>
-<div class="col-first odd-row-color"><code><a href="#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a></code></div>
+<div class="col-first odd-row-color"><code><a href="#STARTUP_CLASSES" class="member-name-link">STARTUP_CLASSES</a></code></div>
 <div class="col-last odd-row-color">
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the
+<code>-Xlog:class+load</code> output of a run of the runner jar, or a file of binary class names.</div>
+</div>
+<div class="col-first even-row-color"><code><a href="#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed.</div>
 </div>
 </div>
@@ -279,7 +289,7 @@ the order they are declared.</div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#valueType()" class="member-name-link">valueType</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The type of the option's value, which decides how its text is read: <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link"><code>Boolean</code></a>,
-<a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a>.</div>
+<a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a>.</div>
 </div>
 </div>
 </div>
@@ -401,6 +411,17 @@ packaged. See <a href="RunnerJarSpec.Builder.html#precompileLogback(boolean)"><c
 </div>
 </section>
 </li>
+<li>
+<section class="detail" id="STARTUP_CLASSES">
+<h3>STARTUP_CLASSES</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">STARTUP_CLASSES</span></div>
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the
+<code>-Xlog:class+load</code> output of a run of the runner jar, or a file of binary class names. See
+<a href="RunnerJarSpec.Builder.html#startupClasses(java.nio.file.Path)"><code>RunnerJarSpec.Builder.startupClasses(Path)</code></a>.</div>
+</div>
+</section>
+</li>
 </ul>
 </section>
 </li>
@@ -464,7 +485,7 @@ not permitted.)</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Class.html" title="class or interface in java.lang" class="external-link">Class</a>&lt;?&gt;</span>&nbsp;<span class="element-name">valueType</span>()</div>
 <div class="block">The type of the option's value, which decides how its text is read: <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link"><code>Boolean</code></a>,
-<a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a>.</div>
+<a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a>.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the value type</dd>

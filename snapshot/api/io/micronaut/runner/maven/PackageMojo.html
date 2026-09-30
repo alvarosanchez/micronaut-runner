@@ -101,7 +101,8 @@ replaces the project's main artifact, exactly as the Shade plugin does, keeping 
 <p>The goal is wiring: it hands the project's facts and the options the build sets to the packaging
 library, which owns every option's default, parsing and validation. A
 <a href="../build/RunnerJarOption.Exposure.html#TYPED"><code>typed</code></a> option has a parameter here that is passed only when it is set;
-every option can also be set by name through <code>&lt;runnerOptions&gt;</code>, and a
+every option can also be set by name through <code>&lt;runnerOptions&gt;</code>, except a typed option that names a
+file, which is set only through its parameter, and a
 <a href="../build/RunnerJarOption.Exposure.html#PASSTHROUGH"><code>passthrough</code></a> option through the
 <code>micronaut.runner.&lt;name&gt;</code> user or project property.</p>
 

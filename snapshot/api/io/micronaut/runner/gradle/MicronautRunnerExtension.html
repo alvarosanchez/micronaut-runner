@@ -70,6 +70,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#getAddOpens()" tabindex="0">getAddOpens()</a></li>
 <li><a href="#getAddExports()" tabindex="0">getAddExports()</a></li>
 <li><a href="#getManifestAttributes()" tabindex="0">getManifestAttributes()</a></li>
+<li><a href="#getStartupClasses()" tabindex="0">getStartupClasses()</a></li>
 <li><a href="#getOptions()" tabindex="0">getOptions()</a></li>
 </ol>
 </li>
@@ -188,6 +189,12 @@ typed or not, can also be set by name through <a href="#getOptions()"><code>getO
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Packaging options by <a href="../build/RunnerJarOption.html#optionName()">name</a>, for the options that have no typed
 property.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getStartupClasses()" class="member-name-link">getStartupClasses</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the
+<code>-Xlog:class+load</code> output of a run of the archive, or a file of binary class names.</div>
 </div>
 </div>
 </div>
@@ -335,13 +342,29 @@ registers is skipped.</div>
 </section>
 </li>
 <li>
+<section class="detail" id="getStartupClasses()">
+<h3>getStartupClasses</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.file.RegularFileProperty</span>&nbsp;<span class="element-name">getStartupClasses</span>()</div>
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the
+<code>-Xlog:class+load</code> output of a run of the archive, or a file of binary class names. It has no
+convention: without it nothing is preloaded.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the startup class list</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
 <section class="detail" id="getOptions()">
 <h3>getOptions</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.MapProperty&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getOptions</span>()</div>
 <div class="block">Packaging options by <a href="../build/RunnerJarOption.html#optionName()">name</a>, for the options that have no typed
 property. Each value uses the grammar <a href="../build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> documents; the packaging library parses and
-validates it, and an unknown name fails the task.</div>
+validates it, and an unknown name fails the task. So does a typed option that names a file, such as
+<code>startupClasses</code>: it is set only through its property, which Gradle tracks by content.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the options by name</dd>

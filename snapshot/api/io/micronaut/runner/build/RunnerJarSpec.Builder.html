@@ -75,6 +75,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#archiveReads(io.micronaut.runner.build.ArchiveReads)" tabindex="0">archiveReads(ArchiveReads)</a></li>
 <li><a href="#precompileLogback(boolean)" tabindex="0">precompileLogback(boolean)</a></li>
 <li><a href="#stripLocalVariables(boolean)" tabindex="0">stripLocalVariables(boolean)</a></li>
+<li><a href="#startupClasses(java.nio.file.Path)" tabindex="0">startupClasses(Path)</a></li>
 <li><a href="#option(java.lang.String,java.lang.String)" tabindex="0">option(String, String)</a></li>
 <li><a href="#timestamp(java.time.Instant)" tabindex="0">timestamp(Instant)</a></li>
 <li><a href="#build()" tabindex="0">build()</a></li>
@@ -226,13 +227,18 @@ typed setter or not.</div>
 it is packaged.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stripLocalVariables(boolean)" class="member-name-link">stripLocalVariables</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#startupClasses(java.nio.file.Path)" class="member-name-link">startupClasses</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;value)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Drops the local-variable tables of dependency classes when they are re-packed.</div>
+<div class="block">Sets the recorded startup class list the launcher preloads on a background thread.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stripLocalVariables(boolean)" class="member-name-link">stripLocalVariables</a><wbr>(boolean&nbsp;value)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Drops the local-variable tables of dependency classes when they are re-packed.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the instant every entry is dated with.</div>
 </div>
 </div>
@@ -608,6 +614,31 @@ an attribute the JDK does not know, and <code>module-info</code> are left alone 
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>value</code> - whether to strip the local-variable tables of dependency classes</dd>
+<dt>Returns:</dt>
+<dd>this builder</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="startupClasses(java.nio.file.Path)">
+<h3>startupClasses</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></span>&nbsp;<span class="element-name">startupClasses</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;value)</span></div>
+<div class="block">Sets the recorded startup class list the launcher preloads on a background thread.
+
+<p>The file is either the raw output of <code>-Xlog:class+load=info</code> from a run of the runner jar
+without a CDS or AOT cache, or one binary class name per line, where blank lines and lines starting
+with <code>#</code> are ignored and <code>jrt:&lt;name&gt;</code> marks a JDK class. Of a class-load log, the classes
+the runner class loader defined and the JDK classes loaded from the runtime image are kept. The
+order of the file is kept and a repeated name counts once.</p>
+
+<p>Names the archive does not hold are dropped with one warning, so a list recorded before a
+dependency upgrade stays usable. Record the list from a jar built with the same packaging options
+as this one. There is no default: without a list nothing is preloaded.</p></div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>value</code> - the list file, or <code>null</code> for none</dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
 </dl>

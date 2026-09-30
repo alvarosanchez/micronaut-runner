@@ -86,6 +86,10 @@ loadScripts(document, 'script');</script>
 <li><a href="#startClass()" tabindex="0">startClass()</a></li>
 <li><a href="#entryStubClass()" tabindex="0">entryStubClass()</a></li>
 <li><a href="#launcherVersion()" tabindex="0">launcherVersion()</a></li>
+<li><a href="#preloadCount()" tabindex="0">preloadCount()</a></li>
+<li><a href="#preloadRecord(int)" tabindex="0">preloadRecord(int)</a></li>
+<li><a href="#jdkPreloadCount()" tabindex="0">jdkPreloadCount()</a></li>
+<li><a href="#jdkPreloadName(int)" tabindex="0">jdkPreloadName(int)</a></li>
 <li><a href="#jarName(int)" tabindex="0">jarName(int)</a></li>
 <li><a href="#jarCoordinates(int)" tabindex="0">jarCoordinates(int)</a></li>
 <li><a href="#jarDataOffset(int)" tabindex="0">jarDataOffset(int)</a></li>
@@ -476,6 +480,17 @@ sealed unless a package section says otherwise.</div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The <code>Specification-Version</code> main attribute of a jar's manifest.</div>
 </div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jdkPreloadCount()" class="member-name-link">jdkPreloadCount</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">The number of JDK classes in the recorded startup class list, which the launcher preloads through the
+platform class loader after the archive's classes.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jdkPreloadName(int)" class="member-name-link">jdkPreloadName</a><wbr>(int&nbsp;position)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">One JDK class of the recorded startup class list.</div>
+</div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#largestStoredClass()" class="member-name-link">largestStoredClass</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
@@ -592,6 +607,17 @@ applies.</div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Whether the packager chose positional reads, which makes a launcher left to decide map only the index
 and read classes with positional reads into pooled buffers.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#preloadCount()" class="member-name-link">preloadCount</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">The number of classes in the recorded startup class list the launcher preloads.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#preloadRecord(int)" class="member-name-link">preloadRecord</a><wbr>(int&nbsp;position)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">One element of the recorded startup class list: the entry record that heads the chain of the class's
+<code>.class</code> name, which is the record <a href="#findClass(java.lang.String)"><code>findClass(String)</code></a> returns for it.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#resolve(int,int)" class="member-name-link">resolve</a><wbr>(int&nbsp;chainHead,
@@ -949,6 +975,66 @@ of positional reads.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the version string, or <code>null</code> when it was not recorded</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="preloadCount()">
+<h3>preloadCount</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">preloadCount</span>()</div>
+<div class="block">The number of classes in the recorded startup class list the launcher preloads.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the length of the preload table, <code>0</code> when the archive carries no list</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="preloadRecord(int)">
+<h3>preloadRecord</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">preloadRecord</span><wbr><span class="parameters">(int&nbsp;position)</span></div>
+<div class="block">One element of the recorded startup class list: the entry record that heads the chain of the class's
+<code>.class</code> name, which is the record <a href="#findClass(java.lang.String)"><code>findClass(String)</code></a> returns for it. The record id is
+bounds-checked when it is used, like every other record id the index stores.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>position</code> - the position in the list, from <code>0</code> to <a href="#preloadCount()"><code>preloadCount()</code></a> exclusive</dd>
+<dt>Returns:</dt>
+<dd>the entry record index</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="jdkPreloadCount()">
+<h3>jdkPreloadCount</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">jdkPreloadCount</span>()</div>
+<div class="block">The number of JDK classes in the recorded startup class list, which the launcher preloads through the
+platform class loader after the archive's classes.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the length of the JDK preload table, <code>0</code> when the archive lists no JDK class</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="jdkPreloadName(int)">
+<h3>jdkPreloadName</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">jdkPreloadName</span><wbr><span class="parameters">(int&nbsp;position)</span></div>
+<div class="block">One JDK class of the recorded startup class list. The name is not checked against any JDK: a runtime
+that lacks the class simply does not preload it.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>position</code> - the position in the list, from <code>0</code> to <a href="#jdkPreloadCount()"><code>jdkPreloadCount()</code></a> exclusive</dd>
+<dt>Returns:</dt>
+<dd>the binary class name</dd>
 </dl>
 </div>
 </section>

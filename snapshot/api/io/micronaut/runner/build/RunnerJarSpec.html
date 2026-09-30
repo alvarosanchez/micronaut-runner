@@ -74,6 +74,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#archiveReads()" tabindex="0">archiveReads()</a></li>
 <li><a href="#precompileLogback()" tabindex="0">precompileLogback()</a></li>
 <li><a href="#stripLocalVariables()" tabindex="0">stripLocalVariables()</a></li>
+<li><a href="#startupClasses()" tabindex="0">startupClasses()</a></li>
 <li><a href="#timestamp()" tabindex="0">timestamp()</a></li>
 <li><a href="#effectiveOptions()" tabindex="0">effectiveOptions()</a></li>
 </ol>
@@ -239,14 +240,20 @@ restricted method warnings a dependency using the foreign function API would oth
 <div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
 packaged, so that the application does not parse XML and run Joran on its main thread at every start.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stripLocalVariables()" class="member-name-link">stripLocalVariables</a>()</code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html" title="class or interface in java.util" class="external-link">Optional</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#startupClasses()" class="member-name-link">startupClasses</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">The recorded startup class list: the <code>-Xlog:class+load</code> output of a run of the runner jar, or a
+file of binary class names.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stripLocalVariables()" class="member-name-link">stripLocalVariables</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Whether the local-variable tables of dependency classes are dropped when they are re-packed.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp()" class="member-name-link">timestamp</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp()" class="member-name-link">timestamp</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The instant every entry of the archive is dated with, converted to MS-DOS time in UTC.</div>
 </div>
 </div>
@@ -548,6 +555,25 @@ as a result.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>whether local-variable tables are stripped, <code>true</code> unless configured otherwise</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="startupClasses()">
+<h3>startupClasses</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html" title="class or interface in java.util" class="external-link">Optional</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&gt;</span>&nbsp;<span class="element-name">startupClasses</span>()</div>
+<div class="block">The recorded startup class list: the <code>-Xlog:class+load</code> output of a run of the runner jar, or a
+file of binary class names.
+
+<p>The packager embeds the classes of the list that the archive holds, in the order of the list, and
+the launcher defines them on one background thread while the application starts, followed by the JDK
+classes of the list. The launcher loads them and never initialises them, so a list that names a class
+the application no longer uses costs background work and changes no behaviour.</p></div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the list file, if one was configured</dd>
 </dl>
 </div>
 </section>

@@ -96,6 +96,10 @@ loadScripts(document, 'script');</script>
 <li><a href="#H_ENTRY_STUB_CLASS" tabindex="0">H_ENTRY_STUB_CLASS</a></li>
 <li><a href="#H_LAUNCHER_VERSION" tabindex="0">H_LAUNCHER_VERSION</a></li>
 <li><a href="#H_PACKAGE_COUNT" tabindex="0">H_PACKAGE_COUNT</a></li>
+<li><a href="#H_PRELOAD_TABLE_OFFSET" tabindex="0">H_PRELOAD_TABLE_OFFSET</a></li>
+<li><a href="#H_PRELOAD_COUNT" tabindex="0">H_PRELOAD_COUNT</a></li>
+<li><a href="#H_JDK_PRELOAD_COUNT" tabindex="0">H_JDK_PRELOAD_COUNT</a></li>
+<li><a href="#H_JDK_PRELOAD_TABLE_OFFSET" tabindex="0">H_JDK_PRELOAD_TABLE_OFFSET</a></li>
 <li><a href="#H_RESERVED" tabindex="0">H_RESERVED</a></li>
 <li><a href="#H_LARGEST_STORED_CLASS" tabindex="0">H_LARGEST_STORED_CLASS</a></li>
 <li><a href="#HEADER_FLAG_NESTED_STORED" tabindex="0">HEADER_FLAG_NESTED_STORED</a></li>
@@ -159,6 +163,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#ENTRY_FLAG_VERSIONED_ALIAS" tabindex="0">ENTRY_FLAG_VERSIONED_ALIAS</a></li>
 <li><a href="#ENTRY_FLAG_PHYSICAL" tabindex="0">ENTRY_FLAG_PHYSICAL</a></li>
 <li><a href="#ENTRY_FLAG_DIRECTORY_TWIN" tabindex="0">ENTRY_FLAG_DIRECTORY_TWIN</a></li>
+<li><a href="#PRELOAD_RECORD_SIZE" tabindex="0">PRELOAD_RECORD_SIZE</a></li>
 <li><a href="#METHOD_STORED" tabindex="0">METHOD_STORED</a></li>
 <li><a href="#METHOD_DEFLATED" tabindex="0">METHOD_DEFLATED</a></li>
 <li><a href="#LOCAL_HEADER_SIGNATURE" tabindex="0">LOCAL_HEADER_SIGNATURE</a></li>
@@ -423,6 +428,16 @@ directory.</div>
 <div class="col-second odd-row-color"><code><a href="#H_JAR_TABLE_OFFSET" class="member-name-link">H_JAR_TABLE_OFFSET</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#H_JDK_PRELOAD_COUNT" class="member-name-link">H_JDK_PRELOAD_COUNT</a></code></div>
+<div class="col-last even-row-color">
+<div class="block">Number of JDK preload table elements; <code>0</code> means the archive lists no JDK class.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#H_JDK_PRELOAD_TABLE_OFFSET" class="member-name-link">H_JDK_PRELOAD_TABLE_OFFSET</a></code></div>
+<div class="col-last odd-row-color">
+<div class="block">Offset of the JDK preload table, a <code>u32[]</code> of string references; <code>0</code> when there is none.</div>
+</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
 <div class="col-second even-row-color"><code><a href="#H_LARGEST_STORED_CLASS" class="member-name-link">H_LARGEST_STORED_CLASS</a></code></div>
 <div class="col-last even-row-color">
 <div class="block">The largest uncompressed size of a STORED <code>.class</code> record, which sizes the launcher's pooled read
@@ -446,6 +461,16 @@ buffers.</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
 <div class="col-second even-row-color"><code><a href="#H_PACKAGE_TABLE_OFFSET" class="member-name-link">H_PACKAGE_TABLE_OFFSET</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#H_PRELOAD_COUNT" class="member-name-link">H_PRELOAD_COUNT</a></code></div>
+<div class="col-last odd-row-color">
+<div class="block">Number of preload table elements; <code>0</code> means the archive carries no startup class list.</div>
+</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#H_PRELOAD_TABLE_OFFSET" class="member-name-link">H_PRELOAD_TABLE_OFFSET</a></code></div>
+<div class="col-last even-row-color">
+<div class="block">Offset of the <a href="#PRELOAD_RECORD_SIZE">preload table</a>; <code>0</code> when there is none.</div>
+</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
 <div class="col-second odd-row-color"><code><a href="#H_RESERVED" class="member-name-link">H_RESERVED</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
@@ -672,35 +697,40 @@ reads every class with a positional read into a pooled buffer instead of mapping
 <div class="col-last odd-row-color">
 <div class="block">Size of one package record, in bytes.</div>
 </div>
-<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#TRANSFORMS_ENTRY_NAME" class="member-name-link">TRANSFORMS_ENTRY_NAME</a></code></div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#PRELOAD_RECORD_SIZE" class="member-name-link">PRELOAD_RECORD_SIZE</a></code></div>
 <div class="col-last even-row-color">
+<div class="block">Size of one element of either preload table.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#TRANSFORMS_ENTRY_NAME" class="member-name-link">TRANSFORMS_ENTRY_NAME</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Outer archive entry, written right after the launcher classes, that records what the build-time class
 transforms did to the dependency classes: tab-separated lines, the first naming the Runner version.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">ZIP64 end of central directory locator signature, <code>PK\6\7</code>.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">ZIP64 end of central directory record signature, <code>PK\6\6</code>.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ZIP64_EXTRA_FIELD_ID" class="member-name-link">ZIP64_EXTRA_FIELD_ID</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ZIP64_EXTRA_FIELD_ID" class="member-name-link">ZIP64_EXTRA_FIELD_ID</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Header id of the ZIP64 extended information extra field.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ZIP64_LOCATOR_SIZE" class="member-name-link">ZIP64_LOCATOR_SIZE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ZIP64_LOCATOR_SIZE" class="member-name-link">ZIP64_LOCATOR_SIZE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Size of a ZIP64 end of central directory locator.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final long</code></div>
-<div class="col-second odd-row-color"><code><a href="#ZIP64_MARKER" class="member-name-link">ZIP64_MARKER</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final long</code></div>
+<div class="col-second even-row-color"><code><a href="#ZIP64_MARKER" class="member-name-link">ZIP64_MARKER</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Value a 32-bit ZIP field carries when the real value lives in a ZIP64 extra field.</div>
 </div>
 </div>
@@ -1284,6 +1314,74 @@ never reads it at run time; only the <code>inspect</code> mode prints it.</div>
 <dd>
 <ul class="tag-list">
 <li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.H_PACKAGE_COUNT">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="H_PRELOAD_TABLE_OFFSET">
+<h3>H_PRELOAD_TABLE_OFFSET</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">H_PRELOAD_TABLE_OFFSET</span></div>
+<div class="block">Offset of the <a href="#PRELOAD_RECORD_SIZE">preload table</a>; <code>0</code> when there is none.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.H_PRELOAD_TABLE_OFFSET">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="H_PRELOAD_COUNT">
+<h3>H_PRELOAD_COUNT</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">H_PRELOAD_COUNT</span></div>
+<div class="block">Number of preload table elements; <code>0</code> means the archive carries no startup class list.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.H_PRELOAD_COUNT">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="H_JDK_PRELOAD_COUNT">
+<h3>H_JDK_PRELOAD_COUNT</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">H_JDK_PRELOAD_COUNT</span></div>
+<div class="block">Number of JDK preload table elements; <code>0</code> means the archive lists no JDK class.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.H_JDK_PRELOAD_COUNT">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="H_JDK_PRELOAD_TABLE_OFFSET">
+<h3>H_JDK_PRELOAD_TABLE_OFFSET</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">H_JDK_PRELOAD_TABLE_OFFSET</span></div>
+<div class="block">Offset of the JDK preload table, a <code>u32[]</code> of string references; <code>0</code> when there is none.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.H_JDK_PRELOAD_TABLE_OFFSET">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>
@@ -2338,6 +2436,25 @@ misses or the record it resolved carries this flag.</div>
 <dd>
 <ul class="tag-list">
 <li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="PRELOAD_RECORD_SIZE">
+<h3>PRELOAD_RECORD_SIZE</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">PRELOAD_RECORD_SIZE</span></div>
+<div class="block">Size of one element of either preload table. In the preload table it is the <code>u32</code> id of the entry
+record that heads the chain of a <code>.class</code> name, which is the record a class lookup by that name
+finds first; in the JDK preload table it is a <code>u32</code> string reference to a binary class name.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.PRELOAD_RECORD_SIZE">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>

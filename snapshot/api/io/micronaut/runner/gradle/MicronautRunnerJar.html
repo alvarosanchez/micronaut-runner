@@ -86,6 +86,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#getAddExports()" tabindex="0">getAddExports()</a></li>
 <li><a href="#getEnableNativeAccess()" tabindex="0">getEnableNativeAccess()</a></li>
 <li><a href="#getManifestAttributes()" tabindex="0">getManifestAttributes()</a></li>
+<li><a href="#getStartupClasses()" tabindex="0">getStartupClasses()</a></li>
 <li><a href="#getOptions()" tabindex="0">getOptions()</a></li>
 <li><a href="#packageArchive()" tabindex="0">packageArchive()</a></li>
 </ol>
@@ -123,7 +124,8 @@ overriding.</p>
 
 <p>The task is wiring: it hands the project's facts and the options the build sets to the packaging
 library, which owns every option's default, parsing and validation. A <a href="../build/RunnerJarOption.Exposure.html#TYPED"><code>typed</code></a> option has a property here; every option, typed or not, can also be set by name through
-<a href="#getOptions()"><code>getOptions()</code></a>. Each option property takes the <a href="MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle"><code>MicronautRunnerExtension</code></a>'s value as its
+<a href="#getOptions()"><code>getOptions()</code></a>, except a typed option that names a file, which is set only through its property. Each
+option property takes the <a href="MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle"><code>MicronautRunnerExtension</code></a>'s value as its
 convention, so a value set here wins for this task only. The archive is named as an archive task names
 it, from <a href="#getArchiveBaseName()"><code>getArchiveBaseName()</code></a>, <a href="#getArchiveVersion()"><code>getArchiveVersion()</code></a>, <a href="#getArchiveClassifier()"><code>getArchiveClassifier()</code></a> and
 <a href="#getDestinationDirectory()"><code>getDestinationDirectory()</code></a>.</p></div>
@@ -312,14 +314,20 @@ typed property here.</div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">The absolute paths of the dependencies that another project of this build produced.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageArchive()" class="member-name-link">packageArchive</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Builds the archive.</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getStartupClasses()" class="member-name-link">getStartupClasses</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the
+<code>-Xlog:class+load</code> output of a run of the archive, or a file of binary class names.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#setInheritedManifest(org.gradle.api.java.archives.Manifest)" class="member-name-link">setInheritedManifest</a><wbr>(@Nullable org.gradle.api.java.archives.Manifest&nbsp;manifest)</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageArchive()" class="member-name-link">packageArchive</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Builds the archive.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#setInheritedManifest(org.gradle.api.java.archives.Manifest)" class="member-name-link">setInheritedManifest</a><wbr>(@Nullable org.gradle.api.java.archives.Manifest&nbsp;manifest)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the manifest configuration the application's own manifest attributes are taken from.</div>
 </div>
 </div>
@@ -725,6 +733,26 @@ extension's value as the convention.</div>
 </section>
 </li>
 <li>
+<section class="detail" id="getStartupClasses()">
+<h3>getStartupClasses</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="annotations">@InputFile
+@Optional
+@PathSensitive(NONE)
+</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.file.RegularFileProperty</span>&nbsp;<span class="element-name">getStartupClasses</span>()</div>
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the
+<code>-Xlog:class+load</code> output of a run of the archive, or a file of binary class names. It has no
+default, and without it nothing is preloaded. The plugin sets the extension's value as the convention.
+
+<p>Only the content is an input: editing the list rebuilds the archive, and moving it does not.</p></div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the startup class list</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
 <section class="detail" id="getOptions()">
 <h3>getOptions</h3>
 <div class="horizontal-scroll">
@@ -734,7 +762,12 @@ extension's value as the convention.</div>
 typed property here. Each value uses the grammar <a href="../build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> documents, and the packaging
 library parses and validates it; an unknown name fails the task. An entry is applied after the typed
 properties, so it wins over a typed property of the same option. The plugin sets the extension's value
-as the convention.</div>
+as the convention.
+
+<p>A typed option that names a file, such as <code>startupClasses</code>, fails the task when it is set here.
+An entry of this map is a string input: Gradle would not hash the file it names, so an edited file would
+leave the archive up to date, and a relative path would be read against the working directory of the
+build process rather than the project directory. The option's own property does both.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the options by name</dd>
