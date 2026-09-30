@@ -16,6 +16,7 @@
 package io.micronaut.runner.build.training;
 
 import io.micronaut.core.annotation.Experimental;
+import io.micronaut.core.annotation.Nullable;
 
 import java.net.URI;
 import java.time.Duration;
@@ -61,12 +62,12 @@ import java.util.Objects;
  * @since 1.0
  */
 @Experimental
-public record TrainingSettings(String readinessPath,
+public record TrainingSettings(@Nullable String readinessPath,
                                List<String> workloadPaths,
                                int workloadRepeat,
                                List<String> workloadCommand,
                                boolean runToExit,
-                               String stopPath,
+                               @Nullable String stopPath,
                                List<String> jvmArgs,
                                Map<String, String> environment,
                                String portVariable,
@@ -197,12 +198,12 @@ public record TrainingSettings(String readinessPath,
      */
     public static final class Builder {
 
-        private String readinessPath;
+        private @Nullable String readinessPath;
         private List<String> workloadPaths = List.of();
         private int workloadRepeat = 1;
         private List<String> workloadCommand = List.of();
         private boolean runToExit;
-        private String stopPath;
+        private @Nullable String stopPath;
         private List<String> jvmArgs = List.of();
         private Map<String, String> environment = Map.of();
         private String portVariable = DEFAULT_PORT_VARIABLE;
@@ -219,7 +220,7 @@ public record TrainingSettings(String readinessPath,
          * @param value the path, or {@code null} for none
          * @return this builder
          */
-        public Builder readinessPath(String value) {
+        public Builder readinessPath(@Nullable String value) {
             this.readinessPath = value;
             return this;
         }
@@ -274,7 +275,7 @@ public record TrainingSettings(String readinessPath,
          * @param value the path, or {@code null} to destroy the process
          * @return this builder
          */
-        public Builder stopPath(String value) {
+        public Builder stopPath(@Nullable String value) {
             this.stopPath = value;
             return this;
         }

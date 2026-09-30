@@ -259,6 +259,25 @@ class PackageMojoTest {
     }
 
     @Test
+    void aCommittedStartupProfileIsEmbeddedByConvention() throws IOException, MojoFailureException {
+        project.setFile(temp.resolve("pom.xml").toFile());
+        assertEquals(Optional.empty(), spec().startupClasses(), "without the file, nothing is preloaded");
+        assertTrue(log.infos.stream().noneMatch(line -> line.contains("startup profile")), log.infos::toString);
+
+        Path profile = temp.resolve("src/main/micronaut-runner/startup-classes.txt");
+        Files.createDirectories(profile.getParent());
+        Files.writeString(profile, "# recorded\n" + MAIN_CLASS + "\n");
+        assertEquals(Optional.of(profile.toFile().toPath()), spec().startupClasses(),
+                "the committed profile is embedded when startupClasses is unset");
+        assertTrue(log.infos.contains("Embedding the startup profile src/main/micronaut-runner/startup-classes.txt,"
+                + " which mvn package mn-runner:record-startup-profile records"), log.infos::toString);
+
+        Path explicit = temp.resolve("other-startup-classes.log");
+        set("startupClasses", explicit.toFile());
+        assertEquals(Optional.of(explicit), spec().startupClasses(), "an explicit startupClasses wins");
+    }
+
+    @Test
     void anUnknownCompressionFailsWithThePackagingLibrarysMessage() {
         set("compression", "DEFLATED");
         MojoFailureException failure = assertThrows(MojoFailureException.class, this::spec);
@@ -810,6 +829,7 @@ class PackageMojoTest {
     private static final class RecordingLog extends SystemStreamLog {
 
         private final List<String> warnings = new ArrayList<>();
+        private final List<String> infos = new ArrayList<>();
 
         @Override
         public void warn(CharSequence content) {
@@ -823,7 +843,8 @@ class PackageMojoTest {
 
         @Override
         public void info(CharSequence content) {
-            // quiet: the goal's progress is not what these tests are about
+            // kept, not printed: the goal's progress is not what most of these tests are about
+            infos.add(String.valueOf(content));
         }
     }
 
