@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -39,13 +40,16 @@ import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -217,6 +221,165 @@ class ClassTransformPipelineTest {
     }
 
     @Test
+    void aRewriteWithOnlyTheErrorsItsOriginalAlreadyHasIsAccepted() throws Exception {
+        // Optional is compiled but left off the class path, as an optional dependency is: the verifier cannot
+        // tell whether it is a Base, so User fails verification before any step touches it.
+        Map<String, byte[]> classes = ClassFixtures.classes(ClassFixtures.compile(temp.resolve("missing/src"),
+                temp.resolve("missing/classes"), List.of("-g"), Map.of(
+                        "fixture/missing/Base.java", "package fixture.missing; public class Base { }\n",
+                        "fixture/missing/Optional.java",
+                        "package fixture.missing; public class Optional extends Base { }\n",
+                        "fixture/missing/User.java", """
+                                package fixture.missing;
+                                public class User {
+                                    public static Base pick(Optional optional, boolean flag) {
+                                        Base chosen = optional;
+                                        String label = flag ? "a" : "b";
+                                        return label.isEmpty() ? null : chosen;
+                                    }
+                                }
+                                """)));
+        String entry = "fixture/missing/User.class";
+        byte[] user = classes.get(entry);
+        ClassPathModel partial = modelOf(Map.of("fixture/missing/Base.class",
+                classes.get("fixture/missing/Base.class"), entry, user));
+        Function<byte[], List<String>> verifier = ClassTransformPipeline.verifierOf(partial);
+        List<String> before = verifier.apply(user);
+        assertFalse(before.isEmpty(), "the fixture fails verification as compiled");
+        List<byte[]> verified = new ArrayList<>();
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LocalVariableStripper()), partial,
+                bytes -> {
+                    verified.add(bytes);
+                    return verifier.apply(bytes);
+                });
+
+        ClassTransformPipeline.JarRun run = pipeline.start(DEPENDENCY);
+        byte[] output = run.process(entry, user);
+        ClassTransformPipeline.JarReport report = run.report();
+
+        assertTrue(output.length < user.length, "the class was stripped");
+        assertEquals(before, verifier.apply(output), "the rewrite fails exactly as the original does");
+        assertEquals(2, verified.size(), "the original is verified because the rewrite has errors");
+        assertSame(output, verified.get(0));
+        assertSame(user, verified.get(1));
+        assertEquals(List.of(new ClassTransformPipeline.StepCount(LocalVariableStripper.NAME, 1, 0, 0,
+                user.length - output.length)), report.counts());
+        assertEquals(List.of(), report.notes());
+    }
+
+    @Test
+    void anErrorTheOriginalAlreadyHasIsNotGrowthWhenARebuiltPoolMovesItsOffset() throws Exception {
+        // More than 256 constants ahead of the broken instruction: a rebuilt pool chooses ldc or ldc_w afresh
+        // for them, which moves every later instruction.
+        StringBuilder constants = new StringBuilder();
+        for (int i = 0; i < 300; i++) {
+            constants.append(i == 0 ? "" : ", ").append("\"constant-").append(i).append('"');
+        }
+        String entry = "fixture/shifted/Shifted.class";
+        byte[] compiled = ClassFixtures.classes(ClassFixtures.compile(temp.resolve("shifted/src"),
+                temp.resolve("shifted/classes"), List.of("-g"), ClassFixtures.source("fixture.shifted.Shifted", """
+                        package fixture.shifted;
+                        public class Shifted {
+                            public static int run(Object value) {
+                                String[] all = {@constants@};
+                                String text = (String) value;
+                                return all.length + text.length();
+                            }
+                        }
+                        """.replace("@constants@", constants)))).get(entry);
+        // Without its checkcast the method calls String.length() on an Object: an error the verifier reports at
+        // the offset of that call. The method has no branch, so it needs no frames.
+        ClassFile context = ClassFile.of(ClassFile.StackMapsOption.DROP_STACK_MAPS);
+        byte[] broken = context.transformClass(context.parse(compiled), ClassTransform.transformingMethodBodies(
+                (builder, element) -> {
+                    if (!(element instanceof TypeCheckInstruction)) {
+                        builder.with(element);
+                    }
+                }));
+        ClassPathModel shifted = modelOf(Map.of(entry, broken));
+        Function<byte[], List<String>> verifier = ClassTransformPipeline.verifierOf(shifted);
+        List<String> before = verifier.apply(broken);
+        assertEquals(1, before.size(), before::toString);
+        byte[] stripped = new ClassTransformPipeline(List.of(new LocalVariableStripper()), shifted,
+                bytes -> List.of()).start(DEPENDENCY).process(entry, broken);
+        List<String> after = verifier.apply(stripped);
+        assertEquals(1, after.size(), after::toString);
+        Assumptions.assumeFalse(before.equals(after),
+                "the class file library of this JDK left the broken instruction at its offset");
+
+        ClassTransformPipeline.JarRun run = new ClassTransformPipeline(List.of(new LocalVariableStripper()),
+                shifted).start(DEPENDENCY);
+        byte[] output = run.process(entry, broken);
+        ClassTransformPipeline.JarReport report = run.report();
+
+        assertArrayEquals(stripped, output, "the stripped class is written");
+        assertEquals(List.of(new ClassTransformPipeline.StepCount(LocalVariableStripper.NAME, 1, 0, 0,
+                broken.length - output.length)), report.counts());
+        assertEquals(List.of(), report.notes(), "the error moved, it did not appear");
+    }
+
+    @Test
+    void theGateComparesErrorsWithoutTheirBytecodeOffsets() {
+        String moved = "Bad type on operand stack in fixture/Subject::run(Object) @%d";
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LocalVariableStripper()), model,
+                bytes -> List.of(moved.formatted(bytes == subject ? 41 : 42)));
+
+        ClassTransformPipeline.JarRun run = pipeline.start(DEPENDENCY);
+        byte[] output = run.process(SUBJECT + ".class", subject);
+
+        assertTrue(output.length < subject.length, "the class was stripped");
+        assertEquals(List.of(), run.report().notes());
+        assertEquals(0, run.report().counts().get(0).fallbacks());
+
+        String first = "Bad type on operand stack in fixture/Subject::run(Object) @41 (current frame)";
+        String second = "Bad type on operand stack in fixture/Subject::run(Object) @57 (current frame)";
+        String other = "Bad type on operand stack in fixture/Subject::other() @41 (current frame)";
+        String unresolved = "java.lang.IllegalArgumentException: Could not resolve class Optional";
+        assertNull(ClassTransformPipeline.grown(List.of(), List.of(first)));
+        assertNull(ClassTransformPipeline.grown(List.of(second), List.of(first)), "the same error, moved");
+        assertNull(ClassTransformPipeline.grown(List.of(unresolved, second), List.of(first, unresolved)));
+        assertEquals(first, ClassTransformPipeline.grown(List.of(first), List.of()));
+        assertEquals(other, ClassTransformPipeline.grown(List.of(second, other), List.of(first)),
+                "an error in another method is new");
+        assertEquals(second, ClassTransformPipeline.grown(List.of(first, second), List.of(first)),
+                "each error of the original accounts for one error of the rewrite");
+    }
+
+    @Test
+    void aStepThatSkipsALargerOutputLeavesTheClassAloneOnlyWhenItIsTheOnlyChange() throws Exception {
+        String longer = "a constant that is much longer than the one it replaces";
+        Step lengthen = new Step("lengthen", false,
+                element -> element instanceof ConstantInstruction.LoadConstantInstruction load
+                        && "a".equals(load.constantValue()),
+                (builder, element) -> builder.ldc(longer)).skippingLargerOutput();
+        ClassTransformPipeline alone = new ClassTransformPipeline(List.of(lengthen), model);
+
+        ClassTransformPipeline.JarRun run = alone.start(DEPENDENCY);
+        byte[] output = run.process(SUBJECT + ".class", subject);
+
+        assertSame(subject, output, "the larger output is thrown away");
+        assertEquals(1, lengthen.hits.get(), "the step did run");
+        assertEquals(List.of(new ClassTransformPipeline.StepCount("lengthen", 0, 1, 0, 0)), run.report().counts());
+        assertEquals(List.of(), run.report().notes(), "a skip is not a fallback");
+
+        Step rewriteIconst = new Step("rewriteIconst", false,
+                element -> element instanceof ConstantInstruction constant && constant.opcode() == Opcode.ICONST_1,
+                (builder, element) -> builder.iconst_2());
+        ClassTransformPipeline together = new ClassTransformPipeline(List.of(lengthen, rewriteIconst), model);
+
+        ClassTransformPipeline.JarRun second = together.start(DEPENDENCY);
+        byte[] both = second.process(SUBJECT + ".class", subject);
+
+        assertTrue(both.length > subject.length, "with another change the larger output is kept");
+        assertEquals(longer + "2", run(both, "x"));
+        assertEquals(List.of(
+                new ClassTransformPipeline.StepCount("lengthen", 1, 0, 0, subject.length - both.length),
+                new ClassTransformPipeline.StepCount("rewriteIconst", 1, 0, 0, subject.length - both.length)),
+                second.report().counts());
+        assertTrue(new LocalVariableStripper().skipsLargerOutput(), "stripping is such a step");
+    }
+
+    @Test
     void noStepAppliesToASignedJar() {
         Step rewriteLdc = rewriteLdc(false);
         ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(rewriteLdc), model);
@@ -228,6 +391,13 @@ class ClassTransformPipelineTest {
         run.skip();
         assertEquals(List.of(new ClassTransformPipeline.StepCount("rewriteLdc", 0, 1, 0, 0)), run.report().counts());
         assertEquals(0, rewriteLdc.hits.get());
+    }
+
+    private static ClassPathModel modelOf(Map<String, byte[]> classes) {
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "fixture", false, false, name -> false,
+                new ClassPathModel.Interner());
+        classes.forEach(scan::accept);
+        return ClassPathModel.merge(List.of(scan), false);
     }
 
     private static Step rewriteLdc(boolean newPool) {
@@ -294,12 +464,23 @@ class ClassTransformPipelineTest {
         private final Predicate<CodeElement> target;
         private final CodeTransform replacement;
         private final AtomicInteger hits = new AtomicInteger();
+        private boolean skipsLargerOutput;
 
         private Step(String name, boolean newPool, Predicate<CodeElement> target, CodeTransform replacement) {
             this.name = name;
             this.newPool = newPool;
             this.target = target;
             this.replacement = replacement;
+        }
+
+        private Step skippingLargerOutput() {
+            skipsLargerOutput = true;
+            return this;
+        }
+
+        @Override
+        public boolean skipsLargerOutput() {
+            return skipsLargerOutput;
         }
 
         @Override

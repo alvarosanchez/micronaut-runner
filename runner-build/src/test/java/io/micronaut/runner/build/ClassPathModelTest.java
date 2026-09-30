@@ -184,6 +184,68 @@ class ClassPathModelTest {
         assertTrue(model.winner("com/example/Right").isEmpty());
     }
 
+    @Test
+    void aClassWhoseSuperclassOrInterfaceCannotBeReadIsLeftOutWithoutFailingTheScan() {
+        byte[] implementation = implementation("com/example/Impl");
+        assertThrows(IllegalArgumentException.class, () -> ClassFile.of().parse(
+                ClassFixtures.withCorruptSuperclass(implementation)).superclass(), "the fixture is corrupt");
+        assertThrows(IllegalArgumentException.class, () -> ClassFile.of().parse(
+                ClassFixtures.withCorruptInterface(implementation)).interfaces(), "the fixture is corrupt");
+
+        for (boolean members : List.of(false, true)) {
+            Map<String, byte[]> entries = Map.of(
+                    entry("com/example/Impl"), implementation,
+                    entry("com/example/BadSuper"), ClassFixtures.withCorruptSuperclass(
+                            implementation("com/example/BadSuper")),
+                    entry("com/example/BadIface"), ClassFixtures.withCorruptInterface(
+                            implementation("com/example/BadIface")));
+            ClassPathModel model = model(members, layer(0, "application", false, Map.of()),
+                    layer(1, "dependency", false, entries));
+
+            assertTrue(model.winner("com/example/BadSuper").isEmpty(), "members: " + members);
+            assertTrue(model.winner("com/example/BadIface").isEmpty(), "members: " + members);
+            assertEquals(List.of("java/lang/Runnable"), model.winner("com/example/Impl").orElseThrow().interfaces(),
+                    "the class next to them is recorded");
+            assertEquals(1, model.size());
+        }
+    }
+
+    @Test
+    void noTruncationOrByteFlipOfAClassMakesTheScanThrow() {
+        byte[] implementation = implementation("com/example/Impl");
+        List<byte[]> damaged = new ArrayList<>();
+        for (int length = 0; length < implementation.length; length++) {
+            damaged.add(java.util.Arrays.copyOf(implementation, length));
+        }
+        for (int position = 0; position < implementation.length; position++) {
+            for (int mask : new int[] {0x01, 0x80, 0xFF}) {
+                byte[] flipped = implementation.clone();
+                flipped[position] ^= (byte) mask;
+                damaged.add(flipped);
+            }
+        }
+
+        for (boolean members : List.of(false, true)) {
+            ClassPathModel.LayerScan scan = ClassPathModel.scan(1, "dependency", false, members, name -> false,
+                    new ClassPathModel.Interner());
+            for (byte[] bytes : damaged) {
+                scan.accept(entry("com/example/Impl"), bytes);
+            }
+            scan.accept(entry("com/example/Impl"), implementation);
+            ClassPathModel model = ClassPathModel.merge(List.of(scan), members);
+            assertEquals(1, model.size(), "members: " + members);
+        }
+    }
+
+    @Test
+    void aClassAboveTheSizeLimitIsNotRead() {
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(1, "dependency", false, false, name -> false,
+                new ClassPathModel.Interner());
+
+        assertTrue(scan.wants(entry("com/example/Large"), ClassPathModel.MAX_CLASS_SIZE));
+        assertFalse(scan.wants(entry("com/example/Large"), ClassPathModel.MAX_CLASS_SIZE + 1L));
+    }
+
     private static ClassPathModel model(boolean members, Layer... layers) {
         return model(members, name -> false, layers);
     }
@@ -216,6 +278,17 @@ class ClassPathModelTest {
         return ClassFile.of().build(ClassDesc.ofInternalName(internalName), builder -> builder
                 .withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER)
                 .withSuperclass(ClassDesc.ofInternalName(superName)));
+    }
+
+    /** A class with a superclass, an interface, a field and a method, so that every part the scan reads exists. */
+    private static byte[] implementation(String internalName) {
+        return ClassFile.of().build(ClassDesc.ofInternalName(internalName), builder -> builder
+                .withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER)
+                .withSuperclass(ClassDesc.of("java.util.AbstractList"))
+                .withInterfaceSymbols(ClassDesc.of("java.lang.Runnable"))
+                .withField("count", ConstantDescs.CD_int, ClassFile.ACC_PRIVATE)
+                .withMethod("run", MethodTypeDesc.of(ConstantDescs.CD_void), ClassFile.ACC_PUBLIC
+                        | ClassFile.ACC_ABSTRACT, method -> { }));
     }
 
     private static byte[] iface(String internalName) {

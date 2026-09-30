@@ -453,7 +453,8 @@ final class ClassPathModel implements ClassHierarchyResolver {
 
         /**
          * Records one class. A class whose header cannot be parsed, or that does not declare the name its entry
-         * implies, is left out: no class loader could define it under that name.
+         * implies, is left out: no class loader could define it under that name. The build does not fail on it:
+         * the class is still nested, and whether it is rewritten is the pipeline's decision.
          *
          * @param entryName the entry name
          * @param bytes     its content
@@ -464,18 +465,31 @@ final class ClassPathModel implements ClassHierarchyResolver {
                 return;
             }
             String internalName = path.substring(0, path.length() - CLASS_SUFFIX.length());
-            ClassModel model;
-            String thisClass;
-            try {
-                model = PARSER.parse(bytes);
-                thisClass = model.thisClass().asInternalName();
-            } catch (IllegalArgumentException e) {
-                return;
-            }
-            if (!thisClass.equals(internalName)) {
-                return;
-            }
             int version = entryName.equals(path) ? 0 : IndexWriter.versionOf(entryName);
+            Copy copy;
+            try {
+                copy = read(internalName, version, PARSER.parse(bytes));
+            } catch (IllegalArgumentException e) {
+                // The ClassFile API reads lazily: a truncated class, or a header index that points at the wrong
+                // kind of constant, only fails when the superclass, an interface or a member is asked for, so
+                // every read of the parsed class sits inside this try.
+                return;
+            }
+            if (copy != null) {
+                copies.add(copy);
+            }
+        }
+
+        /**
+         * Reads everything the model keeps of one parsed class.
+         *
+         * @return the copy, or {@code null} when the class does not declare the name its entry implies
+         * @throws IllegalArgumentException if any part of the header, or of a member, is malformed
+         */
+        private Copy read(String internalName, int version, ClassModel model) {
+            if (!model.thisClass().asInternalName().equals(internalName)) {
+                return null;
+            }
             List<String> interfaces = new ArrayList<>(model.interfaces().size());
             for (ClassEntry entry : model.interfaces()) {
                 interfaces.add(strings.intern(entry.asInternalName()));
@@ -495,9 +509,9 @@ final class ClassPathModel implements ClassHierarchyResolver {
             }
             String superName = model.superclass().map(ClassEntry::asInternalName).map(strings::intern)
                     .orElse(null);
-            copies.add(new Copy(strings.intern(internalName), layer, version, model.flags().flagsMask(),
+            return new Copy(strings.intern(internalName), layer, version, model.flags().flagsMask(),
                     superName, interfaces.isEmpty() ? List.of() : Collections.unmodifiableList(interfaces),
-                    table));
+                    table);
         }
 
         /**

@@ -68,10 +68,10 @@ import java.util.Optional;
  * contains one of the {@linkplain #isKnownReader(String) known readers}, the build turns stripping off.</p>
  *
  * <p>The class is self-contained: the transform, its options and every decline rule live here. Besides
- * {@code java.lang.classfile} it depends only on the pipeline's {@link ClassTransformPipeline.Step} contract and
- * on {@link OriginalFrames}, not on the class path model, the index or the launcher. It is deliberately not
- * public API; if another packager ever needs it, extract a small standalone artifact rather than opening this
- * library.</p>
+ * {@code java.lang.classfile} it depends only on the pipeline's {@link ClassTransformPipeline.Step} contract,
+ * not on the class path model, the index or the launcher; the pipeline is its only entry point, and it is the
+ * pipeline that attaches a rewritten class's original frames again. It is deliberately not public API; if
+ * another packager ever needs it, extract a small standalone artifact rather than opening this library.</p>
  */
 final class LocalVariableStripper implements ClassTransformPipeline.Step {
 
@@ -212,28 +212,6 @@ final class LocalVariableStripper implements ClassTransformPipeline.Step {
         return "Stripped local-variable tables from " + report.rewritten() + " of " + report.classes()
                 + " dependency classes in " + jars + " jars (" + report.bytesSaved() + " bytes saved, "
                 + report.fallbacks() + " fallbacks)";
-    }
-
-    /**
-     * Strips one class on its own, outside any pipeline: parses it with the step's options, rewrites it and
-     * attaches its original frames again. The class hierarchy is never consulted, because no frame is
-     * generated.
-     *
-     * @param bytes the class
-     * @return the stripped class, or {@code bytes} itself when the step declines it or has nothing to drop
-     * @throws IllegalArgumentException if the class cannot be parsed or rewritten
-     */
-    static byte[] strip(byte[] bytes) {
-        LocalVariableStripper step = new LocalVariableStripper();
-        ClassFile context = ClassFile.of(OPTIONS.toArray(ClassFile.Option[]::new))
-                .withOptions(ClassFile.StackMapsOption.DROP_STACK_MAPS);
-        ClassModel model = context.parse(bytes);
-        if (!step.changes(model)) {
-            return bytes;
-        }
-        byte[] stripped = context.transformClass(model,
-                step.transform(model).andThen(OriginalFrames.of(model).reattaching()));
-        return stripped.length < bytes.length ? stripped : bytes;
     }
 
     private static boolean hasDroppedCodeAttribute(CodeModel code) {

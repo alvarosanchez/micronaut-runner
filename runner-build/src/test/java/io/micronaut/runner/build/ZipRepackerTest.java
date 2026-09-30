@@ -483,6 +483,43 @@ class ZipRepackerTest {
                 run.report().counts().get(0));
     }
 
+    @Test
+    void aClassAboveTheSizeLimitIsStreamedAsItIsAndCountedUnchanged() throws Exception {
+        // Were it read into memory, the pre-filter would match it, the step would fail to parse it, and it
+        // would be counted as a fallback with a note.
+        byte[] large = new byte[ClassTransformPipeline.MAX_CLASS_SIZE + 1];
+        byte[] marker = "LocalVariableTable".getBytes(StandardCharsets.UTF_8);
+        System.arraycopy(marker, 0, large, 16, marker.length);
+        Path source = temp.resolve("large-class.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(source))) {
+            parentCommitEntry(zip, "org/example/Large.class", large, false, 0);
+        }
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "classes", false, false, name -> false,
+                new ClassPathModel.Interner());
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LocalVariableStripper()),
+                ClassPathModel.merge(List.of(scan), false));
+        ClassTransformPipeline.JarRun run = pipeline.start(
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/large-class.jar", false, false, false));
+        assertFalse(run.reads(large.length));
+        assertTrue(run.reads(large.length - 1));
+
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        ZipRepacker.RepackResult result;
+        long crc;
+        try (ZipReader reader = ZipReader.open(source)) {
+            crc = reader.entries().get(0).crc32();
+            result = ZipRepacker.repack(reader, bytes, run);
+        }
+
+        ZipEntryInfo entry = result.entries().get(0);
+        assertEquals(large.length, entry.uncompressedSize());
+        assertEquals(crc, entry.crc32());
+        assertArrayEquals(large, slice(bytes.toByteArray(), entry));
+        assertEquals(List.of(new ClassTransformPipeline.StepCount(LocalVariableStripper.NAME, 0, 1, 0, 0)),
+                run.report().counts());
+        assertEquals(List.of(), run.report().notes());
+    }
+
     /**
      * A jar whose every byte is fixed, whatever the zlib or the time zone: the DOS times are set as local
      * times, and the repacked output carries no compressed byte.

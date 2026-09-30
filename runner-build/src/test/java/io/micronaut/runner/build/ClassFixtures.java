@@ -152,6 +152,66 @@ final class ClassFixtures {
                 builder.with(new VendorAttribute())));
     }
 
+    /**
+     * Points the superclass index of a class at a constant that is not a class: its first {@code Utf8} entry.
+     * The class still parses, and still declares its own name; only reading its superclass fails.
+     *
+     * @param bytes the class
+     * @return a copy with the corrupt index
+     */
+    static byte[] withCorruptSuperclass(byte[] bytes) {
+        return withHeaderIndex(bytes, 4);
+    }
+
+    /**
+     * Points the first interface index of a class that implements one at a constant that is not a class: its
+     * first {@code Utf8} entry. The class still parses; only reading its interfaces fails.
+     *
+     * @param bytes the class, which must implement an interface
+     * @return a copy with the corrupt index
+     */
+    static byte[] withCorruptInterface(byte[] bytes) {
+        return withHeaderIndex(bytes, 8);
+    }
+
+    /**
+     * Overwrites one two-byte index of the class header, given by its offset from {@code access_flags}, with
+     * the index of the first {@code Utf8} constant.
+     */
+    private static byte[] withHeaderIndex(byte[] bytes, int offset) {
+        int count = u2(bytes, 8);
+        int position = 10;
+        int utf8 = 0;
+        for (int index = 1; index < count; index++) {
+            int tag = bytes[position] & 0xFF;
+            switch (tag) {
+                case 1 -> {
+                    utf8 = utf8 == 0 ? index : utf8;
+                    position += 3 + u2(bytes, position + 1);
+                }
+                case 3, 4, 9, 10, 11, 12, 17, 18 -> position += 5;
+                case 5, 6 -> {
+                    position += 9;
+                    index++;
+                }
+                case 7, 8, 16, 19, 20 -> position += 3;
+                case 15 -> position += 4;
+                default -> throw new IllegalArgumentException("Unknown constant pool tag " + tag);
+            }
+        }
+        if (offset == 8 && u2(bytes, position + 6) == 0) {
+            throw new IllegalArgumentException("The class implements no interface");
+        }
+        byte[] corrupt = bytes.clone();
+        corrupt[position + offset] = (byte) (utf8 >>> 8);
+        corrupt[position + offset + 1] = (byte) utf8;
+        return corrupt;
+    }
+
+    private static int u2(byte[] bytes, int position) {
+        return (bytes[position] & 0xFF) << 8 | bytes[position + 1] & 0xFF;
+    }
+
     /** The name of the attribute {@link #withUnknownAttribute(byte[])} adds. */
     static final String UNKNOWN_ATTRIBUTE = "ExampleVendorAttribute";
 

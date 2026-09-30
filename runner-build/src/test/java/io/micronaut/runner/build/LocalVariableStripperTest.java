@@ -32,9 +32,12 @@ import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.CodeElement;
 import java.lang.classfile.CodeModel;
+import java.lang.classfile.FieldModel;
 import java.lang.classfile.Instruction;
 import java.lang.classfile.MethodModel;
 import java.lang.classfile.instruction.LineNumber;
+import java.lang.reflect.AnnotatedParameterizedType;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -46,6 +49,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
@@ -66,6 +70,10 @@ class LocalVariableStripperTest {
     private static final String FIXTURE = "fixture.Stripped";
 
     private static final String FIXTURE_ENTRY = "fixture/Stripped.class";
+
+    private static final String INVISIBLE_TYPE_ANNOTATIONS = "RuntimeInvisibleTypeAnnotations";
+
+    private static final String VISIBLE_TYPE_ANNOTATIONS = "RuntimeVisibleTypeAnnotations";
 
     @TempDir
     static Path temp;
@@ -110,6 +118,8 @@ class LocalVariableStripperTest {
             assertEquals(before.majorVersion(), after.majorVersion(), entry.getKey());
             assertStructure(entry.getKey(), before, after);
         }
+        assertTypeAnnotations(ClassFile.of().parse(original.get(FIXTURE_ENTRY)),
+                ClassFile.of().parse(stripped.get(FIXTURE_ENTRY)));
 
         Class<?> compiled = load(original);
         Class<?> rewritten = load(stripped);
@@ -119,6 +129,12 @@ class LocalVariableStripperTest {
         assertEquals(List.of("item", "weight"), Arrays.stream(add.getParameters()).map(Parameter::getName).toList(),
                 "MethodParameters is kept");
         assertTrue(add.getParameters()[0].isNamePresent());
+        assertEquals(1, add.getAnnotatedReturnType().getAnnotations().length,
+                "the visible type annotation of a return type is kept");
+        AnnotatedParameterizedType items =
+                (AnnotatedParameterizedType) rewritten.getDeclaredField("items").getAnnotatedType();
+        assertEquals(1, items.getAnnotatedActualTypeArguments()[0].getAnnotations().length,
+                "the visible type annotation of a field is kept");
 
         StackTraceElement thrownAsCompiled = thrownFrom(compiled);
         StackTraceElement thrownStripped = thrownFrom(rewritten);
@@ -178,8 +194,8 @@ class LocalVariableStripperTest {
         for (Map.Entry<String, byte[]> entry : classes.entrySet()) {
             assertArrayEquals(entry.getValue(), nested.get(entry.getKey()), entry.getKey());
         }
-        // Only the library's copy of the class with code carries local-variable tables; its two annotation
-        // interfaces have nothing to strip, and every class of the module is counted as unchanged.
+        // Only the library's copy of the class with code carries anything to strip; its annotation interfaces
+        // do not, and every class of the module is counted as unchanged.
         TransformReport report = result.transforms().get(0);
         assertEquals(1, report.rewritten(), report::toString);
         assertEquals(2 * classes.size() - 1, report.unchanged(), report::toString);
@@ -246,29 +262,121 @@ class LocalVariableStripperTest {
     }
 
     @Test
-    void stripOnItsOwnDeclinesWhatThePipelineDeclines() throws Exception {
-        Map<String, byte[]> classes = fixture(25, "standalone", List.of("-g"));
+    void theStepDeclinesAnUnknownAttributeAndAClassWithNothingToDrop() throws Exception {
+        Map<String, byte[]> classes = fixture(25, "declines", List.of("-g"));
         byte[] compiled = classes.get(FIXTURE_ENTRY);
-        byte[] stripped = LocalVariableStripper.strip(compiled);
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "fixture", false, false, name -> false,
+                new ClassPathModel.Interner());
+        classes.forEach(scan::accept);
+        ClassTransformPipeline.JarRun run = new ClassTransformPipeline(List.of(new LocalVariableStripper()),
+                ClassPathModel.merge(List.of(scan), false)).start(
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fixture.jar", false, false, false));
 
+        byte[] stripped = run.process(FIXTURE_ENTRY, compiled);
         assertTrue(stripped.length < compiled.length);
         for (MethodModel method : ClassFile.of().parse(stripped).methods()) {
             method.code().ifPresent(code -> assertFalse(
                     code.findAttribute(Attributes.localVariableTable()).isPresent(), method.methodName()::toString));
         }
         byte[] withUnknown = ClassFixtures.withUnknownAttribute(compiled);
-        assertSame(withUnknown, LocalVariableStripper.strip(withUnknown));
+        assertSame(withUnknown, run.process(FIXTURE_ENTRY, withUnknown));
         byte[] withoutDebug = Files.readAllBytes(applicationClasses.resolve("app/Main.class"));
-        assertSame(withoutDebug, LocalVariableStripper.strip(withoutDebug), "nothing to drop");
+        assertSame(withoutDebug, run.process("app/Main.class", withoutDebug), "nothing to drop");
+        assertEquals(List.of(new ClassTransformPipeline.StepCount(LocalVariableStripper.NAME, 1, 2, 0,
+                compiled.length - stripped.length)), run.report().counts());
+        assertEquals(List.of(), run.report().notes(), "declining is not a fallback");
         assertTrue(LocalVariableStripper.isKnownReader("org/aspectj/weaver/World.class"));
         assertFalse(LocalVariableStripper.isKnownReader("org/aspectj/lang/Aspects.class"));
+    }
+
+    @Test
+    void aClassWhoseOnlyDebugTableIsACharacterRangeTableLosesIt() throws Exception {
+        // javac writes a CharacterRangeTable only with -Xjcov; -g:source,lines keeps the local-variable tables
+        // out, so that table is the only thing the step finds.
+        Map<String, byte[]> original = ClassFixtures.classes(ClassFixtures.compile(temp.resolve("jcov/src"),
+                temp.resolve("jcov/classes"), List.of("-g:source,lines", "-Xjcov", "--release", "25"),
+                ClassFixtures.source("fixture.Ranged", """
+                        package fixture;
+                        public class Ranged {
+                            public static int twice(int value) {
+                                int doubled = value * 2;
+                                if (doubled > 100) {
+                                    return 100;
+                                }
+                                return doubled;
+                            }
+                        }
+                        """)));
+        String entry = "fixture/Ranged.class";
+        assertEquals(List.of("CharacterRangeTable", "LineNumberTable", "StackMapTable"),
+                codeAttributes(original.get(entry), "twice"), "the fixture has the table and no other to drop");
+        Path dependency = ClassFixtures.jar(temp.resolve("jcov/fixture.jar"), original);
+
+        Path output = temp.resolve("jcov/app.jar");
+        RunnerJarResult result = build(output, List.of(Dependency.of(dependency)), true);
+        Map<String, byte[]> stripped = nestedClasses(output, "MICRONAUT-INF/lib/fixture.jar");
+
+        assertEquals(List.of("LineNumberTable", "StackMapTable"), codeAttributes(stripped.get(entry), "twice"));
+        assertTrue(stripped.get(entry).length < original.get(entry).length, "the class shrank");
+        TransformReport report = result.transforms().get(0);
+        assertEquals(1, report.rewritten(), report::toString);
+        assertEquals(0, report.fallbacks(), report::toString);
+        Method twice = load(stripped, "fixture.Ranged").getMethod("twice", int.class);
+        assertEquals(14, twice.invoke(null, 7));
+        assertEquals(100, twice.invoke(null, 70));
+    }
+
+    @ParameterizedTest(name = "staging parallelism {0}")
+    @ValueSource(ints = {1, 4})
+    void aDependencyClassWithACorruptHeaderIsNestedAsItWasAndDoesNotFailTheBuild(int parallelism)
+            throws Exception {
+        Path directory = temp.resolve("corrupt-" + parallelism);
+        String body = "{ public void run() { int local = 1; } }\n";
+        Map<String, byte[]> compiled = ClassFixtures.classes(ClassFixtures.compile(directory.resolve("src"),
+                directory.resolve("classes"), List.of("-g", "--release", "25"), Map.of(
+                        "bad/BadSuper.java", "package bad; public class BadSuper implements Runnable " + body,
+                        "bad/BadIface.java", "package bad; public class BadIface implements Runnable " + body,
+                        "bad/Good.java", "package bad; public class Good implements Runnable " + body)));
+        // Both classes still parse and still declare their own names: only their superclass, or their
+        // interface, cannot be read, which the class path scan and the strip step both come across.
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("bad/BadSuper.class", ClassFixtures.withCorruptSuperclass(compiled.get("bad/BadSuper.class")));
+        entries.put("bad/BadIface.class", ClassFixtures.withCorruptInterface(compiled.get("bad/BadIface.class")));
+        entries.put("bad/Good.class", compiled.get("bad/Good.class"));
+        Path dependency = ClassFixtures.jar(directory.resolve("bad.jar"), entries);
+        Path output = directory.resolve("app.jar");
+
+        RunnerJarResult result = RunnerJarBuilder.build(RunnerJarSpec.builder()
+                .mainClass("app.Main")
+                .applicationOutput(List.of(applicationClasses))
+                .dependencies(List.of(Dependency.of(dependency)))
+                .output(output)
+                .build(), BuildLogger.noOp(), parallelism);
+
+        Map<String, byte[]> nested = nestedClasses(output, "MICRONAUT-INF/lib/bad.jar");
+        assertArrayEquals(entries.get("bad/BadSuper.class"), nested.get("bad/BadSuper.class"));
+        assertArrayEquals(entries.get("bad/BadIface.class"), nested.get("bad/BadIface.class"));
+        assertTrue(nested.get("bad/Good.class").length < compiled.get("bad/Good.class").length,
+                "the class next to them is stripped");
+        TransformReport report = result.transforms().get(0);
+        assertEquals(1, report.rewritten(), report::toString);
+        assertEquals(2, report.fallbacks(), report::toString);
+        assertEquals(3, report.classes(), report::toString);
     }
 
     /** The structural comparison of one class, as compiled and as stripped. */
     private static void assertStructure(String name, ClassModel before, ClassModel after) {
         // A rebuilt pool writes BootstrapMethods last, so the class attributes are compared as a set.
-        assertEquals(new java.util.TreeSet<>(names(before.attributes())), new java.util.TreeSet<>(
-                names(after.attributes())), name + " class attributes");
+        assertEquals(new TreeSet<>(withoutInvisibleTypeAnnotations(before.attributes())),
+                new TreeSet<>(names(after.attributes())), name + " class attributes");
+        assertEquals(before.fields().size(), after.fields().size(), name);
+        for (int i = 0; i < before.fields().size(); i++) {
+            FieldModel original = before.fields().get(i);
+            FieldModel stripped = after.fields().get(i);
+            assertEquals(original.fieldName().stringValue(), stripped.fieldName().stringValue(), name);
+            assertEquals(withoutInvisibleTypeAnnotations(original.attributes()), names(stripped.attributes()),
+                    name + " " + original.fieldName() + " attributes");
+        }
         assertEquals(before.methods().size(), after.methods().size(), name);
         for (int i = 0; i < before.methods().size(); i++) {
             MethodModel original = before.methods().get(i);
@@ -276,9 +384,8 @@ class LocalVariableStripperTest {
             String method = name + " " + original.methodName() + original.methodType();
             assertEquals(original.methodName().stringValue() + original.methodType().stringValue(),
                     stripped.methodName().stringValue() + stripped.methodType().stringValue(), method);
-            assertEquals(names(original.attributes()).stream()
-                    .filter(attribute -> !attribute.equals("RuntimeInvisibleTypeAnnotations")).toList(),
-                    names(stripped.attributes()), method + " attributes");
+            assertEquals(withoutInvisibleTypeAnnotations(original.attributes()), names(stripped.attributes()),
+                    method + " attributes");
             if (original.code().isEmpty()) {
                 continue;
             }
@@ -298,6 +405,45 @@ class LocalVariableStripperTest {
             assertEquals(names(before.attributes()).contains(kept), names(after.attributes()).contains(kept),
                     name + " keeps " + kept);
         }
+    }
+
+    /**
+     * The fixture carries an invisible and a visible type annotation on the class or its type parameter, on a
+     * field and on a method: the invisible ones are dropped from all three, the visible ones are kept.
+     */
+    private static void assertTypeAnnotations(ClassModel compiled, ClassModel stripped) {
+        assertTrue(names(compiled.attributes()).contains(INVISIBLE_TYPE_ANNOTATIONS), "the class as compiled");
+        assertFalse(names(stripped.attributes()).contains(INVISIBLE_TYPE_ANNOTATIONS), "the class");
+        List<String> field = names(field(compiled, "items").attributes());
+        assertTrue(field.containsAll(List.of(INVISIBLE_TYPE_ANNOTATIONS, VISIBLE_TYPE_ANNOTATIONS)), field::toString);
+        field = names(field(stripped, "items").attributes());
+        assertTrue(field.contains(VISIBLE_TYPE_ANNOTATIONS), field::toString);
+        assertFalse(field.contains(INVISIBLE_TYPE_ANNOTATIONS), field::toString);
+        List<String> method = names(method(compiled, "add").attributes());
+        assertTrue(method.containsAll(List.of(INVISIBLE_TYPE_ANNOTATIONS, VISIBLE_TYPE_ANNOTATIONS)),
+                method::toString);
+        method = names(method(stripped, "add").attributes());
+        assertTrue(method.contains(VISIBLE_TYPE_ANNOTATIONS), method::toString);
+        assertFalse(method.contains(INVISIBLE_TYPE_ANNOTATIONS), method::toString);
+    }
+
+    private static FieldModel field(ClassModel model, String name) {
+        return model.fields().stream().filter(field -> field.fieldName().equalsString(name)).findFirst()
+                .orElseThrow();
+    }
+
+    private static MethodModel method(ClassModel model, String name) {
+        return model.methods().stream().filter(method -> method.methodName().equalsString(name)).findFirst()
+                .orElseThrow();
+    }
+
+    private static List<String> codeAttributes(byte[] bytes, String method) {
+        return names(method(ClassFile.of().parse(bytes), method).code().orElseThrow().attributes()).stream()
+                .sorted().toList();
+    }
+
+    private static List<String> withoutInvisibleTypeAnnotations(List<Attribute<?>> attributes) {
+        return names(attributes).stream().filter(name -> !name.equals(INVISIBLE_TYPE_ANNOTATIONS)).toList();
     }
 
     private static List<Integer> linesByInstruction(CodeModel code) {
@@ -355,9 +501,13 @@ class LocalVariableStripperTest {
                 view.add(method.getName() + " " + annotation);
             }
             view.add(method.getName() + " returns " + method.getAnnotatedReturnType());
+            view.add(method.getName() + " " + Arrays.toString(method.getTypeParameters()));
             for (Parameter parameter : method.getParameters()) {
                 view.add(method.getName() + " " + parameter + " " + parameter.isNamePresent());
             }
+        }
+        for (Field field : type.getDeclaredFields()) {
+            view.add(field.toGenericString() + " " + field.getAnnotatedType());
         }
         view.sort(String::compareTo);
         return view;
@@ -374,6 +524,10 @@ class LocalVariableStripperTest {
     }
 
     private static Class<?> load(Map<String, byte[]> classes) throws ClassNotFoundException {
+        return load(classes, FIXTURE);
+    }
+
+    private static Class<?> load(Map<String, byte[]> classes, String type) throws ClassNotFoundException {
         ClassLoader loader = new ClassLoader(LocalVariableStripperTest.class.getClassLoader().getParent()) {
             @Override
             protected Class<?> findClass(String name) throws ClassNotFoundException {
@@ -384,7 +538,7 @@ class LocalVariableStripperTest {
                 return defineClass(name, bytes, 0, bytes.length);
             }
         };
-        return loader.loadClass(FIXTURE);
+        return loader.loadClass(type);
     }
 
     private static RunnerJarResult build(Path output, List<Dependency> dependencies, boolean strip)
@@ -441,7 +595,9 @@ class LocalVariableStripperTest {
      * A class that exercises what a rebuilt constant pool moves: more than 256 constants, so that a rebuilt
      * pool chooses {@code ldc} and {@code ldc_w} afresh, a {@code tableswitch} and a {@code lookupswitch} after
      * them, whose padding then moves, a type-annotated local, lines holding several statements, a generic
-     * signature and a runtime annotation. It compiles at {@code --release 8}.
+     * signature and a runtime annotation. Its type parameter, a field and a method also carry a type annotation
+     * of {@code CLASS} retention, which the step drops, next to one of {@code RUNTIME} retention, which it
+     * keeps. It compiles at {@code --release 8}.
      */
     private static String source() {
         StringBuilder constants = new StringBuilder();
@@ -461,11 +617,16 @@ class LocalVariableStripperTest {
                 import java.util.ArrayList;
                 import java.util.List;
 
-                public class Stripped<T extends Comparable<T>> {
+                public class Stripped<@Stripped.Invisible T extends Comparable<T>> {
 
                     @Target(ElementType.TYPE_USE)
                     @Retention(RetentionPolicy.RUNTIME)
                     public @interface Checked {
+                    }
+
+                    @Target({ElementType.TYPE_USE, ElementType.TYPE_PARAMETER})
+                    @Retention(RetentionPolicy.CLASS)
+                    public @interface Invisible {
                     }
 
                     @Retention(RetentionPolicy.RUNTIME)
@@ -473,10 +634,10 @@ class LocalVariableStripperTest {
                         String value();
                     }
 
-                    private final List<T> items = new ArrayList<T>();
+                    private final @Invisible List<@Checked T> items = new ArrayList<T>();
 
                     @Marker("kept")
-                    public <E extends T> int add(E item, int weight) {
+                    public <@Invisible E extends T> @Invisible @Checked int add(E item, int weight) {
                         @Checked String label = String.valueOf(item); int total = weight; items.add(item);
                         return label.length() + total;
                     }

@@ -23,11 +23,12 @@ import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassTransform;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.zip.CRC32;
 
 /**
@@ -60,7 +61,10 @@ import java.util.zip.CRC32;
  * <p>Every rewritten class is verified with {@link ClassFile#verify(byte[])} against the class path model. A
  * class whose rewritten form verifies cleanly is accepted at once. Otherwise the original is verified too, and
  * the rewrite is accepted only when its errors are among the original's: a dependency can already fail to
- * verify, typically because it references an optional dependency that is not on the class path.</p>
+ * verify, typically because it references an optional dependency that is not on the class path, or because
+ * another jar's copy of a class it uses wins. Two errors are the same when their messages differ at most in
+ * the bytecode offset they name ({@link #grown(List, List)}): a rebuilt constant pool moves the instructions
+ * of a method, and an error the class already had moves with them.</p>
  *
  * <p>The fallback rule is the same for every step. When step S throws, or the rewrite verifies worse, the class
  * starts again from its original bytes without S (for a verification failure, without the earliest step that
@@ -85,6 +89,9 @@ final class ClassTransformPipeline {
 
     /** The longest first error a note quotes. */
     private static final int MAX_NOTE_ERROR = 300;
+
+    /** The bytecode offset in a verifier message, such as the {@code @41} of {@code in Foo::bar() @41}. */
+    private static final Pattern BYTECODE_OFFSET = Pattern.compile("@\\d+");
 
     private final List<Step> steps;
     private final ClassFile rebuilt;
@@ -130,7 +137,7 @@ final class ClassTransformPipeline {
 
     /**
      * The verifier the gate uses: {@link ClassFile#verify(byte[])} with the given class hierarchy, reduced to
-     * the errors' messages so that two sets can be compared.
+     * the errors' messages so that the errors of two classes can be compared.
      *
      * @param hierarchy the class hierarchy
      * @return the verifier
@@ -145,6 +152,40 @@ final class ClassTransformPipeline {
             }
             return messages;
         };
+    }
+
+    /**
+     * The first verification error of a rewritten class that its original does not have.
+     *
+     * <p>The verifier names the failing instruction by its bytecode offset, {@code @41}, and a rebuilt constant
+     * pool moves offsets: it chooses {@code ldc} or {@code ldc_w} afresh, and switch padding follows. An error
+     * the original already had therefore comes back at another offset, and is not growth, so two messages are
+     * the same error when they are equal without their offsets. Each error of the original accounts for one
+     * error of the rewrite, so a second error with the same text is growth.</p>
+     *
+     * @param rewritten the errors of the rewritten class, as {@link #verifierOf(ClassHierarchyResolver)} gives them
+     * @param original  the errors of the class it replaces
+     * @return the first error of {@code rewritten} that {@code original} does not account for, as the verifier
+     * worded it, or {@code null} when the rewrite verifies no worse
+     */
+    static String grown(List<String> rewritten, List<String> original) {
+        Map<String, Integer> known = new HashMap<>();
+        for (String error : original) {
+            known.merge(withoutOffset(error), 1, Integer::sum);
+        }
+        for (String error : rewritten) {
+            String key = withoutOffset(error);
+            Integer left = known.get(key);
+            if (left == null || left == 0) {
+                return error;
+            }
+            known.put(key, left - 1);
+        }
+        return null;
+    }
+
+    private static String withoutOffset(String error) {
+        return BYTECODE_OFFSET.matcher(error).replaceAll("@");
     }
 
     /**
@@ -553,10 +594,9 @@ final class ClassTransformPipeline {
                 }
                 List<String> errors = verifier.apply(output);
                 if (!errors.isEmpty()) {
-                    Set<String> grown = new LinkedHashSet<>(errors);
-                    grown.removeAll(verifier.apply(original));
-                    if (!grown.isEmpty()) {
-                        return Attempt.failed(active.get(0), "verification: " + grown.iterator().next());
+                    String grown = grown(errors, verifier.apply(original));
+                    if (grown != null) {
+                        return Attempt.failed(active.get(0), "verification: " + grown);
                     }
                 }
                 return new Attempt(output, active, null, null);

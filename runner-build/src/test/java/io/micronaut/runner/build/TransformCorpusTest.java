@@ -25,15 +25,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Runs the class transform pipeline, with every step enabled, over the class paths of real applications,
@@ -47,7 +46,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
  *
  * <p>An application fails when any class verifies worse after a step than before it: whether the pipeline's
  * gate caught it, which the fallback notes record, or not. Every other fallback, and the counts of every step,
- * are printed.</p>
+ * are printed. It also fails when its class path file names a jar that does not exist, holds no jar at all, or
+ * when no class of it was rewritten: a run that transformed nothing has verified nothing.</p>
  */
 @Tag("transform-corpus")
 class TransformCorpusTest {
@@ -69,13 +69,21 @@ class TransformCorpusTest {
     }
 
     private static void runOver(Path classPathFile) throws IOException {
+        String name = classPathFile.getFileName().toString();
         List<Path> dependencies = new ArrayList<>();
         for (String line : Files.readAllLines(classPathFile, StandardCharsets.UTF_8)) {
+            if (line.isBlank()) {
+                continue;
+            }
             Path jar = Path.of(line.strip());
-            if (!line.isBlank() && Files.isRegularFile(jar) && jar.getFileName().toString().endsWith(".jar")) {
+            assertTrue(Files.exists(jar), () -> name + " names " + jar + ", which does not exist");
+            if (Files.isRegularFile(jar) && jar.getFileName().toString().endsWith(".jar")) {
                 dependencies.add(jar);
+            } else {
+                System.out.println(name + ": skipped " + jar + ", which is not a jar");
             }
         }
+        assertFalse(dependencies.isEmpty(), name + " names no jar");
         ClassPathModel model = scan(dependencies);
         model.watched().ifPresent(watched -> System.out.println(classPathFile.getFileName() + ": "
                 + watched.layer() + " contains " + watched.entry()
@@ -100,10 +108,12 @@ class TransformCorpusTest {
                     byte[] original = reader.read(entry);
                     byte[] output = run.process(entry.name(), original);
                     if (output != original) {
-                        Set<String> errors = new LinkedHashSet<>(verifier.apply(output));
-                        errors.removeAll(verifier.apply(original));
-                        if (!errors.isEmpty()) {
-                            grown.add(dependency.getFileName() + " " + entry.name() + ": " + errors);
+                        // The gate's own comparison, which ignores the bytecode offset an error names: a
+                        // rebuilt pool moves the errors a class already had.
+                        String error = ClassTransformPipeline.grown(verifier.apply(output),
+                                verifier.apply(original));
+                        if (error != null) {
+                            grown.add(dependency.getFileName() + " " + entry.name() + ": " + error);
                         }
                     }
                 }
@@ -111,7 +121,6 @@ class TransformCorpusTest {
             }
         }
 
-        String name = classPathFile.getFileName().toString();
         List<TransformReport> totals = pipeline.totals(reports);
         for (int i = 0; i < totals.size(); i++) {
             System.out.println(name + ": " + pipeline.steps().get(i).summary(totals.get(i), reports.size()));
@@ -125,6 +134,10 @@ class TransformCorpusTest {
             }
         }
         assertEquals(List.of(), grown, name + ": classes whose verification errors grew");
+        for (TransformReport total : totals) {
+            assertTrue(total.rewritten() > 0, () -> name + ": " + total.step() + " rewrote no class of "
+                    + dependencies.size() + " jars");
+        }
     }
 
     private static ClassPathModel scan(List<Path> dependencies) throws IOException {
