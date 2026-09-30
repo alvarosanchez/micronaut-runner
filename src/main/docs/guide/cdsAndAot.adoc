@@ -110,12 +110,14 @@ A failed check deletes `app.aot` and `app.jvmopts` and keeps the logs. `strict =
 `app.jvmopts`, which turns a later mismatch, such as rewritten modification times, into a failed launch instead of an
 uncached one.
 
-On `benchmark-large` (Micronaut 5.1.15, Netty 4.2.18; macOS on Apple silicon) with JDK 25.0.4.1, the cached layout,
-which keeps the static service table (<<staticServices>>), was ready 32.0 ms sooner than the single JAR with its cache
-(95% CI 24.8 to 38.0) and 14.4 ms before a Shadow JAR with its cache (95% CI 7.8 to 16.3; 20 pairs each), at 121.0 MiB
-maximum RSS against 163.6 and 133.6 MiB. Without the table it was 1.8 to 6.8 ms behind Shadow. On JDK 27 (build 27) it
-was 26.0 ms ahead of Shadow (95% CI 18.9 to 52.3, 20 pairs), at 115.1 against 126.7 MiB. Training and verifying it
-with `micronautRunnerJdkAotCache` took about 4 s of build time.
+On `benchmark-large` (Micronaut 5.1.15, Netty 4.2.18; macOS on Apple silicon, a shared machine; 20 pairs per run) with
+JDK 25.0.4.1, the cached layout, which keeps the static service table (<<staticServices>>), was ready 25.6 to 32.4 ms
+sooner than the single JAR with its cache and 1.5 to 14.4 ms before a Shadow JAR with its cache over six runs; in the
+four least loaded runs, the lead over Shadow was 9.1 to 14.4 ms with each 95% CI below zero. Its maximum RSS was about
+121 MiB, against 163 to 165 MiB for the single JAR and 134 MiB for Shadow. Without the table it was 1.8 to 6.8 ms
+behind Shadow. On JDK 27 (build 27) it was level with Shadow without the table (−0.5 ms, 95% CI −11.1 to +7.1) and 14.9
+to 26.0 ms ahead with it over three runs, the largest lead under the heaviest load, at about 115 against 127 MiB.
+Training and verifying it with `micronautRunnerJdkAotCache` took about 4 s of build time.
 
 *Modification times.* The cache records each class-path JAR (the application JAR and each `lib/` JAR, or the single
 Runner JAR) by position, size and modification time. Extract stamps every file and directory with 1980-02-01T00:00:00Z,
@@ -197,10 +199,12 @@ the JAR with the list first, then train the cache on that JAR.
 Run the training script (<<trainingSnippet>>) with `JAR` at the path production launches, then
 `java -XX:AOTCache=app.aot -jar my-app-0.1-all.jar`. With the build plugins, `jdkAotCache.target = 'singleJar'`
 (<<aotLayout>>) trains and checks it on a copy of the Runner JAR that `micronautRunnerJar` built, with its committed
-startup profile, so the cache also holds what the preload loads. On `benchmark-large` with JDK 25.0.4.1 this was ready 37.5 ms
-sooner than explicit CDS (95% CI 32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS, but 24–29 ms later than
-the extracted layout and 36–39 ms behind Shadow, each with its AOT cache. On JDK 27 (build 27) it caches no application
-classes and was 173.5 ms behind Shadow's (95% CI 169.7 to 179.8 ms, 20 pairs): a single file there uses CDS.
+startup profile, so the cache also holds what the preload loads. On `benchmark-large` with JDK 25.0.4.1 this was ready
+37.5 ms sooner than explicit CDS (95% CI 32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS, measured before
+the static service table (<<staticServices>>). With the table it was 25.6 to 32.4 ms later than the extracted layout and
+16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <<aotLayout>>). On JDK 27 (build 27) it
+caches no application classes and, before the table, was 173.5 ms behind Shadow's (95% CI 169.7 to 179.8 ms, 20
+pairs): a single file there uses CDS.
 
 == Zero-pipeline option: `-XX:+AutoCreateSharedArchive`
 
