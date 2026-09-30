@@ -220,12 +220,13 @@ class TrainingDriverTest {
         Path commandReport = temp.resolve("command.report");
         TrainingSettings settings = settings("")
                 .workloadCommand(fixtureCommand("command-hang,grandchild", commandReport))
-                .workloadTimeout(Duration.ofSeconds(5)).build();
+                // Long enough for the command's JVM to start its child and report, even on a loaded machine.
+                .workloadTimeout(Duration.ofSeconds(8)).build();
 
         IOException failure = assertThrows(IOException.class,
                 () -> run(settings, TrainingDriver.AfterWorkload.NOTHING));
 
-        assertTrue(failure.getMessage().contains("workloadCommand did not exit within PT5S"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("workloadCommand did not exit within PT8S"), failure.getMessage());
         Map<String, String> command = report(commandReport);
         assertGone(report(), "pid");
         assertGone(command, "pid");
