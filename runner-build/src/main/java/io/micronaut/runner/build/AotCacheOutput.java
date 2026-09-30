@@ -89,6 +89,8 @@ public final class AotCacheOutput {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(log, "log");
+        // Every fork runs in the output directory or its parent, where a relative path would name another file.
+        Path javaExecutable = java.toAbsolutePath();
         Path directory = out.toAbsolutePath().normalize();
         Path archive = runnerJar.toAbsolutePath().normalize();
         if (!Files.isRegularFile(archive) || !RunnerJarReader.isRunnerJar(archive)) {
@@ -101,7 +103,7 @@ public final class AotCacheOutput {
         long started = System.nanoTime();
         String jarName;
         if (target == AotTarget.LAYOUT) {
-            jarName = AotLayout.write(java, archive, directory, AotLayout.DEFAULT_TIMEOUT).applicationJar()
+            jarName = AotLayout.write(javaExecutable, archive, directory, AotLayout.DEFAULT_TIMEOUT).applicationJar()
                     .getFileName().toString();
         } else {
             deleteRecursively(directory);
@@ -116,13 +118,11 @@ public final class AotCacheOutput {
         boolean complete = false;
         try {
             AotCacheReport report = AotCacheBuilder.build(settings.withEnforceCoverage(target == AotTarget.LAYOUT),
-                    java, directory, jarName, training, Map.of(TARGET_LABEL, target.value()), log);
+                    javaExecutable, directory, jarName, training, Map.of(TARGET_LABEL, target.value()), log);
             if (target == AotTarget.LAYOUT) {
                 AotLayout.verify(directory, archive);
-            } else if (report.micronautFromCache() * 2L < report.micronautLoaded()) {
-                log.warn(SINGLE_JAR_WARNING);
-                report = report.withWarning(SINGLE_JAR_WARNING);
-                report.write(directory);
+            } else {
+                report = warnUnlessRunnerClassesAreCached(report, directory, log);
             }
             complete = true;
             return report;
@@ -132,6 +132,29 @@ public final class AotCacheOutput {
                 Files.deleteIfExists(directory.resolve(AotLaunchOptions.ARGFILE));
             }
         }
+    }
+
+    /**
+     * The single-JAR target's check of what the cache holds: when fewer than half of the {@code io.micronaut}
+     * classes the smoke launch loaded came from the cache, the JDK did not cache the classes
+     * {@code RunnerClassLoader} defines, so this logs {@link #SINGLE_JAR_WARNING}, adds it to the report and
+     * writes the report again. The measurement decides, not the JDK version.
+     *
+     * @param report    the gate's report
+     * @param directory the output directory, where the report is written
+     * @param log       where the warning goes
+     * @return the report, with the warning when it applies
+     * @throws IOException if the report cannot be written
+     */
+    static AotCacheReport warnUnlessRunnerClassesAreCached(AotCacheReport report, Path directory, BuildLogger log)
+            throws IOException {
+        if (report.micronautFromCache() * 2L >= report.micronautLoaded()) {
+            return report;
+        }
+        log.warn(SINGLE_JAR_WARNING);
+        AotCacheReport warned = report.withWarning(SINGLE_JAR_WARNING);
+        warned.write(directory);
+        return warned;
     }
 
     private static void deleteRecursively(Path directory) throws IOException {

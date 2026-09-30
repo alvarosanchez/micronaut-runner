@@ -74,7 +74,8 @@ public final class AotLayout {
     /**
      * Extracts a Runner JAR into a directory, replacing what the directory held, and verifies the result.
      *
-     * @param java        the {@code java} executable that runs the extraction
+     * @param java        the {@code java} executable that runs the extraction; a relative path is resolved
+     *                    against this JVM's working directory
      * @param runnerJar   the Runner JAR
      * @param destination the directory, which is replaced as a whole
      * @param timeout     how long the extraction may take
@@ -86,7 +87,8 @@ public final class AotLayout {
             throws IOException, InterruptedException {
         Path archive = runnerJar.toAbsolutePath().normalize();
         Path target = destination.toAbsolutePath().normalize();
-        List<String> command = List.of(java.toString(), "-Dmicronaut.runner.mode=extract", "-jar",
+        // The fork runs in the destination's parent, where a relative path would name another file.
+        List<String> command = List.of(java.toAbsolutePath().toString(), "-Dmicronaut.runner.mode=extract", "-jar",
                 archive.toString(), "--destination", target.toString(), "--force");
         ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
         Map<String, String> environment = builder.environment();

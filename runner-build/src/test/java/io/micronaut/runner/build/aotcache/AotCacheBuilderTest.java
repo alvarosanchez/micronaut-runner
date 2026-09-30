@@ -168,13 +168,23 @@ class AotCacheBuilderTest {
 
     @Test
     void aTouchedLibraryFailsTheStrictProbes() throws Exception {
-        Path copy = temp.resolve("touched");
-        AotCacheOutput.write(AotTarget.LAYOUT, AotCacheSettings.builder().verifyProbes(2).build(), java, runnerJar,
-                copy, training().build(), new RecordingLog());
+        // With java relative to this JVM's working directory, which no fork runs in: every fork has to resolve it
+        // first, or this fails with "Cannot run program" instead. The directory is deeper than the path climbs, so
+        // the path cannot reach the JDK from there by climbing to the root.
+        Path relativeJava = relativeToTheWorkingDirectory(java);
+        Path deep = temp.resolve("touched");
+        for (Path element : relativeJava) {
+            if ("..".equals(element.toString())) {
+                deep = deep.resolve("d");
+            }
+        }
+        Path copy = deep.resolve("layout");
+        AotCacheOutput.write(AotTarget.LAYOUT, AotCacheSettings.builder().verifyProbes(2).build(), relativeJava,
+                runnerJar, copy, training().build(), new RecordingLog());
         Files.setLastModifiedTime(copy.resolve("lib").resolve(LIBRARY_JAR), FileTime.from(Instant.now()));
 
         IOException failure = assertThrows(IOException.class, () -> AotCacheGate.verify(
-                AotCacheSettings.builder().verifyProbes(2).build(), JdkProbe.probe(java), java, copy,
+                AotCacheSettings.builder().verifyProbes(2).build(), JdkProbe.probe(java), relativeJava, copy,
                 AotLayout.applicationJarName(runnerJar), training().build(), AotCacheReport.STOP_JCMD,
                 new RecordingLog()));
 
@@ -182,6 +192,15 @@ class AotCacheBuilderTest {
         assertTrue(failure.getMessage().contains("timestamp has changed"), failure.getMessage());
         String report = Files.readString(copy.resolve(AotCacheReport.FILE));
         assertTrue(report.contains("\"verdict\": \"failed\"") && report.contains("\"probeFailures\": 2"), report);
+    }
+
+    /** The path relative to this JVM's working directory, or the path itself where there is none, as across drives. */
+    private static Path relativeToTheWorkingDirectory(Path path) {
+        try {
+            return Path.of("").toAbsolutePath().relativize(path.toAbsolutePath());
+        } catch (IllegalArgumentException e) {
+            return path;
+        }
     }
 
     private static boolean jcmdEndsRecordings(String vmVersion) {

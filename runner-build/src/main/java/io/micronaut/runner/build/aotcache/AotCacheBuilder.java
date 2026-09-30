@@ -92,7 +92,8 @@ public final class AotCacheBuilder {
      * Trains, creates and verifies a cache in a directory.
      *
      * @param settings  the cache settings
-     * @param java      the {@code java} executable to train with; its JDK build is the only one the cache fits
+     * @param java      the {@code java} executable to train with; its JDK build is the only one the cache fits. A
+     *                  relative path is resolved against this JVM's working directory
      * @param directory the directory that holds the JAR, and receives the cache, the argfile, the identity file,
      *                  the report and the logs
      * @param jarName   the file name of the JAR to launch, in that directory
@@ -116,6 +117,8 @@ public final class AotCacheBuilder {
         Objects.requireNonNull(training, "training");
         Objects.requireNonNull(labels, "labels");
         Objects.requireNonNull(log, "log");
+        // Every fork runs in the directory, where a relative path would name another file.
+        Path executable = java.toAbsolutePath();
         Path dir = directory.toAbsolutePath().normalize();
         Path jar = dir.resolve(jarName);
         if (!Files.isRegularFile(jar)) {
@@ -129,21 +132,21 @@ public final class AotCacheBuilder {
         boolean complete = false;
         try {
             long started = System.nanoTime();
-            JdkProbe jdk = JdkProbe.probe(java);
+            JdkProbe jdk = JdkProbe.probe(executable);
             List<String> creationFlags = jdk.creationFlags();
             log.info("JDK AOT cache: training with " + jdk.vmVersion() + " on " + jdk.osName() + " "
                     + jdk.osArch() + (creationFlags.isEmpty() ? "" : ", creating with " + String.join(" ",
                     creationFlags)) + " (probe " + millis(started) + ")");
 
-            String recordStop = record(settings, java, dir, jar, training, log);
-            create(settings, java, dir, jarName, creationFlags, log);
+            String recordStop = record(settings, executable, dir, jar, training, log);
+            create(settings, executable, dir, jarName, creationFlags, log);
 
             AotLaunchOptions.writeIdentity(dir.resolve(AotLaunchOptions.IDENTITY_FILE),
                     AotLaunchOptions.identity(jdk, creationFlags, settings.jvmArgs(), labels));
             Files.writeString(dir.resolve(AotLaunchOptions.ARGFILE), AotLaunchOptions.argfile(settings),
                     StandardCharsets.UTF_8);
 
-            AotCacheReport report = AotCacheGate.verify(settings, jdk, java, dir, jarName, training, recordStop,
+            AotCacheReport report = AotCacheGate.verify(settings, jdk, executable, dir, jarName, training, recordStop,
                     log);
             complete = true;
             return report;

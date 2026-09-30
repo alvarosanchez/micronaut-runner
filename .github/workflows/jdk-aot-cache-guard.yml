@@ -118,6 +118,24 @@ jobs:
             exit 1
           fi
 
+      # Enforced on every leg, including those where the step above only warns: the warning is what a plugin user
+      # sees, so it has to name JDK-8380291 exactly when fewer than half of the io.micronaut classes were cached.
+      - name: "🔎 Check the single-JAR warning"
+        if: ${{ !cancelled() }}
+        run: |
+          report=guard-reports/singleJar.json
+          if [ ! -f "$report" ] || ! jq -e '.verdict == "passed"' "$report" > /dev/null; then
+            echo "No passed single-JAR report on JDK ${{ matrix.java }}, so no warning to check"
+            exit 0
+          fi
+          cached=$(jq '.micronautFromCache * 2 >= .micronautLoaded' "$report")
+          warned=$(jq '[.warnings[] | select(contains("JDK-8380291"))] | length > 0' "$report")
+          if [ "$cached" = "$warned" ]; then
+            echo "::error::On JDK ${{ matrix.java }} the single-JAR warning disagrees with the counts: half of the io.micronaut classes cached: $cached, warned: $warned"
+            exit 1
+          fi
+          echo "Half of the io.micronaut classes cached: $cached, warned: $warned"
+
       - name: "📝 Summarize the reports"
         if: always()
         run: |

@@ -112,7 +112,8 @@ public final class AotCacheGate {
      *
      * @param settings   the cache settings; their {@link AotCacheSettings#jvmArgs()} go on every launch
      * @param jdk        what the verifying {@code java} reported
-     * @param java       the {@code java} executable to verify with
+     * @param java       the {@code java} executable to verify with; a relative path is resolved against this JVM's
+     *                   working directory
      * @param directory  the directory that holds the JAR, the cache and the identity file, and the working
      *                   directory of every launch
      * @param jarName    the JAR's file name in that directory
@@ -134,6 +135,8 @@ public final class AotCacheGate {
                                         String recordStop,
                                         BuildLogger log) throws IOException, InterruptedException {
         Path dir = directory.toAbsolutePath().normalize();
+        // Every launch runs in the directory, where a relative path would name another file.
+        Path executable = java.toAbsolutePath();
         Map<String, String> identity = AotLaunchOptions.readIdentity(dir.resolve(AotLaunchOptions.IDENTITY_FILE));
         Findings findings = new Findings(jdk, identity, recordStop, settings.verifyProbes());
 
@@ -146,7 +149,7 @@ public final class AotCacheGate {
         // 1. Strict probes.
         long started = System.nanoTime();
         List<String> probe = new ArrayList<>();
-        probe.add(java.toString());
+        probe.add(executable.toString());
         probe.addAll(settings.jvmArgs());
         probe.addAll(List.of("-XX:AOTMode=on", "-XX:AOTCache=" + AotLaunchOptions.CACHE_FILE, "-cp", jarName,
                 "-version"));
@@ -167,7 +170,7 @@ public final class AotCacheGate {
         Files.deleteIfExists(fullLog);
         Files.deleteIfExists(smokeLog);
         try {
-            TrainingDriver.run(java, dir.resolve(jarName),
+            TrainingDriver.run(executable, dir.resolve(jarName),
                     List.of("-XX:AOTMode=on", "-XX:AOTCache=" + AotLaunchOptions.CACHE_FILE,
                             "-Xlog:class+load=info:file=" + CLASS_LOAD_LOG_FULL + "::filecount=0"),
                     AotLaunchOptions.trainingSettings(settings, training), dir, smokeLog, application -> {
