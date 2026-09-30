@@ -2357,10 +2357,73 @@ class RunnerJarBuilderTest {
         }
     }
 
+    /**
+     * A {@code logback.xml} that only a dependency carries is read from that dependency's nested jar, which is a
+     * repacked copy in STORED and the dependency itself in PRESERVE, and the log names the dependency.
+     */
+    @ParameterizedTest
+    @EnumSource(Compression.class)
+    void precompilesALogbackXmlThatOnlyADependencyCarries(Compression compression) throws IOException {
+        Path resources = logbackResources("dependency-only-" + compression, Map.of());
+        Path configuration = fixtures.resolve("libs/logging-configuration.jar");
+        writeJar(configuration, manifest(attributes -> { }),
+                Map.of("logback.xml", LOGBACK_XML.getBytes(StandardCharsets.UTF_8)));
+        List<Dependency> dependencies = realLogback();
+        dependencies.add(Dependency.of(configuration));
+        Path output = output();
+
+        LogbackBuild build = logbackBuild(logbackSpec(output, resources, dependencies).compression(compression));
+
+        assertTrue(build.result().logbackPrecompiled(), build.logback()::toString);
+        assertEquals(List.of(), build.result().warnings());
+        assertEquals(1, build.logback().size(), build.logback()::toString);
+        assertTrue(build.logback().get(0).startsWith("Precompiled logback.xml (logging-configuration.jar) into "
+                + LogbackPrecompiler.CONFIGURATOR_CLASS + ": 1 appender, 1 pattern, "), build.logback()::toString);
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            Index index = reader.index();
+            for (String name : GENERATED_LOGBACK_ENTRIES) {
+                int entry = index.find(name);
+                assertNotEquals(IndexFormat.NO_INDEX, entry, name);
+                assertEquals(0, index.entryJarId(entry), name + " belongs to the application layer");
+            }
+            int logbackXml = index.find("logback.xml");
+            assertNotEquals(IndexFormat.NO_INDEX, logbackXml);
+            assertNotEquals(0, index.entryJarId(logbackXml), "logback.xml stays in the dependency");
+        }
+    }
+
+    /**
+     * A packaged configuration that sets logger levels, as most do, does not stand the precompiler down: only a
+     * {@code config} key next to the word {@code logger} does.
+     */
+    @Test
+    void aPackagedConfigurationWithoutAConfigKeyIsStillPrecompiled() throws IOException {
+        Path resources = logbackResources("logger-levels", Map.of("logback.xml", LOGBACK_XML,
+                "application.yml", """
+                        micronaut:
+                          application:
+                            name: demo
+                          config-client:
+                            enabled: false
+                        logger:
+                          levels:
+                            com.example: DEBUG
+                        """,
+                "application-test.toml", "[logger.levels]\n\"com.example\" = \"DEBUG\"\n",
+                "config/application.json", "{\"logger\":{\"levels\":{\"com.example\":\"DEBUG\"}}}\n"));
+        Path output = output();
+
+        LogbackBuild build = logbackBuild(logbackSpec(output, resources, realLogback()));
+
+        assertTrue(build.result().logbackPrecompiled(), build.logback()::toString);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"no logback.xml", "logback-test.xml", "logback.groovy", "versioned logback.xml",
         "application Configurator", "dependency Configurator", "application.properties logger.config",
-        "application.yml logger config", "bootstrap.yml configurationFile", "Logback outside the range",
+        "application.yml logger config", "bootstrap.yml configurationFile", "application.toml logger table",
+        "application.toml inline table", "application.yml flow style", "application.json on one line",
+        "application.groovy closure", "application.yml merged anchor", "Logback outside the range",
         "mismatched versions", "subset rejection", "flag off"})
     void standsDownWithOneInformationalLine(String condition) throws IOException {
         Map<String, String> files = new LinkedHashMap<>();
@@ -2407,6 +2470,32 @@ class RunnerJarBuilderTest {
             case "bootstrap.yml configurationFile" -> {
                 files.put("config/bootstrap.yml", "logback:\n  configurationFile: custom.xml\n");
                 reason = "the packaged config/bootstrap.yml may set";
+            }
+            case "application.toml logger table" -> {
+                files.put("application.toml", "[micronaut.application]\nname = \"demo\"\n\n[logger]\n"
+                        + "config = \"custom.xml\"\n");
+                reason = "the packaged application.toml may set logger.config";
+            }
+            case "application.toml inline table" -> {
+                files.put("application-prod.toml", "logger = { config = \"custom.xml\" }\n");
+                reason = "the packaged application-prod.toml may set logger.config";
+            }
+            case "application.yml flow style" -> {
+                files.put("application.yml", "logger: {config: custom.xml}\n");
+                reason = "the packaged application.yml may set logger.config";
+            }
+            case "application.json on one line" -> {
+                files.put("application.json", "{\"logger\":{\"config\":\"custom.xml\"}}");
+                reason = "the packaged application.json may set logger.config";
+            }
+            case "application.groovy closure" -> {
+                files.put("application.groovy", "logger { config = 'custom.xml' }\n");
+                reason = "the packaged application.groovy may set logger.config";
+            }
+            case "application.yml merged anchor" -> {
+                // The config key stands before the logger key, and on another level.
+                files.put("application.yml", "shared: &shared\n  Config: custom.xml\nLogger:\n  <<: *shared\n");
+                reason = "the packaged application.yml may set logger.config";
             }
             case "Logback outside the range" -> {
                 dependencies = fakeLogback("1.4.14", "1.4.14");

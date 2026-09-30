@@ -212,6 +212,10 @@ class HelloNettySampleTest {
                         "LOGGER-CONFIG INFO"),
                 new Scenario("-Dlogger.levels", Map.of(), List.of("-Dlogger.levels.com.example=DEBUG"),
                         "Setting log level 'DEBUG'"),
+                // Micronaut never reads this variable, refresh or not: both archives keep logback.xml.
+                new Scenario("LOGBACK_CONFIGURATIONFILE on a refresh",
+                        Map.of("LOGBACK_CONFIGURATIONFILE", configurationFile.toString()),
+                        List.of("-Dlogger.levels.com.example=DEBUG"), "Setting log level 'DEBUG'"),
                 new Scenario("the opt-out with -Dlogger.config", Map.of(),
                         List.of("-Dmicronaut.runner.logback.precompiled=false", "-Dlogger.config=" + loggerConfig),
                         "LOGGER-CONFIG INFO"));

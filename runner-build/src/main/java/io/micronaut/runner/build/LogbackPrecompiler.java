@@ -68,8 +68,8 @@ import java.util.regex.Pattern;
  * <ol>
  *     <li>hands over to Logback's own default lookup when {@code -Dlogback.configurationFile} is set;</li>
  *     <li>on a second or later call (Micronaut's {@code LoggingSystem.refresh()}), configures from the
- *     {@code logger.config} system property, else the {@code LOGGER_CONFIG} or {@code LOGBACK_CONFIGURATIONFILE}
- *     environment variable, when one is set, as Micronaut does without a configurator;</li>
+ *     {@code logger.config} system property, else the {@code LOGGER_CONFIG} environment variable, when one is
+ *     set, as Micronaut does without a configurator;</li>
  *     <li>hands over to Logback's default lookup when {@code logback.debug} or {@code logback.statusListenerClass}
  *     asks for Logback's status output, or {@code micronaut.runner.logback.precompiled} is {@code false};</li>
  *     <li>otherwise applies the configuration literally, in Joran's order, and returns
@@ -80,7 +80,9 @@ import java.util.regex.Pattern;
  * <p>The packager never loads, initialises or runs application classes. This class is the one exception to "no
  * library code either": its front end runs Logback and slf4j-api classes, and only those, in an isolated class
  * loader whose parent is the platform class loader, and instantiates only the {@code ch.qos.logback.*} classes the
- * configuration names. It never starts an appender and never opens a file or a stream.</p>
+ * configuration names. That loader is also the thread's context class loader while the front end runs, so a
+ * service lookup in it, such as JAXP's for an XML parser, finds the JDK's provider and nothing from the build
+ * tool's class path. It never starts an appender and never opens a file or a stream.</p>
  *
  * <h2>When it generates nothing</h2>
  * <p>When {@link RunnerJarSpec#precompileLogback()} is {@code false}; when logback-classic, logback-core or
@@ -148,9 +150,17 @@ final class LogbackPrecompiler {
     private static final Pattern PACKAGED_CONFIGURATION = Pattern.compile(
             "(config/)?(application|bootstrap)[^/]*\\.(properties|yml|yaml|json|toml|groovy)");
 
-    private static final Pattern LOGGER_KEY_LINE = Pattern.compile("(?m)^\\s*\"?logger\"?\\s*[:={]");
+    /**
+     * The word {@code logger} in lower-cased text, wherever it stands: a block or flow YAML key, a JSON member, a
+     * TOML {@code [logger]} table or inline table, a Groovy closure.
+     */
+    private static final Pattern LOGGER_WORD = Pattern.compile("(?<![a-z0-9_-])logger(?![a-z0-9_-])");
 
-    private static final Pattern CONFIG_KEY_LINE = Pattern.compile("(?m)^\\s*\"?config\"?\\s*[:=]");
+    /**
+     * A {@code config} key in lower-cased text, wherever it stands, quoted or not: the word, then {@code :} or
+     * {@code =}, with at most a closing quote, a closing bracket and white space in between.
+     */
+    private static final Pattern CONFIG_KEY = Pattern.compile("(?<![a-z0-9_-])config[\"']?\\s*]?\\s*[:=]");
 
     private LogbackPrecompiler() {
     }
@@ -255,7 +265,7 @@ final class LogbackPrecompiler {
             Map<String, Object> description;
             try (URLClassLoader loader = new URLClassLoader("micronaut-runner-logback-frontend", path,
                     ClassLoader.getPlatformClassLoader())) {
-                description = descriptionHook.apply(frontEnd(loader).apply(source.read(LOGBACK_XML)));
+                description = descriptionHook.apply(describe(loader, source.read(LOGBACK_XML)));
                 if (!Integer.valueOf(IR_VERSION).equals(description.get("irVersion"))) {
                     throw new IllegalStateException("the Logback front end answered with description version "
                             + description.get("irVersion") + ", not " + IR_VERSION);
@@ -273,23 +283,48 @@ final class LogbackPrecompiler {
             return new Outcome(entries, "Precompiled logback.xml (" + source.description() + ") into "
                     + CONFIGURATOR_CLASS + ": " + appenders + (appenders == 1 ? " appender, " : " appenders, ")
                     + patterns + (patterns == 1 ? " pattern, " : " patterns, ") + millis + " ms", null);
-        } catch (IOException | ReflectiveOperationException | RuntimeException | LinkageError e) {
+        } catch (VirtualMachineError e) {
+            throw e;
+        } catch (IOException | ReflectiveOperationException | RuntimeException | Error e) {
+            // Every other Error too: a LinkageError from a Logback that changed, or what a service lookup throws
+            // (FactoryConfigurationError, ServiceConfigurationError), must not fail a build that works without
+            // this optimisation.
             return Outcome.failure("it could not be compiled", e);
         }
     }
 
+    /**
+     * Runs the front end with the isolated loader as the thread's context class loader, and restores the caller's
+     * afterwards. Logback's {@code SaxEventRecorder} asks JAXP for a parser factory, and JAXP, like every service
+     * lookup, searches the context class loader: left alone, that is the build tool's or the plugin's class path,
+     * whose XML parser would then run here. With the isolated loader it is the JDK's own.
+     */
     @SuppressWarnings("unchecked")
-    private static Function<byte[], Map<String, Object>> frontEnd(ClassLoader loader)
+    private static Map<String, Object> describe(ClassLoader loader, byte[] logbackXml)
             throws ReflectiveOperationException {
-        return (Function<byte[], Map<String, Object>>) Class.forName(FRONTEND_CLASS, true, loader)
-                .getConstructor().newInstance();
+        Thread thread = Thread.currentThread();
+        ClassLoader caller = thread.getContextClassLoader();
+        thread.setContextClassLoader(loader);
+        try {
+            Function<byte[], Map<String, Object>> frontEnd = (Function<byte[], Map<String, Object>>)
+                    Class.forName(FRONTEND_CLASS, true, loader).getConstructor().newInstance();
+            return frontEnd.apply(logbackXml);
+        } finally {
+            thread.setContextClassLoader(caller);
+        }
     }
 
     /**
      * Stands down when a packaged configuration file of the application might set {@code logger.config} or
      * {@code logback.configurationFile}: Micronaut's refresh applies such a location only when no
-     * {@code Configurator} service is registered, and the generated code cannot see it. A false positive only
-     * costs the optimisation.
+     * {@code Configurator} service is registered, and the generated code cannot see it.
+     *
+     * <p>A {@code .properties} file is parsed, and sets one when it has either key. Any other format is not
+     * parsed, so the check is on its text, ignoring case, and errs on the side of standing down: the text names
+     * {@code configurationFile} or {@code logger.config}, or it has the word {@code logger} and a {@code config}
+     * key anywhere, in any order and on any line. That covers nested YAML, flow-style YAML, JSON on one line, a
+     * TOML {@code [logger]} table or inline table and a Groovy closure. A false positive only costs the
+     * optimisation.</p>
      */
     private static String packagedConfigurationReason(Layer application) throws IOException {
         for (String name : application.names()) {
@@ -311,7 +346,7 @@ final class LogbackPrecompiler {
                 String lower = text.toLowerCase(Locale.ROOT);
                 sets = lower.contains("configurationfile") || lower.contains("configuration-file")
                         || lower.contains("logger.config")
-                        || LOGGER_KEY_LINE.matcher(text).find() && CONFIG_KEY_LINE.matcher(text).find();
+                        || LOGGER_WORD.matcher(lower).find() && CONFIG_KEY.matcher(lower).find();
             }
             if (sets) {
                 return "the packaged " + name + " may set logger.config or logback.configurationFile, which"
@@ -623,13 +658,13 @@ final class LogbackPrecompiler {
                 defaultLookup(code);
                 code.labelBinding(afterProperty);
 
-                // Rule 2: again, and a location is visible.
+                // Rule 2: again, and a location is visible. Not LOGBACK_CONFIGURATIONFILE: Micronaut resolves
+                // logback.configurationFile case-sensitively, so no environment variable ever sets it, and a
+                // configurator that applied one would configure a file Micronaut itself ignores.
                 code.iload(AGAIN_SLOT).ifeq(notAgain);
                 systemProperty(code, "logger.config").astore(LOCATION_SLOT)
                         .aload(LOCATION_SLOT).ifnonnull(useLocation);
                 environment(code, "LOGGER_CONFIG").astore(LOCATION_SLOT)
-                        .aload(LOCATION_SLOT).ifnonnull(useLocation);
-                environment(code, "LOGBACK_CONFIGURATIONFILE").astore(LOCATION_SLOT)
                         .aload(LOCATION_SLOT).ifnull(notAgain);
                 code.labelBinding(useLocation);
                 code.aload(CONTEXT_SLOT).aload(LOCATION_SLOT)

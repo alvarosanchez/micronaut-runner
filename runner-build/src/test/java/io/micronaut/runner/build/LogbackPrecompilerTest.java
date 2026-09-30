@@ -32,6 +32,7 @@ import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -40,12 +41,18 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceConfigurationError;
+import java.util.function.UnaryOperator;
 import java.util.jar.Manifest;
+import javax.xml.parsers.FactoryConfigurationError;
+import javax.xml.parsers.SAXParserFactory;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -63,7 +70,7 @@ class LogbackPrecompilerTest {
     private static final String LOG_FILE_TOKEN = "@LOG_FILE@";
 
     private static final List<String> RUNTIME_PROPERTIES = List.of("logger.config", "logback.configurationFile",
-            "micronaut.runner.logback.precompiled");
+            "micronaut.runner.logback.precompiled", "logback.debug", "logback.statusListenerClass");
 
     @TempDir
     Path temporary;
@@ -137,7 +144,7 @@ class LogbackPrecompilerTest {
         try {
             classes = compile(Files.readAllBytes(xml)).write(temporary.resolve("generated"));
         } finally {
-            LogbackPrecompiler.descriptionHook = java.util.function.UnaryOperator.identity();
+            LogbackPrecompiler.descriptionHook = UnaryOperator.identity();
         }
         LoggerContext joran = LogbackDifferential.joran(xml);
         LoggerContext generated = new LoggerContext();
@@ -175,7 +182,11 @@ class LogbackPrecompilerTest {
         "conversion-rule.xml, <conversionRule>",
         "unknown-level.xml, VERBOSE",
         "debug.xml, debug=\"true\"",
-        "rolling-policy.xml, <rollingPolicy>"
+        "rolling-policy.xml, <rollingPolicy>",
+        // What Joran decides in its dependency-analysis phase, or by not calling a setter at all.
+        "duplicate-file.xml, '<appender name=\"TWO\"> has the same <file> as <appender name=\"ONE\">'",
+        "empty-property.xml, '<target> inside <appender name=\"STDOUT\"> is empty'",
+        "name-property.xml, '<name> inside <appender name=\"STDOUT\"> renames the appender'"
     })
     void aConfigurationOutsideTheSubsetGeneratesNothingAndNamesTheElement(String file, String element)
             throws Exception {
@@ -288,11 +299,17 @@ class LogbackPrecompilerTest {
         assertSameTree(LogbackDifferential.joran(location), context);
     }
 
-    @Test
-    void theRuntimeOptOutHandsOverToLogbacksDefaultLookup() throws Exception {
+    @ParameterizedTest
+    @CsvSource({
+        "micronaut.runner.logback.precompiled, false",
+        "logback.debug, true",
+        "logback.statusListenerClass, ch.qos.logback.core.status.NopStatusListener"
+    })
+    void theRuntimeOptOutOrARequestForStatusOutputHandsOverToLogbacksDefaultLookup(String property, String value)
+            throws Exception {
         Path classes = compile(Files.readAllBytes(corpus("accept/benchmark-large.xml", null)))
                 .write(temporary.resolve("generated"));
-        System.setProperty("micronaut.runner.logback.precompiled", "false");
+        System.setProperty(property, value);
         LoggerContext context = new LoggerContext();
         try (URLClassLoader loader = LogbackDifferential.loader(classes)) {
             LogbackDifferential.configure(loader, context);
@@ -338,6 +355,69 @@ class LogbackPrecompilerTest {
         // reset() drops the statuses the first call recorded, so only the tree itself is compared.
         assertEquals(tree(first), tree(second));
         assertEquals(LogbackDifferential.emit(LogbackDifferential.joran(xml)), LogbackDifferential.emit(context));
+    }
+
+    // ------------------------------------------------------------------ isolation and failures
+
+    @Test
+    void theFrontEndDoesNotSeeTheCallersContextClassLoader() throws Exception {
+        // What a build tool's class path may hold: a JAXP parser factory registration. This one names a class
+        // that does not exist, so a lookup through it throws FactoryConfigurationError.
+        Path foreign = temporary.resolve("foreign");
+        Path services = foreign.resolve("META-INF/services");
+        Files.createDirectories(services);
+        Files.writeString(services.resolve("javax.xml.parsers.SAXParserFactory"),
+                "com.example.build.MissingSaxParserFactory\n", StandardCharsets.UTF_8);
+        Thread thread = Thread.currentThread();
+        ClassLoader caller = thread.getContextClassLoader();
+        Compilation compilation;
+        try (URLClassLoader buildTool = new URLClassLoader(new URL[] {foreign.toUri().toURL()}, caller)) {
+            thread.setContextClassLoader(buildTool);
+            assertThrows(FactoryConfigurationError.class, SAXParserFactory::newInstance,
+                    "the fixture does not break a JAXP lookup through the context class loader");
+
+            compilation = compile(Files.readAllBytes(corpus("accept/benchmark-large.xml", null)));
+
+            assertSame(buildTool, thread.getContextClassLoader(), "the caller's context class loader is restored");
+        } finally {
+            thread.setContextClassLoader(caller);
+        }
+
+        assertEquals(List.of(), compilation.warnings());
+        assertEquals(3, compilation.entries().size(), compilation.info()::toString);
+    }
+
+    @Test
+    void anErrorOfTheFrontEndIsOneWarningAndGeneratesNothing() throws Exception {
+        LogbackPrecompiler.descriptionHook = description -> {
+            throw new ServiceConfigurationError("forced provider failure");
+        };
+        Compilation compilation;
+        try {
+            compilation = compile(Files.readAllBytes(corpus("accept/benchmark-large.xml", null)));
+        } finally {
+            LogbackPrecompiler.descriptionHook = UnaryOperator.identity();
+        }
+
+        assertEquals(Map.of(), compilation.entries());
+        assertEquals(List.of(), compilation.info());
+        assertEquals(1, compilation.warnings().size(), compilation.warnings()::toString);
+        assertTrue(compilation.warnings().get(0).contains("it could not be compiled: "
+                + ServiceConfigurationError.class.getName() + ": forced provider failure"),
+                compilation.warnings()::toString);
+    }
+
+    @Test
+    void aVirtualMachineErrorIsNotTurnedIntoAWarning() throws Exception {
+        byte[] xml = Files.readAllBytes(corpus("accept/benchmark-large.xml", null));
+        LogbackPrecompiler.descriptionHook = description -> {
+            throw new OutOfMemoryError("forced");
+        };
+        try {
+            assertThrows(OutOfMemoryError.class, () -> compile(xml));
+        } finally {
+            LogbackPrecompiler.descriptionHook = UnaryOperator.identity();
+        }
     }
 
     @Test

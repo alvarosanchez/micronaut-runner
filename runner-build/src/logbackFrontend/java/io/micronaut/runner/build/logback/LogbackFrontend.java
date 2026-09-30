@@ -48,6 +48,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -70,7 +71,10 @@ import java.util.function.Function;
  * with Logback's own converter table so that a pattern Logback reports a problem with is rejected.</p>
  *
  * <p>Everything outside a literal subset is rejected: the result then names the element, and the configuration is
- * left to Joran at startup. The result is either {@code {"irVersion": 1, "rejection": reason}} or
+ * left to Joran at startup. So is what Joran decides in phases this front end does not run or in ways the generated
+ * code does not reproduce: two appenders that share a {@code <file>} (Joran's {@code FileCollisionAnalyser} skips
+ * the later one), a property element without text (Joran makes no setter call for it) and a {@code <name>} element
+ * inside an appender (Joran then keeps the appender under that name, not the one its loggers reference). The result is either {@code {"irVersion": 1, "rejection": reason}} or
  * {@code {"irVersion": 1, "operations": [...], "appenders": n, "patterns": n}}. The operations are in the order
  * Joran's second processing phase applies them: an appender is created and started when the traversal reaches it,
  * and a logger once every appender it references has been started.</p>
@@ -86,6 +90,8 @@ public final class LogbackFrontend implements Function<byte[], Map<String, Objec
     private static final String PATTERN_LAYOUT_ENCODER = "ch.qos.logback.classic.encoder.PatternLayoutEncoder";
     private static final String LOGBACK_PACKAGE = "ch.qos.logback.";
     private static final List<String> LEVELS = List.of("OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE", "ALL");
+    /** The elements Joran's {@code FileCollisionAnalyser} compares across appenders. */
+    private static final List<String> COLLISION_TAGS = List.of("file", "fileNamePattern");
 
     @Override
     public Map<String, Object> apply(byte[] xml) {
@@ -213,6 +219,8 @@ public final class LogbackFrontend implements Function<byte[], Map<String, Objec
         private final Map<String, AppenderModel> declared = new LinkedHashMap<>();
         private final Set<String> referenced = new HashSet<>();
         private final Set<String> patterns = new LinkedHashSet<>();
+        /** Per collision tag and value, the appender that declared it first. */
+        private final Map<String, String> files = new HashMap<>();
 
         Reader(LoggerContext scratch, Problems problems) {
             this.scratch = scratch;
@@ -242,6 +250,7 @@ public final class LogbackFrontend implements Function<byte[], Map<String, Objec
                     if (declared.putIfAbsent(name, appender) != null) {
                         throw new Rejection("two <appender> elements are named '" + name + "'");
                     }
+                    rejectFileCollisions(appender, name);
                 } else if (child.getClass() == LoggerModel.class || child.getClass() == RootLoggerModel.class) {
                     checkLogger(child);
                 } else {
@@ -305,6 +314,38 @@ public final class LogbackFrontend implements Function<byte[], Map<String, Objec
             requireFalseOrAbsent(configuration.getPackagingDataStr(), "packagingData");
             if (configuration.getScanPeriodStr() != null) {
                 throw new Rejection("<configuration> sets scanPeriod");
+            }
+        }
+
+        /**
+         * Rejects what Joran's {@code FileCollisionAnalyser} acts on in its dependency-analysis phase, which this
+         * front end does not run: a {@code <file>} or {@code <fileNamePattern>} with the value an earlier appender
+         * has, referenced or not. Joran reports a collision and never creates the later appender. The check is
+         * wider than Joran's, which only looks at {@code FileAppender} and {@code RollingFileAppender} by name and
+         * at the first such element of each: a false rejection only costs the optimisation.
+         */
+        private void rejectFileCollisions(AppenderModel appender, String name) {
+            String what = "<appender name=\"" + name + "\">";
+            for (Model child : appender.getSubModels()) {
+                rejectFileCollision(child, name, what);
+                for (Model grandchild : child.getSubModels()) {
+                    rejectFileCollision(grandchild, name, what);
+                }
+            }
+        }
+
+        private void rejectFileCollision(Model model, String appender, String what) {
+            for (String tag : COLLISION_TAGS) {
+                if (!(model instanceof ImplicitModel) || !tag.equalsIgnoreCase(model.getTag())) {
+                    continue;
+                }
+                String where = "<" + model.getTag() + "> inside " + what;
+                String value = literal(body(model, where), where).trim();
+                String first = files.putIfAbsent(tag + '\n' + value, appender);
+                if (first != null && !first.equals(appender)) {
+                    throw new Rejection(what + " has the same <" + tag + "> as <appender name=\"" + first
+                            + "\">, which Joran reports as a collision: " + value);
+                }
             }
         }
 
@@ -436,14 +477,19 @@ public final class LogbackFrontend implements Function<byte[], Map<String, Objec
                 throw new Rejection("<" + tag + "> inside " + what + " names a class");
             }
             requireNoChildren(property);
+            String where = "<" + tag + "> inside " + what;
             Method setter = assessor.findSetterMethod(tag);
+            if (setter != null && "setName".equals(setter.getName())) {
+                // Joran marks the appender started, and keeps it, under the name it has once its properties are
+                // set: the loggers that reference the name of the attribute then never get it.
+                throw new Rejection(where + " renames the appender");
+            }
             Class<?> parameter = setter == null || setter.getParameterCount() != 1 ? null
                     : setter.getParameterTypes()[0];
             if (parameter != String.class && parameter != boolean.class && parameter != int.class) {
-                throw new Rejection("<" + tag + "> inside " + what + " is not a String, boolean or int property");
+                throw new Rejection(where + " is not a String, boolean or int property");
             }
-            Object value = convert(literal(body(property), "<" + tag + "> inside " + what), parameter,
-                    "<" + tag + "> inside " + what);
+            Object value = convert(literal(body(property, where), where), parameter, where);
             Map<String, Object> step = setterStep("property", setter);
             step.put("value", value);
             return step;
@@ -479,11 +525,8 @@ public final class LogbackFrontend implements Function<byte[], Map<String, Objec
                 throw new Rejection("the <pattern> of " + where + " names a class");
             }
             requireNoChildren(patternModel);
-            String pattern = (String) convert(literal(body(patternModel), "the <pattern> of " + where),
-                    String.class, "the <pattern> of " + where);
-            if (pattern.isEmpty()) {
-                throw new Rejection("the <pattern> of " + where + " is empty");
-            }
+            String pattern = (String) convert(literal(body(patternModel, "the <pattern> of " + where),
+                    "the <pattern> of " + where), String.class, "the <pattern> of " + where);
             patterns.add(pattern);
 
             Object encoder = instantiate(type, where);
@@ -595,9 +638,17 @@ public final class LogbackFrontend implements Function<byte[], Map<String, Objec
             return value;
         }
 
-        private static String body(Model model) {
+        /**
+         * The text of a property element. Joran makes no setter call for an element without text
+         * ({@code PropertySetter.setProperty} returns on a {@code null} value), which a setter call with an empty
+         * string does not reproduce, so such an element is rejected.
+         */
+        private static String body(Model model, String what) {
             String body = model.getBodyText();
-            return body == null ? "" : body;
+            if (body == null || body.isBlank()) {
+                throw new Rejection(what + " is empty");
+            }
+            return body;
         }
 
         private static void requireNoText(Model model) {
