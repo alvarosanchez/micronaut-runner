@@ -233,12 +233,13 @@ class NestedJarFileTest {
         assertTrue(index.jarMultiRelease(1), "the index knows what JarFile cannot report");
     }
 
-    @ParameterizedTest(name = "mapped={0}")
-    @ValueSource(booleans = {true, false})
-    void versionedStreamMatchesTheJdkEffectiveView(boolean mapped) throws IOException {
-        System.setProperty(ArchiveSource.MMAP_PROPERTY, Boolean.toString(mapped));
+    @ParameterizedTest(name = "mmap={0}")
+    @ValueSource(strings = {"true", "index", "false"})
+    void versionedStreamMatchesTheJdkEffectiveView(String mmap) throws IOException {
+        System.setProperty(ArchiveSource.MMAP_PROPERTY, mmap);
         try (ArchiveSource modeSource = ArchiveSource.open(archive)) {
-            assertEquals(mapped, modeSource.mapped());
+            assertEquals("true".equals(mmap), modeSource.mapped());
+            assertEquals("index".equals(mmap), modeSource.indexOnly());
             NestedJarFileVersionedStreamOracle.compare(modeSource, dependencyFile);
         }
     }
@@ -251,11 +252,14 @@ class NestedJarFileTest {
                 .getCodeSource().getLocation().toURI()).toString();
         Path java = Path.of(System.getProperty("runner.test.javaHome", System.getProperty("java.home")),
                 "bin", "java");
-        // The JDK's JarFile latches both properties once per VM, so each needs a fresh one; the mmap mode is
-        // read on every open and is covered in-process by versionedStreamMatchesTheJdkEffectiveView.
+        // The JDK's JarFile latches both multi-release properties once per VM, so each needs a fresh one. The
+        // mmap mode is read on every open and is covered in-process by versionedStreamMatchesTheJdkEffectiveView;
+        // the index mode also runs here, in a VM where nothing else has opened the archive.
         List<List<String>> configurations = List.of(
                 List.of("-Djdk.util.jar.version=8"),
-                List.of("-Djdk.util.jar.enableMultiRelease=false"));
+                List.of("-Djdk.util.jar.enableMultiRelease=false"),
+                List.of("-Dmicronaut.runner.mmap=index"),
+                List.of("-Dmicronaut.runner.mmap=index", "-Djdk.util.jar.version=8"));
         for (List<String> configuration : configurations) {
             List<String> command = new ArrayList<>();
             command.add(java.toString());

@@ -46,6 +46,7 @@ import java.util.stream.Collectors;
  *     <li>{@link Boolean}: {@code true} or {@code false}, ignoring case and surrounding whitespace. Anything
  *     else fails.</li>
  *     <li>{@link Compression}: as {@link Compression#parse(String)} reads it.</li>
+ *     <li>{@link ArchiveReads}: as {@link ArchiveReads#parse(String)} reads it.</li>
  *     <li>{@link List}: comma-separated. Entries are trimmed and empty entries dropped, so the empty string
  *     is the empty list.</li>
  *     <li>{@link Map}: one {@code Name: value} pair per line, as in {@code MANIFEST.MF} but without
@@ -97,7 +98,13 @@ public enum RunnerJarOption {
      * Extra main attributes of the runner jar's manifest. See
      * {@link RunnerJarSpec.Builder#manifestAttributes(Map)}.
      */
-    MANIFEST_ATTRIBUTES("manifestAttributes", Map.class, "", Exposure.TYPED, "1.0");
+    MANIFEST_ATTRIBUTES("manifestAttributes", Map.class, "", Exposure.TYPED, "1.0"),
+
+    /**
+     * How the launcher reads the archive when {@code micronaut.runner.mmap} does not say, an
+     * {@link ArchiveReads} name. See {@link RunnerJarSpec.Builder#archiveReads(ArchiveReads)}.
+     */
+    ARCHIVE_READS("archiveReads", ArchiveReads.class, "MAPPED", Exposure.PASSTHROUGH, "1.0");
 
     private final String optionName;
     private final Class<?> valueType;
@@ -133,7 +140,7 @@ public enum RunnerJarOption {
 
     /**
      * The type of the option's value, which decides how its text is read: {@link Boolean},
-     * {@link Compression}, {@link List} or {@link Map}.
+     * {@link Compression}, {@link ArchiveReads}, {@link List} or {@link Map}.
      *
      * @return the value type
      */

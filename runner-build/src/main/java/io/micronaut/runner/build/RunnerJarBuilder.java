@@ -1135,7 +1135,9 @@ public final class RunnerJarBuilder {
                 .launcherVersion(launcherVersion)
                 .headerFlags((spec.compression() == Compression.STORED
                         ? IndexFormat.HEADER_FLAG_NESTED_STORED : 0)
-                        | (spec.multiRelease() ? IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE : 0));
+                        | (spec.multiRelease() ? IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE : 0)
+                        | (spec.archiveReads() == ArchiveReads.POSITIONAL
+                        ? IndexFormat.HEADER_FLAG_POSITIONAL_READS : 0));
         applicationJar = writer.addJar(IndexFormat.CLASSES_PREFIX);
         if (spec.multiRelease()) {
             applicationJar.addFlags(IndexFormat.JAR_FLAG_MULTI_RELEASE);

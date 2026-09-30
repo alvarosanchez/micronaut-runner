@@ -599,6 +599,8 @@ class EndToEndTest {
     private static Path storedArchive;
     private static Path preserveArchive;
     private static Path awkwardArchive;
+    private static Path positionalArchive;
+    private static Path positionalPreserveArchive;
 
     @BeforeAll
     static void packageTheApplication() throws Exception {
@@ -729,6 +731,14 @@ class EndToEndTest {
         Files.createDirectories(awkward);
         awkwardArchive = awkward.resolve("app.jar");
         Files.copy(storedArchive, awkwardArchive, StandardCopyOption.REPLACE_EXISTING);
+
+        // Packaged for positional reads, which the launcher then selects from the index header on its own.
+        positionalArchive = workspace.resolve("out/app-positional.jar");
+        RunnerJarBuilder.build(common.output(positionalArchive).compression(Compression.STORED)
+                .archiveReads(ArchiveReads.POSITIONAL).build(), BuildLogger.noOp());
+        positionalPreserveArchive = workspace.resolve("out/app-positional-preserve.jar");
+        RunnerJarBuilder.build(common.output(positionalPreserveArchive).compression(Compression.PRESERVE)
+                .archiveReads(ArchiveReads.POSITIONAL).build(), BuildLogger.noOp());
     }
 
     @Test
@@ -766,6 +776,28 @@ class EndToEndTest {
     void worksWithoutMemoryMappingAndWithEveryEntryVerified() throws Exception {
         assertPassed(fork(storedArchive, workspace,
                 List.of("-Dmicronaut.runner.mmap=false", "-Dmicronaut.runner.verify=true"), List.of()));
+    }
+
+    @Test
+    void worksWithOnlyTheIndexMappedAndWithEveryEntryVerified() throws Exception {
+        assertPassed(fork(storedArchive, workspace,
+                List.of("-Dmicronaut.runner.mmap=index", "-Dmicronaut.runner.verify=true"), List.of()));
+    }
+
+    @Test
+    void anArchivePackagedForPositionalReadsUsesThemWithoutAProperty() throws Exception {
+        for (Path archive : List.of(positionalArchive, positionalPreserveArchive)) {
+            assertPassed(fork(archive, workspace, List.of(), List.of()));
+            Forked inspected = fork(archive, workspace, List.of("-Dmicronaut.runner.mode=inspect"), List.of());
+            assertEquals(0, inspected.status(), inspected::output);
+            assertTrue(inspected.output().lines()
+                            .anyMatch(line -> line.matches("Read through\\s+positional reads, index mapped")),
+                    () -> archive + " was not read positionally\n" + inspected.output());
+        }
+        Forked forcedFull = fork(positionalArchive, workspace,
+                List.of("-Dmicronaut.runner.mode=inspect", "-Dmicronaut.runner.mmap=full"), List.of());
+        assertTrue(forcedFull.output().lines().anyMatch(line -> line.matches("Read through\\s+a memory mapping")),
+                () -> "the property must override the archive\n" + forcedFull.output());
     }
 
     @Test

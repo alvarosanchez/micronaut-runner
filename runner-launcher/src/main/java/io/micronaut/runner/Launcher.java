@@ -188,12 +188,15 @@ public final class Launcher {
                 checkpoint(started, "application entered");
             }
             registered.run(args);
+            // main returned normally: the archive can trim what only startup needed.
+            source.startupFinished();
             return;
         }
         if (timing) {
             checkpoint(started, "application entered");
         }
         invokeMain(application, args);
+        source.startupFinished();
     }
 
     /**

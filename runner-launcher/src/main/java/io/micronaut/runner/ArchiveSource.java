@@ -47,25 +47,38 @@ import java.util.zip.InflaterInputStream;
  * Every accessor takes an <em>absolute offset in the outer file</em>, which is exactly what the index
  * stores, so no per-entry bookkeeping is needed.</p>
  *
- * <p>Setting the system property {@value #MMAP_PROPERTY} to exactly {@code "false"} selects a fallback mode
- * that maps nothing and serves every read with positional {@link FileChannel#read(ByteBuffer, long)} calls
- * into a heap buffer, at most 64 KiB per call so that no thread keeps a large temporary native buffer. The
- * fallback exists for platforms or containers where a large mapping is unwelcome; it is behaviourally
- * identical, only slower.</p>
+ * <h2>Read modes</h2>
+ * <p>The system property {@value #MMAP_PROPERTY} selects how the archive is read:</p>
+ * <ul>
+ *   <li>{@code full} or {@code true}: the whole file is mapped, as described above.</li>
+ *   <li>{@code index}: only {@code MICRONAUT-INF/index.bin} is mapped. Every other read is a positional
+ *   {@link FileChannel#read(ByteBuffer, long)}, and a STORED class is read with one such call into a direct
+ *   buffer borrowed from a small pool; see {@link #borrow(long, int)}. The pages of the class bytes then stay
+ *   in the page cache and out of the process's resident set, at the price of a system call per class.</li>
+ *   <li>{@code false}: nothing is mapped, and every read is a positional read into a heap buffer, at most
+ *   64 KiB per call so that no thread keeps a large temporary native buffer. It exists for platforms or
+ *   containers where a mapping is unwelcome; it is behaviourally identical, only slower.</li>
+ *   <li>Unset, or any other value: the archive decides. {@link #open(File)} maps the whole file, exactly as
+ *   for {@code full}, and {@link #indexRegion(long, int)} reads {@code IndexFormat.HEADER_FLAG_POSITIONAL_READS}
+ *   from the index header. When the flag is set, the source switches to the {@code index} mode before anything
+ *   else has read through the mapping: it captures the file key, closes the whole-file mapping and maps the
+ *   index alone. An archive whose flag is clear keeps the whole-file mapping and pays one extra read.</li>
+ * </ul>
  *
  * <p>A {@link FileChannel} is interruptible: a read by a thread whose interrupt status is set, or that is
  * interrupted during the read, closes the channel for every thread. Positional reads therefore clear the
  * caller's interrupt status before each attempt and restore it afterwards, and a read that finds the channel
  * closed by an interrupt reopens the archive by its path and continues from the bytes it already has. The
  * reopened file is used only if it still has the length, and where the file system reports one the file key,
- * captured when this source opened; otherwise every later read fails and asks for a restart. Nothing reopens
- * after {@link #close()}.</p>
+ * captured before the first positional read; otherwise every later read fails and asks for a restart. Nothing
+ * reopens after {@link #close()}.</p>
  *
  * <h2>Lifetime</h2>
  * <p>The instance is {@link AutoCloseable}, but the launcher never closes it: application threads keep
  * loading classes for as long as the JVM lives, so the mapping must outlive {@code main}. Tests and
  * benchmarks do close it, and they must: on Windows an open mapping prevents the file from being deleted.
- * {@link #close()} closes the arena, which invalidates the segment, and then the channel.</p>
+ * {@link #close()} closes the arenas, which invalidates the segments, drops the buffer pool and then closes
+ * the channel.</p>
  *
  * <h2>Archive immutability</h2>
  * <p>The archive must not change while it is open. The recorded length
@@ -75,21 +88,56 @@ import java.util.zip.InflaterInputStream;
  * class is being defined straight from the mapping.</p>
  *
  * <h2>Thread safety</h2>
- * <p>Everything after {@link #open(File)} is safe for concurrent use by any number of class-loading
- * threads: the segment is read-only, positional channel reads do not touch the channel position, and the
- * inflater pool is guarded by this instance's lock. Thread interrupts are harmless in both modes: mapped
- * reads are not interruptible, and positional reads clear and restore the caller's interrupt status and
- * reopen, under the same lock, a channel that an interrupt closed. Only {@link #close()} must not race with
- * readers; a read that does fails and never reopens.</p>
+ * <p>Everything after {@link #open(File)} and the first {@link #indexRegion(long, int)}, which may switch the
+ * mode and is called by {@link Index#open(ArchiveSource, long, long)} before the source is shared, is safe for
+ * concurrent use by any number of class-loading threads: the segments are read-only, positional channel reads
+ * do not touch the channel position, and the inflater and buffer pools are guarded by this instance's lock.
+ * Thread interrupts are harmless in every mode: mapped reads are not interruptible, and positional reads clear
+ * and restore the caller's interrupt status and reopen, under the same lock, a channel that an interrupt
+ * closed. Only {@link #close()} must not race with readers; a read that does fails and never reopens.</p>
  *
  * @since 1.0
  */
 public final class ArchiveSource implements AutoCloseable {
 
     /**
-     * System property that disables memory mapping when set to exactly {@code "false"}.
+     * System property that selects the read mode: {@code full} (or {@code true}), {@code index} or
+     * {@code false}. Unset, or any other value, lets the archive's header choose between {@code full} and
+     * {@code index}. Values are compared exactly, so {@code FALSE} is an unrecognised value.
      */
     public static final String MMAP_PROPERTY = "micronaut.runner.mmap";
+
+    /**
+     * The mode of a source whose {@value #MMAP_PROPERTY} is unset or unrecognised, until
+     * {@link #indexRegion(long, int)} has read the archive's header: the whole file is mapped, as in
+     * {@link #MODE_FULL}.
+     */
+    static final int MODE_DEFAULT = 0;
+
+    /** The whole file is mapped, and every read goes through the mapping. */
+    static final int MODE_FULL = 1;
+
+    /** Only the index is mapped. Everything else is read positionally, STORED classes into pooled buffers. */
+    static final int MODE_INDEX = 2;
+
+    /** Nothing is mapped, and every read is positional, into a heap buffer. */
+    static final int MODE_NONE = 3;
+
+    /**
+     * Most direct buffers the {@code index} mode's pool creates, so that it never holds more than
+     * {@code POOL_MAX_BUFFERS * POOL_MAX_BUFFER_SIZE} bytes, 1 MiB, of native memory. A borrow that finds
+     * every one of them in use reads into a heap array instead of allocating another.
+     */
+    static final int POOL_MAX_BUFFERS = 16;
+
+    /** Largest pooled buffer. An entry larger than the pool's buffers is read into a heap array. */
+    static final int POOL_MAX_BUFFER_SIZE = 64 * 1024;
+
+    /** Idle buffers the pool keeps once {@link #startupFinished()} has run; before that, all of them. */
+    static final int POOL_IDLE_AFTER_STARTUP = 2;
+
+    /** The granularity a pooled buffer's size is rounded up to. */
+    private static final int POOL_BUFFER_ALIGNMENT = 4096;
 
     /**
      * Largest slice {@link #slice(long, int)} can produce. {@link MemorySegment#asByteBuffer()} only
@@ -122,21 +170,39 @@ public final class ArchiveSource implements AutoCloseable {
     private volatile RandomAccessFile handle;
     private volatile FileChannel channel;
     /**
-     * The identity of the file this source opened, captured at open when reads go through the channel, and
-     * {@code null} in the mapped mode or when the file system reports no key (Windows). A reopen after an
-     * interrupt compares it with the file the path names by then.
+     * The identity of the file this source opened, and {@code null} in the mapped modes or when the file
+     * system reports no key (Windows). A reopen after an interrupt compares it with the file the path names by
+     * then.
+     *
+     * <p>It is captured before the first positional read: at open when {@value #MMAP_PROPERTY} asks for
+     * {@code index} or {@code false}, and otherwise in {@link #indexRegion(long, int)}, at the switch the
+     * archive's flag selects. It is not final for that second case, and it is written only there, before
+     * {@link Launcher} publishes the source to {@link Handlers} and the class loader. The archive-selected
+     * capture leaves a window of a few milliseconds between the open and the switch: a replacement renamed
+     * onto the path inside it is not detected, because the key then names the new file.</p>
      */
-    private final Object fileKey;
+    private Object fileKey;
     /**
      * The failure of a reopen that found the path naming another file, stored under this instance's lock so
      * that every later read fails the same way instead of reopening again.
      */
     private IOException replaced;
-    private final Arena arena;
-    private final MemorySegment segment;
+    /**
+     * The arena of the whole-file mapping, {@code null} when nothing is mapped or once the archive's flag
+     * switched the source to the {@code index} mode, which closes it.
+     */
+    private Arena arena;
+    /**
+     * The whole-file mapping. Not final: {@link #indexRegion(long, int)} clears it when the archive's flag
+     * switches the source to the {@code index} mode, which happens inside {@link Index#open(ArchiveSource,
+     * long, long)} before {@link Launcher} publishes the source to {@link Handlers} and the class loader, and
+     * before anything has sliced the mapping.
+     */
+    private MemorySegment segment;
     /**
      * Little-endian view of the whole mapping, through which every mapped read goes: the scalar getters,
-     * {@link #copyTo}, {@link #slice} and {@link #inflate}.
+     * {@link #copyTo}, {@link #slice} and {@link #inflate}. Cleared, like {@link #segment}, by the switch to
+     * the {@code index} mode.
      *
      * <p>A {@link ByteBuffer} keeps work off the startup path that the {@link MemorySegment} API adds on
      * JDK 25: the first {@code MemorySegment.copy} into an array bootstraps a pattern {@code switch}, which
@@ -151,13 +217,31 @@ public final class ArchiveSource implements AutoCloseable {
      * {@link SegmentLayouts}. Absolute accessors do not touch the buffer's position, so sharing one across
      * threads is safe.</p>
      */
-    private final ByteBuffer view;
+    private ByteBuffer view;
     private final long length;
+    /**
+     * One of the {@code MODE_*} constants. {@link #MODE_DEFAULT} becomes {@link #MODE_FULL} or
+     * {@link #MODE_INDEX} in the first {@link #indexRegion(long, int)}, before the source is published, and
+     * never changes afterwards.
+     */
+    private int mode;
+    /** The arena of the index mappings of the {@code index} mode, created by the first one. */
+    private Arena indexArena;
     private final ArrayDeque<Inflater> inflaters;
+    /** The idle pooled buffers of the {@code index} mode, most recently released first. Guarded by this. */
+    private final ArrayDeque<ByteBuffer> buffers;
+    /** The capacity of every pooled buffer, fixed by the first index or the first borrow. Guarded by this. */
+    private int poolBufferSize;
+    /** Pooled buffers that exist, idle or borrowed; never more than {@link #POOL_MAX_BUFFERS}. Guarded by this. */
+    private int liveBuffers;
+    /** Pooled buffers ever allocated, for tests. Guarded by this. */
+    private int createdBuffers;
+    /** How many idle buffers {@link #release(ByteBuffer)} keeps. Guarded by this. */
+    private int maxIdle = POOL_MAX_BUFFERS;
     private boolean closed;
 
     private ArchiveSource(File file, RandomAccessFile handle, FileChannel channel, Object fileKey, Arena arena,
-                          MemorySegment segment, long length, boolean bufferView) {
+                          MemorySegment segment, long length, boolean bufferView, int mode) {
         this.file = file;
         this.handle = handle;
         this.channel = channel;
@@ -168,7 +252,9 @@ public final class ArchiveSource implements AutoCloseable {
                 ? segment.asByteBuffer().order(ByteOrder.LITTLE_ENDIAN)
                 : null;
         this.length = length;
+        this.mode = mode;
         this.inflaters = new ArrayDeque<Inflater>(INFLATER_POOL_LIMIT);
+        this.buffers = new ArrayDeque<ByteBuffer>(POOL_MAX_BUFFERS);
     }
 
     /**
@@ -178,7 +264,8 @@ public final class ArchiveSource implements AutoCloseable {
      * at all, is only diagnosed by {@link #openIndex()}, so that the primitives stay usable over any file.</p>
      *
      * @param file the outer archive, which must exist and be readable
-     * @return an open source, mapped unless {@value #MMAP_PROPERTY} is {@code "false"}
+     * @return an open source, mapped as a whole unless {@value #MMAP_PROPERTY} is {@code "index"} or
+     *         {@code "false"}
      * @throws IOException if the file cannot be opened or cannot be mapped
      */
     public static ArchiveSource open(File file) throws IOException {
@@ -198,11 +285,13 @@ public final class ArchiveSource implements AutoCloseable {
         if (file == null) {
             throw new IOException("No archive file given");
         }
-        boolean map = !"false".equals(System.getProperty(MMAP_PROPERTY));
+        int mode = requestedMode(System.getProperty(MMAP_PROPERTY));
+        boolean map = mode == MODE_DEFAULT || mode == MODE_FULL;
         // Reads through the channel may have to reopen the file by its path after an interrupt, and then
         // compare it with this key. It is read before the file is opened: if the path is replaced in between,
         // the key cannot match any later file, which fails safe, whereas a key read after the open could
-        // belong to a file renamed in afterwards and let a reopen switch to it.
+        // belong to a file renamed in afterwards and let a reopen switch to it. A mapped open reads no key,
+        // which keeps the stat and its java.nio.file classes off the default launch.
         Object fileKey = map ? null : PositionalReads.fileKey(file);
         RandomAccessFile handle = new RandomAccessFile(file, "r");
         Arena arena = null;
@@ -214,7 +303,7 @@ public final class ArchiveSource implements AutoCloseable {
                 arena = Arena.ofShared();
                 segment = channel.map(FileChannel.MapMode.READ_ONLY, 0L, length, arena);
             }
-            return new ArchiveSource(file, handle, channel, fileKey, arena, segment, length, bufferView);
+            return new ArchiveSource(file, handle, channel, fileKey, arena, segment, length, bufferView, mode);
         } catch (IOException | RuntimeException | Error e) {
             if (arena != null) {
                 arena.close();
@@ -247,12 +336,297 @@ public final class ArchiveSource implements AutoCloseable {
     }
 
     /**
-     * Whether the archive is memory mapped.
+     * The read mode {@value #MMAP_PROPERTY} asks for.
      *
-     * @return {@code true} in the default mode, {@code false} when {@value #MMAP_PROPERTY} disabled mapping
+     * @param value the property's value, or {@code null} when it is unset
+     * @return {@link #MODE_FULL} for {@code full} or {@code true}, {@link #MODE_INDEX} for {@code index},
+     *         {@link #MODE_NONE} for {@code false}, and {@link #MODE_DEFAULT} for anything else
+     */
+    static int requestedMode(String value) {
+        if ("false".equals(value)) {
+            return MODE_NONE;
+        }
+        if ("index".equals(value)) {
+            return MODE_INDEX;
+        }
+        if ("full".equals(value) || "true".equals(value)) {
+            return MODE_FULL;
+        }
+        return MODE_DEFAULT;
+    }
+
+    /**
+     * Whether the whole archive is memory mapped.
+     *
+     * @return {@code true} in the {@code full} mode, and in the default mode until the archive's flag selects
+     *         the {@code index} mode; {@code false} in the {@code index} and {@code false} modes
      */
     public boolean mapped() {
         return segment != null;
+    }
+
+    /**
+     * Whether only the index is mapped, and every other read is positional.
+     *
+     * @return {@code true} in the {@code index} mode, whether {@value #MMAP_PROPERTY} or the archive's flag
+     *         selected it
+     */
+    public boolean indexOnly() {
+        return mode == MODE_INDEX;
+    }
+
+    /**
+     * The bytes of the index, for {@link Index#open(ArchiveSource, long, long)}, which is where the read mode
+     * of a source left to the archive is settled.
+     *
+     * <p>In the default mode the whole file is mapped, and this reads the header flag word through the
+     * mapping. With {@code IndexFormat.HEADER_FLAG_POSITIONAL_READS} clear the source becomes {@code full}
+     * and this returns a {@link #slice}, exactly as before the flag existed. With the flag set the source
+     * switches to the {@code index} mode: it captures the file key that a reopen after an interrupt compares,
+     * closes the whole-file mapping, which nothing has sliced yet, and maps the index region alone. In the
+     * {@code index} mode, however selected, the region is mapped into an arena of its own, and the first region
+     * sizes the buffer pool from {@code IndexFormat.H_LARGEST_STORED_CLASS}. The other modes slice.</p>
+     *
+     * @param offset absolute offset of the index in the archive
+     * @param length its length in bytes, at most {@link #MAX_SLICE_LENGTH}
+     * @return a buffer positioned at zero over the index; its byte order is the caller's to set
+     * @throws IOException if the region is outside the archive, cannot be mapped, or the file key cannot be read
+     */
+    synchronized ByteBuffer indexRegion(long offset, int length) throws IOException {
+        if (length < 0 || length > MAX_SLICE_LENGTH) {
+            throw new IOException("Cannot map an index of " + length + " bytes, the limit is " + MAX_SLICE_LENGTH);
+        }
+        checkRange(offset, length);
+        if (mode == MODE_DEFAULT) {
+            if (!positionalReadsFlagged(offset, length)) {
+                mode = MODE_FULL;
+                return slice(offset, length);
+            }
+            // Before anything reads through the channel: see fileKey.
+            fileKey = PositionalReads.fileKey(file);
+            mode = MODE_INDEX;
+            Arena whole = arena;
+            arena = null;
+            view = null;
+            segment = null;
+            whole.close();
+        }
+        if (mode == MODE_INDEX) {
+            return mapIndex(offset, length);
+        }
+        return slice(offset, length);
+    }
+
+    /**
+     * Whether the index at {@code offset} asks for positional reads. The flag word is read first, so that an
+     * archive whose flag is clear costs one read; the magic is checked only for a set flag, so that a region
+     * that is not an index never switches the mode.
+     */
+    private boolean positionalReadsFlagged(long offset, int length) throws IOException {
+        return length >= IndexFormat.HEADER_SIZE
+                && (u16(offset + IndexFormat.H_FLAGS) & IndexFormat.HEADER_FLAG_POSITIONAL_READS) != 0
+                && i32(offset + IndexFormat.H_MAGIC) == IndexFormat.MAGIC;
+    }
+
+    private ByteBuffer mapIndex(long offset, int length) throws IOException {
+        if (indexArena == null) {
+            indexArena = Arena.ofShared();
+        }
+        // FileChannel.map is interruptible too, so it runs with the caller's interrupt status cleared.
+        boolean interrupted = Thread.interrupted();
+        ByteBuffer index;
+        try {
+            index = channel.map(FileChannel.MapMode.READ_ONLY, offset, length, indexArena).asByteBuffer();
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (poolBufferSize == 0) {
+            long largest = length >= IndexFormat.H_LARGEST_STORED_CLASS + 4
+                    ? index.order(ByteOrder.LITTLE_ENDIAN).getInt(IndexFormat.H_LARGEST_STORED_CLASS) & 0xFFFFFFFFL
+                    : 0;
+            poolBufferSize = poolBufferSize(largest);
+            index.order(ByteOrder.BIG_ENDIAN);
+        }
+        return index;
+    }
+
+    /**
+     * The capacity of the pooled buffers: the archive's largest STORED class rounded up to 4 KiB, capped at
+     * {@link #POOL_MAX_BUFFER_SIZE}, which is also the size when the archive recorded none.
+     *
+     * @param largestStoredClass {@code IndexFormat.H_LARGEST_STORED_CLASS}, {@code 0} when not recorded
+     * @return the buffer capacity in bytes
+     */
+    static int poolBufferSize(long largestStoredClass) {
+        if (largestStoredClass <= 0 || largestStoredClass >= POOL_MAX_BUFFER_SIZE) {
+            return POOL_MAX_BUFFER_SIZE;
+        }
+        return (int) ((largestStoredClass + POOL_BUFFER_ALIGNMENT - 1) & -POOL_BUFFER_ALIGNMENT);
+    }
+
+    /**
+     * A buffer holding a region of the archive, for a caller that is done with it before it returns and then
+     * hands it to {@link #release(ByteBuffer)}. The class loader defines a STORED class from it.
+     *
+     * <p>In the {@code index} mode the region is read with one positional read into a direct buffer taken
+     * from a pool of at most {@link #POOL_MAX_BUFFERS}, which is allocated on first need, so that the class
+     * bytes never enter the process's resident set as mapped pages and no heap array is allocated. A region
+     * larger than a pooled buffer, and a borrow that finds every pooled buffer in use, is read into a heap array
+     * instead. Buffers are borrowed per call, never per thread: the VM resolves a class's supertypes while it
+     * is still parsing its bytes, so a nested define on the same thread must not reuse the buffer. The other
+     * modes return {@link #slice}.</p>
+     *
+     * @param offset absolute offset in the archive
+     * @param length number of bytes, at most {@link #MAX_SLICE_LENGTH}
+     * @return a buffer positioned at zero whose remaining bytes are the region; read-only in the mapped modes
+     * @throws IOException if the region is outside the archive, the length is negative or too large, the
+     *                     source is closed, or the read fails
+     */
+    ByteBuffer borrow(long offset, int length) throws IOException {
+        if (mode != MODE_INDEX) {
+            return slice(offset, length);
+        }
+        if (length < 0 || length > MAX_SLICE_LENGTH) {
+            throw new IOException("Cannot read " + length + " bytes at once, the limit is " + MAX_SLICE_LENGTH);
+        }
+        checkRange(offset, length);
+        ByteBuffer buffer = acquireBuffer(length);
+        if (buffer == null) {
+            return ByteBuffer.wrap(readFully(offset, length));
+        }
+        try {
+            readInto(offset, buffer);
+        } catch (IOException | RuntimeException | Error e) {
+            release(buffer);
+            throw e;
+        }
+        buffer.flip();
+        return buffer;
+    }
+
+    /**
+     * Returns a buffer that {@link #borrow(long, int)} handed out. Only a pooled buffer of the {@code index}
+     * mode is kept, while fewer than the idle limit are; anything else, including a heap buffer or a slice of
+     * a mapping, is ignored. The caller must not touch the buffer afterwards, nor release it twice.
+     *
+     * @param buffer the borrowed buffer
+     */
+    void release(ByteBuffer buffer) {
+        if (mode != MODE_INDEX || !buffer.isDirect() || buffer.isReadOnly()) {
+            return;
+        }
+        synchronized (this) {
+            if (buffer.capacity() != poolBufferSize) {
+                return;
+            }
+            buffer.clear();
+            if (!closed && buffers.size() < maxIdle) {
+                buffers.addFirst(buffer);
+                return;
+            }
+            // Dropped: the garbage collector returns its native memory.
+            liveBuffers--;
+        }
+    }
+
+    /**
+     * An idle pooled buffer, or a new one while fewer than {@link #POOL_MAX_BUFFERS} exist, limited to
+     * {@code length}.
+     *
+     * @return the buffer, or {@code null} when the region does not fit one, all are in use or the source is
+     *         closed, in which case the caller reads into a heap array
+     */
+    private ByteBuffer acquireBuffer(int length) {
+        int size;
+        synchronized (this) {
+            if (closed) {
+                return null;
+            }
+            size = poolBufferSize;
+            if (size == 0) {
+                // No index has been mapped, so nothing recorded the largest class.
+                size = POOL_MAX_BUFFER_SIZE;
+                poolBufferSize = size;
+            }
+            if (length > size) {
+                return null;
+            }
+            ByteBuffer idle = buffers.pollFirst();
+            if (idle != null) {
+                idle.limit(length);
+                return idle;
+            }
+            if (liveBuffers >= POOL_MAX_BUFFERS) {
+                return null;
+            }
+            liveBuffers++;
+            createdBuffers++;
+        }
+        try {
+            ByteBuffer created = ByteBuffer.allocateDirect(size);
+            created.limit(length);
+            return created;
+        } catch (RuntimeException | Error e) {
+            synchronized (this) {
+                liveBuffers--;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Tells the source that the application's {@code main} has returned, so that it can trim what only
+     * startup needed: from here on the {@code index} mode's pool keeps at most {@link #POOL_IDLE_AFTER_STARTUP}
+     * idle buffers, and the native memory of the others returns once the garbage collector reclaims them.
+     * {@link Launcher} calls it once, after a normal return; an application whose {@code main} never returns
+     * keeps the pool.
+     */
+    void startupFinished() {
+        synchronized (this) {
+            maxIdle = POOL_IDLE_AFTER_STARTUP;
+            while (buffers.size() > maxIdle) {
+                buffers.pollLast();
+                liveBuffers--;
+            }
+        }
+    }
+
+    /**
+     * The file key a reopen after an interrupt compares, for tests.
+     *
+     * @return the key, or {@code null} in the mapped modes or when the file system reports none
+     */
+    Object fileKey() {
+        return fileKey;
+    }
+
+    /**
+     * How many pooled buffers the {@code index} mode has allocated since this source opened.
+     *
+     * @return the count, never more than {@link #POOL_MAX_BUFFERS} while no buffer was dropped
+     */
+    synchronized int createdBuffers() {
+        return createdBuffers;
+    }
+
+    /**
+     * How many pooled buffers are idle.
+     *
+     * @return the count
+     */
+    synchronized int idleBuffers() {
+        return buffers.size();
+    }
+
+    /**
+     * The capacity of the pooled buffers.
+     *
+     * @return the size in bytes, or {@code 0} before the first index or borrow of the {@code index} mode
+     */
+    synchronized int poolBufferSize() {
+        return poolBufferSize;
     }
 
     /**
@@ -350,12 +724,14 @@ public final class ArchiveSource implements AutoCloseable {
     }
 
     /**
-     * A buffer over a region of the archive. In the mapped mode this copies nothing: the buffer is a
+     * A buffer over a region of the archive. In the mapped modes this copies nothing: the buffer is a
      * read-only window onto the mapping, which is what lets the class loader define a STORED class without
-     * ever materialising a {@code byte[]}. In the fallback mode the region is read into a new heap array, and
-     * the buffer wraps that array, writable and with {@link ByteBuffer#hasArray() an accessible array}, so
-     * that {@link ClassLoader} defines a class straight from it instead of copying it again. Every call
-     * returns a fresh array that the caller owns, so writing to it changes no shared state.
+     * ever materialising a {@code byte[]}. In the {@code index} and {@code false} modes the region is read into
+     * a new heap array, and the buffer wraps that array, writable and with {@link ByteBuffer#hasArray() an
+     * accessible array}, so that {@link ClassLoader} defines a class straight from it instead of copying it
+     * again. Every call returns a fresh array that the caller owns, so writing to it changes no shared state.
+     * The class loader reads classes through {@link #borrow(long, int)} instead, which pools buffers in the
+     * {@code index} mode.
      *
      * <p>The returned buffer's byte order is the {@link ByteBuffer} default, big-endian; callers reading
      * little-endian structures out of it must set the order themselves.</p>
@@ -461,8 +837,10 @@ public final class ArchiveSource implements AutoCloseable {
      * Decompresses a DEFLATE entry into an array of exactly {@code uncompressedSize} bytes.
      *
      * <p>This is the class loading path for a compressed archive, so it allocates one array, borrows an
-     * inflater from the pool and, in the mapped mode, feeds the inflater a direct buffer over the mapping
-     * rather than copying the compressed bytes first.</p>
+     * inflater from the pool and, in the mapped modes, feeds the inflater a direct buffer over the mapping
+     * rather than copying the compressed bytes first. In the {@code index} mode the compressed bytes are read
+     * into a buffer {@link #borrow(long, int) borrowed} from the pool, or into a heap array when they are
+     * larger than a pooled buffer.</p>
      *
      * @param dataOffset       absolute offset of the entry data
      * @param compressedSize   number of stored bytes
@@ -478,6 +856,7 @@ public final class ArchiveSource implements AutoCloseable {
         checkRange(dataOffset, compressedSize);
         byte[] result = new byte[uncompressedSize];
         Inflater inflater = acquireInflater();
+        ByteBuffer borrowed = null;
         try {
             ByteBuffer b = view;
             MemorySegment s = segment;
@@ -485,6 +864,9 @@ public final class ArchiveSource implements AutoCloseable {
                 inflater.setInput(b.slice((int) dataOffset, compressedSize));
             } else if (s != null) {
                 inflater.setInput(s.asSlice(dataOffset, compressedSize).asByteBuffer());
+            } else if (mode == MODE_INDEX) {
+                borrowed = borrow(dataOffset, compressedSize);
+                inflater.setInput(borrowed);
             } else {
                 inflater.setInput(readFully(dataOffset, compressedSize));
             }
@@ -533,7 +915,11 @@ public final class ArchiveSource implements AutoCloseable {
         } catch (DataFormatException e) {
             throw new IOException("Corrupt deflate stream at offset " + dataOffset, e);
         } finally {
+            // The inflater first: resetting it drops its reference to the borrowed input.
             releaseInflater(inflater);
+            if (borrowed != null) {
+                release(borrowed);
+            }
         }
     }
 
@@ -587,8 +973,8 @@ public final class ArchiveSource implements AutoCloseable {
     }
 
     /**
-     * Releases the mapping and the file handle. The launcher never calls this; tests, tools and benchmarks
-     * must, because an open mapping keeps the file alive on Windows.
+     * Releases the mappings, the buffer pool and the file handle. The launcher never calls this; tests, tools
+     * and benchmarks must, because an open mapping keeps the file alive on Windows.
      *
      * @throws UncheckedIOException if the channel cannot be closed
      */
@@ -597,6 +983,8 @@ public final class ArchiveSource implements AutoCloseable {
         Inflater[] pooled;
         FileChannel openChannel;
         RandomAccessFile openHandle;
+        Arena wholeFile;
+        Arena index;
         synchronized (this) {
             if (closed) {
                 return;
@@ -604,15 +992,23 @@ public final class ArchiveSource implements AutoCloseable {
             closed = true;
             pooled = inflaters.toArray(new Inflater[0]);
             inflaters.clear();
+            liveBuffers -= buffers.size();
+            buffers.clear();
             // A reopen publishes under this lock and checks closed first, so these are the last pair.
             openChannel = channel;
             openHandle = handle;
+            // Null once the archive's flag switched the source to the index mode, which closed it already.
+            wholeFile = arena;
+            index = indexArena;
         }
         for (int i = 0; i < pooled.length; i++) {
             pooled[i].end();
         }
-        if (arena != null) {
-            arena.close();
+        if (wholeFile != null) {
+            wholeFile.close();
+        }
+        if (index != null) {
+            index.close();
         }
         IOException failure = null;
         try {
@@ -685,8 +1081,8 @@ public final class ArchiveSource implements AutoCloseable {
      * filled at most 64 KiB per call, and a direct buffer in one call. The caller's interrupt status is
      * cleared for the read and restored afterwards, and a channel that an interrupt closed, in this thread
      * or in any other, is reopened a bounded number of times; see {@link PositionalReads}. The method holds no
-     * mode-specific logic. The file key that a reopen compares is captured only by a source that {@link
-     * #open(File) opens} to read through the channel.</p>
+     * mode-specific logic. The file key that a reopen compares is captured before the first positional read,
+     * by {@link #open(File)} or by the switch in {@link #indexRegion(long, int)}.</p>
      *
      * @param position    absolute offset in the archive; the caller has already checked the region
      * @param destination the buffer to fill between its position and its limit
@@ -881,13 +1277,14 @@ public final class ArchiveSource implements AutoCloseable {
      *
      * <p>A reopen goes by path, and a deployment may have renamed another file onto that path since this JVM
      * opened it. The reopened file is published only if its length, and the file key when the file system
-     * has one, still match what {@link ArchiveSource#open(File)} captured. Otherwise the failure is stored and
-     * every later read fails with it. Opening first and comparing the key afterwards can only raise a false
-     * alarm, never switch to a file that was renamed in.</p>
+     * has one, still match what {@link ArchiveSource#open(File)} or the switch to the {@code index} mode
+     * captured. Otherwise the failure is stored and every later read fails with it. Opening first and comparing
+     * the key afterwards can only raise a false alarm, never switch to a file that was renamed in.</p>
      *
-     * <p>This is a separate class, reached only through static calls from the fallback branches, so that
-     * verifying {@link ArchiveSource} does not load the exception types caught and thrown here. In the default
-     * mapped mode the class is never loaded.</p>
+     * <p>This is a separate class, reached only through static calls from the positional branches, so that
+     * verifying {@link ArchiveSource} does not load the exception types caught and thrown here. In the mapped
+     * modes the class is never loaded; in the {@code index} mode it is the one launcher class that loads
+     * before {@code main} on top of the mapped modes' set.</p>
      */
     static final class PositionalReads {
 

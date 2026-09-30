@@ -1754,6 +1754,56 @@ class RunnerJarBuilderTest {
     }
 
     @Test
+    void recordsPositionalReadsAndTheLargestStoredClassOnlyWhenAskedTo() throws IOException {
+        Path positional = output();
+        RunnerJarBuilder.build(spec(positional).archiveReads(ArchiveReads.POSITIONAL).build(), BuildLogger.noOp());
+        Path mapped = output();
+        RunnerJarBuilder.build(spec(mapped).build(), BuildLogger.noOp());
+
+        try (RunnerJarReader reader = RunnerJarReader.open(positional)) {
+            Index index = reader.index();
+            assertTrue(index.positionalReads());
+            assertTrue(index.nestedStored(), "POSITIONAL leaves the compression alone");
+            long expected = 0;
+            for (int record = 0; record < index.entryCount(); record++) {
+                if (index.entryMethod(record) == IndexFormat.METHOD_STORED
+                        && index.entryName(record).endsWith(".class")) {
+                    expected = Math.max(expected, index.entryUncompressedSize(record));
+                }
+            }
+            assertTrue(index.largestStoredClass() > 0, "the fixture has STORED classes");
+            assertEquals(expected, index.largestStoredClass());
+        }
+        try (RunnerJarReader reader = RunnerJarReader.open(mapped)) {
+            assertFalse(reader.index().positionalReads());
+            assertEquals(0, reader.index().largestStoredClass());
+        }
+    }
+
+    @Test
+    void anArchiveReadsOptionSetByNameReachesTheLauncher() throws Throwable {
+        Path output = output();
+        RunnerJarBuilder.build(spec(output).option("archiveReads", "positional").build(), BuildLogger.noOp());
+
+        String inspected;
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            java.io.PrintStream original = System.out;
+            java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+            System.setOut(new java.io.PrintStream(captured, true, StandardCharsets.UTF_8));
+            try {
+                io.micronaut.runner.tools.Inspect.run(new String[0], output.toFile(), reader.index(),
+                        reader.source());
+            } finally {
+                System.setOut(original);
+            }
+            inspected = captured.toString(StandardCharsets.UTF_8);
+        }
+        assertTrue(inspected.lines().anyMatch(line -> line.matches("Archive reads\\s+positional")), inspected);
+        assertTrue(inspected.lines().anyMatch(line -> line.matches("Read through\\s+positional reads, index mapped")),
+                inspected);
+    }
+
+    @Test
     void packagesTheApplicationAndItsDependencies() throws IOException {
         Path output = output();
         RunnerJarResult result = RunnerJarBuilder.build(spec(output).build(), BuildLogger.noOp());
