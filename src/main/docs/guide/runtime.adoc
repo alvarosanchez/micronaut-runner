@@ -162,7 +162,9 @@ new one, and `-Djava.util.concurrent.ForkJoinPool.common.parallelism=0` makes tw
 the same order. The launch waits until the port accepts a connection, and then for the readiness path if one is set,
 sends the workload, and reads the class-load log before it stops the application, so classes that only the shutdown
 loads stay out. Every process it started is ended when the recording succeeds, fails, times out or is cancelled,
-and when the build's JVM is terminated.
+and when the build's JVM exits or is stopped in an orderly way, such as by SIGTERM on Linux and macOS. That last
+cleanup runs in a shutdown hook, so a build JVM that is killed outright takes nothing down with it: after SIGKILL,
+or when Windows terminates the process (as `taskkill /F` does), end the application yourself.
 
 [[trainingSettings]]
 *Training settings.* The workload decides a few hundred of the classes, so point it at the application's hot paths.

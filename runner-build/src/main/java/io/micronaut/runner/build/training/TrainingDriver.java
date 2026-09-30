@@ -53,8 +53,9 @@ import java.util.stream.Stream;
  * <p>One run is: launch the archive with {@code java -jar}, wait until the application is ready, send it the
  * workload, call back, stop it. Every phase has a timeout, all of the application's output goes to a file,
  * and every process the run started is gone when {@link #run} returns or throws, the application's own
- * children included. A build that is terminated while a run is in progress takes the application down with
- * it.</p>
+ * children included. A build JVM that exits or is stopped in an orderly way while a run is in progress, such as
+ * by SIGTERM on Linux and macOS, takes the application down with it through a shutdown hook. One that is killed
+ * outright runs no hook and leaves the application running: after SIGKILL, or when Windows terminates it.</p>
  *
  * <p>The driver names no build tool and knows nothing about what the run is for: the caller passes the JVM
  * arguments that make it a recording or a cache training, and reads the result in its
