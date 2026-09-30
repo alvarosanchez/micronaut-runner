@@ -600,9 +600,9 @@ final class SampleBuild implements SampleSteps {
      * its AOT cache, may differ between runs; that costs only a retraining.</p>
      *
      * <p>Under a CPU limit the recording launch does not run under the limit's command prefix, because the driver
-     * launches {@code java} itself: it runs on the harness's own CPUs. The list hardly depends on the number of
-     * CPUs, since the recording pins the common pool to parallelism 0, and the row is timed under the limit like
-     * every other.</p>
+     * launches {@code java} itself: it runs on every CPU the harness may use, which pins itself only once the
+     * variants are prepared. The list hardly depends on the number of CPUs, since the recording pins the common
+     * pool to parallelism 0, and the row is timed under the limit like every other.</p>
      *
      * @param stored the list-free STORED runner jar
      * @return the preloading variant
