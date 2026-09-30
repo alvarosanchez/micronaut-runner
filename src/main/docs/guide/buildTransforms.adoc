@@ -101,8 +101,8 @@ included, to a project dependency (another project of a Gradle build, another mo
 any class of a signed JAR: they are nested exactly as they were built. With `PRESERVE` compression every
 dependency is nested byte for byte, so none of these transforms run.
 
-What a build changed is recorded in the archive, in `MICRONAUT-INF/transforms.txt` (see <<format>>), and printed
-by the `inspect` mode:
+What a build changed is recorded in the archive, in `MICRONAUT-INF/transforms.txt` (see
+<<format,The Runner JAR Format>>), and printed by the `inspect` mode:
 
 [source,bash]
 ----
@@ -139,7 +139,7 @@ keeps dependency class bytes as published, and `PRESERVE` keeps whole nested JAR
 archive is byte-reproducible only when it is built with the same JDK build.
 
 On `test-suite/samples/benchmark-large`, stripping rewrites 7,102 of the 8,428 dependency classes and saves
-4,868,965 bytes, with no fallback. Measured by the startup harness (<<benchmarks>>) against the
+4,868,965 bytes, with no fallback. Measured by the startup harness (<<benchmarks,Benchmarks>>) against the
 `runner-stored-keepdebug` control, 30 interleaved pairs on an Apple M4 Pro with Homebrew OpenJDK 25.0.4.1:
 
 [cols="40,60",options="header"]
@@ -166,6 +166,9 @@ stripped archive used more, by 2.0 MB at most.
 
 Packaging does the extra work on the staging threads. With 8 of them, the sample's `micronautRunnerJar` task took
 0.24 s instead of 0.08 s (medians of ten warm-daemon rounds), against 0.73 s for its `shadowJar`.
+
+These figures were taken before Runner precompiled `logback.xml` (<<precompiledLogback>>): both archives of each
+pair configured Logback with Joran, and neither carried the generated configurator.
 
 Some libraries read local-variable tables at run time and find nothing once they are gone. When the class path
 contains one of them, the build keeps every table and warns once, naming the JAR and the class:

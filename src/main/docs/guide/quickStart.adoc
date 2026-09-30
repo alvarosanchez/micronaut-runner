@@ -230,7 +230,7 @@ The typed options are parameters of the same names, except that `manifestAttribu
 scalar ones also read `-Dmicronaut.runner.<name>`. `<runnerOptions>` and `-Dmicronaut.runner.<name>` set the same
 options by name, `-Dmicronaut.runner.<name>` only for passthrough options, and a `<runnerOptions>` entry wins. For
 example, `-Dmicronaut.runner.precompileLogback=false` leaves `logback.xml` to Logback at startup.
-Dependency local-variable tables are dropped by default (see <<buildTransforms>>); pass
+Dependency local-variable tables are dropped by default (see <<localVariableTables,Local-variable tables>>); pass
 `-Dmicronaut.runner.stripLocalVariables=false` to keep them.
 
 To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,

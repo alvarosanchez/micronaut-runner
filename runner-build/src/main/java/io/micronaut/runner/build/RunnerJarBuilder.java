@@ -103,6 +103,10 @@ import java.util.zip.CRC32;
  * did is logged on the calling thread in class-path order and written into {@code MICRONAUT-INF/transforms.txt}
  * right after the launcher classes; with every transform off there is no scan and no such entry.</p>
  *
+ * <p>{@link LogbackPrecompiler} runs after the stages, because the staged dependencies decide whether it applies.
+ * The two do not meet: its front end loads Logback from the dependencies' own files, not from the staged copies,
+ * and the classes it generates join the application layer after the scan, where no transform rewrites them.</p>
+ *
  * <h2>Application jars</h2>
  * <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
  * archive has been written. Its entries are streamed from it into the archive, each inflated and checked

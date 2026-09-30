@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.runner.IndexFormat;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,7 @@ import java.lang.annotation.Annotation;
 import java.lang.classfile.Attribute;
 import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.CodeElement;
 import java.lang.classfile.CodeModel;
@@ -41,6 +43,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -48,6 +52,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.zip.ZipEntry;
@@ -258,6 +263,100 @@ class LocalVariableStripperTest {
                 && line.contains("has no effect")).count(), info::toString);
         try (ZipFile zip = new ZipFile(temp.resolve("preserve/app.jar").toFile())) {
             assertEquals(null, zip.getEntry("MICRONAUT-INF/transforms.txt"));
+        }
+    }
+
+    /**
+     * Both build-time transformations at their defaults, on the real Logback jars. The transform pass runs while
+     * the dependencies are staged; the Logback precompiler runs after it, reads the dependencies as published and
+     * adds its classes to the application layer, which no step rewrites. So the generated classes are the ones a
+     * build without stripping carries, and they configure a Logback whose classes have been stripped.
+     */
+    @Test
+    void thePrecompiledLogbackClassesAreNotRewrittenAndConfigureAStrippedLogback() throws Exception {
+        Path resources = Files.createDirectories(temp.resolve("composed/resources"));
+        Files.writeString(resources.resolve("logback.xml"), """
+                <configuration>
+                    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+                        <encoder>
+                            <pattern>%msg%n</pattern>
+                        </encoder>
+                    </appender>
+                    <root level="WARN">
+                        <appender-ref ref="STDOUT"/>
+                    </root>
+                </configuration>
+                """);
+        List<Path> logback = List.of(LogbackPrecompilerTest.jarOf(ch.qos.logback.classic.LoggerContext.class),
+                LogbackPrecompilerTest.jarOf(ch.qos.logback.core.Context.class),
+                LogbackPrecompilerTest.jarOf(org.slf4j.ILoggerFactory.class));
+
+        RunnerJarResult stripped = composed(temp.resolve("composed/stripped.jar"), resources, logback, true);
+        RunnerJarResult kept = composed(temp.resolve("composed/kept.jar"), resources, logback, false);
+
+        assertTrue(stripped.logbackPrecompiled(), "stripping on");
+        assertTrue(kept.logbackPrecompiled(), "stripping off");
+        assertEquals(List.of(), kept.transforms());
+        assertEquals(1, stripped.transforms().size(), stripped.transforms()::toString);
+        TransformReport report = stripped.transforms().get(0);
+        assertTrue(report.rewritten() > 0, report::toString);
+        assertEquals(0, report.fallbacks(), report::toString);
+        String classic = IndexFormat.LIB_PREFIX + logback.get(0).getFileName();
+        String loggerContext = "ch/qos/logback/classic/LoggerContext.class";
+        assertTrue(debugTables(nestedClasses(kept.output(), classic).get(loggerContext))
+                .contains("LocalVariableTable"), "Logback is published with its local-variable tables");
+        assertEquals(List.of("LineNumberTable"),
+                List.copyOf(debugTables(nestedClasses(stripped.output(), classic).get(loggerContext))));
+
+        List<String> generated = List.of(LogbackPrecompiler.CONFIGURATOR_ENTRY, LogbackPrecompiler.FALLBACK_ENTRY,
+                LogbackPrecompiler.SERVICE_ENTRY);
+        Path run = temp.resolve("composed/run");
+        List<URL> classPath = new ArrayList<>();
+        classPath.add(Files.createDirectories(run.resolve("classes")).toUri().toURL());
+        try (ZipFile archive = new ZipFile(stripped.output().toFile());
+             ZipFile control = new ZipFile(kept.output().toFile())) {
+            assertNotNull(archive.getEntry(IndexFormat.TRANSFORMS_ENTRY_NAME));
+            for (String name : generated) {
+                byte[] bytes = entry(archive, IndexFormat.CLASSES_PREFIX + name);
+                assertArrayEquals(entry(control, IndexFormat.CLASSES_PREFIX + name), bytes, name);
+                Files.createDirectories(run.resolve("classes").resolve(name).getParent());
+                Files.write(run.resolve("classes").resolve(name), bytes);
+            }
+            for (Path jar : logback) {
+                Path nested = run.resolve(jar.getFileName().toString());
+                Files.write(nested, entry(archive, IndexFormat.LIB_PREFIX + jar.getFileName()));
+                classPath.add(nested.toUri().toURL());
+            }
+        }
+        byte[] configurator = Files.readAllBytes(run.resolve("classes").resolve(LogbackPrecompiler.CONFIGURATOR_ENTRY));
+        byte[] fallback = Files.readAllBytes(run.resolve("classes").resolve(LogbackPrecompiler.FALLBACK_ENTRY));
+        assertEquals(List.of(), List.copyOf(debugTables(configurator)), "generated without debug tables");
+        assertTrue(debugTables(fallback).contains("LineNumberTable"), "javac output, with its tables as compiled");
+
+        // The generated classes and the stripped jars, as the archive nests them, with nothing else but the JDK.
+        try (URLClassLoader loader = new URLClassLoader(classPath.toArray(URL[]::new),
+                ClassLoader.getPlatformClassLoader())) {
+            ClassFile classFile = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(
+                    ClassHierarchyResolver.ofResourceParsing(loader)));
+            assertEquals(List.of(), classFile.verify(configurator));
+            assertEquals(List.of(), classFile.verify(fallback));
+            Class<?> contextType = loader.loadClass("ch.qos.logback.classic.LoggerContext");
+            Class<?> configuratorType = loader.loadClass("ch.qos.logback.classic.spi.Configurator");
+            Object context = contextType.getConstructor().newInstance();
+            Object instance = ServiceLoader.load(configuratorType, loader).iterator().next();
+            assertSame(loader, instance.getClass().getClassLoader());
+            assertEquals(LogbackPrecompiler.CONFIGURATOR_CLASS, instance.getClass().getName());
+            configuratorType.getMethod("setContext", loader.loadClass("ch.qos.logback.core.Context"))
+                    .invoke(instance, context);
+            Object status = configuratorType.getMethod("configure", contextType).invoke(instance, context);
+            Object root = contextType.getMethod("getLogger", String.class).invoke(context, "ROOT");
+            try {
+                assertEquals("DO_NOT_INVOKE_NEXT_IF_ANY", status.toString());
+                assertEquals("WARN", String.valueOf(root.getClass().getMethod("getLevel").invoke(root)));
+                assertNotNull(root.getClass().getMethod("getAppender", String.class).invoke(root, "STDOUT"));
+            } finally {
+                contextType.getMethod("stop").invoke(context);
+            }
         }
     }
 
@@ -551,6 +650,36 @@ class LocalVariableStripperTest {
                 .output(output)
                 .stripLocalVariables(strip)
                 .build(), BuildLogger.noOp());
+    }
+
+    private static RunnerJarResult composed(Path output, Path resources, List<Path> logback, boolean strip)
+            throws IOException {
+        return RunnerJarBuilder.build(RunnerJarSpec.builder()
+                .mainClass("app.Main")
+                .applicationOutput(List.of(applicationClasses, resources))
+                .dependencies(logback.stream().map(Dependency::of).toList())
+                .output(output)
+                .stripLocalVariables(strip)
+                .build(), BuildLogger.noOp());
+    }
+
+    /** The line-number and local-variable tables that the methods of a class carry, by attribute name. */
+    private static TreeSet<String> debugTables(byte[] bytes) {
+        TreeSet<String> tables = new TreeSet<>();
+        for (MethodModel method : ClassFile.of().parse(bytes).methods()) {
+            method.code().ifPresent(code -> names(code.attributes()).stream()
+                    .filter(name -> name.startsWith("LineNumber") || name.startsWith("LocalVariable"))
+                    .forEach(tables::add));
+        }
+        return tables;
+    }
+
+    private static byte[] entry(ZipFile zip, String name) throws IOException {
+        ZipEntry entry = zip.getEntry(name);
+        assertNotNull(entry, () -> name + " is not in " + zip.getName());
+        try (InputStream in = zip.getInputStream(entry)) {
+            return in.readAllBytes();
+        }
     }
 
     /** The entries of a jar nested in a runner jar, by name. */
