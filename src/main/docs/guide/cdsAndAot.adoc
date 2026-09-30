@@ -8,16 +8,51 @@ HotSpot reuses the pre-parsed and pre-verified copy instead of parsing the bytes
 AOT-linked, and the lambdas they spin at run time are not archived. The extracted layout runs entirely on the built-in
 loader, so its application classes are AOT-linked too. JDK 27's AOT cache stores only classes from `file:` code sources
 (https://bugs.openjdk.org/browse/JDK-8380291[JDK-8380291]), so it stores none of the single JAR's application classes
-(dynamic CDS still does); on JDK 27, use the extracted layout (<<aotLayout>>).
+(dynamic CDS still does). The single JAR's cache, trained by hand or with `jdkAotCache.target = 'singleJar'`, is worth
+having on JDK 25 and 26 only; the extracted layout's cache (<<aotLayout>>) keeps its value on JDK 25 and 27 (measured),
+and a weekly CI job checks each newer JDK.
 
 [[aotLayout]]
 == Recommended: the extracted layout with the AOT cache
 
 This deployment is not a single file: the application JAR, `lib/` and the cache are one unit, trained and shipped
 together. It pays off only with its cache: uncached, the layout reached readiness 57–63 ms later than the single JAR
-(`benchmark-large`, JDK 25.0.4.1), so an uncached `java -jar` stays on the single JAR. Extract with
-`java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination app` (<<runtime>>), run the script below as
-`bash train.sh` with `JAR=app/my-app-0.1-all.jar`, then launch `java -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar`.
+(`benchmark-large`, JDK 25.0.4.1), so an uncached `java -jar` stays on the single JAR.
+
+*With the build plugins.* Runner's interim Gradle and Maven plugins build the whole deployment, as experimental tasks
+and goals of those plugins only: `./gradlew micronautRunnerJdkAotCache` and `mvn package` with the `jdk-aot-cache` goal
+extract the Runner JAR into `build/micronaut-runner/jdk-aot-cache/` (Maven: `target/micronaut-runner/jdk-aot-cache/`),
+train the cache there with the training settings (<<trainingSettings>>), verify it, and write the launch argfile
+`app.jvmopts`. Launch from that directory with `java @app.jvmopts -jar my-app-0.1-all.jar`, or in a Dockerfile with
+`WORKDIR /app` and `ENTRYPOINT ["java", "@app.jvmopts", "-jar", "my-app-0.1-all.jar"]`. `micronautRunnerLayout` and
+`mn-runner:layout` write only the layout, to `build/micronaut-runner/layout/` (Maven: `target/micronaut-runner/layout/`),
+for a cache trained elsewhere.
+
+[source,groovy]
+----
+micronautRunner {              // micronaut { runner { } } in a build with a Micronaut plugin
+    training {
+        readinessPath = '/health'
+        workloadPaths = ['/hello']
+    }
+    jdkAotCache {
+        enabled = true         // assemble also builds micronautRunnerJdkAotCache; default false
+        target = 'layout'      // or 'singleJar'
+        strict = false         // true: app.jvmopts also carries -XX:AOTMode=on
+        jvmArgs = []           // every launch of the cache, and app.jvmopts
+        verifyProbes = 10
+        minCoverage = 0.95
+    }
+}
+----
+
+In Maven, list `jdk-aot-cache` after `package` in the plugin's `<goals>` (Maven runs a phase's goals in declaration
+order) and enable it with `-Dmicronaut.runner.jdkAotCache.enabled=true` or `<jdkAotCacheEnabled>true</jdkAotCacheEnabled>`;
+each setting above is the property `micronaut.runner.jdkAotCache.<name>` and the parameter `jdkAotCache<Name>`.
+
+*By hand.* Extract with `java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination app` (<<runtime>>),
+run the script below as `bash train.sh` with `JAR=app/my-app-0.1-all.jar`, then launch
+`java -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar`.
 
 [[trainingSnippet]]
 [source,bash]
@@ -53,23 +88,56 @@ kills the JVM. It needs the `jcmd` binary: JDK images have it, JRE images do not
 Windows, use the `jcmd` line; on JDK 25.0.0 to 25.0.3, an application with `micronaut-management` can instead enable its
 stop endpoint for training (`ENDPOINTS_STOP_ENABLED=true`, `ENDPOINTS_STOP_SENSITIVE=false`) and `POST /stop` (exit 0).
 
-On `benchmark-large` with JDK 25.0.4.1, the cached layout was ready 24–29 ms sooner than the single JAR with its cache
-and 8–11 ms after a Shadow JAR with its cache (within about 10 ms; two replicates of 20 pairs), at 131.6 MiB maximum RSS
-against 175.3 and 134.6 MiB. On JDK 27 (build 27) it was at parity with Shadow (+2.9 ms, 95% CI −5.8 to +8.6, 20 pairs).
+*Plugin settings.* The tasks and goals record the configuration, end the recording with that `jcmd` line on JDK 25.0.4
+and later (on 25.0.0 to 25.0.3 the training stop ends it, which on Windows needs `training.stopPath` set to such a stop
+endpoint), and create the cache in a separate launch, with the JDK 27 creation flags below when the JDK has them.
+`jdkAotCache.jvmArgs` (Maven: `micronaut.runner.jdkAotCache.jvmArgs`) go on every launch of the cache, the recording,
+the creation and the checks, and into `app.jvmopts`, so the flags the cache depends on are the same in training and
+production; `training.jvmArgs` belong to the startup profile only. The other training settings are in
+<<trainingSettings>>.
+
+*What the build checks* before it keeps the cache, as `aot-report.json` records:
+
+. the verifying JDK is the build, operating system and architecture that created it (`app.aot.properties`);
+. `verifyProbes` strict `-version` probes all pass;
+. a strict launch of the application reaches readiness and serves the training workload;
+. of that launch's classes, at least `minCoverage` come from the cache, and every `io.micronaut` class that does not is a
+lambda or one the recording skipped for failing verification or as a JFR event class; `singleJar` only reports this, and
+warns when fewer than half of the `io.micronaut` classes came from the cache;
+. the layout's `Class-Path` follows the Runner JAR's class-path order, and its JARs keep the extracted modification time.
+
+A failed check deletes `app.aot` and `app.jvmopts` and keeps the logs. `strict = true` puts `-XX:AOTMode=on` in
+`app.jvmopts`, which turns a later mismatch, such as rewritten modification times, into a failed launch instead of an
+uncached one.
+
+On `benchmark-large` (Micronaut 5.1.15, Netty 4.2.18; macOS on Apple silicon) with JDK 25.0.4.1, the cached layout was
+ready 15.9–22.8 ms sooner than the single JAR with its cache and 1.8–6.8 ms after a Shadow JAR with its cache (three
+replicates of 20 pairs), at 127.2 MiB maximum RSS against 167.8 and 134.1 MiB. On JDK 27 (build 27) it was at parity
+with Shadow (−0.5 ms, 95% CI −11.1 to +7.1, 20 pairs), at 116.2 against 126.8 MiB. Training and verifying it with
+`micronautRunnerJdkAotCache` took about 4 s of build time.
 
 *Modification times.* The cache records each class-path JAR (the application JAR and each `lib/` JAR, or the single
 Runner JAR) by position, size and modification time. Extract stamps every file and directory with 1980-02-01T00:00:00Z,
 so a layout moved or copied with its times kept (`cp -p`, `tar`, Docker `COPY`) still validates, as does a re-extract of
 the same JAR. Rewritten times, or a `touch` on one JAR, fail a strict launch with `timestamp has changed`, and a default
 one runs uncached. jib's default file time, 1970-01-01T00:00:01Z, does not match a cache trained on extracted files.
+The tasks and goals train in their output directory, so copy that directory the same way.
 
 *Train with the exact runtime JDK build.* The cache is tied to the JDK build, OS and architecture, so training on the
 build machine helps only when it runs the production JDK build. It is also tied to the GC and, for large heaps, to
 compressed oops: any GC selection flag or `-Xmx` that production sets goes on the training `java` line too. On
 `benchmark-large`, a cache trained with the default G1 failed strict launches with `-XX:+UseZGC` or `-Xmx40g` on JDK
 25.0.4.1 and 27 (build 27), and with `-XX:+UseSerialGC` or `-XX:+UseParallelGC` on JDK 27; default ergonomics with 12
-CPUs and with one passed on both (container memory limits were not tested). In a container image, train in a `RUN` step
-after the final `COPY` of the layout, with `train.sh` unchanged (the default `JAR` applies). The script needs `bash` and
+CPUs and with one passed on both (container memory limits were not tested). When production has fewer CPUs or less
+memory than the build machine, pin the collector in `jdkAotCache.jvmArgs`, such as `-XX:+UseG1GC`: below 2 CPUs or
+1792 MB the JVM picks SerialGC, and a strict JDK 27 launch of a G1-trained cache then exits 1. Add no flag the cache
+depends on outside `app.jvmopts`. The tasks and goals train with the Gradle toolchain's launcher or the Maven `jdk`
+toolchain, else with the JDK that runs the build, so point that at the production JDK build: a cache trained there is
+valid only for the same JDK build, OS, CPU architecture and collector. When the build machine is not the runtime, as
+for most container images, use the Dockerfile below, and the JDK 27 form after it, with `COPY
+build/micronaut-runner/layout/ ./` (Maven: `target/micronaut-runner/layout/`) in place of `COPY app/ ./`. In a container
+image, train in a `RUN` step after the final `COPY` of the layout, with `train.sh` unchanged (the default `JAR`
+applies). The script needs `bash` and
 `curl`, and `eclipse-temurin` images have no `curl`, hence the first `RUN`. Pin `FROM` by digest in production, because
 the cache belongs to that JDK build. A failed training run or probe fails the image build.
 
@@ -112,13 +180,22 @@ table omits the JDK 25.0.4.1 cache (52.3 MB, 12.4 MB gzipped, from one training,
 |PRESERVE Runner JAR |14,791,648 B |13.18 MB |1.00x
 |===
 
+*What differs in the layout.* Every class of the application layer carries over except the generated entry stub, so a
+precompiled Logback configuration (<<precompiledLogback>>) still applies. What the launcher and the stub do at startup
+does not run: the startup profile's preload (<<preload>>) has no effect, and a JAR built with it trains the same layout
+cache. The JDK's class loader replaces `RunnerClassLoader` and resolves classes in the same order; each JAR keeps its own
+`META-INF/micronaut`, a dependency's own manifest `Class-Path` becomes active, and the code sources are the `lib/` JARs'
+`file:` URLs.
+
 == Single-file option on JDK 25 and 26: the AOT cache on the single JAR
 
 <<preload,Preloading the recorded startup classes>> complements a cache: its gain is in launches without one. Build
 the JAR with the list first, then train the cache on that JAR.
 
 Run the training script (<<trainingSnippet>>) with `JAR` at the path production launches, then
-`java -XX:AOTCache=app.aot -jar my-app-0.1-all.jar`. On `benchmark-large` with JDK 25.0.4.1 this was ready 37.5 ms
+`java -XX:AOTCache=app.aot -jar my-app-0.1-all.jar`. With the build plugins, `jdkAotCache.target = 'singleJar'`
+(<<aotLayout>>) trains and checks it on a copy of the Runner JAR that `micronautRunnerJar` built, with its committed
+startup profile, so the cache also holds what the preload loads. On `benchmark-large` with JDK 25.0.4.1 this was ready 37.5 ms
 sooner than explicit CDS (95% CI 32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS, but 24–29 ms later than
 the extracted layout and 36–39 ms behind Shadow, each with its AOT cache. On JDK 27 (build 27) it caches no application
 classes and was 173.5 ms behind Shadow's (95% CI 169.7 to 179.8 ms, 20 pairs): a single file there uses CDS.

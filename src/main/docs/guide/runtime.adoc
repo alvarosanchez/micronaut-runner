@@ -250,7 +250,8 @@ It must exit 0.
 or stop, and it must exit 0. Then the list also holds what the shutdown loads.
 |`stopPath` |none |`POST` it instead of ending the process, for example Micronaut's `/stop` endpoint with
 `ENDPOINTS_STOP_ENABLED=true` and `ENDPOINTS_STOP_SENSITIVE=false` in `environment`.
-|`jvmArgs` |none |JVM arguments of the recording launch. Name no class cache in them.
+|`jvmArgs` |none |JVM arguments of the recording launch. Name no class cache in them. The JDK AOT cache's launches
+take `jdkAotCache.jvmArgs` instead (<<aotLayout>>).
 |`environment` |none |Environment variables added to the launch.
 |`portVariable` |`MICRONAUT_SERVER_PORT` |The variable that receives the port.
 |`readinessTimeout`, `workloadTimeout`, `stopTimeout` |60 s, 60 s, 30 s |In Gradle a `java.time.Duration`.
@@ -308,7 +309,8 @@ The extracted form runs entirely on the JDK's own application class loader, with
 anywhere. The single JAR also uses the JDK's ahead-of-time cache (<<cdsAndAot>>); what extraction adds is AOT
 linking of the application classes, which classes defined by a user-defined class loader do not get. That is
 why an application that will be started thousands of times in the same container image may be better served
-by extracting once at image build time.
+by extracting once at image build time. For that cached deployment, trained and verified with its launch
+options, see <<aotLayout>>.
 
 === Publication and replacement
 
