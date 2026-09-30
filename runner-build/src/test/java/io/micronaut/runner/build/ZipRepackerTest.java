@@ -21,6 +21,7 @@ import io.micronaut.runner.build.ZipReaderTest.Payload;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.ByteArrayOutputStream;
@@ -31,6 +32,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -262,6 +264,44 @@ class ZipRepackerTest {
                 // Both paths take everything the inflater can still give before they conclude, so they
                 // count the same content.
                 assertEquals(read.getMessage(), streamed.getMessage());
+            }
+        }
+    }
+
+    /** Zero bytes and text, recorded as exactly one transfer buffer and as one byte more. */
+    static Stream<Arguments> overproducedEntries() {
+        int buffer = ZipReader.TRANSFER_BUFFER_SIZE;
+        return Stream.of(Payload.ZEROS, Payload.TEXT).flatMap(payload ->
+                Stream.of(Arguments.of(payload, buffer), Arguments.of(payload, buffer + 1)));
+    }
+
+    @ParameterizedTest(name = "{0}, recorded as {1} bytes")
+    @MethodSource("overproducedEntries")
+    void refusesADeflateStreamThatHoldsMoreThanItsRecordedSizeNextToTheTransferBuffer(Payload payload, int recorded)
+            throws IOException {
+        // A stream with more content than the archive records can reach the recorded size with all of its
+        // compressed bytes consumed and content still held by the inflater. That is no truncation: what is
+        // left is content the archive does not account for, and both ways of reading the entry have to take
+        // it before they conclude, streaming at the end of a buffer and reading at the end of the array of
+        // the recorded size. Where the deflater cut its matches decides which streams get there, so this
+        // goes through every excess up to 299 bytes.
+        byte[] content = payload.bytes(recorded);
+        for (int more = 1; more < 300; more++) {
+            int excess = more;
+            Path source = rawDeflatedArchive(temp.resolve("overproduction.jar"), "data.bin",
+                    rawDeflate(payload.bytes(recorded + excess)), content);
+            String expected = "Deflate stream for entry 'data.bin' of " + source
+                    + " produces more than the recorded " + recorded + " bytes";
+
+            IOException streamed = assertThrows(IOException.class,
+                    () -> ZipRepacker.repack(source, temp.resolve("overproduction-nested.jar")),
+                    () -> "a stream of " + excess + " bytes more");
+            assertEquals(expected, streamed.getMessage(), () -> "streaming " + excess + " bytes more");
+            try (ZipReader reader = ZipReader.open(source)) {
+                ZipEntryInfo entry = reader.entry("data.bin").orElseThrow();
+                IOException read = assertThrows(IOException.class, () -> reader.read(entry),
+                        () -> "a stream of " + excess + " bytes more");
+                assertEquals(expected, read.getMessage(), () -> "reading " + excess + " bytes more");
             }
         }
     }
