@@ -133,6 +133,21 @@ class RecordStartupProfileMojoTest {
     }
 
     @Test
+    void aWorkDirectoryNoRecordingLeftFailsTheGoalAndIsKept() throws Exception {
+        packageTheApplication(buildDirectory.resolve("demo-1.0.jar"));
+        set("trainingRunToExit", true);
+        Path work = buildDirectory.resolve("micronaut-runner/record-startup-profile");
+        Path stray = Files.writeString(Files.createDirectories(work).resolve("notes.txt"), "not the recorder's");
+
+        MojoFailureException refused = assertThrows(MojoFailureException.class, mojo::execute);
+
+        assertTrue(refused.getMessage().contains(work.toString()) && refused.getMessage().contains("not empty"),
+                refused.getMessage());
+        assertTrue(Files.exists(stray), "nothing is deleted");
+        assertFalse(Files.exists(temp.resolve("src/main/micronaut-runner")));
+    }
+
+    @Test
     void theTrainingParametersMapOntoTheSettings() throws Exception {
         assertEquals(TrainingSettings.defaults(), mojo.trainingSettings(), "unset, the library's defaults apply");
 

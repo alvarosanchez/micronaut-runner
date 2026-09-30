@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 /**
  * Records the startup profile of an application: the classes a run of its runner jar loaded, in load order,
@@ -79,6 +81,13 @@ public final class StartupProfileRecorder {
      */
     static final String ORDERING_FLAG = "-Djava.util.concurrent.ForkJoinPool.common.parallelism=0";
 
+    /**
+     * The file a recording leaves in its work directory. The recorder empties only a directory that is new,
+     * empty or carries it, so a work directory pointed at a directory with other content is refused rather
+     * than wiped.
+     */
+    static final String WORK_DIRECTORY_MARKER = ".micronaut-runner-recording";
+
     /** The launcher's switch: an archive that embeds an older profile must not replay it into the new one. */
     private static final String NO_PRELOAD_FLAG = "-Dmicronaut.runner.preload=false";
 
@@ -115,7 +124,9 @@ public final class StartupProfileRecorder {
      * @param settings        how to reach, exercise and stop the application; its
      *                        {@link TrainingSettings#jvmArgs()} must name no class cache
      * @param workDirectory   a directory of the build's own, which is emptied and becomes the working
-     *                        directory of the launch; the logs of the recording stay in it
+     *                        directory of the launch; the logs of the recording stay in it. It must be new,
+     *                        empty or left by an earlier recording, and must hold neither the runner jar nor
+     *                        the profile
      * @param profile         the profile to write
      * @param rerecordCommand the command that records the profile again in the caller's build, for the header:
      *                        one non-blank line
@@ -124,8 +135,9 @@ public final class StartupProfileRecorder {
      * @throws IOException              if the launch fails, the recording holds no class of the archive, or
      *                                  the profile cannot be written
      * @throws InterruptedException     if the thread is interrupted; the application has been reaped by then
-     * @throws IllegalArgumentException if {@code rerecordCommand} is blank or has a line break, or the profile
-     *                                  lies inside the work directory
+     * @throws IllegalArgumentException if {@code rerecordCommand} is blank or has a line break, the profile or
+     *                                  the runner jar lies inside the work directory, or the work directory
+     *                                  holds files that no earlier recording left there
      */
     public static int record(Path java,
                              Path runnerJar,
@@ -145,13 +157,21 @@ public final class StartupProfileRecorder {
             throw new IllegalArgumentException("The startup profile " + target + " must not be inside the work"
                     + " directory " + directory + ", which is emptied");
         }
+        Path archive = runnerJar.toAbsolutePath().normalize();
+        if (archive.startsWith(directory)) {
+            throw new IllegalArgumentException("The runner jar " + archive + " must not be inside the work"
+                    + " directory " + directory + ", which is emptied");
+        }
         if (!Files.isRegularFile(runnerJar) || !RunnerJarReader.isRunnerJar(runnerJar)) {
             throw new IOException(runnerJar + " is not a runner jar, so there is nothing to record a startup"
                     + " profile from");
         }
+        requireOwnWorkDirectory(directory);
 
         long started = System.nanoTime();
         empty(directory);
+        Files.writeString(directory.resolve(WORK_DIRECTORY_MARKER), "The working directory of a Micronaut"
+                + " Runner startup-profile recording. Every recording empties it.\n", StandardCharsets.UTF_8);
         Path classLoadLog = directory.resolve(CLASS_LOAD_LOG);
         Path snapshot = directory.resolve(CLASS_LOAD_SNAPSHOT);
         TrainingDriver.Outcome outcome = TrainingDriver.run(java, runnerJar,
@@ -362,6 +382,27 @@ public final class StartupProfileRecorder {
             }
         } finally {
             Files.deleteIfExists(temporary);
+        }
+    }
+
+    /**
+     * Refuses a work directory that holds anything an earlier recording did not leave: emptying it could
+     * delete build outputs or sources that a mistyped setting pointed at.
+     */
+    private static void requireOwnWorkDirectory(Path directory) throws IOException {
+        if (!Files.isDirectory(directory)
+                || Files.isRegularFile(directory.resolve(WORK_DIRECTORY_MARKER), LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        boolean empty;
+        try (Stream<Path> entries = Files.list(directory)) {
+            empty = entries.findAny().isEmpty();
+        }
+        if (!empty) {
+            throw new IllegalArgumentException("The work directory " + directory + " is not empty and no"
+                    + " earlier startup-profile recording left it. A recording empties its work directory, so it"
+                    + " takes only a new or empty directory, or one a recording left. Point the work directory"
+                    + " at such a directory, or delete this one if nothing in it is needed.");
         }
     }
 

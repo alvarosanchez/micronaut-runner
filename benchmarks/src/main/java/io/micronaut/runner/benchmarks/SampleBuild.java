@@ -623,8 +623,10 @@ final class SampleBuild implements SampleSteps {
                 .readinessTimeout(java.time.Duration.ofSeconds(CACHE_TIMEOUT_SECONDS))
                 .build();
         try {
+            // Recreated: the recorder refuses a directory with content no recording of its own left there.
             StartupProfileRecorder.record(javaExecutable(), stored.artifact(), settings,
-                    artifacts.resolve(STARTUP_PROFILE_WORK), profile, STARTUP_PROFILE_RERECORD, new HarnessLogger(log));
+                    recreate(artifacts.resolve(STARTUP_PROFILE_WORK)), profile, STARTUP_PROFILE_RERECORD,
+                    new HarnessLogger(log));
         } catch (IOException e) {
             throw new IOException("recording the startup classes failed: " + e.getMessage(), e);
         }

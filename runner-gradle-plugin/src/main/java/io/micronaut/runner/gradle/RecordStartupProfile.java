@@ -46,8 +46,8 @@ import java.util.concurrent.TimeUnit;
  * thread.
  *
  * <p>The task launches the application, so it is never up to date and never part of {@code assemble},
- * {@code build} or {@code check}: it runs only when it is asked for. However it ends, the application and
- * every process the application started are gone when it does.</p>
+ * {@code build} or {@code check}: it runs only when it is asked for. Whether it succeeds, fails or is
+ * cancelled, the application and every process the application started are gone when it ends.</p>
  *
  * <p>The API is experimental: it may change in any release.</p>
  *
@@ -107,7 +107,8 @@ public abstract class RecordStartupProfile extends DefaultTask {
 
     /**
      * The working directory of the launch, which is emptied first. The application's output and the JVM's
-     * class-load log stay in it.
+     * class-load log stay in it. The task takes only a new or empty directory, or one an earlier recording
+     * left, and never one that holds the runner jar or the profile: it fails rather than delete anything else.
      *
      * @return the work directory
      */

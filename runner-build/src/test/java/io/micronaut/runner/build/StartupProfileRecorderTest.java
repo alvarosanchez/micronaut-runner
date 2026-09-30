@@ -206,6 +206,7 @@ class StartupProfileRecorderTest {
 
         int first = StartupProfileRecorder.record(java(), runnerJar, serverSettings(), work, profile, RERECORD, log);
         List<String> firstClasses = StartupClassList.read(profile).classes();
+        // The first recording marked the directory as its own, so the second one empties it.
         Files.writeString(work.resolve("left-over.txt"), "from the first recording");
         int second = StartupProfileRecorder.record(java(), runnerJar, serverSettings(), work, profile, RERECORD, log);
         List<String> secondClasses = StartupClassList.read(profile).classes();
@@ -282,6 +283,40 @@ class StartupProfileRecorderTest {
             assertTrue(failure.getMessage().contains("is not a runner jar"), failure.getMessage());
         }
         assertTrue(Files.exists(keep), "the work directory is only emptied for a recording that starts");
+    }
+
+    @Test
+    void aWorkDirectoryWithContentNoRecordingLeftIsRefusedAndKept() throws Exception {
+        Path profile = temp.resolve("project/src/main/micronaut-runner/startup-classes.txt");
+        TrainingSettings settings = TrainingSettings.builder().runToExit(true)
+                .environment(Map.of("PROFILE_APP_MODE", "exit")).build();
+
+        // workDirectory = layout.buildDirectory: the runner jar is in it, and so is every other build output.
+        Path build = temp.resolve("project/build");
+        Path archive = Files.copy(runnerJar, Files.createDirectories(build.resolve("libs")).resolve("app-all.jar"));
+        Path classes = Files.writeString(Files.createDirectories(build.resolve("classes")).resolve("App.class"), "");
+        IllegalArgumentException holdsTheJar = assertThrows(IllegalArgumentException.class,
+                () -> StartupProfileRecorder.record(java(), archive, settings, build, profile, RERECORD, log));
+        assertTrue(holdsTheJar.getMessage().contains("The runner jar " + archive.toAbsolutePath().normalize()
+                + " must not be inside the work directory"), holdsTheJar.getMessage());
+
+        // workDirectory = file('src/main/java'): nothing the recording needs is in it, but it is not the build's.
+        Path sources = Files.createDirectories(temp.resolve("project/src/main/java/com/example"));
+        Path source = Files.writeString(sources.resolve("App.java"), "class App {}");
+        Path sourceRoot = temp.resolve("project/src/main/java");
+        IllegalArgumentException foreign = assertThrows(IllegalArgumentException.class,
+                () -> StartupProfileRecorder.record(java(), runnerJar, settings, sourceRoot, profile, RERECORD, log));
+        assertTrue(foreign.getMessage().contains("The work directory " + sourceRoot.toAbsolutePath().normalize()
+                + " is not empty and no earlier startup-profile recording left it"), foreign.getMessage());
+
+        assertTrue(Files.exists(archive) && Files.exists(classes) && Files.exists(source), "nothing is deleted");
+        assertFalse(Files.exists(profile), "nothing is recorded");
+
+        // An empty directory is taken, and the recording marks it as its own for the next one.
+        Path empty = Files.createDirectories(temp.resolve("project/build/record"));
+        StartupProfileRecorder.record(java(), runnerJar, settings, empty, profile, RERECORD, log);
+        assertTrue(Files.isRegularFile(profile));
+        assertTrue(Files.isRegularFile(empty.resolve(StartupProfileRecorder.WORK_DIRECTORY_MARKER)));
     }
 
     @Test
