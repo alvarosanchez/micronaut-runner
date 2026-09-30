@@ -158,11 +158,11 @@ Micronaut skips and which ones stop the application does not change.
 The option is off by default, because what the prefetch gains depends on the machine and is small next to a JDK AOT
 cache. On `benchmark-large` with JDK 25 and its static service table, measured with paired, interleaved starts:
 
-* without an AOT cache, it made the start 26 to 33 ms shorter on a 12-processor Mac, and about 10, 19 and 22 ms
-shorter in a Linux container limited to four, five and six processors;
+* without an AOT cache, it made the start 26 to 35 ms shorter on a 12-processor Mac, and in a Linux container 2 to
+10 ms shorter with four processors, 19 to 33 ms with five and 22 ms with six;
 * with an AOT cache, the start was 0 to 7 ms shorter on the Mac, where one of two runs could not tell the difference
-from zero, and 6 to 8 ms shorter in those containers, where the six-processor one could not either; the resident
-set at readiness was not larger;
+from zero, and 1 to 8 ms shorter in those containers, where five of seven runs could not either, among them three
+of the four with four processors; the resident set at readiness was at most about 2 MB larger;
 * with three processors, in a measurement before the static service table, it made the start about 50 ms longer,
 because Micronaut then loads the definitions on one thread fewer. So the prefetch starts only when the common pool
 has at least three threads, which takes four processors.
