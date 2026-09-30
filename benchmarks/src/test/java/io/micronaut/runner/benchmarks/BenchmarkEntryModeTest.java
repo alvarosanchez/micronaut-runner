@@ -23,11 +23,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.tools.ToolProvider;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +39,7 @@ import java.util.jar.JarOutputStream;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -160,12 +163,34 @@ class BenchmarkEntryModeTest {
         assertEquals(ArchiveReads.POSITIONAL, SampleBuild.RunnerJarOptions.DEFAULTS
                 .withArchiveReads(ArchiveReads.POSITIONAL).withPrecompileLogback(false).archiveReads());
 
-        Variant joran = SampleBuild.runnerJar(output, "runner-stored-joran", "fixture.JoranMain",
-                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB, control);
+        // A fixture the precompiler really compiles: a logback.xml and the real Logback and SLF4J jars. Without
+        // them no archive carries a configurator whatever the option says, and the control proves nothing.
+        Files.writeString(classes.resolve("logback.xml"), """
+                <configuration>
+                    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+                        <encoder>
+                            <pattern>%msg%n</pattern>
+                        </encoder>
+                    </appender>
+                    <root level="WARN">
+                        <appender-ref ref="STDOUT"/>
+                    </root>
+                </configuration>
+                """, StandardCharsets.UTF_8);
+        List<Path> logback = logbackFixture();
 
+        Variant precompiled = SampleBuild.runnerJar(output, "runner-stored", "fixture.JoranMain",
+                List.of(classes), logback, Compression.STORED, EntryMode.STUB);
+        Variant joran = SampleBuild.runnerJar(output, "runner-stored-joran", "fixture.JoranMain",
+                List.of(classes), logback, Compression.STORED, EntryMode.STUB, control);
+
+        assertTrue(SampleBuild.logbackPrecompiled(precompiled.artifact()),
+                "the builder default precompiles this fixture, so the control has something to differ from");
+        assertFalse(precompiled.description().contains("Joran"), precompiled.description());
         assertTrue(joran.description().contains("logback.xml left to Joran"), joran.description());
         assertFalse(joran.description().contains("archiveReads"), joran.description());
-        assertFalse(SampleBuild.logbackPrecompiled(joran.artifact()));
+        assertFalse(SampleBuild.logbackPrecompiled(joran.artifact()),
+                "the control's option reached the packaging library");
         assertEquals(LaunchInputs.PINNED_MODIFICATION_TIME, Files.getLastModifiedTime(joran.artifact()),
                 "a trained cache of the -aot control stays valid across runs only if the jar's time is pinned");
         try (RunnerJarReader reader = RunnerJarReader.open(joran.artifact())) {
@@ -281,6 +306,16 @@ class BenchmarkEntryModeTest {
                 "-d", classes.toString(), sourceFile.toString());
         assertEquals(0, exit, "fixture compilation failed");
         return classes;
+    }
+
+    /** The logback-classic, logback-core and slf4j-api jars the build hands to this test as files. */
+    private static List<Path> logbackFixture() {
+        String path = System.getProperty("runner.benchmark.logbackFixture");
+        assertNotNull(path, "run this test through Gradle, which sets runner.benchmark.logbackFixture to the"
+                + " Logback and SLF4J jars of the fixture");
+        List<Path> jars = Arrays.stream(path.split(File.pathSeparator)).map(Path::of).toList();
+        assertEquals(3, jars.size(), path);
+        return jars;
     }
 
     private static Path emptyJar(Path path) throws IOException {
