@@ -621,7 +621,7 @@ final class ClassTransformPipeline {
 
         private final Layer layer;
         private final boolean[] applies;
-        /** Whether a step counts the classes of this layer at all: the application layer counts only for the steps that run over it. */
+        /** Whether a step counts this layer's classes: the application layer counts only for the steps run over it. */
         private final boolean[] counted;
         /** Whether a step other than the planning one applies, so classes are worth reading in the entry loop. */
         private final boolean any;

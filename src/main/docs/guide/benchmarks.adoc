@@ -34,9 +34,10 @@ compilation and the packaging task's other dependencies execute as well. Each in
 task's action time and the wall time of the whole `gradlew` process. The comparisons are `runner-stored`/`shadow`
 (the defaults) and the compression-matched `runner-stored`/`shadow-stored` (neither archive deflated) and
 `runner-preserve`/`shadow` (both deflated), each the median of per-round differences.
-The `runner-stored` time includes the default class transform, which strips the local-variable tables of the
-dependency classes (see <<localVariableTables,Local-variable tables>>); `runner-preserve` nests the dependencies
-byte for byte and runs none.
+The `runner-stored` time includes the default class transforms, which desugar lambdas (see
+<<desugaredLambdas,Desugared lambdas>>) and strip the local-variable tables of the dependency classes (see
+<<localVariableTables,Local-variable tables>>); `runner-preserve` nests the dependencies byte for byte and runs
+none.
 +
 Maven Shade is not compared. `test-suite/samples/maven-basic` configures no `maven-shade-plugin`, and in that
 small sample Maven's own startup would dominate the timings. The Maven plugin packages with the same
@@ -114,6 +115,18 @@ that Micronaut scans for its services; compared with `runner-stored`
 |Opt-in, non-gating control: the identical Runner JAR without a static service table, with a trained,
 application-class-verified JDK AOT cache; compared with `runner-stored-aot`
 
+|`runner-stored-lambdas`
+|Opt-in, non-gating control: the same stored Runner JAR inputs with `desugarLambdas` off, so every lambda stays an
+`invokedynamic` call site (see <<desugaredLambdas,Desugared lambdas>>)
+
+|`runner-stored-lambdas-aot`
+|Opt-in, non-gating control: the identical `runner-stored-lambdas` JAR with a trained, application-class-verified
+JDK AOT cache
+
+|`runner-extracted-lambdas-aot`
+|Opt-in, non-gating control: the `runner-stored-lambdas` JAR extracted and launched by the JDK's built-in loader,
+with a trained, application-class-verified JDK AOT cache; compared with `runner-extracted-aot`
+
 |`runner-preserve`
 |Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub
 
@@ -156,8 +169,12 @@ sharing is a separate baseline condition.
 
 Every Runner row builds with the packaging library's defaults, so `runner-stored` and the rows derived from it,
 `runner-stored-aot`, `runner-extracted` and `runner-extracted-aot`, measure dependency classes stripped of their
-local-variable tables. The opt-in pairs `runner-stored`/`runner-stored-keepdebug` and
-`runner-stored-aot`/`runner-stored-keepdebug-aot` measure that default against keeping the tables.
+local-variable tables and lambdas desugared into generated classes: `runner-stored` is the desugared default. The
+opt-in pairs `runner-stored`/`runner-stored-keepdebug` and `runner-stored-aot`/`runner-stored-keepdebug-aot`
+measure the first default against keeping the tables. The opt-in pairs `runner-stored`/`runner-stored-lambdas`,
+`runner-stored-aot`/`runner-stored-lambdas-aot` and `runner-extracted-aot`/`runner-extracted-lambdas-aot` measure
+the second against keeping the call sites; the last pair runs on the JDK's built-in loader, which archives lambdas
+itself, so it checks that desugaring costs the extracted layout nothing.
 
 The compression-matched pairs are `runner-stored`/`shadow-stored`, where neither side inflates class bytes, and
 `runner-preserve`/`shadow`, where both do; they measure what Runner's layout itself buys. `runner-stored`/`shadow`

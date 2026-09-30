@@ -186,62 +186,6 @@ final class ZipRepacker {
     }
 
     /**
-     * The classes of a source archive, as a planning step reads them: each through
-     * {@link ZipReader#read(ZipEntryInfo)}, inflated at its exact size and checked against its CRC-32.
-     */
-    static final class SourceClasses implements ClassTransformPipeline.JarClasses {
-
-        private final ZipReader source;
-        private final Map<String, ZipEntryInfo> first = new HashMap<>();
-        private final Set<String> repeated = new HashSet<>();
-        private final List<ClassTransformPipeline.ClassEntry> classes = new ArrayList<>();
-
-        /**
-         * The classes of an archive, less the entries a repack drops.
-         *
-         * @param source the archive
-         */
-        SourceClasses(ZipReader source) {
-            this.source = source;
-            for (ZipEntryInfo entry : source.entries()) {
-                if (ZipReader.isSignatureFile(entry.name()) || ZipReader.isIndexList(entry.name())) {
-                    continue;
-                }
-                if (first.putIfAbsent(entry.name(), entry) != null) {
-                    repeated.add(entry.name());
-                } else if (ClassTransformPipeline.isClass(entry)) {
-                    classes.add(new ClassTransformPipeline.ClassEntry(entry.name(), entry.uncompressedSize()));
-                }
-            }
-        }
-
-        @Override
-        public List<ClassTransformPipeline.ClassEntry> classes() {
-            return classes;
-        }
-
-        @Override
-        public long size(String entryName) {
-            ZipEntryInfo entry = first.get(entryName);
-            return entry == null ? -1 : entry.uncompressedSize();
-        }
-
-        @Override
-        public boolean repeated(String entryName) {
-            return repeated.contains(entryName);
-        }
-
-        @Override
-        public byte[] read(String entryName) throws IOException {
-            ZipEntryInfo entry = first.get(entryName);
-            if (entry == null) {
-                throw new IOException("No entry " + entryName + " in " + source.path());
-            }
-            return source.read(entry);
-        }
-    }
-
-    /**
      * Repacks an archive into a file.
      *
      * @param source the archive to read
@@ -347,6 +291,62 @@ final class ZipRepacker {
             if (length < 0) {
                 throw new IllegalArgumentException("Negative nested jar length: " + length);
             }
+        }
+    }
+
+    /**
+     * The classes of a source archive, as a planning step reads them: each through
+     * {@link ZipReader#read(ZipEntryInfo)}, inflated at its exact size and checked against its CRC-32.
+     */
+    static final class SourceClasses implements ClassTransformPipeline.JarClasses {
+
+        private final ZipReader source;
+        private final Map<String, ZipEntryInfo> first = new HashMap<>();
+        private final Set<String> repeated = new HashSet<>();
+        private final List<ClassTransformPipeline.ClassEntry> classes = new ArrayList<>();
+
+        /**
+         * The classes of an archive, less the entries a repack drops.
+         *
+         * @param source the archive
+         */
+        SourceClasses(ZipReader source) {
+            this.source = source;
+            for (ZipEntryInfo entry : source.entries()) {
+                if (ZipReader.isSignatureFile(entry.name()) || ZipReader.isIndexList(entry.name())) {
+                    continue;
+                }
+                if (first.putIfAbsent(entry.name(), entry) != null) {
+                    repeated.add(entry.name());
+                } else if (ClassTransformPipeline.isClass(entry)) {
+                    classes.add(new ClassTransformPipeline.ClassEntry(entry.name(), entry.uncompressedSize()));
+                }
+            }
+        }
+
+        @Override
+        public List<ClassTransformPipeline.ClassEntry> classes() {
+            return classes;
+        }
+
+        @Override
+        public long size(String entryName) {
+            ZipEntryInfo entry = first.get(entryName);
+            return entry == null ? -1 : entry.uncompressedSize();
+        }
+
+        @Override
+        public boolean repeated(String entryName) {
+            return repeated.contains(entryName);
+        }
+
+        @Override
+        public byte[] read(String entryName) throws IOException {
+            ZipEntryInfo entry = first.get(entryName);
+            if (entry == null) {
+                throw new IOException("No entry " + entryName + " in " + source.path());
+            }
+            return source.read(entry);
         }
     }
 }

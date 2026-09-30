@@ -24,7 +24,7 @@ constructor.
 |`micronaut.runner.mode`
 |`run`
 |`run` starts the application. `inspect` prints the index header, the build-time transforms (see
-<<classTransforms,Dependency class transforms>>) and the jar table, `list` prints the entries, and `extract` writes
+<<classTransforms,Class transforms>>) and the jar table, `list` prints the entries, and `extract` writes
 an exploded copy. The non-`run` modes consume the remaining command line arguments.
 
 |`micronaut.runner.timing`

@@ -92,6 +92,9 @@ micronaut {
 
         // On by default; false builds no static service table. See "Static service table".
         // options.put('staticServices', 'false')
+
+        // On by default for STORED; 'false' keeps lambdas as invokedynamic call sites. See Build-Time Transformations.
+        // options.put('desugarLambdas', 'false')
     }
 }
 ----
@@ -123,6 +126,7 @@ tool resolve the path against the project and, in Gradle, rebuild the archive wh
 |`stripLocalVariables` |boolean |`true` |passthrough |1.0
 |`startupClasses` |file |`src/main/micronaut-runner/startup-classes.txt` if it exists |typed |1.0
 |`staticServices` |boolean |`true` |passthrough |1.0
+|`desugarLambdas` |boolean |`true` |passthrough |1.0
 |===
 
 A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,
@@ -247,7 +251,10 @@ scalar ones also read `-Dmicronaut.runner.<name>`. `<runnerOptions>` and `-Dmicr
 options by name, `-Dmicronaut.runner.<name>` only for passthrough options, and a `<runnerOptions>` entry wins. For
 example, `-Dmicronaut.runner.precompileLogback=false` leaves `logback.xml` to Logback at startup.
 Dependency local-variable tables are dropped by default (see <<localVariableTables,Local-variable tables>>); pass
-`-Dmicronaut.runner.stripLocalVariables=false` to keep them.
+`-Dmicronaut.runner.stripLocalVariables=false` to keep them. Lambdas are desugared by default (see
+<<desugaredLambdas,Desugared lambdas>>); to keep them as `invokedynamic` call sites, pass
+`-Dmicronaut.runner.desugarLambdas=false` or set
+`<runnerOptions><desugarLambdas>false</desugarLambdas></runnerOptions>`.
 
 To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
 pass `-Dmicronaut.runner.archiveReads=positional` or set

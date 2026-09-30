@@ -147,6 +147,15 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
 
     private static final int CLASS_MAGIC = 0xCAFEBABE;
 
+    /** What {@link #kindOf(String)} answers for a name no class answers to. */
+    private static final int UNRESOLVED = 0;
+
+    /** What {@link #kindOf(String)} answers for a class. */
+    private static final int CLASS = 1;
+
+    /** What {@link #kindOf(String)} answers for an interface. */
+    private static final int INTERFACE = 2;
+
     private static final ClassFile PARSER = ClassFile.of();
 
     /** Generated classes have no branch, so they need no frames, and no class hierarchy to compute any. */
@@ -303,6 +312,122 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
 
     private static boolean isVoid(ClassDesc type) {
         return type.descriptorString().equals("V");
+    }
+
+    /**
+     * What a name resolves to at run time, as far as the build can tell: for a package the runtime asks the JDK
+     * for first, the JDK's class; otherwise the class path's winning copy.
+     *
+     * @return {@link #UNRESOLVED}, {@link #CLASS} or {@link #INTERFACE}
+     */
+    private int kindOf(String internalName) {
+        int flags;
+        if (JdkClasses.owns(packageOf(internalName))) {
+            JdkClasses.JdkClass jdk = JdkClasses.find(internalName);
+            if (jdk == null) {
+                return UNRESOLVED;
+            }
+            flags = jdk.flags();
+        } else {
+            Optional<ClassPathModel.Copy> copy = model.winner(internalName);
+            if (copy.isEmpty()) {
+                return UNRESOLVED;
+            }
+            flags = copy.get().flags();
+        }
+        return (flags & ClassFile.ACC_INTERFACE) != 0 ? INTERFACE : CLASS;
+    }
+
+    /**
+     * Whether a type a generated class casts to resolves: a primitive, {@code void}, or a class, possibly the
+     * element type of an array, that {@link #kindOf(String)} finds.
+     */
+    private boolean resolvesType(ClassDesc type) {
+        ClassDesc element = type;
+        while (element.isArray()) {
+            element = element.componentType();
+        }
+        return element.isPrimitive() || kindOf(internalName(element)) != UNRESOLVED;
+    }
+
+    /**
+     * Whether a class is, or may be, serializable: it is {@code java.io.Serializable}, a supertype of it is, or
+     * a supertype cannot be found, in which case it may well be.
+     */
+    private boolean serializable(String internalName, Set<String> seen) {
+        if (internalName.equals(SERIALIZABLE)) {
+            return true;
+        }
+        if (!seen.add(internalName)) {
+            return false;
+        }
+        String superName;
+        List<String> interfaces;
+        if (JdkClasses.owns(packageOf(internalName))) {
+            JdkClasses.JdkClass jdk = JdkClasses.find(internalName);
+            if (jdk == null) {
+                return true;
+            }
+            superName = jdk.superName();
+            interfaces = jdk.interfaces();
+        } else {
+            Optional<ClassPathModel.Copy> copy = model.winner(internalName);
+            if (copy.isEmpty()) {
+                return true;
+            }
+            superName = copy.get().superName();
+            interfaces = copy.get().interfaces();
+        }
+        if (superName != null && serializable(superName, seen)) {
+            return true;
+        }
+        for (String implemented : interfaces) {
+            if (serializable(implemented, seen)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether any {@code invokedynamic} constant of a class is bootstrapped by {@code LambdaMetafactory}: the
+     * marker alone may be a string the class merely mentions.
+     */
+    private static boolean usesMetafactory(ClassModel model) {
+        for (PoolEntry entry : model.constantPool()) {
+            if (entry instanceof InvokeDynamicEntry indy) {
+                MemberRefEntry bootstrap = indy.bootstrap().bootstrapMethod().reference();
+                if (bootstrap.owner().name().equalsString(METAFACTORY_OWNER)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The {@code LambdaMetafactory} bootstrap a site uses.
+     *
+     * @return the bootstrap method's name, or {@code null} for any other bootstrap
+     */
+    private static String bootstrap(InvokeDynamicInstruction indy) {
+        MemberRefEntry bootstrap = indy.invokedynamic().bootstrap().bootstrapMethod().reference();
+        if (!bootstrap.owner().name().equalsString(METAFACTORY_OWNER)) {
+            return null;
+        }
+        return bootstrap.name().stringValue();
+    }
+
+    private static List<ClassDesc> nestMembers(ClassModel model) {
+        Optional<NestMembersAttribute> attribute = model.findAttribute(Attributes.nestMembers());
+        if (attribute.isEmpty()) {
+            return List.of();
+        }
+        List<ClassDesc> members = new ArrayList<>(attribute.get().nestMembers().size());
+        for (ClassEntry member : attribute.get().nestMembers()) {
+            members.add(member.asSymbol());
+        }
+        return members;
     }
 
     /**
@@ -602,6 +727,46 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
     }
 
     /**
+     * Where the classes generated for a host go.
+     *
+     * @param host     the host
+     * @param major    the host's class-file version, which its generated classes take
+     * @param minor    the host's minor version
+     * @param nestHost the nest the generated classes join, or {@code null} below class-file version 55
+     */
+    private record Home(ClassDesc host, int major, int minor, ClassDesc nestHost) {
+    }
+
+    /**
+     * A call site, as the host's code states it.
+     *
+     * @param factoryType      the descriptor of the {@code invokedynamic}: the captured types to the functional
+     *                         interface
+     * @param samName          the name of the interface method
+     * @param samType          the erased descriptor of the interface method, which the generated class declares
+     * @param instantiatedType the descriptor the interface method has at this site, which decides the casts
+     */
+    private record Shape(MethodTypeDesc factoryType, String samName, MethodTypeDesc samType,
+                         MethodTypeDesc instantiatedType) {
+    }
+
+    /**
+     * The implementation a site forwards to.
+     *
+     * @param owner          the class that declares it
+     * @param ownerInterface whether the site names that class as an interface
+     * @param name           its name, {@code <init>} for a constructor
+     * @param descriptor     its descriptor, as its owner declares it
+     * @param type           the implementation as a call: the receiver first for an instance method, the owner as
+     *                       a constructor's result
+     * @param invocation     how a generated class calls it
+     * @param isStatic       whether it is a static method
+     */
+    private record Target(ClassDesc owner, boolean ownerInterface, String name, MethodTypeDesc descriptor,
+                          MethodTypeDesc type, Invocation invocation, boolean isStatic) {
+    }
+
+    /**
      * One rewritten site: everything its generated class and its bridge are written from.
      */
     private static final class SitePlan {
@@ -624,7 +789,7 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
         private final String implName;
         /** The descriptor of the implementation as its owner declares it. */
         private final MethodTypeDesc implDescriptor;
-        /** The implementation as a call: the receiver first for an instance method, the owner as a constructor's result. */
+        /** The implementation as a call: the receiver first, or the owner as a constructor's result. */
         private final MethodTypeDesc implType;
         private final Invocation invocation;
         /** The bridge the host gains and the generated class calls, or {@code null}. */
@@ -632,28 +797,24 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
         /** How the bridge itself calls the private implementation. */
         private final boolean bridgeStatic;
 
-        private SitePlan(ClassDesc host, int major, int minor, ClassDesc nestHost, ClassDesc generated,
-                         MethodTypeDesc factoryType, String samName, MethodTypeDesc samType,
-                         MethodTypeDesc instantiatedType, ClassDesc owner, boolean ownerInterface, String implName,
-                         MethodTypeDesc implDescriptor, MethodTypeDesc implType, Invocation invocation,
-                         String bridgeName, boolean bridgeStatic) {
-            this.host = host;
-            this.major = major;
-            this.minor = minor;
-            this.nestHost = nestHost;
+        private SitePlan(Home home, ClassDesc generated, Shape shape, Target target, String bridgeName) {
+            this.host = home.host();
+            this.major = home.major();
+            this.minor = home.minor();
+            this.nestHost = home.nestHost();
             this.generated = generated;
-            this.factoryType = factoryType;
-            this.samName = samName;
-            this.samType = samType;
-            this.instantiatedType = instantiatedType;
-            this.owner = owner;
-            this.ownerInterface = ownerInterface;
-            this.implName = implName;
-            this.implDescriptor = implDescriptor;
-            this.implType = implType;
-            this.invocation = invocation;
+            this.factoryType = shape.factoryType();
+            this.samName = shape.samName();
+            this.samType = shape.samType();
+            this.instantiatedType = shape.instantiatedType();
+            this.owner = target.owner();
+            this.ownerInterface = target.ownerInterface();
+            this.implName = target.name();
+            this.implDescriptor = target.descriptor();
+            this.implType = target.type();
+            this.invocation = target.invocation();
             this.bridgeName = bridgeName;
-            this.bridgeStatic = bridgeStatic;
+            this.bridgeStatic = target.isStatic();
         }
 
         /**
@@ -1014,6 +1175,10 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
 
     /**
      * One {@code metafactory} site, as the host's code holds it.
+     *
+     * @param method  the method that holds it, by name and descriptor
+     * @param ordinal its position among the {@code invokedynamic} instructions of that method
+     * @param indy    the instruction
      */
     private record Found(String method, int ordinal, InvokeDynamicInstruction indy) {
     }
@@ -1235,9 +1400,8 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
             private final ClassModel parsed;
             private final String name;
             private final String packageName;
-            private final ClassDesc desc;
+            private final Home home;
             private final int major;
-            private final int minor;
             private final Nest nest;
             private final boolean isInterface;
             private final Set<String> memberNames = new HashSet<>();
@@ -1250,9 +1414,9 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
                 this.parsed = parsed;
                 this.name = name;
                 this.packageName = packageOf(name);
-                this.desc = ClassDesc.ofInternalName(name);
+                this.home = new Home(ClassDesc.ofInternalName(name), major, minor,
+                        nest == null ? null : ClassDesc.ofInternalName(nest.name));
                 this.major = major;
-                this.minor = minor;
                 this.nest = nest;
                 this.isInterface = (parsed.flags().flagsMask() & ClassFile.ACC_INTERFACE) != 0;
                 for (MethodModel method : parsed.methods()) {
@@ -1382,10 +1546,11 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
                         || bridged && memberNames.contains(bridgeName)) {
                     return Reason.NAME_TAKEN;
                 }
-                return new SitePlan(desc, major, minor, nest == null ? null : ClassDesc.ofInternalName(nest.name),
-                        ClassDesc.ofInternalName(generatedName), factoryType, samName, samType, instantiatedType,
-                        implementation.owner(), implementation.isOwnerInterface(), implName, implDescriptor, implType,
-                        invocation, bridgeName, (flags & ClassFile.ACC_STATIC) != 0);
+                return new SitePlan(home, ClassDesc.ofInternalName(generatedName),
+                        new Shape(factoryType, samName, samType, instantiatedType),
+                        new Target(implementation.owner(), implementation.isOwnerInterface(), implName,
+                                implDescriptor, implType, invocation, (flags & ClassFile.ACC_STATIC) != 0),
+                        bridgeName);
             }
 
             /**
@@ -1496,126 +1661,6 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
                 return implType.returnType().equals(expected) || resolvesType(expected);
             }
         }
-    }
-
-    private static final int UNRESOLVED = 0;
-
-    private static final int CLASS = 1;
-
-    private static final int INTERFACE = 2;
-
-    /**
-     * What a name resolves to at run time, as far as the build can tell: for a package the runtime asks the JDK
-     * for first, the JDK's class; otherwise the class path's winning copy.
-     */
-    private int kindOf(String internalName) {
-        int flags;
-        if (JdkClasses.owns(packageOf(internalName))) {
-            JdkClasses.JdkClass jdk = JdkClasses.find(internalName);
-            if (jdk == null) {
-                return UNRESOLVED;
-            }
-            flags = jdk.flags();
-        } else {
-            Optional<ClassPathModel.Copy> copy = model.winner(internalName);
-            if (copy.isEmpty()) {
-                return UNRESOLVED;
-            }
-            flags = copy.get().flags();
-        }
-        return (flags & ClassFile.ACC_INTERFACE) != 0 ? INTERFACE : CLASS;
-    }
-
-    /**
-     * Whether a type a generated class casts to resolves: a primitive, {@code void}, or a class, possibly the
-     * element type of an array, that {@link #kindOf(String)} finds.
-     */
-    private boolean resolvesType(ClassDesc type) {
-        ClassDesc element = type;
-        while (element.isArray()) {
-            element = element.componentType();
-        }
-        return element.isPrimitive() || kindOf(internalName(element)) != UNRESOLVED;
-    }
-
-    /**
-     * Whether a class is, or may be, serializable: it is {@code java.io.Serializable}, a supertype of it is, or
-     * a supertype cannot be found, in which case it may well be.
-     */
-    private boolean serializable(String internalName, Set<String> seen) {
-        if (internalName.equals(SERIALIZABLE)) {
-            return true;
-        }
-        if (!seen.add(internalName)) {
-            return false;
-        }
-        String superName;
-        List<String> interfaces;
-        if (JdkClasses.owns(packageOf(internalName))) {
-            JdkClasses.JdkClass jdk = JdkClasses.find(internalName);
-            if (jdk == null) {
-                return true;
-            }
-            superName = jdk.superName();
-            interfaces = jdk.interfaces();
-        } else {
-            Optional<ClassPathModel.Copy> copy = model.winner(internalName);
-            if (copy.isEmpty()) {
-                return true;
-            }
-            superName = copy.get().superName();
-            interfaces = copy.get().interfaces();
-        }
-        if (superName != null && serializable(superName, seen)) {
-            return true;
-        }
-        for (String implemented : interfaces) {
-            if (serializable(implemented, seen)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Whether any {@code invokedynamic} constant of a class is bootstrapped by {@code LambdaMetafactory}: the
-     * marker alone may be a string the class merely mentions.
-     */
-    private static boolean usesMetafactory(ClassModel model) {
-        for (PoolEntry entry : model.constantPool()) {
-            if (entry instanceof InvokeDynamicEntry indy) {
-                MemberRefEntry bootstrap = indy.bootstrap().bootstrapMethod().reference();
-                if (bootstrap.owner().name().equalsString(METAFACTORY_OWNER)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * The {@code LambdaMetafactory} bootstrap a site uses.
-     *
-     * @return the bootstrap method's name, or {@code null} for any other bootstrap
-     */
-    private static String bootstrap(InvokeDynamicInstruction indy) {
-        MemberRefEntry bootstrap = indy.invokedynamic().bootstrap().bootstrapMethod().reference();
-        if (!bootstrap.owner().name().equalsString(METAFACTORY_OWNER)) {
-            return null;
-        }
-        return bootstrap.name().stringValue();
-    }
-
-    private static List<ClassDesc> nestMembers(ClassModel model) {
-        Optional<NestMembersAttribute> attribute = model.findAttribute(Attributes.nestMembers());
-        if (attribute.isEmpty()) {
-            return List.of();
-        }
-        List<ClassDesc> members = new ArrayList<>(attribute.get().nestMembers().size());
-        for (ClassEntry member : attribute.get().nestMembers()) {
-            members.add(member.asSymbol());
-        }
-        return members;
     }
 
     /**

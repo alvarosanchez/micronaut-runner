@@ -18,14 +18,15 @@ package io.micronaut.runner.build;
 import java.util.Objects;
 
 /**
- * What one build-time class transform did to the dependency classes of a runner jar: how many it rewrote,
- * how many it left as they were, and how many it had to give up on.
+ * What one build-time class transform did to the classes of a runner jar it ran over: how many it rewrote,
+ * how many it left as they were, and how many it had to give up on. Those are the dependency classes, and for
+ * {@code desugarLambdas} the application's own classes too.
  *
  * <p>Every class a transform considered is counted exactly once: {@link #rewritten()},
  * {@link #unchanged()} and {@link #fallbacks()} add up to the number of classes it considered. A fallback is
  * a class the transform would have rewritten but did not, because the transform failed on it or its rewritten
  * bytes verified worse than the original; the class is then nested as the other transforms left it, and the
- * build log says why.</p>
+ * build log says why. A class a transform generates is not counted: it only lowers {@link #bytesSaved()}.</p>
  *
  * <p>Only the builder creates a report, so later releases can add accessors without breaking callers.</p>
  *
@@ -63,7 +64,7 @@ public final class TransformReport {
 
     /**
      * The transform's name, which is the name of the {@link RunnerJarOption} that enables it, such as
-     * {@code stripLocalVariables}.
+     * {@code desugarLambdas} or {@code stripLocalVariables}.
      *
      * @return the name
      */
@@ -72,7 +73,7 @@ public final class TransformReport {
     }
 
     /**
-     * The number of dependency classes the transform rewrote.
+     * The number of classes the transform rewrote.
      *
      * @return the rewritten count
      */
@@ -81,7 +82,7 @@ public final class TransformReport {
     }
 
     /**
-     * The number of dependency classes the transform left byte for byte as they were: it had nothing to
+     * The number of classes the transform left byte for byte as they were: it had nothing to
      * change in them, or it does not apply to them.
      *
      * @return the unchanged count
@@ -91,7 +92,7 @@ public final class TransformReport {
     }
 
     /**
-     * The number of dependency classes the transform would have rewritten but gave up on.
+     * The number of classes the transform would have rewritten but gave up on.
      *
      * @return the fallback count
      */
@@ -100,8 +101,8 @@ public final class TransformReport {
     }
 
     /**
-     * How many bytes smaller the classes the transform rewrote became, together. It is negative when they
-     * grew.
+     * How many bytes smaller the classes the transform rewrote became, together, less the size of the classes
+     * it generated. It is negative when the classes grew, as they do when lambdas are desugared.
      *
      * @return the bytes saved
      */
@@ -110,7 +111,7 @@ public final class TransformReport {
     }
 
     /**
-     * The number of dependency classes the transform considered.
+     * The number of classes the transform considered.
      *
      * @return {@code rewritten() + unchanged() + fallbacks()}
      */

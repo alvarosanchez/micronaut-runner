@@ -50,7 +50,7 @@ final class ClassTransforms {
 
     private final ClassTransformPipeline pipeline;
     private final List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
-    /** What the pipeline did to the application layer, which comes first on the class path; {@code null} when it did not run there. */
+    /** What the pipeline did to the application layer, first on the class path; {@code null} when it did not run there. */
     private ClassTransformPipeline.JarReport applicationReport;
 
     private ClassTransforms(ClassTransformPipeline pipeline) {
