@@ -174,7 +174,10 @@ launch. So does `-Dmicronaut.runner.static-services.verify=true`, so that the st
 
 The prefetch and the static service table work together. The table is generated after the prefetch, so it lists the
 prefetch's `ApplicationContextConfigurer`, and the prefetch thread has the application's class loader as its context
-class loader, so the lookups it makes are answered by the table.
+class loader, so the lookups it makes are answered by the table. The same holds for Micronaut AOT: the archive of
+`optimizedMicronautRunnerJar` (<<micronautAot>>) takes the option from `micronautRunnerJar`, its service file lists the
+prefetch's configurer after Micronaut AOT's own, and the static optimizations Micronaut AOT registers as
+`StaticOptimizations` loaders are found from the prefetch thread.
 
 What it changes:
 

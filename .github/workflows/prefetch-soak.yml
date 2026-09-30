@@ -1,8 +1,8 @@
 # This workflow is specific to micronaut-runner and is NOT synced from micronaut-project-template.
 # It starts the sample applications hundreds of times with the bean definition prefetch, in legs that shift the
-# timing of class initialisation (class+init logging, C1 only, interpreted, an AOT cache, two to four CPUs), and
-# fails when a start does not become ready within a minute, attaching a thread dump. It takes tens of minutes and
-# only changes of the prefetch need it, so it runs on demand only.
+# timing of class initialisation (class+init logging, C1 only, interpreted, an AOT cache, two to four CPUs), plus
+# benchmark-large's Micronaut AOT archive, and fails when a start does not become ready within a minute, attaching
+# a thread dump. It takes tens of minutes and only changes of the prefetch need it, so it runs on demand only.
 name: Prefetch soak
 on:
   workflow_dispatch:

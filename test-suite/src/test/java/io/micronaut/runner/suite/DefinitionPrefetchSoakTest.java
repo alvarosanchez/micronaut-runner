@@ -47,7 +47,10 @@ import static org.junit.jupiter.api.Assertions.fail;
  * closes it. Another one would show up as a start that never becomes ready, and only on some runs: the known
  * cycle hung nine starts in twenty under {@code -Xlog:class+init}, which slows class initialisation down, and
  * none without it. So every sample is started in several legs that shift the timing: by default, with that
- * logging, with C1 only, interpreted, with a JDK AOT cache, and confined to two, three and four processors.</p>
+ * logging, with C1 only, interpreted, with a JDK AOT cache, and confined to two, three and four processors.
+ * benchmark-large is also started from its Micronaut AOT archive, {@code optimizedMicronautRunnerJar}'s
+ * {@code -all-optimized.jar}, whose application layer already registers configurers and static optimizations of
+ * its own.</p>
  *
  * <p>The legs that confine the JVM use {@code taskset}, which only Linux has. Elsewhere they limit the JVM with
  * {@code -XX:ActiveProcessorCount}, which shrinks the pools without taking processors away. The prefetch needs
@@ -62,6 +65,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 class DefinitionPrefetchSoakTest {
 
     private static final String TASK = ":micronautRunnerJar";
+    private static final String OPTIMIZED_TASK = ":optimizedMicronautRunnerJar";
+    /** The sample whose Micronaut AOT archive is started as well. */
+    private static final String MAOT_SAMPLE = "benchmark-large";
     private static final Duration READINESS_TIMEOUT = Duration.ofSeconds(60);
     private static final Duration POLL_INTERVAL = Duration.ofMillis(20);
     private static final String TRACE = "-Dmicronaut.runner.prefetch.trace=true";
@@ -83,12 +89,18 @@ class DefinitionPrefetchSoakTest {
     @ValueSource(strings = {"hello-netty", "benchmark-large"})
     void everyStartBecomesReady(String name) throws Exception {
         Path sample = Samples.sample(name);
+        boolean maot = name.equals(MAOT_SAMPLE);
         // The prefetch is off unless a build asks for it; the samples' own build files stay as they are.
         Path init = Files.createTempFile("prefetch-soak", ".init.gradle");
-        Files.writeString(init, "allprojects { tasks.matching { it.name == 'micronautRunnerJar' }.configureEach {"
+        Files.writeString(init, "allprojects { tasks.matching { it.name == 'micronautRunnerJar'"
+                + " || it.name == 'optimizedMicronautRunnerJar' }.configureEach {"
                 + " it.options.put('definitionPrefetch', 'true') } }\n");
         try {
-            Samples.gradle(sample, "clean", TASK, "--init-script", init.toString());
+            if (maot) {
+                Samples.gradle(sample, "clean", TASK, OPTIMIZED_TASK, "--init-script", init.toString());
+            } else {
+                Samples.gradle(sample, "clean", TASK, "--init-script", init.toString());
+            }
         } finally {
             Files.deleteIfExists(init);
         }
@@ -129,21 +141,38 @@ class DefinitionPrefetchSoakTest {
             if (leg.name().equals("AOT cache")) {
                 train(archive, sample, cache);
             }
-            int handedOver = 0;
-            long slowest = 0;
-            for (int launch = 1; launch <= LAUNCHES; launch++) {
-                Launch result = launch(archive, sample, leg, launch);
-                handedOver += result.handedOver() ? 1 : 0;
-                slowest = Math.max(slowest, result.millis());
-            }
-            // The common pool has one thread fewer than the JVM sees processors, and the prefetch needs three.
-            int expected = leg.processors() > 3 ? LAUNCHES : 0;
-            summary.add(String.format(Locale.ROOT, "%s, %s: %d starts, %d prefetched, slowest %d ms",
-                    name, leg.name(), LAUNCHES, handedOver, slowest));
-            assertEquals(expected, handedOver, () -> name + ", " + leg.name() + ": the prefetch was expected in "
-                    + expected + " of " + LAUNCHES + " starts on " + leg.processors() + " processors");
+            summary.add(soak(name, archive, sample, leg));
+        }
+        if (maot) {
+            Path optimized = sample.resolve("build/libs/" + name + "-0.1-all-optimized.jar");
+            assertTrue(Files.isRegularFile(optimized), () -> "the plugin did not write " + optimized);
+            summary.add(soak(name, optimized, sample,
+                    new Leg("runner-maot (optimizedMicronautRunnerJar)", List.of(), List.of(), processors)));
         }
         summary.forEach(line -> System.out.println("[prefetch-soak] " + line));
+    }
+
+    /**
+     * Starts one archive {@link #LAUNCHES} times in one leg, and checks that each start prefetched exactly when the
+     * leg gives the common pool enough threads.
+     *
+     * @return the leg's line of the report
+     */
+    private static String soak(String name, Path archive, Path sample, Leg leg) throws Exception {
+        int handedOver = 0;
+        long slowest = 0;
+        for (int launch = 1; launch <= LAUNCHES; launch++) {
+            Launch result = launch(archive, sample, leg, launch);
+            handedOver += result.handedOver() ? 1 : 0;
+            slowest = Math.max(slowest, result.millis());
+        }
+        // The common pool has one thread fewer than the JVM sees processors, and the prefetch needs three.
+        int expected = leg.processors() > 3 ? LAUNCHES : 0;
+        int prefetched = handedOver;
+        assertEquals(expected, prefetched, () -> name + ", " + leg.name() + ": the prefetch was expected in "
+                + expected + " of " + LAUNCHES + " starts on " + leg.processors() + " processors");
+        return String.format(Locale.ROOT, "%s, %s: %d starts, %d prefetched, slowest %d ms",
+                name, leg.name(), LAUNCHES, prefetched, slowest);
     }
 
     /**
