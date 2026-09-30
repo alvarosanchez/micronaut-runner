@@ -71,8 +71,8 @@ jobs:
           version=$(sed -n 's/^projectVersion=//p' gradle.properties)
           java='${{ matrix.java }}'
           {
-            echo "RUNNER_VERSION=${version/-SNAPSHOT/-DUMMY}"
-            echo "RUNNER_REPO=file://$PWD/benchmarks/build/aggregated-repo/"
+            echo "GUARD_RUNNER_VERSION=${version/-SNAPSHOT/-DUMMY}"
+            echo "GUARD_RUNNER_REPO=file://$PWD/benchmarks/build/aggregated-repo/"
             echo "GUARD_JAVA=${java%%-*}"
           } >> "$GITHUB_ENV"
           mkdir -p guard-reports
@@ -82,9 +82,9 @@ jobs:
         run: |
           status=0
           ./gradlew -p test-suite/samples/benchmark-large --no-daemon \
-            -Prunner.repo="$RUNNER_REPO" -Prunner.version="$RUNNER_VERSION" \
+            -Prunner.repo="$GUARD_RUNNER_REPO" -Prunner.version="$GUARD_RUNNER_VERSION" \
             micronautRunnerJdkAotCache \
-            --init-script .github/jdk-aot-cache-guard/layout.gradle \
+            --init-script "$PWD/.github/jdk-aot-cache-guard/layout.gradle" \
             -Pguard.javaVersion="$GUARD_JAVA" \
             -Porg.gradle.java.installations.paths='${{ steps.jdk.outputs.path }}' \
             -Porg.gradle.java.installations.auto-download=false || status=$?
@@ -99,9 +99,9 @@ jobs:
         run: |
           status=0
           ./gradlew -p test-suite/samples/benchmark-large --no-daemon \
-            -Prunner.repo="$RUNNER_REPO" -Prunner.version="$RUNNER_VERSION" \
+            -Prunner.repo="$GUARD_RUNNER_REPO" -Prunner.version="$GUARD_RUNNER_VERSION" \
             micronautRunnerJdkAotCache \
-            --init-script .github/jdk-aot-cache-guard/singleJar.gradle \
+            --init-script "$PWD/.github/jdk-aot-cache-guard/singleJar.gradle" \
             -Pguard.javaVersion="$GUARD_JAVA" \
             -Porg.gradle.java.installations.paths='${{ steps.jdk.outputs.path }}' \
             -Porg.gradle.java.installations.auto-download=false || status=$?
