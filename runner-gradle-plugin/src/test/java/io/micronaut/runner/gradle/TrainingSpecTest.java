@@ -18,6 +18,7 @@ package io.micronaut.runner.gradle;
 import io.micronaut.runner.build.StartupProfileRecorder;
 import io.micronaut.runner.build.training.TrainingSettings;
 import org.gradle.api.Project;
+import org.gradle.api.Task;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Optional;
 import org.gradle.testfixtures.ProjectBuilder;
@@ -30,11 +31,14 @@ import java.lang.reflect.RecordComponent;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -116,9 +120,10 @@ class TrainingSpecTest {
         assertTrue(task.getJavaLauncher().isPresent(), "the toolchain's launcher, or Gradle's own JVM");
         assertEquals("build", task.getGroup());
         for (String lifecycle : List.of("assemble", "build", "check")) {
-            Set<Object> dependencies = project.getTasks().getByName(lifecycle).getDependsOn();
-            assertFalse(dependencies.stream().anyMatch(dependency -> dependency == task
-                    || String.valueOf(dependency).contains(MicronautRunnerPlugin.RECORD_TASK_NAME)),
+            Set<String> dependencies = dependencies(project.getTasks().getByName(lifecycle));
+            assertTrue(!lifecycle.equals("assemble") || dependencies.contains(MicronautRunnerPlugin.TASK_NAME),
+                    () -> "the walk reaches " + MicronautRunnerPlugin.TASK_NAME + ": " + dependencies);
+            assertFalse(dependencies.contains(MicronautRunnerPlugin.RECORD_TASK_NAME),
                     () -> lifecycle + " depends on " + MicronautRunnerPlugin.RECORD_TASK_NAME + ": " + dependencies);
         }
     }
@@ -151,6 +156,21 @@ class TrainingSpecTest {
         project.getPluginManager().apply("java");
         project.getPluginManager().apply(MicronautRunnerPlugin.class);
         return project;
+    }
+
+    /** The names of every task a task depends on, directly or not. */
+    private static Set<String> dependencies(Task task) {
+        Set<String> names = new TreeSet<>();
+        Deque<Task> pending = new ArrayDeque<>(List.of(task));
+        while (!pending.isEmpty()) {
+            Task current = pending.pop();
+            for (Task dependency : current.getTaskDependencies().getDependencies(current)) {
+                if (names.add(dependency.getName())) {
+                    pending.push(dependency);
+                }
+            }
+        }
+        return names;
     }
 
     private static MicronautRunnerExtension extension(Project project) {
