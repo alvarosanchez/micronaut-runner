@@ -23,6 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -483,16 +484,18 @@ class ZipRepackerTest {
                 run.report().counts().get(0));
     }
 
-    @Test
-    void aClassAboveTheSizeLimitIsStreamedAsItIsAndCountedUnchanged() throws Exception {
+    @ParameterizedTest(name = "deflated in the dependency: {0}")
+    @ValueSource(booleans = {false, true})
+    void aClassAboveTheSizeLimitIsStreamedAsItIsAndCountedUnchanged(boolean deflated) throws Exception {
         // Were it read into memory, the pre-filter would match it, the step would fail to parse it, and it
-        // would be counted as a fallback with a note.
+        // would be counted as a fallback with a note. Deflated, it is a highly compressible entry one byte past
+        // a multiple of the transfer buffer, which the streaming path has to inflate to its last byte.
         byte[] large = new byte[ClassTransformPipeline.MAX_CLASS_SIZE + 1];
         byte[] marker = "LocalVariableTable".getBytes(StandardCharsets.UTF_8);
         System.arraycopy(marker, 0, large, 16, marker.length);
-        Path source = temp.resolve("large-class.jar");
+        Path source = temp.resolve("large-class-" + deflated + ".jar");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(source))) {
-            parentCommitEntry(zip, "org/example/Large.class", large, false, 0);
+            parentCommitEntry(zip, "org/example/Large.class", large, deflated, 0);
         }
         ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "classes", false, false, name -> false,
                 new ClassPathModel.Interner());
