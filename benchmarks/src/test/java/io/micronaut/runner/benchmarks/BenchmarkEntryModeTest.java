@@ -226,6 +226,11 @@ class BenchmarkEntryModeTest {
                 "runner-stored-preload - shadow",
                 "runner-stored-preload-aot - runner-stored-aot"), pairs.subList(first, first + 3),
                 "the three preload comparisons follow each other in the list");
+        assertEquals(List.of(
+                "runner-stored - runner-stored-lambdas",
+                "runner-stored-aot - runner-stored-lambdas-aot",
+                "runner-extracted-aot - runner-extracted-lambdas-aot"), pairs.subList(pairs.size() - 3, pairs.size()),
+                "and the three lambda comparisons come last");
     }
 
     @Test
