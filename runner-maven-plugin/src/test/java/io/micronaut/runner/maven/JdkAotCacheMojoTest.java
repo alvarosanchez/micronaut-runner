@@ -162,6 +162,17 @@ class JdkAotCacheMojoTest {
     }
 
     @Test
+    void skippedTheGoalSaysSoEvenWhenEnabled() throws Exception {
+        set(mojo, "jdkAotCacheEnabled", true);
+        set(mojo, "skip", true);
+
+        mojo.execute();
+
+        assertEquals(List.of("Skipping the JDK AOT cache: micronaut.runner.skip is set"), log.infos);
+        assertFalse(buildDirectory.toFile().exists(), "nothing is written");
+    }
+
+    @Test
     void enabledTheGoalLooksForTheRunnerJar() {
         // What -Dmicronaut.runner.jdkAotCache.enabled=true sets.
         set(mojo, "jdkAotCacheEnabled", true);

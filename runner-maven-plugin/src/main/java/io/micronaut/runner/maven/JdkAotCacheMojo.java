@@ -118,7 +118,11 @@ public class JdkAotCacheMojo extends AbstractTrainingMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
-        if (!jdkAotCacheEnabled || skip) {
+        if (skip) {
+            getLog().info("Skipping the JDK AOT cache: micronaut.runner.skip is set");
+            return;
+        }
+        if (!jdkAotCacheEnabled) {
             getLog().info("Skipping the JDK AOT cache: set micronaut.runner.jdkAotCache.enabled=true to train one");
             return;
         }
