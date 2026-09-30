@@ -17,6 +17,7 @@ package io.micronaut.runner.build;
 
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
+import io.micronaut.runner.build.ZipReaderTest.Payload;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -71,7 +73,9 @@ import javax.tools.ToolProvider;
 import static io.micronaut.runner.build.ZipReaderTest.deflated;
 import static io.micronaut.runner.build.ZipReaderTest.deflatedWithTrailingByte;
 import static io.micronaut.runner.build.ZipReaderTest.manifestCrcMismatch;
+import static io.micronaut.runner.build.ZipReaderTest.readAll;
 import static io.micronaut.runner.build.ZipReaderTest.stored;
+import static io.micronaut.runner.build.ZipReaderTest.transferBoundarySizes;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -712,6 +716,84 @@ class RunnerJarBuilderTest {
             assertArrayEquals(new byte[0], reader.read(index.find("empty-stored.txt")));
             assertArrayEquals(new byte[0], reader.read(index.find("empty-deflated.txt")));
         }
+    }
+
+    @ParameterizedTest(name = "{0}, {1} bytes")
+    @MethodSource("io.micronaut.runner.build.ZipReaderTest#transferBoundaryEntries")
+    void storesADependencyEntryWhateverItsSizeIsNextToTheTransferBuffer(Payload payload, int size)
+            throws IOException {
+        // A STORED build inflates every entry of a dependency through the reader's 64 KiB transfer buffers.
+        // An entry that fills one exactly when its compressed bytes run out is as valid as any other.
+        String name = "data/boundary.bin";
+        byte[] content = payload.bytes(size);
+        Path directory = Files.createDirectories(fixtures.resolve("boundary-dependency/" + payload + "-" + size));
+        Path dependency = directory.resolve("boundary-lib.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(dependency))) {
+            deflated(zip, name, content);
+        }
+        Path output = directory.resolve("runner.jar");
+
+        RunnerJarBuilder.build(spec(output)
+                .dependencies(List.of(Dependency.of(dependency)))
+                .compression(Compression.STORED)
+                .build(), BuildLogger.noOp());
+
+        Path nested = directory.resolve("nested.jar");
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            Index index = reader.index();
+            assertTrue(index.nestedStored());
+            int record = index.find(name);
+            assertEquals(IndexFormat.METHOD_STORED, index.entryMethod(record));
+            assertArrayEquals(content, reader.read(record), "the entry as the launcher reads it");
+            Files.write(nested, reader.source().readFully(index.jarDataOffset(1), (int) index.jarDataLength(1)));
+        }
+        try (ZipFile oracle = new ZipFile(nested.toFile())) {
+            ZipEntry entry = oracle.getEntry(name);
+            assertEquals(ZipEntry.STORED, entry.getMethod());
+            assertArrayEquals(content, readAll(oracle, entry), "the entry of the nested jar");
+        }
+        // The largest case leaves some 25 MiB behind, and the fixture directory lives as long as the class.
+        Files.delete(nested);
+        Files.delete(output);
+        Files.delete(dependency);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Compression.class)
+    void packagesApplicationJarEntriesOfEverySizeNextToTheTransferBuffer(Compression compression)
+            throws IOException {
+        // The entries of an application jar are streamed from the jar in either mode, the same way.
+        Map<String, byte[]> contents = new LinkedHashMap<>();
+        for (Payload payload : Payload.values()) {
+            for (int size : transferBoundarySizes()) {
+                contents.put("boundary/" + payload + "-" + size + ".bin", payload.bytes(size));
+            }
+        }
+        Path directory = Files.createDirectories(fixtures.resolve("boundary-application/" + compression));
+        Path applicationJar = directory.resolve("application.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(applicationJar))) {
+            deflated(zip, "com/example/Application.class",
+                    Files.readAllBytes(applicationClasses.resolve("com/example/Application.class")));
+            for (Map.Entry<String, byte[]> entry : contents.entrySet()) {
+                deflated(zip, entry.getKey(), entry.getValue());
+            }
+        }
+        Path output = directory.resolve("runner.jar");
+
+        RunnerJarBuilder.build(spec(output)
+                .applicationOutput(List.of(applicationJar))
+                .dependencies(List.of())
+                .compression(compression)
+                .build(), BuildLogger.noOp());
+
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            Index index = reader.index();
+            for (Map.Entry<String, byte[]> entry : contents.entrySet()) {
+                assertArrayEquals(entry.getValue(), reader.read(index.find(entry.getKey())), entry.getKey());
+            }
+        }
+        Files.delete(output);
+        Files.delete(applicationJar);
     }
 
     @ParameterizedTest

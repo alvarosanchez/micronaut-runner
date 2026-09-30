@@ -91,7 +91,8 @@ import java.util.zip.Inflater;
  */
 final class ZipReader implements Closeable {
 
-    private static final int TRANSFER_BUFFER_SIZE = 64 * 1024;
+    /** Size of each of the two buffers {@link #transfer(ZipEntryInfo, OutputStream)} streams an entry through. */
+    static final int TRANSFER_BUFFER_SIZE = 64 * 1024;
 
     private static final int MAX_MANIFEST_SIZE = 16 * 1024 * 1024;
 
@@ -578,10 +579,10 @@ final class ZipReader implements Closeable {
         long total = 0;
         try {
             while (!inflater.finished()) {
-                if (inflater.needsInput()) {
-                    if (compressedRemaining == 0) {
-                        throw truncatedDeflate(entry, expected, total);
-                    }
+                // An inflater that has consumed all of its input may still hold content that did not fit the
+                // output it was last given, so running out of compressed bytes here is not yet a truncation:
+                // only an inflate call that then returns nothing is, below.
+                if (inflater.needsInput() && compressedRemaining > 0) {
                     int count = (int) Math.min(input.length, compressedRemaining);
                     if (mapped) {
                         copyFromMapping(position, input, 0, count);
@@ -619,6 +620,10 @@ final class ZipReader implements Closeable {
                     throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path
                             + " requires a dictionary");
                 } else if (inflater.needsInput()) {
+                    if (compressedRemaining == 0) {
+                        // Nothing came out, nothing is left to feed and the stream has not ended.
+                        throw truncatedDeflate(entry, expected, total);
+                    }
                     continue;
                 } else {
                     throw new IOException("Deflate stream for entry '" + entry.name() + "' of " + path

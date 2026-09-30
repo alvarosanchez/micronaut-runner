@@ -16,9 +16,12 @@
 package io.micronaut.runner.build;
 
 import io.micronaut.runner.IndexFormat;
+import io.micronaut.runner.build.ZipReaderTest.Payload;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -26,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -39,6 +43,8 @@ import static io.micronaut.runner.build.ZipReaderTest.directory;
 import static io.micronaut.runner.build.ZipReaderTest.intAt;
 import static io.micronaut.runner.build.ZipReaderTest.manifestBytes;
 import static io.micronaut.runner.build.ZipReaderTest.names;
+import static io.micronaut.runner.build.ZipReaderTest.rawDeflate;
+import static io.micronaut.runner.build.ZipReaderTest.rawDeflatedArchive;
 import static io.micronaut.runner.build.ZipReaderTest.readAll;
 import static io.micronaut.runner.build.ZipReaderTest.repeat;
 import static io.micronaut.runner.build.ZipReaderTest.stored;
@@ -159,6 +165,104 @@ class ZipRepackerTest {
                     () -> ZipRepacker.repack(reader, new ByteArrayOutputStream()));
             assertTrue(failure.getMessage().contains("data.txt"), failure.getMessage());
             assertTrue(failure.getMessage().contains("produces more"), failure.getMessage());
+        }
+    }
+
+    @ParameterizedTest(name = "{0}, {1} bytes")
+    @MethodSource("io.micronaut.runner.build.ZipReaderTest#transferBoundaryEntries")
+    void repacksADeflatedEntryWhateverItsSizeIsNextToTheTransferBuffer(Payload payload, int size)
+            throws IOException {
+        // The inflater can have consumed all of an entry's compressed bytes and still owe content that did
+        // not fit the buffer it was given. That is not a truncated stream, and the rest has to be drained.
+        byte[] content = payload.bytes(size);
+        Path source = temp.resolve("boundary.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(source))) {
+            deflated(zip, "data.bin", content);
+        }
+        Path nested = temp.resolve("boundary-nested.jar");
+
+        ZipRepacker.RepackResult result = ZipRepacker.repack(source, nested);
+
+        assertEquals(1, result.entries().size());
+        ZipEntryInfo entry = result.entries().get(0);
+        assertEquals("data.bin", entry.name());
+        assertEquals(IndexFormat.METHOD_STORED, entry.method());
+        assertEquals(size, entry.uncompressedSize());
+        assertArrayEquals(content, bytesAt(nested, entry.dataOffset(), size),
+                "the content at the offset the repack reported");
+        try (ZipFile oracle = new ZipFile(nested.toFile())) {
+            assertArrayEquals(content, readAll(oracle, oracle.getEntry("data.bin")));
+        }
+        try (ZipReader reader = ZipReader.open(source)) {
+            assertArrayEquals(content, reader.read(reader.entry("data.bin").orElseThrow()),
+                    "reading the entry into an array of its size agrees with streaming it");
+        }
+    }
+
+    @Test
+    void repacksEveryEntrySizeJustPastATransferBuffer() throws IOException {
+        // Which sizes leave content behind in the inflater depends on where the deflater happened to cut its
+        // matches, not on the size alone. So this goes through every size up to 300 bytes past one buffer,
+        // which is further than the longest match reaches.
+        int buffer = ZipReader.TRANSFER_BUFFER_SIZE;
+        Payload[] payloads = {Payload.ZEROS, Payload.TEXT};
+        Path source = temp.resolve("sweep.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(source))) {
+            for (Payload payload : payloads) {
+                for (int extra = 1; extra <= 300; extra++) {
+                    deflated(zip, payload + "/" + extra + ".bin", payload.bytes(buffer + extra));
+                }
+            }
+        }
+        Path nested = temp.resolve("sweep-nested.jar");
+
+        ZipRepacker.RepackResult result = ZipRepacker.repack(source, nested);
+
+        assertEquals(payloads.length * 300, result.entries().size());
+        try (ZipFile oracle = new ZipFile(nested.toFile())) {
+            for (Payload payload : payloads) {
+                for (int extra = 1; extra <= 300; extra++) {
+                    String name = payload + "/" + extra + ".bin";
+                    assertArrayEquals(payload.bytes(buffer + extra), readAll(oracle, oracle.getEntry(name)), name);
+                }
+            }
+        }
+    }
+
+    @ParameterizedTest(name = "{0}, {1} bytes")
+    @MethodSource("io.micronaut.runner.build.ZipReaderTest#transferBoundaryEntries")
+    void refusesATruncatedDeflateStreamWhateverItsSizeIsNextToTheTransferBuffer(Payload payload, int size)
+            throws IOException {
+        byte[] content = payload.bytes(size);
+        byte[] compressed = rawDeflate(content);
+        // The fixture itself is sound: with the whole stream the archive repacks to the content.
+        Path complete = rawDeflatedArchive(temp.resolve("complete.jar"), "data.bin", compressed, content);
+        Path nested = temp.resolve("complete-nested.jar");
+        ZipRepacker.RepackResult result = ZipRepacker.repack(complete, nested);
+        assertArrayEquals(content, bytesAt(nested, result.entries().get(0).dataOffset(), size));
+
+        // Without its last byte the stream yields most or all of the content and then cannot end; cut in
+        // half it yields only part of the content. Either way every record of the archive agrees about the
+        // shorter data, so the inflater is the only one that can tell.
+        for (int kept : new int[] {compressed.length - 1, compressed.length / 2}) {
+            Path truncated = rawDeflatedArchive(temp.resolve("truncated-" + kept + ".jar"), "data.bin",
+                    Arrays.copyOf(compressed, kept), content);
+            String expected = "Truncated deflate stream for entry 'data.bin' of " + truncated + ": expected "
+                    + size + " bytes, inflated ";
+
+            IOException streamed = assertThrows(IOException.class,
+                    () -> ZipRepacker.repack(truncated, temp.resolve("truncated-nested.jar")),
+                    () -> kept + " of " + compressed.length + " compressed bytes");
+            assertTrue(streamed.getMessage().startsWith(expected), streamed.getMessage());
+            try (ZipReader reader = ZipReader.open(truncated)) {
+                ZipEntryInfo entry = reader.entry("data.bin").orElseThrow();
+                IOException read = assertThrows(IOException.class, () -> reader.read(entry),
+                        () -> kept + " of " + compressed.length + " compressed bytes");
+                assertTrue(read.getMessage().startsWith(expected), read.getMessage());
+                // Both paths take everything the inflater can still give before they conclude, so they
+                // count the same content.
+                assertEquals(read.getMessage(), streamed.getMessage());
+            }
         }
     }
 
