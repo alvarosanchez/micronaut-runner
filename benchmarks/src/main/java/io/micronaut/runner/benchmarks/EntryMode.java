@@ -39,6 +39,7 @@ enum EntryMode {
                 || variantName.equals("runner-stored-preload") || variantName.equals("runner-stored-preload-aot")
                 || variantName.equals("runner-stored-positional") || variantName.equals("runner-stored-positional-aot")
                 || variantName.equals("runner-stored-keepdebug") || variantName.equals("runner-stored-keepdebug-aot")
+                || variantName.equals("runner-stored-lambdas") || variantName.equals("runner-stored-lambdas-aot")
                 || variantName.equals("runner-preserve") || variantName.equals("runner-stored-joran")
                 || variantName.equals("runner-stored-joran-aot")
                 || variantName.equals("runner-stored-dynamic-services")

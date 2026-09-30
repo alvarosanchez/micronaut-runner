@@ -75,7 +75,10 @@ class BenchmarkEntryModeTest {
             "runner-stored-keepdebug",
             "runner-stored-keepdebug-aot",
             "runner-stored-dynamic-services",
-            "runner-stored-dynamic-services-aot");
+            "runner-stored-dynamic-services-aot",
+            "runner-stored-lambdas",
+            "runner-stored-lambdas-aot",
+            "runner-extracted-lambdas-aot");
 
     @Test
     void matrixNamesPluginDefaults() {
@@ -125,6 +128,16 @@ class BenchmarkEntryModeTest {
         assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("keepdebug")));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-dynamic-services"));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-dynamic-services-aot"));
+        assertEquals(List.of("runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot"),
+                withOptIn.stream().filter(name -> name.contains("lambdas")).toList(),
+                "the lambda controls, in this order, after the runner-stored group");
+        assertTrue(withOptIn.indexOf("runner-stored-lambdas") > withOptIn.indexOf("runner-stored-dynamic-services-aot")
+                && withOptIn.indexOf("runner-extracted-lambdas-aot") < withOptIn.indexOf("runner-preserve"));
+        assertTrue(core.stream().noneMatch(name -> name.contains("lambdas")), core.toString());
+        assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("lambdas")));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-lambdas"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-lambdas-aot"));
+        assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("runner-extracted-lambdas-aot"));
         assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-stored"));
         assertTrue(core.stream().noneMatch(OPT_IN_ROWS::contains), "opt-in rows never gate: " + core);
     }
@@ -132,6 +145,10 @@ class BenchmarkEntryModeTest {
     @Test
     void theMicronautAotRowsAreComparedLikeForLikeAndWithThePlainRows() {
         List<SampleBuild.ComparisonSpec> specs = SampleBuild.comparisons();
+        // Rows added later append their own comparisons after these five.
+        int first = specs.indexOf(new SampleBuild.ComparisonSpec("runner-maot", "shadow-maot",
+                "Runner vs Micronaut AOT Shadow"));
+        assertTrue(first >= 0, specs.toString());
         assertEquals(List.of(
                 new SampleBuild.ComparisonSpec("runner-maot", "shadow-maot", "Runner vs Micronaut AOT Shadow"),
                 new SampleBuild.ComparisonSpec("runner-stored", "shadow-maot",
@@ -140,7 +157,7 @@ class BenchmarkEntryModeTest {
                 new SampleBuild.ComparisonSpec("shadow-maot", "shadow", "Micronaut AOT's gain on Shadow"),
                 new SampleBuild.ComparisonSpec("runner-maot-aot", "shadow-maot-aot",
                         "Runner vs Micronaut AOT Shadow, both with a JDK AOT cache")),
-                specs.subList(specs.size() - 5, specs.size()));
+                specs.subList(first, first + 5));
     }
 
     @Test
@@ -541,6 +558,46 @@ class BenchmarkEntryModeTest {
                 "runner-stored-keepdebug", "Local-variable tables stripped vs kept")));
         assertTrue(SampleBuild.comparisons().stream().anyMatch(spec -> spec.candidate().equals("runner-stored-aot")
                 && spec.baseline().equals("runner-stored-keepdebug-aot")));
+    }
+
+    @Test
+    void theLambdaControlKeepsTheCallSitesTheDefaultDesugars(@TempDir Path output) throws Exception {
+        Path classes = compile(output.resolve("lambdas"), "fixture.LambdaMain", """
+                package fixture;
+                public final class LambdaMain {
+                    public static void main(String[] args) {
+                        Runnable greeting = () -> System.out.println("hello");
+                        greeting.run();
+                    }
+                }
+                """);
+        Path library = output.resolve("library.jar");
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(library))) {
+            jar.putNextEntry(new ZipEntry("fixture/lib/Unused.txt"));
+            jar.closeEntry();
+        }
+
+        Variant desugared = SampleBuild.runnerJar(output, "runner-stored", "fixture.LambdaMain",
+                List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB);
+        Variant kept = SampleBuild.runnerJar(output, "runner-stored-lambdas", "fixture.LambdaMain",
+                List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB,
+                SampleBuild.RunnerJarOptions.DEFAULTS.withDesugarLambdas(false));
+
+        assertNull(SampleBuild.RunnerJarOptions.DEFAULTS.desugarLambdas(),
+                "a row that sets nothing follows the builder default");
+        assertTrue(kept.description().endsWith("; dependency lambdas kept"), kept.description());
+        assertFalse(desugared.description().contains("lambdas"), desugared.description());
+        assertTrue(entryNames(desugared.artifact()).contains("MICRONAUT-INF/classes/fixture/LambdaMain$$Lambda$R0.class"),
+                "the default desugars the application's lambda");
+        assertTrue(entryNames(kept.artifact()).stream().noneMatch(name -> name.contains("$$Lambda$R")));
+        assertEquals(EntryMode.STUB, kept.effectiveEntryMode());
+        List<SampleBuild.ComparisonSpec> comparisons = SampleBuild.comparisons();
+        assertTrue(comparisons.contains(new SampleBuild.ComparisonSpec("runner-stored", "runner-stored-lambdas",
+                "Lambdas desugared vs kept")));
+        assertTrue(comparisons.stream().anyMatch(spec -> spec.candidate().equals("runner-stored-aot")
+                && spec.baseline().equals("runner-stored-lambdas-aot")));
+        assertTrue(comparisons.stream().anyMatch(spec -> spec.candidate().equals("runner-extracted-aot")
+                && spec.baseline().equals("runner-extracted-lambdas-aot")));
     }
 
     private static List<String> entryNames(Path artifact) throws IOException {
