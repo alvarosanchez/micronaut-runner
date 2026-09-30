@@ -592,8 +592,8 @@ final class ClassTransformPipeline {
      * @param counts      one count per enabled step, in step order
      * @param notes       one line per fallback, tab-separated: the jar, the class or {@code the nest of} its
      *                    nest host, the dropped step and the first error
-     * @param desugared   what desugaring did to the jar's lambda call sites, or {@code null} when it did not
-     *                    run over the jar
+     * @param desugared   what desugaring did to the jar's lambda call sites, which in a signed jar is only to
+     *                    count them, or {@code null} when it did not run over the jar
      */
     record JarReport(String jar, boolean application, List<StepCount> counts, List<String> notes,
                      Desugared desugared) {
@@ -695,18 +695,23 @@ final class ClassTransformPipeline {
         /**
          * Plans the jar before any of its entries is written, when a step plans whole nests: each planned nest
          * is rewritten, verified and either accepted or given up on here, and its classes wait for
-         * {@link #planned(String)}.
+         * {@link #planned(String)}. In a signed jar, which no step rewrites, the planning step only counts the
+         * lambda call sites it leaves.
          *
          * @param classes the jar's classes
          * @throws IOException if a class cannot be read
          */
         void plan(JarClasses classes) throws IOException {
-            if (desugarer == null || !applies[desugarIndex]) {
+            if (desugarer == null) {
                 return;
             }
             LambdaDesugarer.JarPlan plan = desugarer.plan(layer, classes);
             for (int reason = 0; reason < left.length; reason++) {
                 left[reason] += plan.left()[reason];
+            }
+            if (!applies[desugarIndex]) {
+                // Rule d: whatever the plan says, nothing of a signed jar is rewritten.
+                return;
             }
             for (LambdaDesugarer.Unit unit : plan.units()) {
                 run(unit);
@@ -714,12 +719,13 @@ final class ClassTransformPipeline {
         }
 
         /**
-         * Whether this run plans nests, so {@link #plan(JarClasses)} has work to do.
+         * Whether this run plans nests, or counts the lambda call sites of a signed jar, so
+         * {@link #plan(JarClasses)} has work to do.
          *
-         * @return whether a planning step applies to the jar
+         * @return whether the pipeline has a planning step
          */
         boolean plans() {
-            return desugarer != null && applies[desugarIndex];
+            return desugarer != null;
         }
 
         /**

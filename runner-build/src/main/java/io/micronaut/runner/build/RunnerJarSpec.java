@@ -860,7 +860,8 @@ public final class RunnerJarSpec {
          * resolved. Its implementation must be a member the generated class can reach: one of the host's own
          * nest, a non-private member of the host's package, or a public member of a public class, on the class
          * path or in an exported package of the JDK. Everything else keeps its {@code invokedynamic}: a
-         * {@code super::method} reference, a caller-sensitive JDK method, a host or an owner that another jar
+         * {@code super::method} reference or any other {@code invokespecial} reference that is not to a private
+         * method of the host, a caller-sensitive JDK method, a host or an owner that another jar
          * shadows or that has a multi-release variant, every class of a signed jar and of
          * {@code META-INF/versions/}, and every other bootstrap, such as string concatenation, records'
          * {@code ObjectMethods} and serializable lambdas.</p>

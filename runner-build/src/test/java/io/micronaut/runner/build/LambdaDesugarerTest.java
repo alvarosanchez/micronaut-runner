@@ -52,6 +52,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.jar.Attributes.Name;
 import java.util.jar.Manifest;
 
@@ -342,6 +343,66 @@ class LambdaDesugarerTest {
     }
 
     @Test
+    void aSpecialReferenceToAMethodOfTheHostIsRewrittenOnlyWhenTheMethodIsPrivate() throws Exception {
+        Map<String, byte[]> compiled = compile("special", 25, Map.of(
+                "special/Open.java", """
+                        package special;
+                        import java.util.function.Supplier;
+                        public class Open {
+                            public String m() {
+                                return "Open.m";
+                            }
+                            public Supplier<String> ref() {
+                                return this::m;
+                            }
+                        }
+                        """,
+                "special/Sub.java", """
+                        package special;
+                        public class Sub extends Open {
+                            @Override
+                            public String m() {
+                                return "Sub.m";
+                            }
+                        }
+                        """,
+                "special/Closed.java", """
+                        package special;
+                        import java.util.function.Supplier;
+                        public class Closed {
+                            private String m() {
+                                return "Closed.m";
+                            }
+                            public Supplier<String> ref() {
+                                return this::m;
+                            }
+                        }
+                        """));
+        Map<String, byte[]> entries = new LinkedHashMap<>(compiled);
+        for (String host : List.of("Open", "Closed")) {
+            entries.put("special/" + host + ".class", withSpecialReference(compiled.get("special/" + host + ".class"),
+                    ClassDesc.of("special." + host)));
+        }
+        // LambdaMetafactory keeps such a handle non-virtual unless the method is private: through a subclass that
+        // overrides it, the reference still calls the host's own method.
+        assertEquals("Open.m", referenced(entries, "special.Sub"));
+        assertEquals("Closed.m", referenced(entries, "special.Closed"));
+
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
+                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/special.jar", entries)), false);
+
+        Map<String, byte[]> output = outcome.outputs().get(0);
+        assertArrayEquals(entries.get("special/Open.class"), output.get("special/Open.class"),
+                "an invokevirtual would reach the override");
+        assertNull(output.get("special/Open$$Lambda$R0.class"));
+        assertEquals("Open.m", referenced(output, "special.Sub"));
+        assertEquals(Map.of(LambdaDesugarer.Reason.SUPER_CALL, 1), outcome.reports().get(0).desugared().left());
+        assertEquals(1, outcome.reports().get(0).desugared().sites(), "the private method's site is rewritten");
+        assertNotNull(output.get("special/Closed$$Lambda$R0.class"));
+        assertEquals("Closed.m", referenced(output, "special.Closed"));
+    }
+
+    @Test
     void anOwnerThatAnEarlierCopyShadowsOrANewerRuntimeReplacesIsLeftAlone() throws Exception {
         Map<String, byte[]> earlier = compile("shadow-first", 25, Map.of(
                 "lacking/Owner.java", "package lacking; public class Owner { }\n",
@@ -548,8 +609,9 @@ class LambdaDesugarerTest {
                 "META-INF/versions/21/mr/Host.class", "META-INF/versions/21/mr/Outer.class")) {
             assertArrayEquals(entries.get(name), output.get(name), name + " keeps its bytes");
         }
-        assertEquals(Map.of(LambdaDesugarer.Reason.MULTI_RELEASE, 1), outcome.reports().get(0).desugared().left(),
-                "the member of a nest whose host has a variant; the base copy a variant replaces is not counted");
+        assertEquals(Map.of(LambdaDesugarer.Reason.MULTI_RELEASE, 2), outcome.reports().get(0).desugared().left(),
+                "the member of a nest whose host has a variant, and the variant of Host the runtime loads; the base"
+                        + " copy a variant replaces is not counted");
         assertEquals(1, outcome.reports().get(0).desugared().sites(), "a class without a variant is rewritten");
         assertNotNull(output.get("mr/Plain$$Lambda$R0.class"));
         assertEquals(entries.size() + 1, output.size(), "and nothing else is generated");
@@ -593,7 +655,9 @@ class LambdaDesugarerTest {
         byte[] nested = bytes.toByteArray();
         assertArrayEquals(compiled.get("signed/Host.class"), java.util.Arrays.copyOfRange(nested,
                 (int) host.dataOffset(), (int) (host.dataOffset() + host.uncompressedSize())));
-        assertNull(report.desugared(), "a signed jar is not even planned");
+        assertEquals(Map.of(LambdaDesugarer.Reason.SIGNED_JAR, 1), report.desugared().left(),
+                "its sites are counted, and nothing else is planned");
+        assertEquals(0, report.desugared().sites());
         assertEquals(new ClassTransformPipeline.StepCount(LambdaDesugarer.NAME, 0, 1, 0, 0), report.counts().get(0));
     }
 
@@ -683,6 +747,15 @@ class LambdaDesugarerTest {
         input.forEach((name, bytes) -> assertArrayEquals(bytes, output.get(name), name + " keeps its bytes"));
     }
 
+    /**
+     * Calls {@code ref().get()} on a new instance of a class, loaded with the given entries.
+     */
+    private static Object referenced(Map<String, byte[]> entries, String type) throws Exception {
+        Class<?> loaded = LambdaFixtures.loader(LambdaFixtures.classPath(List.of(entries))).loadClass(type);
+        Object instance = loaded.getConstructor().newInstance();
+        return ((Supplier<?>) loaded.getMethod("ref").invoke(instance)).get();
+    }
+
     private static List<String> withoutHidden(List<String> lines) {
         return lines.stream().filter(line -> !line.startsWith("hidden=")).toList();
     }
@@ -723,14 +796,21 @@ class LambdaDesugarerTest {
      * have written: the same call site, with an {@code invokespecial} handle on the superclass.
      */
     private static byte[] withSuperReference(byte[] bytes) {
+        return withSpecialReference(bytes, ClassFile.of().parse(bytes).superclass().orElseThrow().asSymbol());
+    }
+
+    /**
+     * Turns the {@code this::name} reference of a class into an {@code invokespecial} handle on a given class,
+     * the same call site otherwise.
+     */
+    private static byte[] withSpecialReference(byte[] bytes, ClassDesc owner) {
         ClassFile context = ClassFile.of(ClassFile.StackMapsOption.DROP_STACK_MAPS);
         ClassModel model = context.parse(bytes);
-        ClassDesc superclass = model.superclass().orElseThrow().asSymbol();
         return context.transformClass(model, ClassTransform.transformingMethodBodies((builder, element) -> {
             if (element instanceof InvokeDynamicInstruction indy) {
                 List<ConstantDesc> arguments = new ArrayList<>(indy.bootstrapArgs());
                 DirectMethodHandleDesc implementation = (DirectMethodHandleDesc) arguments.get(1);
-                arguments.set(1, MethodHandleDesc.ofMethod(DirectMethodHandleDesc.Kind.SPECIAL, superclass,
+                arguments.set(1, MethodHandleDesc.ofMethod(DirectMethodHandleDesc.Kind.SPECIAL, owner,
                         implementation.methodName(), MethodTypeDesc.ofDescriptor(implementation.lookupDescriptor())));
                 builder.invokedynamic(DynamicCallSiteDesc.of(indy.bootstrapMethod(), indy.name().stringValue(),
                         indy.typeSymbol(), arguments.toArray(ConstantDesc[]::new)));

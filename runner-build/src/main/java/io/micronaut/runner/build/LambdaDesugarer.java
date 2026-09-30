@@ -82,9 +82,10 @@ import java.util.Set;
  * <h2>What stays {@code invokedynamic}</h2>
  * <p>A site is rewritten only when the generated class provably resolves what the site resolved; every
  * {@link Reason} names one way it does not. Nothing of a signed jar, of a {@code META-INF/versions/} directory
- * or of {@code module-info} is considered, and neither is any bootstrap other than {@code metafactory}: string
+ * or of {@code module-info} is rewritten, and neither is any bootstrap other than {@code metafactory}: string
  * concatenation, {@code ObjectMethods}, {@code altMetafactory} (serializable and marker-interface lambdas) and
- * the rest keep their call sites.</p>
+ * the rest keep their call sites. The sites of a signed jar's classes and of the versioned variants the runtime
+ * loads are still counted, so the report covers every lambda call site the runtime may link.</p>
  *
  * <h2>The nest is the unit</h2>
  * <p>{@link #plan(ClassTransformPipeline.Layer, ClassTransformPipeline.JarClasses)} plans a whole jar before
@@ -270,13 +271,15 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
      * they need, decides which sites are rewritten and allocates the generated and bridge names.
      *
      * <p>The class path scan has already applied the pre-filter to every class, so only the classes it marked
-     * are read again, and only the copy of a name that the runtime loads, which is the only one that can be
-     * rewritten: a copy that an earlier layer shadows or that a multi-release variant replaces is never
-     * loaded, so its sites are neither rewritten nor counted.</p>
+     * are read again, and only the copy of a name that the runtime loads: a copy that an earlier layer shadows
+     * or that a multi-release variant replaces is never loaded, so its sites are neither rewritten nor counted.
+     * A loaded copy that is never rewritten, a {@code META-INF/versions/N/} variant or any class of a signed
+     * jar, has its sites counted and nothing else: {@link Reason#MULTI_RELEASE} or
+     * {@link Reason#SIGNED_JAR}.</p>
      *
      * @param layer   the jar
      * @param classes its classes
-     * @return the plan
+     * @return the plan, without any unit for a signed jar
      * @throws IOException if a class cannot be read
      */
     JarPlan plan(ClassTransformPipeline.Layer layer, ClassTransformPipeline.JarClasses classes)
@@ -284,16 +287,20 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
         Planner planner = new Planner(layer, classes);
         for (ClassTransformPipeline.ClassEntry entry : classes.classes()) {
             String name = entry.name();
-            if (!isCandidate(name) || entry.size() > ClassTransformPipeline.MAX_CLASS_SIZE) {
+            int version = IndexWriter.versionOf(name);
+            String path = version == 0 ? name : IndexWriter.pathOf(name);
+            if (!isCandidate(path) || entry.size() > ClassTransformPipeline.MAX_CLASS_SIZE) {
                 continue;
             }
-            Optional<ClassPathModel.Copy> copy = model.winner(name.substring(0, name.length() - CLASS_SUFFIX.length()));
+            Optional<ClassPathModel.Copy> copy = model.winner(path.substring(0, path.length() - CLASS_SUFFIX.length()));
             if (copy.isEmpty() || !copy.get().lambdas() || copy.get().layer() != layer.index()
-                    || copy.get().version() != 0) {
+                    || copy.get().version() != version) {
                 continue;
             }
             byte[] bytes = planner.read(name);
-            if (matches(name, bytes)) {
+            if (layer.signed() || version != 0) {
+                planner.count(bytes, layer.signed() ? Reason.SIGNED_JAR : Reason.MULTI_RELEASE);
+            } else if (matches(name, bytes)) {
                 planner.host(name, bytes);
             }
         }
@@ -467,15 +474,22 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
         SHADOWED_OR_UNCERTAIN("shadowedOrUncertain"),
 
         /**
-         * The host's nest host has a multi-release variant, which replaces it at run time. A host that has one is
-         * not counted at all: the runtime never loads it.
+         * The host is a {@code META-INF/versions/N/} variant that the runtime loads, which this step never
+         * rewrites, or the host's nest host has such a variant, which replaces it at run time. The base copy of a
+         * host that a variant replaces is not counted: the runtime never loads it.
          */
         MULTI_RELEASE("multiRelease"),
+
+        /** The host is in a signed jar, whose classes are nested as they were built. */
+        SIGNED_JAR("signedJar"),
 
         /** The host's nest host is not a class of the same jar that lists the host as a member. */
         NEST("nest"),
 
-        /** The implementation is an {@code invokespecial} on another class, such as {@code super::method}. */
+        /**
+         * The implementation is an {@code invokespecial} that stays non-virtual: on another class, such as
+         * {@code super::method}, or of a member of the host that is not private.
+         */
         SUPER_CALL("superCall"),
 
         /**
@@ -1262,6 +1276,42 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
         }
 
         /**
+         * Counts the sites of a class that the runtime loads and this step never rewrites, as {@link #host}
+         * counts those of a host it excludes: {@code metafactory} sites under the reason, {@code altMetafactory}
+         * ones under their own. A class that cannot be parsed is not counted, as it would not be planned.
+         */
+        private void count(byte[] bytes, Reason reason) {
+            int metafactory = 0;
+            int alternative = 0;
+            try {
+                ClassModel parsed = PARSER.parse(bytes);
+                if (!usesMetafactory(parsed)) {
+                    return;
+                }
+                for (MethodModel method : parsed.methods()) {
+                    Optional<CodeModel> code = method.code();
+                    if (code.isEmpty()) {
+                        continue;
+                    }
+                    for (CodeElement element : code.get()) {
+                        if (element instanceof InvokeDynamicInstruction indy) {
+                            String bootstrap = bootstrap(indy);
+                            if (METAFACTORY.equals(bootstrap)) {
+                                metafactory++;
+                            } else if (ALT_METAFACTORY.equals(bootstrap)) {
+                                alternative++;
+                            }
+                        }
+                    }
+                }
+            } catch (RuntimeException e) {
+                return;
+            }
+            left[reason.ordinal()] += metafactory;
+            left[Reason.ALT_METAFACTORY.ordinal()] += alternative;
+        }
+
+        /**
          * Completes the plan: every nest host of version 55 or later is rewritten, even without a site of its
          * own, to list the generated classes of its nest after the members it already has.
          */
@@ -1473,6 +1523,7 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
                 String owner = internalName(implementation.owner());
                 Invocation invocation;
                 boolean instance = true;
+                boolean special = false;
                 switch (implementation.kind()) {
                     case STATIC, INTERFACE_STATIC -> {
                         invocation = Invocation.STATIC;
@@ -1484,7 +1535,9 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
                         if (!owner.equals(name)) {
                             return Reason.SUPER_CALL;
                         }
-                        // As LambdaMetafactory does for a private method of the caller itself.
+                        // As LambdaMetafactory does for a private method of the caller itself, and only for one:
+                        // the member must turn out to be private below.
+                        special = true;
                         invocation = implementation.isOwnerInterface() ? Invocation.INTERFACE : Invocation.VIRTUAL;
                     }
                     case CONSTRUCTOR -> {
@@ -1548,6 +1601,11 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
                     } else if (!model.isAccessible(owner, implName, implementation.lookupDescriptor(), packageName)) {
                         return Reason.OWNER_ACCESS;
                     }
+                }
+                if (special && (flags & ClassFile.ACC_PRIVATE) == 0) {
+                    // LambdaMetafactory keeps an invokespecial of a member that is not private non-virtual, through
+                    // the method handle; an invokevirtual would dispatch to an override in a subclass instead.
+                    return Reason.SUPER_CALL;
                 }
                 if (((flags & ClassFile.ACC_STATIC) != 0) != (invocation == Invocation.STATIC)
                         || ownerIsInterface != implementation.isOwnerInterface()

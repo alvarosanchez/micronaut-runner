@@ -218,7 +218,7 @@ single JAR 38.0 ms faster with its AOT cache (95% CI 33.9 to 41.6 ms) and 38.9 m
 47.3 ms). With its cache it was then 16.0 ms ahead of Shadow's (95% CI 11.1 to 22.7 ms), at 144.4 MiB maximum RSS
 against Shadow's 133.6 MiB. The single-JAR figures above were taken before lambdas were desugared. The cached gain
 holds for JDK 25 and 26; on JDK 27 the single JAR's cache holds no application class (see the first section), and the
-extracted layout is the cached deployment. What is left of the cached difference: the 21 sites still excluded (none on
+extracted layout is the cached deployment. What is left of the cached difference: the 29 sites still excluded (none on
 this sample's startup path), about 40 string concatenation sites, the per-class cost of reusing unregistered classes,
 and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT cache
 remains the parity option, with Shadow's RSS.

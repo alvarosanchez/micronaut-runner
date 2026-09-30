@@ -129,7 +129,8 @@ the site did: a member of the host's own nest, private ones included; a non-priv
 or a public member of a public class, in any JAR or in an exported package of the JDK. The generated class
 implements the same interface, keeps the captured values in final fields, and converts arguments and results as
 the JDK would.
-Left as `invokedynamic`:: A `super::method` reference; a caller-sensitive JDK method, such as `Class::forName`; a
+Left as `invokedynamic`:: A `super::method` reference, or any other non-virtual (`invokespecial`) reference that is
+not to a private method of the host; a caller-sensitive JDK method, such as `Class::forName`; a
 site whose host, or whose implementation's owner, an earlier JAR shadows or a multi-release variant replaces; a
 site that would need a class that is not on the class path; every class of a signed JAR and of
 `META-INF/versions/`; and every other bootstrap: string concatenation, the `ObjectMethods` of records, and
@@ -157,10 +158,11 @@ the same JDK build.
 The step fails closed. Every class it writes or rewrites is verified, and when one class of a nest verifies worse
 than before, or the step fails on it, the whole nest is packaged as it was, with one line in the build log. The
 build log's summary line and the `lambdas` lines of `transforms.txt` give the sites rewritten, the classes
-generated, the bridges added and the sites left, by reason.
+generated, the bridges added and the sites left, by reason. The sites left include those of signed JARs and of the
+`META-INF/versions/` classes the runtime loads; the copies of a class that the runtime never loads are not counted.
 
-On `test-suite/samples/benchmark-large`, desugaring rewrites 2,963 of the 2,984 lambda call sites of the
-dependencies and the application, 361 of them through bridges, with no fallback; none of the 21 it leaves runs
+On `test-suite/samples/benchmark-large`, desugaring rewrites 2,963 of the 2,992 lambda call sites of the
+dependencies and the application, 361 of them through bridges, with no fallback; none of the 29 it leaves runs
 before the application is ready. Measured by the startup harness (<<benchmarks,Benchmarks>>) against the
 `runner-stored-lambdas` control, 30 interleaved pairs on an Apple Silicon machine with 12 CPUs and Homebrew OpenJDK
 25.0.4.1:
