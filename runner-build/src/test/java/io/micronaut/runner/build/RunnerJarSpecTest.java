@@ -36,6 +36,16 @@ class RunnerJarSpecTest {
     }
 
     @Test
+    void precompilesLogbackByDefaultAndTakesTheOptOutByName() {
+        assertTrue(complete(RunnerJarSpec.builder()).build().precompileLogback());
+        assertEquals("true", complete(RunnerJarSpec.builder()).build().effectiveOptions().get("precompileLogback"));
+        assertFalse(complete(RunnerJarSpec.builder().option("precompileLogback", "false")).build()
+                .precompileLogback());
+        assertFalse(complete(RunnerJarSpec.builder().precompileLogback(false)).build().precompileLogback());
+        assertEquals(RunnerJarOption.Exposure.PASSTHROUGH, RunnerJarOption.PRECOMPILE_LOGBACK.exposure());
+    }
+
+    @Test
     void acceptsMultipleManifestModulePackagePairs() {
         RunnerJarSpec.Builder builder = RunnerJarSpec.builder()
                 .addExports(List.of("java.base/sun.nio.ch", "java.base/jdk.internal.misc"))
@@ -97,7 +107,7 @@ class RunnerJarSpecTest {
 
     @Test
     void aBooleanOptionAcceptsOnlyTrueOrFalse() {
-        for (String name : List.of("entryStub", "multiRelease", "enableNativeAccess")) {
+        for (String name : List.of("entryStub", "multiRelease", "enableNativeAccess", "precompileLogback")) {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                     () -> RunnerJarSpec.builder().option(name, "yes"));
             assertTrue(failure.getMessage().contains(name), failure::getMessage);

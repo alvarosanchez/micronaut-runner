@@ -23,11 +23,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.tools.ToolProvider;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +39,7 @@ import java.util.jar.JarOutputStream;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -61,7 +64,9 @@ class BenchmarkEntryModeTest {
     private static final List<String> OPT_IN_ROWS = List.of(
             "runner-stored-reflection",
             "runner-stored-positional",
-            "runner-stored-positional-aot");
+            "runner-stored-positional-aot",
+            "runner-stored-joran",
+            "runner-stored-joran-aot");
 
     @Test
     void matrixNamesPluginDefaults() {
@@ -83,9 +88,13 @@ class BenchmarkEntryModeTest {
         expected.addAll(expected.indexOf("runner-stored-aot") + 1, OPT_IN_ROWS);
         assertEquals(expected, withOptIn);
         assertEquals(CORE_ROWS.size() + OPT_IN_ROWS.size(), withOptIn.size());
+        assertTrue(core.stream().noneMatch(name -> name.contains("joran")), core.toString());
+        assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("joran")));
         assertEquals(EntryMode.REFLECTION, EntryMode.requestedBy("runner-stored-reflection"));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional"));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional-aot"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran-aot"));
         assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-stored"));
         assertTrue(core.stream().noneMatch(OPT_IN_ROWS::contains), "opt-in rows never gate: " + core);
     }
@@ -124,6 +133,68 @@ class BenchmarkEntryModeTest {
         }
         try (RunnerJarReader reader = RunnerJarReader.open(mapped.artifact())) {
             assertFalse(reader.index().positionalReads(), "a row that sets nothing follows the builder default");
+        }
+    }
+
+    @Test
+    void theJoranRowsAreComparedAsControlsOfThePrecompiledRows() {
+        List<String> pairs = SampleBuild.comparisons().stream()
+                .map(spec -> spec.candidate() + " - " + spec.baseline())
+                .toList();
+        assertTrue(pairs.containsAll(List.of(
+                "runner-stored - runner-stored-joran",
+                "runner-stored-aot - runner-stored-joran-aot")), pairs.toString());
+    }
+
+    @Test
+    void aJoranControlRowSetsItsOptionOnTheSharedRecordAndIsPinnedLikeEveryLaunchInput(@TempDir Path output)
+            throws Exception {
+        Path classes = compile(output.resolve("joran"), "fixture.JoranMain", """
+                package fixture;
+                public final class JoranMain {
+                    public static void main(String[] args) { }
+                }
+                """);
+        SampleBuild.RunnerJarOptions control = SampleBuild.RunnerJarOptions.DEFAULTS.withPrecompileLogback(false);
+        assertNull(control.archiveReads(), "the control leaves the archive read mode at the builder default");
+        assertNull(SampleBuild.RunnerJarOptions.DEFAULTS.precompileLogback());
+        assertEquals(Boolean.FALSE, control.withArchiveReads(ArchiveReads.POSITIONAL).precompileLogback(),
+                "one option does not reset the other");
+        assertEquals(ArchiveReads.POSITIONAL, SampleBuild.RunnerJarOptions.DEFAULTS
+                .withArchiveReads(ArchiveReads.POSITIONAL).withPrecompileLogback(false).archiveReads());
+
+        // A fixture the precompiler really compiles: a logback.xml and the real Logback and SLF4J jars. Without
+        // them no archive carries a configurator whatever the option says, and the control proves nothing.
+        Files.writeString(classes.resolve("logback.xml"), """
+                <configuration>
+                    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+                        <encoder>
+                            <pattern>%msg%n</pattern>
+                        </encoder>
+                    </appender>
+                    <root level="WARN">
+                        <appender-ref ref="STDOUT"/>
+                    </root>
+                </configuration>
+                """, StandardCharsets.UTF_8);
+        List<Path> logback = logbackFixture();
+
+        Variant precompiled = SampleBuild.runnerJar(output, "runner-stored", "fixture.JoranMain",
+                List.of(classes), logback, Compression.STORED, EntryMode.STUB);
+        Variant joran = SampleBuild.runnerJar(output, "runner-stored-joran", "fixture.JoranMain",
+                List.of(classes), logback, Compression.STORED, EntryMode.STUB, control);
+
+        assertTrue(SampleBuild.logbackPrecompiled(precompiled.artifact()),
+                "the builder default precompiles this fixture, so the control has something to differ from");
+        assertFalse(precompiled.description().contains("Joran"), precompiled.description());
+        assertTrue(joran.description().contains("logback.xml left to Joran"), joran.description());
+        assertFalse(joran.description().contains("archiveReads"), joran.description());
+        assertFalse(SampleBuild.logbackPrecompiled(joran.artifact()),
+                "the control's option reached the packaging library");
+        assertEquals(LaunchInputs.PINNED_MODIFICATION_TIME, Files.getLastModifiedTime(joran.artifact()),
+                "a trained cache of the -aot control stays valid across runs only if the jar's time is pinned");
+        try (RunnerJarReader reader = RunnerJarReader.open(joran.artifact())) {
+            assertFalse(reader.index().positionalReads());
         }
     }
 
@@ -235,6 +306,16 @@ class BenchmarkEntryModeTest {
                 "-d", classes.toString(), sourceFile.toString());
         assertEquals(0, exit, "fixture compilation failed");
         return classes;
+    }
+
+    /** The logback-classic, logback-core and slf4j-api jars the build hands to this test as files. */
+    private static List<Path> logbackFixture() {
+        String path = System.getProperty("runner.benchmark.logbackFixture");
+        assertNotNull(path, "run this test through Gradle, which sets runner.benchmark.logbackFixture to the"
+                + " Logback and SLF4J jars of the fixture");
+        List<Path> jars = Arrays.stream(path.split(File.pathSeparator)).map(Path::of).toList();
+        assertEquals(3, jars.size(), path);
+        return jars;
     }
 
     private static Path emptyJar(Path path) throws IOException {

@@ -97,6 +97,8 @@ final class SampleBuild {
     private static final String RUNNER_STORED_REFLECTION = "runner-stored-reflection";
     private static final String RUNNER_STORED_POSITIONAL = "runner-stored-positional";
     private static final String RUNNER_STORED_POSITIONAL_AOT = "runner-stored-positional-aot";
+    private static final String RUNNER_STORED_JORAN = "runner-stored-joran";
+    private static final String RUNNER_STORED_JORAN_AOT = "runner-stored-joran-aot";
     private static final String RUNNER_PRESERVE = "runner-preserve";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
     private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
@@ -109,7 +111,16 @@ final class SampleBuild {
     private static final String RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION =
             "The same POSITIONAL Runner jar with a verified JDK AOT cache";
 
+    private static final String RUNNER_STORED_JORAN_DESCRIPTION =
+            "The same stored Runner jar with precompileLogback=false: logback.xml read by Joran (control)";
+    private static final String RUNNER_STORED_JORAN_AOT_DESCRIPTION =
+            "The same Joran control Runner jar with a verified JDK AOT cache";
+
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
+
+    /** The configurator runner-build generates from logback.xml when it precompiles it. */
+    private static final String GENERATED_LOGBACK_CONFIGURATOR =
+            "io.micronaut.runner.generated.logback.LogbackConfigurator";
 
     /** The task the init script registers on the sample's build. */
     private static final String METADATA_TASK = "runnerBenchmarkMetadata";
@@ -293,7 +304,11 @@ final class SampleBuild {
                         "Archive reads + AOT cache: POSITIONAL vs MAPPED"),
                 new ComparisonSpec(RUNNER_STORED_POSITIONAL, SHADOW, "Runner POSITIONAL vs Shadow"),
                 new ComparisonSpec(RUNNER_STORED_POSITIONAL_AOT, SHADOW_AOT,
-                        "Runner POSITIONAL + AOT cache vs Shadow + AOT cache"));
+                        "Runner POSITIONAL + AOT cache vs Shadow + AOT cache"),
+                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_JORAN,
+                        "Precompiled Logback vs Joran at startup (Runner-only control)"),
+                new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_JORAN_AOT,
+                        "Precompiled Logback vs Joran at startup (Runner-only control) + AOT cache"));
     }
 
     /**
@@ -324,6 +339,8 @@ final class SampleBuild {
                     reason));
             variants.add(Variant.unavailable(RUNNER_STORED_POSITIONAL_AOT,
                     RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION, reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_JORAN, RUNNER_STORED_JORAN_DESCRIPTION, reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_JORAN_AOT, RUNNER_STORED_JORAN_AOT_DESCRIPTION, reason));
         }
         variants.add(Variant.unavailable(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub", reason));
@@ -373,6 +390,11 @@ final class SampleBuild {
             variants.add(positional);
             variants.add(attempt(RUNNER_STORED_POSITIONAL_AOT, RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION,
                     () -> AotCache.prepare(positional, RUNNER_STORED_POSITIONAL_AOT, aotRequest())));
+            Variant joran = attempt(RUNNER_STORED_JORAN, RUNNER_STORED_JORAN_DESCRIPTION,
+                    () -> joranControl(stored));
+            variants.add(joran);
+            variants.add(attempt(RUNNER_STORED_JORAN_AOT, RUNNER_STORED_JORAN_AOT_DESCRIPTION,
+                    () -> AotCache.prepare(joran, RUNNER_STORED_JORAN_AOT, aotRequest())));
         }
         variants.add(attempt(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
@@ -505,6 +527,41 @@ final class SampleBuild {
                 compression, requestedEntryMode, options);
     }
 
+    /**
+     * The Joran control row: the {@code runner-stored} inputs with {@code precompileLogback=false}. It is only a
+     * control while {@code runner-stored} really carries the generated configurator and this archive does not.
+     *
+     * @param stored the {@code runner-stored} row
+     * @return the control row
+     * @throws IOException if either archive is not what the comparison needs
+     */
+    private Variant joranControl(Variant stored) throws IOException {
+        if (!stored.available() || !logbackPrecompiled(stored.artifact())) {
+            throw new IOException("runner-stored carries no " + GENERATED_LOGBACK_CONFIGURATOR
+                    + ", so there is no precompiled Logback configuration to compare Joran with");
+        }
+        Variant joran = runnerJar(artifacts, RUNNER_STORED_JORAN, mainClass, applicationOutput, dependencies,
+                Compression.STORED, EntryMode.STUB, RunnerJarOptions.DEFAULTS.withPrecompileLogback(false));
+        if (logbackPrecompiled(joran.artifact())) {
+            throw new IOException(joran.artifact() + " carries " + GENERATED_LOGBACK_CONFIGURATOR
+                    + " although precompileLogback=false");
+        }
+        return joran;
+    }
+
+    /**
+     * Whether a runner jar carries the Logback configurator runner-build generates.
+     *
+     * @param archive the runner jar
+     * @return whether its index knows the generated configurator
+     * @throws IOException if the archive cannot be read
+     */
+    static boolean logbackPrecompiled(Path archive) throws IOException {
+        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+            return reader.index().findClass(GENERATED_LOGBACK_CONFIGURATOR) != IndexFormat.NO_INDEX;
+        }
+    }
+
     static Variant runnerJar(Path artifacts,
                              String name,
                              String mainClass,
@@ -541,6 +598,9 @@ final class SampleBuild {
         if (options.archiveReads() != null) {
             builder.archiveReads(options.archiveReads());
         }
+        if (options.precompileLogback() != null) {
+            builder.precompileLogback(options.precompileLogback());
+        }
         RunnerJarSpec spec = builder.build();
         RunnerJarBuilder.build(spec, BuildLogger.noOp());
         // Rebuilt in every run with the same bytes; the pin keeps the time a trained cache recorded.
@@ -557,7 +617,8 @@ final class SampleBuild {
                         + (requestedEntryMode == EntryMode.STUB
                         ? "; plugin-default entry stub" : "; reflection ablation")
                         + (options.archiveReads() == null ? ""
-                        : "; archiveReads " + options.archiveReads().name()),
+                        : "; archiveReads " + options.archiveReads().name())
+                        + (Boolean.FALSE.equals(options.precompileLogback()) ? "; logback.xml left to Joran" : ""),
                 command, artifacts, output, deploymentSize, requestedEntryMode, effectiveEntryMode);
     }
 
@@ -578,14 +639,15 @@ final class SampleBuild {
     /**
      * The packaging options a row sets on top of the packaging library's defaults. A {@code null} field leaves
      * the builder default in place, so a row that does not set an option measures whatever default the option
-     * table declares.
+     * table declares. A row that needs another option adds a field here rather than another overload.
      *
      * @param archiveReads how the launcher reads the archive, or {@code null} for the builder default
+     * @param precompileLogback whether to precompile {@code logback.xml}, or {@code null} for the builder default
      */
-    record RunnerJarOptions(ArchiveReads archiveReads) {
+    record RunnerJarOptions(ArchiveReads archiveReads, Boolean precompileLogback) {
 
         /** Every option at the builder default. */
-        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null);
+        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null);
 
         /**
          * These options with another archive read mode.
@@ -594,7 +656,17 @@ final class SampleBuild {
          * @return the new options
          */
         RunnerJarOptions withArchiveReads(ArchiveReads value) {
-            return new RunnerJarOptions(value);
+            return new RunnerJarOptions(value, precompileLogback);
+        }
+
+        /**
+         * These options with {@code logback.xml} precompiled or left to Joran.
+         *
+         * @param value whether to precompile {@code logback.xml}
+         * @return the new options
+         */
+        RunnerJarOptions withPrecompileLogback(boolean value) {
+            return new RunnerJarOptions(archiveReads, value);
         }
     }
 

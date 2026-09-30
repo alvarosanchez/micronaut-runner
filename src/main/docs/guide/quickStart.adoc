@@ -74,6 +74,9 @@ micronaut {
 
         // POSITIONAL maps only the index and reads classes with pooled positional reads: lower RSS, slightly slower start.
         // options.put('archiveReads', 'positional')
+
+        // On by default: compiles logback.xml at packaging time; anything it cannot compile is left to Logback.
+        // options.put('precompileLogback', 'false')
     }
 }
 ----
@@ -99,6 +102,7 @@ typed property, and an unknown name fails the build.
 |`addExports` |list |empty |typed |1.0
 |`manifestAttributes` |map |empty |typed |1.0
 |`archiveReads` |`MAPPED` or `POSITIONAL` |`MAPPED` |passthrough |1.0
+|`precompileLogback` |boolean |`true` |passthrough |1.0
 |===
 
 A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,
@@ -111,6 +115,9 @@ Otherwise the packager reports why and the launcher calls `main` through reflect
 
 `addOpens` and `addExports` entries are `module/package` pairs in manifest syntax, with no `=ALL-UNNAMED` suffix,
 and invalid entries fail packaging.
+
+`precompileLogback` compiles `logback.xml` into a Logback `Configurator` when it is packaged, and leaves any file it
+cannot reproduce exactly to Logback; see <<precompiledLogback>>.
 
 The application's `+Implementation-*+`, `+Specification-*+` and `Sealed` attributes and package sections come from the
 `jar` task's manifest configuration, including `manifest.from(...)` merges; `micronautRunnerJar` does not build the
@@ -217,7 +224,8 @@ In Maven, each `addExports`/`addOpens` entry is its own element:
 
 The typed options are parameters of the same names, except that `manifestAttributes` is `<manifestEntries>`; the
 scalar ones also read `-Dmicronaut.runner.<name>`. `<runnerOptions>` and `-Dmicronaut.runner.<name>` set the same
-options by name, `-Dmicronaut.runner.<name>` only for passthrough options, and a `<runnerOptions>` entry wins.
+options by name, `-Dmicronaut.runner.<name>` only for passthrough options, and a `<runnerOptions>` entry wins. For
+example, `-Dmicronaut.runner.precompileLogback=false` leaves `logback.xml` to Logback at startup.
 
 To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
 pass `-Dmicronaut.runner.archiveReads=positional` or set

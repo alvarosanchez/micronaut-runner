@@ -65,6 +65,12 @@ launcher maps only the index and reads each class with one positional read; comp
 |Opt-in, non-gating: the identical `POSITIONAL` Runner JAR with a trained, application-class-verified JDK AOT cache;
 compared with `runner-stored-aot` and `shadow-aot`
 
+|`runner-stored-joran`
+|Opt-in control: the same stored Runner JAR with `precompileLogback=false`, so Logback reads `logback.xml` with Joran
+
+|`runner-stored-joran-aot`
+|Opt-in control: that Joran Runner JAR with a trained, application-class-verified JDK AOT cache
+
 |`runner-preserve`
 |Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub
 

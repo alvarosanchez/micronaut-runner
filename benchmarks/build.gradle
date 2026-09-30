@@ -19,10 +19,28 @@ dependencies {
     pluginsUnderTest project(path: ':micronaut-runner-gradle-plugin', configuration: 'repository')
 }
 
+// The real logback-classic, logback-core and slf4j-api jars, which BenchmarkEntryModeTest packages as the
+// dependencies of a fixture with a logback.xml. They reach the test as files and never join its class path.
+configurations {
+    logbackFixture {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+}
+
+dependencies {
+    logbackFixture libs.logback.classic
+}
+
 // ReadinessSnapshot reads macOS memory through an FFM downcall (proc_pid_rusage). The flag goes on the JVMs that
 // run the harness only, never on an application command.
 tasks.withType(Test).configureEach {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
+    def logbackFixture = configurations.logbackFixture
+    inputs.files(logbackFixture).withPropertyName('logbackFixture').withNormalizer(ClasspathNormalizer)
+    jvmArgumentProviders.add({ ->
+        ["-Drunner.benchmark.logbackFixture=${logbackFixture.asPath}".toString()]
+    } as CommandLineArgumentProvider)
 }
 
 // Any test that forks an AOT cache training JVM or a packaging worker tests the benchmark tool, not the product:
