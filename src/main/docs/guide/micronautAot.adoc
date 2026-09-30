@@ -148,7 +148,7 @@ AOT has removed `logback.xml` and registered its own `Configurator`. The archive
 behaviour above, not Runner's. The <<staticServices,static service table>> still applies: Micronaut AOT 3 leaves
 service discovery to the scan, so the table's loader is put in front of Micronaut AOT's own in the application's
 `META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader`. For a Micronaut AOT whose loaders supply
-Micronaut's service loaders, the table stands down by itself. The <<classTransforms,dependency class transforms>> apply
+Micronaut's service loaders, the table stands down by itself. The <<classTransforms,class transforms>> apply
 to both archives.
 
 Until a micronaut-core release probes the reactive types without initialising them
@@ -227,4 +227,5 @@ Without a JDK cache, yes: on `benchmark-large` with JDK 25, `-all-optimized.jar`
 AOT's `optimizedJitJarAll`, and even Runner's plain `-all.jar` was about 58 ms ahead of it. With a JDK AOT cache on
 both sides, no: the single `-all-optimized.jar` was about 23 ms behind `optimizedJitJarAll` on JDK 25, and on JDK 27 the
 cache stores none of a single Runner JAR's application classes (<<cdsAndAot>>). <<micronautAotResults>> has the
-numbers, the sizes and the second session.
+numbers, the sizes and the second session. They were taken before Runner desugared lambdas by default
+(<<desugaredLambdas>>), which made the cached single JAR faster, and have not been measured again since.
