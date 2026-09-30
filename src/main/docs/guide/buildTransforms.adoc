@@ -159,6 +159,34 @@ than before, or the step fails on it, the whole nest is packaged as it was, with
 build log's summary line and the `lambdas` lines of `transforms.txt` give the sites rewritten, the classes
 generated, the bridges added and the sites left, by reason.
 
+On `test-suite/samples/benchmark-large`, desugaring rewrites 2,963 of the 2,984 lambda call sites of the
+dependencies and the application, 361 of them through bridges, with no fallback; none of the 21 it leaves runs
+before the application is ready. Measured by the startup harness (<<benchmarks,Benchmarks>>) against the
+`runner-stored-lambdas` control, 30 interleaved pairs on an Apple Silicon machine with 12 CPUs and Homebrew OpenJDK
+25.0.4.1:
+
+[cols="40,60",options="header"]
+|===
+|Measure |Desugared minus lambdas kept
+
+|Readiness without a JDK cache
+|−30.1 ms paired median, 95% CI [−53.6, −21.9] (423.4 ms against 447.6 ms)
+
+|Readiness with the JDK AOT cache
+|−27.8 ms, 95% CI [−31.8, −21.5] (240.2 ms against 273.4 ms)
+
+|Maximum RSS
+|135.4 against 166.4 MiB without a cache, 146.3 against 166.1 MiB with the AOT cache (medians of three runs)
+
+|Archive size
+|35,951,587 against 32,738,324 bytes raw (+9.8%), 8,763,041 against 8,349,075 bytes gzip -6 (+5.0%); the AOT cache
+is 0.5 MB larger
+|===
+
+Packaging does the extra work on the staging threads. With both class transforms on, the sample's
+`micronautRunnerJar` task took 0.22 s instead of 0.10 s with both off (medians of ten warm-daemon rounds), against
+0.73 s for its `shadowJar`.
+
 To keep every lambda an `invokedynamic` call site, set the `desugarLambdas` option to `false`. In Gradle:
 
 [source,groovy]
