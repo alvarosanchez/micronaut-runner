@@ -316,6 +316,56 @@ class ArchiveSourceTest {
 
     @ParameterizedTest(name = "mode={0}")
     @EnumSource(Mode.class)
+    void streamsDeflatedEntriesThatEndJustPastAFullReadBuffer(Mode mode) throws IOException {
+        // An inflater can have consumed all of an entry's compressed bytes and still hold content that did
+        // not fit the buffer it was given. That is not the end of the stream, nor a truncated one: the next
+        // read has to drain it. Which sizes get there depends on where the deflater cut its matches, so every
+        // size up to 300 bytes past the buffer is read, for the launcher's own stream buffer and for the
+        // 64 KiB one the packager verifies an archive with.
+        record Case(String name, long at, int compressed, byte[] content, int buffer) {
+        }
+        byte[] line = "one line of a dependency's resource\n".getBytes(StandardCharsets.UTF_8);
+        TestArchiveBuilder archive = new TestArchiveBuilder();
+        List<Case> cases = new ArrayList<>();
+        for (int buffer : new int[] {8192, 64 * 1024}) {
+            for (boolean text : new boolean[] {false, true}) {
+                for (int extra = 1; extra <= 300; extra++) {
+                    byte[] content = new byte[buffer + extra];
+                    for (int i = 0; text && i < content.length; i++) {
+                        content[i] = line[i % line.length];
+                    }
+                    String name = (text ? "text-" : "zeros-") + content.length + ".bin";
+                    long at = archive.deflated(name, content);
+                    cases.add(new Case(name, at, archive.storedSize(name), content, buffer));
+                }
+            }
+        }
+        ArchiveSource source = open(archive.build(), mode);
+
+        for (Case entry : cases) {
+            for (boolean verifying : new boolean[] {false, true}) {
+                byte[] read = new byte[entry.content().length];
+                int total = 0;
+                try (InputStream in = stream(source, entry.at(), entry.compressed(), entry.content(),
+                        IndexFormat.METHOD_DEFLATED, verifying)) {
+                    // A read that fills the buffer exactly leaves the rest of the content to the next one.
+                    byte[] chunk = new byte[entry.buffer()];
+                    int count;
+                    while ((count = in.read(chunk)) >= 0) {
+                        System.arraycopy(chunk, 0, read, total, count);
+                        total += count;
+                    }
+                }
+                assertEquals(read.length, total, entry.name());
+                assertArrayEquals(entry.content(), read, entry.name());
+            }
+            assertArrayEquals(entry.content(), source.inflate(entry.at(), entry.compressed(),
+                    entry.content().length), entry.name());
+        }
+    }
+
+    @ParameterizedTest(name = "mode={0}")
+    @EnumSource(Mode.class)
     void rejectsTruncatedAndOverlongDeflateStreams(Mode mode) throws IOException {
         byte[] large = payload(50_000);
         TestArchiveBuilder archive = new TestArchiveBuilder();

@@ -22,6 +22,7 @@ import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -40,6 +41,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
@@ -1116,6 +1118,89 @@ class ZipReaderTest {
         return jar;
     }
 
+    /**
+     * The entry sizes at which {@link ZipReader#transfer} hands a DEFLATE stream over from one 64 KiB buffer
+     * to the next: one byte below a buffer, exactly one buffer, and 1, 2, 64 and 258 bytes above it, where
+     * 258 is the longest match DEFLATE has; then one byte above two buffers and one byte above 8 MiB, which
+     * is 128 buffers.
+     */
+    static int[] transferBoundarySizes() {
+        int buffer = ZipReader.TRANSFER_BUFFER_SIZE;
+        return new int[] {
+            buffer - 1, buffer, buffer + 1, buffer + 2, buffer + 64, buffer + 258, 2 * buffer + 1,
+            8 * 1024 * 1024 + 1
+        };
+    }
+
+    /** Every {@link Payload} at every one of the {@link #transferBoundarySizes()}. */
+    static Stream<Arguments> transferBoundaryEntries() {
+        return Arrays.stream(Payload.values()).flatMap(payload ->
+                Arrays.stream(transferBoundarySizes()).mapToObj(size -> Arguments.of(payload, size)));
+    }
+
+    /** Compresses content into a raw DEFLATE stream, which is what the data of a DEFLATED entry is. */
+    static byte[] rawDeflate(byte[] content) {
+        Deflater deflater = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+        try {
+            deflater.setInput(content);
+            deflater.finish();
+            ByteArrayOutputStream compressed = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            while (!deflater.finished()) {
+                compressed.write(buffer, 0, deflater.deflate(buffer));
+            }
+            return compressed.toByteArray();
+        } finally {
+            deflater.end();
+        }
+    }
+
+    /**
+     * Writes a one-entry archive whose DEFLATED entry has exactly {@code compressed} as its data and records
+     * the size and the CRC-32 of {@code content}, in a local header with no data descriptor and in the
+     * central directory alike. Every record agrees with every other, so only inflating the data can tell
+     * whether it is a complete DEFLATE stream of that content.
+     */
+    static Path rawDeflatedArchive(Path jar, String name, byte[] compressed, byte[] content) throws IOException {
+        byte[] nameBytes = name.getBytes(StandardCharsets.UTF_8);
+        CRC32 crc = new CRC32();
+        crc.update(content);
+        int central = 30 + nameBytes.length + compressed.length;
+        int end = central + 46 + nameBytes.length;
+        byte[] archive = new byte[end + IndexFormat.END_OF_CENTRAL_DIRECTORY_SIZE];
+
+        putInt(archive, 0, IndexFormat.LOCAL_HEADER_SIGNATURE);
+        putShort(archive, 4, 20);
+        putShort(archive, 8, IndexFormat.METHOD_DEFLATED);
+        putShort(archive, 12, 0x21);
+        putInt(archive, 14, crc.getValue());
+        putInt(archive, 18, compressed.length);
+        putInt(archive, 22, content.length);
+        putShort(archive, 26, nameBytes.length);
+        System.arraycopy(nameBytes, 0, archive, 30, nameBytes.length);
+        System.arraycopy(compressed, 0, archive, 30 + nameBytes.length, compressed.length);
+
+        putInt(archive, central, IndexFormat.CENTRAL_HEADER_SIGNATURE);
+        putShort(archive, central + 4, 20);
+        putShort(archive, central + 6, 20);
+        putShort(archive, central + 10, IndexFormat.METHOD_DEFLATED);
+        putShort(archive, central + 14, 0x21);
+        putInt(archive, central + 16, crc.getValue());
+        putInt(archive, central + 20, compressed.length);
+        putInt(archive, central + 24, content.length);
+        putShort(archive, central + 28, nameBytes.length);
+        System.arraycopy(nameBytes, 0, archive, central + 46, nameBytes.length);
+
+        putInt(archive, end, IndexFormat.END_OF_CENTRAL_DIRECTORY_SIGNATURE);
+        putShort(archive, end + 8, 1);
+        putShort(archive, end + 10, 1);
+        putInt(archive, end + 12, end - central);
+        putInt(archive, end + 16, central);
+        Files.createDirectories(jar.getParent());
+        Files.write(jar, archive);
+        return jar;
+    }
+
     static void directory(ZipOutputStream zip, String name) throws IOException {
         stored(zip, name, new byte[0]);
     }
@@ -1375,5 +1460,34 @@ class ZipReaderTest {
                 | ((buffer[offset + 1] & 0xFF) << 8)
                 | ((buffer[offset + 2] & 0xFF) << 16)
                 | ((buffer[offset + 3] & 0xFF) << 24);
+    }
+
+    /**
+     * What an entry at a transfer buffer boundary holds. How well the content deflates decides how much of
+     * it the inflater still owes once it has consumed all of its input, so the three kinds are content that
+     * deflates to almost nothing, to little, and not at all.
+     */
+    enum Payload {
+        /** Zero bytes: a whole buffer of content comes out of a few dozen compressed bytes. */
+        ZEROS,
+        /** One line of text, over and over. */
+        TEXT,
+        /** Incompressible bytes, which DEFLATE keeps in stored blocks. */
+        RANDOM;
+
+        private static final byte[] LINE =
+                "one line of a dependency's resource\n".getBytes(StandardCharsets.UTF_8);
+
+        byte[] bytes(int size) {
+            byte[] content = new byte[size];
+            if (this == TEXT) {
+                for (int i = 0; i < size; i++) {
+                    content[i] = LINE[i % LINE.length];
+                }
+            } else if (this == RANDOM) {
+                new Random(size).nextBytes(content);
+            }
+            return content;
+        }
     }
 }
