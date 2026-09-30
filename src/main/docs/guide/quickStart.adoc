@@ -69,6 +69,10 @@ micronaut {
 
         manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
 
+        // A recorded startup class list, which the launcher preloads on a background thread (see "Preloading the
+        // startup classes" in the runtime chapter). There is no default.
+        // startupClasses = file('startup-classes.log')
+
         // Options without a typed property, by name (see the table below):
         // options.put('<name>', '<value>')
 
@@ -91,7 +95,9 @@ task wins for that task.
 Micronaut Runner's packaging library owns every option, its default and its validation; the plugins only pass
 what you set. Every option can be set by name, with the value as text: `true` or `false` for a boolean, a
 comma-separated list, or one `Name: value` line per manifest attribute. An option set by name wins over its
-typed property, and an unknown name fails the build.
+typed property, and an unknown name fails the build. The exception is an option that names a file, `startupClasses`:
+it is set only through its typed property, and by name it fails the build, because only a file property lets the build
+tool resolve the path against the project and, in Gradle, rebuild the archive when the file's content changes.
 
 [cols="2,1,1,1,1",options="header"]
 |===
@@ -107,6 +113,7 @@ typed property, and an unknown name fails the build.
 |`archiveReads` |`MAPPED` or `POSITIONAL` |`MAPPED` |passthrough |1.0
 |`precompileLogback` |boolean |`true` |passthrough |1.0
 |`stripLocalVariables` |boolean |`true` |passthrough |1.0
+|`startupClasses` |file |none |typed |1.0
 |===
 
 A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,

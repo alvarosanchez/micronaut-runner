@@ -126,7 +126,8 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
                 .create(EXTENSION_NAME, MicronautRunnerExtension.class);
         extension.getEnabled().convention(true);
         // The packaging library owns the defaults; the conventions only show them. addOpens, addExports and
-        // manifestAttributes default to empty, which is a collection property's own initial value.
+        // manifestAttributes default to empty, which is a collection property's own initial value, and
+        // startupClasses has no default.
         extension.getCompression().convention(defaultOf(RunnerJarOption.COMPRESSION));
         extension.getEntryStub().convention(Boolean.valueOf(defaultOf(RunnerJarOption.ENTRY_STUB)));
         extension.getMultiRelease().convention(Boolean.valueOf(defaultOf(RunnerJarOption.MULTI_RELEASE)));
@@ -248,6 +249,7 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
         task.getAddOpens().convention(extension.getAddOpens());
         task.getAddExports().convention(extension.getAddExports());
         task.getManifestAttributes().convention(extension.getManifestAttributes());
+        task.getStartupClasses().convention(extension.getStartupClasses());
         task.getOptions().convention(extension.getOptions());
         onlyIfEnabled(task, extension);
     }

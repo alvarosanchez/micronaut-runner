@@ -64,7 +64,8 @@ import java.util.Set;
  * <p>The goal is wiring: it hands the project's facts and the options the build sets to the packaging
  * library, which owns every option's default, parsing and validation. A
  * {@link RunnerJarOption.Exposure#TYPED typed} option has a parameter here that is passed only when it is set;
- * every option can also be set by name through {@code <runnerOptions>}, and a
+ * every option can also be set by name through {@code <runnerOptions>}, except a typed option that names a
+ * file, which is set only through its parameter, and a
  * {@link RunnerJarOption.Exposure#PASSTHROUGH passthrough} option through the
  * {@code micronaut.runner.<name>} user or project property.</p>
  *
@@ -174,9 +175,19 @@ public class PackageMojo extends AbstractMojo {
     private Boolean enableNativeAccess;
 
     /**
+     * The recorded startup class list the launcher preloads on a background thread: the
+     * {@code -Xlog:class+load} output of a run of the archive, or a file of binary class names. Unset, nothing
+     * is preloaded.
+     */
+    @Parameter(property = "micronaut.runner.startupClasses")
+    private File startupClasses;
+
+    /**
      * Packaging options by name, with values in the grammar {@link RunnerJarOption} documents. An entry wins
      * over the typed parameter and over the {@code micronaut.runner.<name>} property of the same option; an
-     * unknown name fails the build.
+     * unknown name fails the build. So does a typed option that names a file, such as {@code startupClasses}:
+     * Maven resolves a relative path against the project directory only for a file parameter, so it is set
+     * through its parameter.
      */
     @Parameter
     private Map<String, String> runnerOptions;
@@ -343,12 +354,17 @@ public class PackageMojo extends AbstractMojo {
             if (manifestEntries != null) {
                 spec.manifestAttributes(new LinkedHashMap<>(manifestEntries));
             }
+            if (startupClasses != null) {
+                spec.startupClasses(startupClasses.toPath());
+            }
             List<String> passthrough = Arrays.stream(RunnerJarOption.values())
                     .filter(option -> option.exposure() == RunnerJarOption.Exposure.PASSTHROUGH)
                     .map(RunnerJarOption::optionName)
                     .toList();
-            options(session.getUserProperties(), project.getProperties(), runnerOptions, passthrough)
-                    .forEach(spec::option);
+            for (Map.Entry<String, String> option : options(session.getUserProperties(),
+                    project.getProperties(), runnerOptions, passthrough).entrySet()) {
+                spec.option(notATypedFile(option.getKey()), option.getValue());
+            }
 
             // Empty when the property is unset or disabled and SOURCE_DATE_EPOCH is not set, so the packaging
             // library's own fixed timestamp applies.
@@ -361,6 +377,29 @@ public class PackageMojo extends AbstractMojo {
         } catch (IllegalArgumentException e) {
             throw new MojoFailureException(e.getMessage(), e);
         }
+    }
+
+    /**
+     * Refuses a typed file option that is set by name. Maven resolves a relative path against the project
+     * directory only for a {@link File} parameter; as a {@code <runnerOptions>} entry the path would be read
+     * against the working directory of the build, which in a reactor is not the module's.
+     *
+     * @param name an option name, known or not
+     * @return the name
+     * @throws MojoFailureException if the name is that of a typed option whose value is a file
+     */
+    private static String notATypedFile(String name) throws MojoFailureException {
+        boolean typedFile = RunnerJarOption.named(name)
+                .filter(option -> option.exposure() == RunnerJarOption.Exposure.TYPED
+                        && option.valueType() == Path.class)
+                .isPresent();
+        if (typedFile) {
+            throw new MojoFailureException("Option '" + name + "' names a file: set it through <" + name
+                    + "> or -D" + PROPERTY_PREFIX + name + ", not through <runnerOptions>. Maven resolves the"
+                    + " path of a file parameter against the project directory, and not that of an option set"
+                    + " by name.");
+        }
+        return name;
     }
 
     /**

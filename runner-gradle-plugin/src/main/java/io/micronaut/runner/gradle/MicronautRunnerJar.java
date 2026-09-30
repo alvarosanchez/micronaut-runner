@@ -24,6 +24,7 @@ import io.micronaut.runner.build.RunnerJarOption;
 import io.micronaut.runner.build.RunnerJarResult;
 import io.micronaut.runner.build.RunnerJarSpec;
 import org.gradle.api.DefaultTask;
+import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFile;
@@ -70,7 +71,8 @@ import java.util.TreeMap;
  * <p>The task is wiring: it hands the project's facts and the options the build sets to the packaging
  * library, which owns every option's default, parsing and validation. A {@link RunnerJarOption.Exposure#TYPED
  * typed} option has a property here; every option, typed or not, can also be set by name through
- * {@link #getOptions()}. Each option property takes the {@link MicronautRunnerExtension}'s value as its
+ * {@link #getOptions()}, except a typed option that names a file, which is set only through its property. Each
+ * option property takes the {@link MicronautRunnerExtension}'s value as its
  * convention, so a value set here wins for this task only. The archive is named as an archive task names
  * it, from {@link #getArchiveBaseName()}, {@link #getArchiveVersion()}, {@link #getArchiveClassifier()} and
  * {@link #getDestinationDirectory()}.</p>
@@ -348,11 +350,30 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract MapProperty<String, String> getManifestAttributes();
 
     /**
+     * The recorded startup class list the launcher preloads on a background thread: the
+     * {@code -Xlog:class+load} output of a run of the archive, or a file of binary class names. It has no
+     * default, and without it nothing is preloaded. The plugin sets the extension's value as the convention.
+     *
+     * <p>Only the content is an input: editing the list rebuilds the archive, and moving it does not.</p>
+     *
+     * @return the startup class list
+     */
+    @InputFile
+    @Optional
+    @PathSensitive(PathSensitivity.NONE)
+    public abstract RegularFileProperty getStartupClasses();
+
+    /**
      * Packaging options by {@linkplain RunnerJarOption#optionName() name}, for the options that have no
      * typed property here. Each value uses the grammar {@link RunnerJarOption} documents, and the packaging
      * library parses and validates it; an unknown name fails the task. An entry is applied after the typed
      * properties, so it wins over a typed property of the same option. The plugin sets the extension's value
      * as the convention.
+     *
+     * <p>A typed option that names a file, such as {@code startupClasses}, fails the task when it is set here.
+     * An entry of this map is a string input: Gradle would not hash the file it names, so an edited file would
+     * leave the archive up to date, and a relative path would be read against the working directory of the
+     * build process rather than the project directory. The option's own property does both.</p>
      *
      * @return the options by name
      */
@@ -419,7 +440,11 @@ public abstract class MicronautRunnerJar extends DefaultTask {
         if (getManifestAttributes().isPresent()) {
             spec.manifestAttributes(getManifestAttributes().get());
         }
-        getOptions().get().forEach(spec::option);
+        if (getStartupClasses().isPresent()) {
+            // @InputFile validation has already established that the file exists.
+            spec.startupClasses(getStartupClasses().get().getAsFile().toPath());
+        }
+        getOptions().get().forEach((name, value) -> spec.option(notATypedFile(name), value));
 
         if (getApplicationJar().isPresent()) {
             // @InputFile validation has already established that the file exists.
@@ -430,6 +455,28 @@ public abstract class MicronautRunnerJar extends DefaultTask {
             spec.applicationManifest(ApplicationManifest.toManifest(getInheritedManifestAttributes()));
         }
         return spec.build();
+    }
+
+    /**
+     * Refuses a typed file option that is set by name. Its path would reach Gradle as a string of
+     * {@link #getOptions()}: the file would not be an input, so editing it would leave the archive up to date,
+     * and a relative path would not be resolved against the project directory.
+     *
+     * @param name an option name, known or not
+     * @return the name
+     * @throws InvalidUserDataException if the name is that of a typed option whose value is a file
+     */
+    private static String notATypedFile(String name) {
+        boolean typedFile = RunnerJarOption.named(name)
+                .filter(option -> option.exposure() == RunnerJarOption.Exposure.TYPED
+                        && option.valueType() == Path.class)
+                .isPresent();
+        if (typedFile) {
+            throw new InvalidUserDataException("Option '" + name + "' names a file: set it through the " + name
+                    + " property, not through options. Gradle tracks the content of a file property and resolves"
+                    + " its path against the project directory, and does neither for an option set by name.");
+        }
+        return name;
     }
 
     /**

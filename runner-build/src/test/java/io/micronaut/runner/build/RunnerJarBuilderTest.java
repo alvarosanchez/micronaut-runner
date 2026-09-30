@@ -38,6 +38,7 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -2764,6 +2765,163 @@ class RunnerJarBuilderTest {
      * @param logback the informational lines that mention Logback
      */
     private record LogbackBuild(RunnerJarResult result, List<String> logback) {
+    }
+
+    // ------------------------------------------------------------ startup class list
+
+    @Test
+    void embedsTheStartupClassesTheArchiveHoldsInListOrder() throws IOException {
+        // A second jar that also holds Dep, after the first on the class path.
+        Path shadowing = fixtures.resolve("libs/dep-copy.jar");
+        Files.copy(plainDependency, shadowing, StandardCopyOption.REPLACE_EXISTING);
+        Path list = startupClasses("""
+                # recorded by hand
+                com.example.mr.Feature
+                com.example.dep.Dep
+
+                com.example.Gone
+                com.example.Application
+                com.example.dep.Dep
+                jrt:java.util.zip.CRC32
+                """);
+        Path output = output();
+        List<Dependency> dependencies = new ArrayList<>(spec(output).build().dependencies());
+        dependencies.add(Dependency.of(shadowing));
+        RecordingLogger logger = new RecordingLogger();
+
+        RunnerJarResult result = RunnerJarBuilder.build(
+                spec(output).dependencies(dependencies).startupClasses(list).build(), logger);
+
+        List<String> expected = List.of("com.example.mr.Feature", "com.example.dep.Dep", "com.example.Application");
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            Index index = reader.index();
+            assertEquals(expected.size(), index.preloadCount());
+            for (int position = 0; position < expected.size(); position++) {
+                String name = expected.get(position);
+                int record = index.preloadRecord(position);
+                assertEquals(index.findClass(name), record, () -> name + " is not the record a class lookup finds");
+                assertEquals(name.replace('.', '/') + ".class", index.entryName(record));
+            }
+            int feature = index.preloadRecord(0);
+            assertTrue(index.entryVersionedAlias(feature) && index.entryMrVersion(feature) == 17,
+                    "a multi-release class is listed by the head of its chain, which holds the versioned alias");
+            assertEquals("MICRONAUT-INF/lib/dep-lib.jar", index.jarName(index.entryJarId(index.preloadRecord(1))),
+                    "a class in two jars is listed from the jar that comes first on the class path");
+            assertEquals(1, index.jdkPreloadCount());
+            assertEquals("java.util.zip.CRC32", index.jdkPreloadName(0));
+        }
+
+        List<String> dropped = logger.warnings.stream().filter(line -> line.contains("startup classes")).toList();
+        assertEquals(1, dropped.size(), () -> "one warning carries the count: " + logger.warnings);
+        assertTrue(dropped.get(0).contains("dropped 2 of 5 startup classes: not in this archive or listed twice"),
+                dropped.get(0));
+        assertTrue(result.warnings().contains(dropped.get(0)), "the result carries the warning too");
+        assertEquals(1, logger.infos.stream().filter(line -> line.startsWith("Embedded 3 startup classes")).count(),
+                () -> logger.infos.toString());
+        assertEquals(list.toString(), result.effectiveOptions().get("startupClasses"));
+    }
+
+    @Test
+    void embedsTheArchiveClassesOfARawClassLoadLog() throws IOException {
+        Path output = output();
+        String archive = "jar:file:" + output.toUri().getRawPath() + "!/MICRONAUT-INF/";
+        Path list = startupClasses("""
+                [0.011s][info][class,load] java.lang.Object source: shared objects file
+                [0.052s][info][class,load] io.micronaut.runner.Launcher source: file:/work/app.jar
+                [0.071s][info][class,load] com.example.Application source: %1$sclasses/
+                [0.072s][info][class,load] java.util.zip.CRC32 source: jrt:/java.base
+                [0.074s][info][class,load] com.example.Greeter source: %1$sclasses/
+                [0.075s][info][class,load] com.example.Greeter$$Lambda/0x0000000800c01234 source: com.example.Greeter
+                [0.076s][info][class,load] java.lang.invoke.LambdaForm$MH/0x0000000800c04400 source: __JVM_LookupDefineClass__
+                [0.080s][info][class,load] com.example.dep.Dep source: %1$slib/dep-lib.jar!/
+                [0.081s][info][class,load] java.sql.Timestamp source: jrt:/java.sql
+                [0.082s][info][class,load] java.util.zip.CRC32 source: jrt:/java.base
+                """.formatted(archive));
+        RecordingLogger logger = new RecordingLogger();
+
+        RunnerJarBuilder.build(spec(output).startupClasses(list).build(), logger);
+
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            Index index = reader.index();
+            assertEquals(3, index.preloadCount());
+            assertEquals(index.findClass("com.example.Application"), index.preloadRecord(0));
+            assertEquals(index.findClass("com.example.Greeter"), index.preloadRecord(1));
+            assertEquals(index.findClass("com.example.dep.Dep"), index.preloadRecord(2));
+            assertEquals(2, index.jdkPreloadCount(), "the JDK classes of the log are kept by name, in order");
+            assertEquals("java.util.zip.CRC32", index.jdkPreloadName(0));
+            assertEquals("java.sql.Timestamp", index.jdkPreloadName(1));
+        }
+        assertTrue(logger.warnings.stream().noneMatch(line -> line.contains("startup class")),
+                () -> "the skipped sources are not reported: " + logger.warnings);
+        assertEquals(1, logger.infos.stream()
+                        .filter(line -> line.startsWith("Embedded 3 startup classes and 2 JDK classes")).count(),
+                () -> logger.infos.toString());
+    }
+
+    @ParameterizedTest(name = "a recording whose classes all log as ''{0}''")
+    @ValueSource(strings = {"shared objects file", "shared objects file (top)", "file:/work/app.jar"})
+    void aRecordingWithoutArchiveClassesEmbedsNothingAndSaysWhy(String source) throws IOException {
+        Path list = startupClasses("""
+                [0.011s][info][class,load] java.lang.Object source: shared objects file
+                [0.071s][info][class,load] com.example.Application source: %1$s
+                [0.074s][info][class,load] com.example.Greeter source: %1$s
+                [0.082s][info][class,load] java.util.zip.CRC32 source: jrt:/java.base
+                """.formatted(source));
+        Path plain = output();
+        RunnerJarBuilder.build(spec(plain).build(), BuildLogger.noOp());
+        Path output = output();
+        RecordingLogger logger = new RecordingLogger();
+
+        RunnerJarResult result = RunnerJarBuilder.build(spec(output).startupClasses(list).build(), logger);
+
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            assertEquals(0, reader.index().preloadCount());
+            assertEquals(0, reader.index().jdkPreloadCount(), "nothing of such a recording is embedded");
+        }
+        List<String> warnings = logger.warnings.stream().filter(line -> line.contains("startup class")).toList();
+        assertEquals(1, warnings.size(), () -> logger.warnings.toString());
+        assertTrue(warnings.get(0).contains("CDS or AOT cache") && warnings.get(0).contains("'file:' code source"),
+                warnings.get(0));
+        assertTrue(result.warnings().contains(warnings.get(0)));
+        assertArrayEquals(Files.readAllBytes(plain), Files.readAllBytes(output),
+                "a list that embeds nothing leaves the archive byte for byte what it is without one");
+    }
+
+    @Test
+    void aStartupClassListThatDoesNotExistFailsTheBuildBeforeAnythingIsWritten() throws IOException {
+        Path output = existingOutput();
+        Path missing = fixtures.resolve("lists/missing.log");
+
+        IOException failure = assertThrows(IOException.class,
+                () -> RunnerJarBuilder.build(spec(output).startupClasses(missing).build(), BuildLogger.noOp()));
+
+        assertTrue(failure.getMessage().contains("startup class list") && failure.getMessage().contains("missing.log"),
+                failure.getMessage());
+        assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output));
+    }
+
+    private Path startupClasses(String content) throws IOException {
+        counter++;
+        Path file = fixtures.resolve("lists/startup-classes-" + counter + ".log");
+        write(file, content);
+        return file;
+    }
+
+    /** Keeps every line the builder logs, by level. */
+    private static final class RecordingLogger implements BuildLogger {
+
+        private final List<String> infos = new ArrayList<>();
+        private final List<String> warnings = new ArrayList<>();
+
+        @Override
+        public void info(String message) {
+            infos.add(message);
+        }
+
+        @Override
+        public void warn(String message) {
+            warnings.add(message);
+        }
     }
 
     /**

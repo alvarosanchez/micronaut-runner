@@ -131,7 +131,15 @@ public final class IndexFormat {
     public static final int H_ENTRY_STUB_CLASS = 84;     // u32 strref, 0 when no stub was generated
     public static final int H_LAUNCHER_VERSION = 88;     // u32 strref
     public static final int H_PACKAGE_COUNT = 92;        // u32
-    public static final int H_RESERVED = 96;             // u8[28], zero
+    /** Offset of the {@linkplain #PRELOAD_RECORD_SIZE preload table}; {@code 0} when there is none. */
+    public static final int H_PRELOAD_TABLE_OFFSET = 96; // u64
+    /** Number of preload table elements; {@code 0} means the archive carries no startup class list. */
+    public static final int H_PRELOAD_COUNT = 104;       // u32
+    /** Number of JDK preload table elements; {@code 0} means the archive lists no JDK class. */
+    public static final int H_JDK_PRELOAD_COUNT = 108;   // u32
+    /** Offset of the JDK preload table, a {@code u32[]} of string references; {@code 0} when there is none. */
+    public static final int H_JDK_PRELOAD_TABLE_OFFSET = 112; // u64
+    public static final int H_RESERVED = 120;            // u8[4], zero
     /**
      * The largest uncompressed size of a STORED {@code .class} record, which sizes the launcher's pooled read
      * buffers. Written only together with {@link #HEADER_FLAG_POSITIONAL_READS}; {@code 0} means not recorded.
@@ -276,6 +284,21 @@ public final class IndexFormat {
      * misses or the record it resolved carries this flag.
      */
     public static final int ENTRY_FLAG_DIRECTORY_TWIN = 1 << 4;
+
+    // ------------------------------------------------------------------------------------------------
+    // Preload tables: the recorded startup class list. Both are optional. The preload table holds the
+    // archive's classes as entry record ids, in the order they were first loaded, and follows the string
+    // table at the next 8-byte boundary. The JDK preload table holds the JDK classes of the same recording
+    // as string references to their binary names, and follows at the next 8-byte boundary after that.
+    // Without a list the header's offsets and counts stay zero and the index ends with the string table.
+    // ------------------------------------------------------------------------------------------------
+
+    /**
+     * Size of one element of either preload table. In the preload table it is the {@code u32} id of the entry
+     * record that heads the chain of a {@code .class} name, which is the record a class lookup by that name
+     * finds first; in the JDK preload table it is a {@code u32} string reference to a binary class name.
+     */
+    public static final int PRELOAD_RECORD_SIZE = 4;
 
     /** ZIP compression method: stored, that is, uncompressed. */
     public static final int METHOD_STORED = 0;

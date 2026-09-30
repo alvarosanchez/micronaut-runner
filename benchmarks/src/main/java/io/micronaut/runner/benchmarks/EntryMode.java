@@ -36,6 +36,7 @@ enum EntryMode {
             return REFLECTION;
         }
         if (variantName.equals("runner-stored") || variantName.equals("runner-stored-aot")
+                || variantName.equals("runner-stored-preload") || variantName.equals("runner-stored-preload-aot")
                 || variantName.equals("runner-stored-positional") || variantName.equals("runner-stored-positional-aot")
                 || variantName.equals("runner-stored-keepdebug") || variantName.equals("runner-stored-keepdebug-aot")
                 || variantName.equals("runner-preserve") || variantName.equals("runner-stored-joran")

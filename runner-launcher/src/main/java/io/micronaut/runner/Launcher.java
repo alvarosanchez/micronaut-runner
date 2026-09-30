@@ -159,6 +159,10 @@ public final class Launcher {
         Handlers.register(archive, index, source);
         RunnerClassLoader loader = new RunnerClassLoader(index, source, RunnerClassLoader.defaultParent());
         Thread.currentThread().setContextClassLoader(loader);
+        // Only here, and only with a list, so that a JAR without one never loads the preloader.
+        if (index.preloadCount() > 0 || index.jdkPreloadCount() > 0) {
+            Preloader.start(index, loader, timing, started);
+        }
         if (timing) {
             checkpoint(started, "class loader ready");
         }
@@ -509,7 +513,13 @@ public final class Launcher {
         }
     }
 
-    private static void checkpoint(long started, String phase) {
+    /**
+     * Prints one {@value #TIMING_PROPERTY} checkpoint to standard error.
+     *
+     * @param started the {@link System#nanoTime()} of the first statement of {@link #main(String[])}
+     * @param phase   what was reached
+     */
+    static void checkpoint(long started, String phase) {
         long micros = (System.nanoTime() - started) / 1000L;
         StringBuilder message = new StringBuilder(48);
         message.append("[micronaut-runner] ").append(phase).append(' ').append(micros / 1000L).append('.');

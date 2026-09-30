@@ -94,6 +94,10 @@ public final class Index {
     private final int packageTableOffset;
     private final int stringTableOffset;
     private final int stringTableLength;
+    private final int preloadTableOffset;
+    private final int preloadCount;
+    private final int jdkPreloadTableOffset;
+    private final int jdkPreloadCount;
     private final boolean[] validatedJars;
     private final boolean verifies;
     private volatile AtomicReferenceArray<PackageLookup> packageLookups;
@@ -148,6 +152,14 @@ public final class Index {
         long stringLength = u64(IndexFormat.H_STRING_TABLE_LENGTH);
         this.stringTableOffset = section(IndexFormat.H_STRING_TABLE_OFFSET, stringLength, 1, "string table");
         this.stringTableLength = (int) stringLength;
+        long preload = u32(IndexFormat.H_PRELOAD_COUNT);
+        this.preloadTableOffset = section(IndexFormat.H_PRELOAD_TABLE_OFFSET, preload,
+                IndexFormat.PRELOAD_RECORD_SIZE, "preload table");
+        this.preloadCount = (int) preload;
+        long jdkPreload = u32(IndexFormat.H_JDK_PRELOAD_COUNT);
+        this.jdkPreloadTableOffset = section(IndexFormat.H_JDK_PRELOAD_TABLE_OFFSET, jdkPreload,
+                IndexFormat.PRELOAD_RECORD_SIZE, "JDK preload table");
+        this.jdkPreloadCount = (int) jdkPreload;
         if (outerFileLength != source.length()) {
             throw stale("the index records an archive of " + outerFileLength + " bytes but the file is "
                     + source.length() + " bytes");
@@ -354,6 +366,56 @@ public final class Index {
      */
     public String launcherVersion() {
         return string(buffer.getInt(IndexFormat.H_LAUNCHER_VERSION));
+    }
+
+    /**
+     * The number of classes in the recorded startup class list the launcher preloads.
+     *
+     * @return the length of the preload table, {@code 0} when the archive carries no list
+     */
+    public int preloadCount() {
+        return preloadCount;
+    }
+
+    /**
+     * One element of the recorded startup class list: the entry record that heads the chain of the class's
+     * {@code .class} name, which is the record {@link #findClass(String)} returns for it. The record id is
+     * bounds-checked when it is used, like every other record id the index stores.
+     *
+     * @param position the position in the list, from {@code 0} to {@link #preloadCount()} exclusive
+     * @return the entry record index
+     */
+    public int preloadRecord(int position) {
+        if (Integer.compareUnsigned(position, preloadCount) >= 0) {
+            throw stale("preload position " + Integer.toUnsignedString(position)
+                    + " does not exist, the list holds " + preloadCount);
+        }
+        return buffer.getInt(preloadTableOffset + position * IndexFormat.PRELOAD_RECORD_SIZE);
+    }
+
+    /**
+     * The number of JDK classes in the recorded startup class list, which the launcher preloads through the
+     * platform class loader after the archive's classes.
+     *
+     * @return the length of the JDK preload table, {@code 0} when the archive lists no JDK class
+     */
+    public int jdkPreloadCount() {
+        return jdkPreloadCount;
+    }
+
+    /**
+     * One JDK class of the recorded startup class list. The name is not checked against any JDK: a runtime
+     * that lacks the class simply does not preload it.
+     *
+     * @param position the position in the list, from {@code 0} to {@link #jdkPreloadCount()} exclusive
+     * @return the binary class name
+     */
+    public String jdkPreloadName(int position) {
+        if (Integer.compareUnsigned(position, jdkPreloadCount) >= 0) {
+            throw stale("JDK preload position " + Integer.toUnsignedString(position)
+                    + " does not exist, the list holds " + jdkPreloadCount);
+        }
+        return string(buffer.getInt(jdkPreloadTableOffset + position * IndexFormat.PRELOAD_RECORD_SIZE));
     }
 
     /**
@@ -1249,6 +1311,13 @@ public final class Index {
                 throw stale("entry record " + i + " has no name");
             }
             stringBytesOffset(ref, size);
+        }
+        for (int i = 0; i < jdkPreloadCount; i++) {
+            int ref = buffer.getInt(jdkPreloadTableOffset + i * IndexFormat.PRELOAD_RECORD_SIZE);
+            if (ref == 0) {
+                throw stale("JDK preload class " + i + " has no name");
+            }
+            stringBytesOffset(ref, -1);
         }
     }
 

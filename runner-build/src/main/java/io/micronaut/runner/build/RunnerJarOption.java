@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,10 @@ import java.util.stream.Collectors;
  *     <li>{@link Map}: one {@code Name: value} pair per line, as in {@code MANIFEST.MF} but without
  *     continuation lines. Surrounding whitespace of names and values is ignored and blank lines are
  *     skipped, so the empty string is the empty map.</li>
+ *     <li>{@link Path}: a file path, as {@link Path#of(String, String...)} reads it, so a relative path is
+ *     read against the working directory of the process. The empty string is no file. A build plugin does
+ *     not take a {@link Exposure#TYPED} option of this type by name: only its typed property lets the build
+ *     tool resolve the path against the project and track the file's content.</li>
  * </ul>
  *
  * @since 1.0
@@ -116,7 +121,14 @@ public enum RunnerJarOption {
      * Whether to drop the local-variable tables of dependency classes when they are re-packed. See
      * {@link RunnerJarSpec.Builder#stripLocalVariables(boolean)}.
      */
-    STRIP_LOCAL_VARIABLES("stripLocalVariables", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
+    STRIP_LOCAL_VARIABLES("stripLocalVariables", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
+
+    /**
+     * The recorded startup class list the launcher preloads on a background thread: the
+     * {@code -Xlog:class+load} output of a run of the runner jar, or a file of binary class names. See
+     * {@link RunnerJarSpec.Builder#startupClasses(Path)}.
+     */
+    STARTUP_CLASSES("startupClasses", Path.class, null, Exposure.TYPED, "1.0");
 
     private final String optionName;
     private final Class<?> valueType;
@@ -152,7 +164,7 @@ public enum RunnerJarOption {
 
     /**
      * The type of the option's value, which decides how its text is read: {@link Boolean},
-     * {@link Compression}, {@link ArchiveReads}, {@link List} or {@link Map}.
+     * {@link Compression}, {@link ArchiveReads}, {@link List}, {@link Map} or {@link Path}.
      *
      * @return the value type
      */

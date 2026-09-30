@@ -368,6 +368,23 @@ final class AotCache {
                 + " is reused from AOT cache");
     }
 
+    /**
+     * Runs a variant once through the training lifecycle, with extra JVM arguments and no cache: readiness,
+     * the workload, then SIGTERM, accepting exit status 0 or 143. The startup-class recording uses it, so that
+     * a recorded list covers exactly what a trained cache covers.
+     *
+     * @param source       the variant to launch
+     * @param jvmArguments the arguments to insert right after the {@code java} executable
+     * @param request      the readiness path, workload and timeout
+     * @throws IOException          if the launch does not reach readiness, fails its workload or does not
+     *                              shut down cleanly
+     * @throws InterruptedException if the wait is interrupted
+     */
+    static void runOnce(Variant source, List<String> jvmArguments, Request request)
+            throws IOException, InterruptedException {
+        runLifecycle(source, withJvmArguments(source.command(), jvmArguments), request, null);
+    }
+
     private static ByteArrayOutputStream runLifecycle(Variant source,
                                                       List<String> command,
                                                       Request request,

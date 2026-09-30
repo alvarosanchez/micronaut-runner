@@ -57,6 +57,9 @@ public final class TestIndexBuilder {
     private int forcedHashSlots;
     private int forcedMaxProbe = -1;
     private boolean synthesizeDirectories = true;
+    private final List<String> preloadClasses = new ArrayList<>();
+    private final List<String> jdkPreloadClasses = new ArrayList<>();
+    private int[] forcedPreloadRecords;
 
     /**
      * Sets the application main class recorded in the header.
@@ -159,6 +162,45 @@ public final class TestIndexBuilder {
      */
     public TestIndexBuilder synthesizeDirectories(boolean value) {
         this.synthesizeDirectories = value;
+        return this;
+    }
+
+    /**
+     * Adds a class to the preload table: the recorded startup class list. The table holds, in the order of
+     * these calls, the record that heads the chain of each class's {@code .class} name. A name the index does
+     * not hold, or one added twice, is left out, as the packager leaves it out.
+     *
+     * @param binaryName the binary class name, such as {@code org.example.Service$Inner}
+     * @return this builder
+     */
+    public TestIndexBuilder preloadClass(String binaryName) {
+        preloadClasses.add(binaryName);
+        return this;
+    }
+
+    /**
+     * Adds a JDK class to the JDK preload table, which holds each name once, in the order of these calls, as
+     * a string reference. The names are not resolved against anything.
+     *
+     * @param binaryName the binary class name, such as {@code java.util.zip.CRC32}
+     * @return this builder
+     */
+    public TestIndexBuilder jdkPreloadClass(String binaryName) {
+        if (!jdkPreloadClasses.contains(binaryName)) {
+            jdkPreloadClasses.add(binaryName);
+        }
+        return this;
+    }
+
+    /**
+     * Forces the preload table to hold these record ids as they are, so that a test can produce a table the
+     * reader or the preloader must survive.
+     *
+     * @param records the record ids to write, or {@code null} to resolve {@link #preloadClass(String)} names
+     * @return this builder
+     */
+    public TestIndexBuilder preloadRecords(int... records) {
+        this.forcedPreloadRecords = records;
         return this;
     }
 
@@ -286,13 +328,67 @@ public final class TestIndexBuilder {
             out.putInt(hashTable + i * 4, table[i]);
         }
 
+        // The JDK names are the last strings of the table, as the packager interns them after every record.
+        int[] jdkPreload = new int[jdkPreloadClasses.size()];
+        for (int i = 0; i < jdkPreload.length; i++) {
+            jdkPreload[i] = strings.intern(jdkPreloadClasses.get(i));
+        }
         byte[] tail = strings.bytes();
-        byte[] result = new byte[stringTable + tail.length];
+        int[] preload = preloadRecords(chains);
+        // Without a list the index ends with the string table, and header bytes 96 to 119 stay zero.
+        int end = stringTable + tail.length;
+        int preloadTable = 0;
+        if (preload.length > 0) {
+            preloadTable = align(end);
+            end = preloadTable + preload.length * IndexFormat.PRELOAD_RECORD_SIZE;
+        }
+        int jdkPreloadTable = 0;
+        if (jdkPreload.length > 0) {
+            jdkPreloadTable = align(end);
+            end = jdkPreloadTable + jdkPreload.length * IndexFormat.PRELOAD_RECORD_SIZE;
+        }
+        byte[] result = new byte[end];
         System.arraycopy(fixed, 0, result, 0, fixed.length);
         System.arraycopy(tail, 0, result, stringTable, tail.length);
-        ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN)
-                .putLong(IndexFormat.H_STRING_TABLE_LENGTH, tail.length);
+        ByteBuffer whole = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN);
+        whole.putLong(IndexFormat.H_STRING_TABLE_LENGTH, tail.length);
+        if (preload.length > 0) {
+            whole.putLong(IndexFormat.H_PRELOAD_TABLE_OFFSET, preloadTable);
+            whole.putInt(IndexFormat.H_PRELOAD_COUNT, preload.length);
+            for (int i = 0; i < preload.length; i++) {
+                whole.putInt(preloadTable + i * IndexFormat.PRELOAD_RECORD_SIZE, preload[i]);
+            }
+        }
+        if (jdkPreload.length > 0) {
+            whole.putInt(IndexFormat.H_JDK_PRELOAD_COUNT, jdkPreload.length);
+            whole.putLong(IndexFormat.H_JDK_PRELOAD_TABLE_OFFSET, jdkPreloadTable);
+            for (int i = 0; i < jdkPreload.length; i++) {
+                whole.putInt(jdkPreloadTable + i * IndexFormat.PRELOAD_RECORD_SIZE, jdkPreload[i]);
+            }
+        }
         return result;
+    }
+
+    /**
+     * The preload table: the forced ids, or else the chain head of every listed class the index holds, in
+     * list order and once each.
+     */
+    private int[] preloadRecords(Map<String, List<Record>> chains) {
+        if (forcedPreloadRecords != null) {
+            return forcedPreloadRecords.clone();
+        }
+        List<Integer> resolved = new ArrayList<>();
+        for (String binaryName : preloadClasses) {
+            List<Record> chain = chains.get(binaryName.replace('.', '/') + ".class");
+            if (chain != null && !resolved.contains(chain.get(0).index)) {
+                resolved.add(chain.get(0).index);
+            }
+        }
+        int[] records = new int[resolved.size()];
+        for (int i = 0; i < records.length; i++) {
+            records[i] = resolved.get(i);
+        }
+        return records;
     }
 
     private static int align(int value) {

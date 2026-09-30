@@ -26,6 +26,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -117,6 +118,8 @@ final class IndexWriter {
     private String entryStubClass;
     private String launcherVersion;
     private int headerFlags;
+    private List<String> startupClasses = List.of();
+    private List<String> jdkStartupClasses = List.of();
 
     /**
      * Creates an empty writer.
@@ -170,6 +173,40 @@ final class IndexWriter {
     }
 
     /**
+     * Sets the recorded startup class list, which {@link #layout()} turns into the preload table.
+     *
+     * <p>Each name is resolved to the record that heads the chain of its {@code .class} entry, which is the
+     * record a class lookup by that name finds first. A name the archive does not hold, or one listed a
+     * second time, is left out; {@link Layout#preloadCount()} reports how many were kept. With an empty list
+     * the index has no preload table and is byte for byte what it is without this call.</p>
+     *
+     * @param binaryNames the binary class names, in the order the classes should be preloaded
+     * @return this writer
+     * @throws NullPointerException if the list or an element is {@code null}
+     */
+    public IndexWriter startupClasses(List<String> binaryNames) {
+        this.startupClasses = List.copyOf(binaryNames);
+        return this;
+    }
+
+    /**
+     * Sets the JDK classes of the recorded startup class list, which {@link #layout()} turns into the JDK
+     * preload table.
+     *
+     * <p>The names are stored as they are, once each, in list order: no JDK is consulted, and a runtime that
+     * lacks a class skips it. With an empty list the index has no JDK preload table and nothing is added to
+     * the string table.</p>
+     *
+     * @param binaryNames the binary class names, in the order the classes should be preloaded
+     * @return this writer
+     * @throws NullPointerException if the list or an element is {@code null}
+     */
+    public IndexWriter jdkStartupClasses(List<String> binaryNames) {
+        this.jdkStartupClasses = List.copyOf(new LinkedHashSet<>(binaryNames));
+        return this;
+    }
+
+    /**
      * Adds a jar. The first jar added is the application layer, jar {@code 0}, and is flagged
      * {@link IndexFormat#JAR_FLAG_IS_OUTER}.
      *
@@ -200,8 +237,8 @@ final class IndexWriter {
 
     /**
      * Lays the index out: expands the aliases and synthetic directories, chains the records that share a
-     * name, flags the names that also exist as a directory, sizes and fills the hash table and builds the
-     * string table.
+     * name, flags the names that also exist as a directory, sizes and fills the hash table, resolves the
+     * startup class list and builds the string table.
      *
      * <p>Nothing here reads an offset, which is exactly the point: the resulting {@link Layout#length()} is
      * the final length of the index, so the caller can reserve room for it and only then work out where
@@ -216,6 +253,7 @@ final class IndexWriter {
         Map<String, List<Record>> chains = chains(records);
         flagDirectoryTwins(chains);
         link(chains);
+        int[] preload = preload(chains);
         int slots = slots(chains.size());
         int[] table = new int[slots];
         int probe = fill(table, chains, slots);
@@ -271,16 +309,48 @@ final class IndexWriter {
         for (Record record : records) {
             record.nameRef = strings.intern(record.name);
         }
+        // Interned last, so that without a JDK list the string table is what it is without one.
+        int[] jdkPreload = new int[jdkStartupClasses.size()];
+        for (int i = 0; i < jdkPreload.length; i++) {
+            jdkPreload[i] = strings.intern(jdkStartupClasses.get(i));
+        }
 
         int jarTable = IndexFormat.HEADER_SIZE;
         int packageTable = align(jarTable + jars.size() * IndexFormat.JAR_RECORD_SIZE);
         int entryTable = align(packageTable + packageCount * IndexFormat.PACKAGE_RECORD_SIZE);
         int hashTable = align(entryTable + records.size() * IndexFormat.ENTRY_RECORD_SIZE);
         int stringTable = align(hashTable + slots * 4);
-        Layout layout = new Layout(this, records, table, probe, packageCount);
+        Layout layout = new Layout(this, records, table, probe, packageCount, preload, jdkPreload);
         layout.strings(strings.bytes(), startClassRef, entryStubClassRef, launcherVersionRef);
         layout.sections(jarTable, packageTable, entryTable, hashTable, stringTable);
         return layout;
+    }
+
+    /**
+     * Resolves the startup class list to the record that heads each class's chain: the record {@link #fill}
+     * stores in the hash table, and so the one the launcher's class lookup returns. For a multi-release
+     * class that chain also holds the versioned aliases, and the head still carries the logical name.
+     *
+     * @param chains the linked chains, keyed by logical name
+     * @return the record ids in list order, without the names the archive does not hold or that repeat
+     */
+    private int[] preload(Map<String, List<Record>> chains) {
+        if (startupClasses.isEmpty()) {
+            return new int[0];
+        }
+        LinkedHashSet<Integer> resolved = new LinkedHashSet<>();
+        for (String binaryName : startupClasses) {
+            List<Record> chain = chains.get(binaryName.replace('.', '/') + ".class");
+            if (chain != null) {
+                resolved.add(chain.get(0).index);
+            }
+        }
+        int[] ids = new int[resolved.size()];
+        int next = 0;
+        for (Integer id : resolved) {
+            ids[next++] = id;
+        }
+        return ids;
     }
 
     /**
@@ -330,6 +400,23 @@ final class IndexWriter {
         if ((headerFlags & IndexFormat.HEADER_FLAG_POSITIONAL_READS) != 0) {
             // Only then, so that the index of a mapped archive stays byte for byte what it was before the field.
             out.putInt(IndexFormat.H_LARGEST_STORED_CLASS, (int) largestStoredClass(layout.records));
+        }
+        if (layout.preload.length > 0) {
+            // Only then, so that the index of an archive without a startup class list keeps these bytes zero.
+            out.putLong(IndexFormat.H_PRELOAD_TABLE_OFFSET, layout.preloadTableOffset());
+            out.putInt(IndexFormat.H_PRELOAD_COUNT, layout.preload.length);
+            for (int i = 0; i < layout.preload.length; i++) {
+                out.putInt(layout.preloadTableOffset() + i * IndexFormat.PRELOAD_RECORD_SIZE, layout.preload[i]);
+            }
+        }
+        if (layout.jdkPreload.length > 0) {
+            // Only then, as above: without a JDK list header bytes 108 to 119 stay zero.
+            out.putInt(IndexFormat.H_JDK_PRELOAD_COUNT, layout.jdkPreload.length);
+            out.putLong(IndexFormat.H_JDK_PRELOAD_TABLE_OFFSET, layout.jdkPreloadTableOffset());
+            for (int i = 0; i < layout.jdkPreload.length; i++) {
+                out.putInt(layout.jdkPreloadTableOffset() + i * IndexFormat.PRELOAD_RECORD_SIZE,
+                        layout.jdkPreload[i]);
+            }
         }
 
         int packageIndex = 0;
@@ -733,6 +820,8 @@ final class IndexWriter {
         private final int[] hashTable;
         private final int maxProbe;
         private final int packageCount;
+        private final int[] preload;
+        private final int[] jdkPreload;
         private byte[] strings;
         private int startClassRef;
         private int entryStubClassRef;
@@ -744,12 +833,14 @@ final class IndexWriter {
         private int stringTableOffset;
 
         private Layout(IndexWriter owner, List<Record> records, int[] hashTable, int maxProbe,
-                       int packageCount) {
+                       int packageCount, int[] preload, int[] jdkPreload) {
             this.owner = owner;
             this.records = records;
             this.hashTable = hashTable;
             this.maxProbe = maxProbe;
             this.packageCount = packageCount;
+            this.preload = preload;
+            this.jdkPreload = jdkPreload;
         }
 
         /**
@@ -790,7 +881,55 @@ final class IndexWriter {
          * @return the length in bytes
          */
         public int length() {
-            return stringTableOffset + strings.length;
+            return jdkPreload.length == 0
+                    ? preloadEnd() : jdkPreloadTableOffset() + jdkPreload.length * IndexFormat.PRELOAD_RECORD_SIZE;
+        }
+
+        /**
+         * Where the index ends without its JDK preload table: after the preload table, or after the string
+         * table when there is none. Without a startup class list that is where the index has always ended.
+         */
+        private int preloadEnd() {
+            int stringsEnd = stringTableOffset + strings.length;
+            return preload.length == 0
+                    ? stringsEnd : preloadTableOffset() + preload.length * IndexFormat.PRELOAD_RECORD_SIZE;
+        }
+
+        /**
+         * Where the JDK preload table begins: the first 8-byte boundary after the preload table, or after the
+         * string table when there is none.
+         *
+         * @return the offset, meaningful only when {@link #jdkPreloadCount()} is above zero
+         */
+        private int jdkPreloadTableOffset() {
+            return align(preloadEnd());
+        }
+
+        /**
+         * The number of JDK startup classes written to the JDK preload table.
+         *
+         * @return the count, {@code 0} when there is no JDK list
+         */
+        public int jdkPreloadCount() {
+            return jdkPreload.length;
+        }
+
+        /**
+         * Where the preload table begins: the first 8-byte boundary after the string table.
+         *
+         * @return the offset, meaningful only when {@link #preloadCount()} is above zero
+         */
+        private int preloadTableOffset() {
+            return align(stringTableOffset + strings.length);
+        }
+
+        /**
+         * The number of startup classes that resolved to a record and are written to the preload table.
+         *
+         * @return the resolved count, {@code 0} when there is no list or none of its names is in the archive
+         */
+        public int preloadCount() {
+            return preload.length;
         }
 
         /**

@@ -341,6 +341,7 @@ public final class RunnerJarBuilder {
                 .map(option -> option.getKey() + "=" + option.getValue())
                 .collect(Collectors.joining(", ", "Runner options: ", "")));
         validate();
+        StartupClassList startupClasses = StartupClassList.read(spec.startupClasses().orElse(null));
         Path directory = output.getParent();
         Files.createDirectories(directory);
         Path work = Files.createTempDirectory(directory, ".micronaut-runner-");
@@ -369,7 +370,7 @@ public final class RunnerJarBuilder {
             planApplicationEntries();
             planNestedJars();
 
-            IndexWriter.Layout layout = writer.layout();
+            IndexWriter.Layout layout = startupClasses.layout(writer, this::warn, logger);
             indexEntry.size = layout.length();
             long archiveSize = writeArchive(null);
             applyOffsets(archiveSize);
@@ -1647,6 +1648,7 @@ public final class RunnerJarBuilder {
                 throw new IOException("The index of " + output + " names " + entryStubClass
                         + " as the entry stub but does not know the class; the launcher would not start");
             }
+            StartupClassList.verify(index, layout, output);
             index.validateStringReferences();
             for (int jarId = 0; jarId < index.jarCount(); jarId++) {
                 index.validateJar(jarId);

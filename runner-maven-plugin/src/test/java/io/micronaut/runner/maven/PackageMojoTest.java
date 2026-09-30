@@ -64,6 +64,7 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
@@ -76,6 +77,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -247,6 +249,16 @@ class PackageMojoTest {
     }
 
     @Test
+    void theStartupClassListReachesTheSpecOnlyWhenItIsSet() throws MojoFailureException {
+        assertEquals(Optional.empty(), spec().startupClasses(), "unset, nothing is preloaded");
+
+        Path list = temp.resolve("startup-classes.log");
+        set("startupClasses", list.toFile());
+        assertEquals(Optional.of(list), spec().startupClasses());
+        assertEquals(list.toString(), spec().effectiveOptions().get("startupClasses"));
+    }
+
+    @Test
     void anUnknownCompressionFailsWithThePackagingLibrarysMessage() {
         set("compression", "DEFLATED");
         MojoFailureException failure = assertThrows(MojoFailureException.class, this::spec);
@@ -344,6 +356,21 @@ class PackageMojoTest {
         assertEquals(Map.of("x", "configured", "addOpens", ""),
                 PackageMojo.options(user, projectProperties, configured, List.of("x")),
                 "a <runnerOptions> entry wins over both, and an empty element is the empty value");
+    }
+
+    @Test
+    void theStartupClassListSetByNameFailsTheBuildAndNamesItsParameter() {
+        // Maven resolves a relative path against the project directory only for a File parameter.
+        set("runnerOptions", Map.of("startupClasses", "startup-classes.log"));
+        MojoFailureException failure = assertThrows(MojoFailureException.class, this::spec);
+        assertEquals("Option 'startupClasses' names a file: set it through <startupClasses> or"
+                + " -Dmicronaut.runner.startupClasses, not through <runnerOptions>. Maven resolves the path of a"
+                + " file parameter against the project directory, and not that of an option set by name.",
+                failure.getMessage());
+
+        // Every other typed option is still taken by name.
+        set("runnerOptions", Map.of("entryStub", "false"));
+        assertDoesNotThrow(this::spec);
     }
 
     @Test

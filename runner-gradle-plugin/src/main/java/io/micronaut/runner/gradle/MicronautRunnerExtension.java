@@ -16,6 +16,7 @@
 package io.micronaut.runner.gradle;
 
 import io.micronaut.runner.build.RunnerJarOption;
+import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
@@ -113,9 +114,19 @@ public abstract class MicronautRunnerExtension {
     public abstract MapProperty<String, String> getManifestAttributes();
 
     /**
+     * The recorded startup class list the launcher preloads on a background thread: the
+     * {@code -Xlog:class+load} output of a run of the archive, or a file of binary class names. It has no
+     * convention: without it nothing is preloaded.
+     *
+     * @return the startup class list
+     */
+    public abstract RegularFileProperty getStartupClasses();
+
+    /**
      * Packaging options by {@linkplain RunnerJarOption#optionName() name}, for the options that have no typed
      * property. Each value uses the grammar {@link RunnerJarOption} documents; the packaging library parses and
-     * validates it, and an unknown name fails the task.
+     * validates it, and an unknown name fails the task. So does a typed option that names a file, such as
+     * {@code startupClasses}: it is set only through its property, which Gradle tracks by content.
      *
      * @return the options by name
      */
