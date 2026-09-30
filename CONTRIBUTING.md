@@ -38,6 +38,8 @@ RUNNER_TEST_OFFLINE=true ./gradlew check
 
 `check` does not run the build-logic tests; after changing `buildSrc/`, run `./gradlew :buildSrc:test`.
 
+`check` does not run the bean definition prefetch soak, which starts the samples hundreds of times and fails on a start that hangs. Run it with `./gradlew :test-suite:prefetchSoak`, or the "Prefetch soak" workflow, when you change the prefetch classes (`runner-build/src/prefetch`), the entry stub, or anything else that runs before the application's `main`.
+
 ## Building Documentation
 
 The documentation sources are located at `src/main/docs/guide`.

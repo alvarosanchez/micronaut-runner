@@ -22,6 +22,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -94,7 +95,24 @@ final class ForkedApplication implements AutoCloseable {
      */
     static ForkedApplication start(Path archive, Path workingDirectory, Map<String, String> environment,
                                    List<String> jvmArguments) throws IOException {
-        List<String> command = new ArrayList<>();
+        return start(List.of(), archive, workingDirectory, environment, jvmArguments);
+    }
+
+    /**
+     * Starts {@code <prefix> java <jvmArguments> -jar archive} and returns immediately. The prefix is a command
+     * that replaces itself with the JVM, such as {@code taskset -c 0-1}, so the process stays the JVM.
+     *
+     * @param prefix           what to put in front of the {@code java} command, or nothing
+     * @param archive          the runner jar to start
+     * @param workingDirectory the directory to start it in
+     * @param environment      extra environment variables, such as {@code SERVER_PORT}
+     * @param jvmArguments     JVM options, inserted before {@code -jar}
+     * @return the running application
+     * @throws IOException if the process could not be started
+     */
+    static ForkedApplication start(List<String> prefix, Path archive, Path workingDirectory,
+                                   Map<String, String> environment, List<String> jvmArguments) throws IOException {
+        List<String> command = new ArrayList<>(prefix);
         command.add(Samples.javaExecutable().toString());
         command.addAll(jvmArguments);
         command.add("-jar");
@@ -167,6 +185,44 @@ final class ForkedApplication implements AutoCloseable {
     }
 
     /**
+     * Whether the process is still running.
+     *
+     * @return whether it has not exited
+     */
+    boolean alive() {
+        return process.isAlive();
+    }
+
+    /**
+     * Asks {@code jstack} of the JDK under test for the threads of the running application: what a launch that
+     * did not become ready was doing.
+     *
+     * @return the thread dump, or why there is none
+     */
+    String threadDump() {
+        Path jstack = Samples.javaHome().resolve("bin").resolve("jstack");
+        if (!Files.isExecutable(jstack)) {
+            jstack = Samples.javaHome().resolve("bin").resolve("jstack.exe");
+        }
+        if (!Files.isExecutable(jstack)) {
+            return "(no jstack in " + Samples.javaHome() + ")";
+        }
+        try {
+            Process dump = new ProcessBuilder(jstack.toString(), Long.toString(process.pid()))
+                    .redirectErrorStream(true).start();
+            // Read on this thread: a dump is a few hundred lines, and jstack ends by itself.
+            String text = new String(dump.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            dump.waitFor(30, TimeUnit.SECONDS);
+            return text;
+        } catch (IOException e) {
+            return "(jstack failed: " + e + ")";
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "(interrupted while waiting for jstack)";
+        }
+    }
+
+    /**
      * Everything the application has written so far, for a failure message.
      *
      * @return the captured output
@@ -190,12 +246,22 @@ final class ForkedApplication implements AutoCloseable {
 
     @Override
     public void close() {
+        stop(SHUTDOWN_GRACE);
+    }
+
+    /**
+     * Asks the process to stop and kills it when it has not within the grace period. A JVM that writes an AOT
+     * cache as it shuts down needs longer than {@link #close()} gives it.
+     *
+     * @param grace how long the process has to stop by itself
+     */
+    void stop(Duration grace) {
         if (!process.isAlive()) {
             return;
         }
         process.destroy();
         try {
-            if (!process.waitFor(SHUTDOWN_GRACE.toMillis(), TimeUnit.MILLISECONDS)) {
+            if (!process.waitFor(grace.toMillis(), TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly().waitFor(SHUTDOWN_GRACE.toMillis(), TimeUnit.MILLISECONDS);
             }
         } catch (InterruptedException e) {

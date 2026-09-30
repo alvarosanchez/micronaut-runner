@@ -95,6 +95,9 @@ micronaut {
 
         // On by default for STORED; 'false' keeps lambdas as invokedynamic call sites. See Build-Time Transformations.
         // options.put('desugarLambdas', 'false')
+
+        // Off by default. Packages the bean definition prefetch, which can shorten a start without an AOT cache.
+        // options.put('definitionPrefetch', 'true')
     }
 }
 ----
@@ -127,6 +130,7 @@ tool resolve the path against the project and, in Gradle, rebuild the archive wh
 |`startupClasses` |file |`src/main/micronaut-runner/startup-classes.txt` if it exists |typed |1.0
 |`staticServices` |boolean |`true` |passthrough |1.0
 |`desugarLambdas` |boolean |`true` |passthrough |1.0
+|`definitionPrefetch` |boolean |`false` |passthrough |1.0
 |===
 
 A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,
@@ -142,6 +146,10 @@ and invalid entries fail packaging.
 
 `precompileLogback` compiles `logback.xml` into a Logback `Configurator` when it is packaged, and leaves any file it
 cannot reproduce exactly to Logback; see <<precompiledLogback>>.
+
+`definitionPrefetch` packages two classes that start Micronaut's bean definition loading before `main`, on the common
+pool, and hand the result to the first application context. It is off unless you set it; see <<definitionPrefetch>>
+for what it changes and when it pays off.
 
 The application's `+Implementation-*+`, `+Specification-*+` and `Sealed` attributes and package sections come from the
 `jar` task's manifest configuration, including `manifest.from(...)` merges; `micronautRunnerJar` does not build the
@@ -255,6 +263,11 @@ Dependency local-variable tables are dropped by default (see <<localVariableTabl
 <<desugaredLambdas,Desugared lambdas>>); to keep them as `invokedynamic` call sites, pass
 `-Dmicronaut.runner.desugarLambdas=false` or set
 `<runnerOptions><desugarLambdas>false</desugarLambdas></runnerOptions>`.
+To package the bean definition prefetch (<<definitionPrefetch>>), pass
+`-Dmicronaut.runner.definitionPrefetch=true` or set
+`<runnerOptions><definitionPrefetch>true</definitionPrefetch></runnerOptions>`. That property is read while
+packaging; the switch that turns a packaged prefetch off for one launch is `-Dmicronaut.runner.prefetch=false` on
+the `java` command line.
 
 To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
 pass `-Dmicronaut.runner.archiveReads=positional` or set

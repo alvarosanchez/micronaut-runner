@@ -141,7 +141,13 @@ public enum RunnerJarOption {
      * packaged. It applies to {@link Compression#STORED} only. See
      * {@link RunnerJarSpec.Builder#desugarLambdas(boolean)}.
      */
-    DESUGAR_LAMBDAS("desugarLambdas", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
+    DESUGAR_LAMBDAS("desugarLambdas", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
+
+    /**
+     * Whether to package the bean definition prefetch, which the entry stub starts before the application's
+     * {@code main}. Off unless a build asks for it. See {@link RunnerJarSpec.Builder#definitionPrefetch(boolean)}.
+     */
+    DEFINITION_PREFETCH("definitionPrefetch", Boolean.class, "false", Exposure.PASSTHROUGH, "1.0");
 
     private final String optionName;
     private final Class<?> valueType;
