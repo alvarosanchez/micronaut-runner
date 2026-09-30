@@ -1571,6 +1571,24 @@ the layout of the <code>thin-jar</code> and <code>exploded-cp</code> startup var
 unchanged-rebuild, application-edit and dependency-edit scenarios. Elapsed time/allocation and process
 RSS/peak heap come from separate invocations. Logical input/output bytes are reported separately from time and
 memory and are not kernel I/O counters.</p>
+<div class="paragraph">
+<p><code>packagingComparison</code> packages a real application instead, a fresh copy of <code>test-suite/samples/benchmark-large</code>,
+in one warm Gradle daemon of its own, which is where developers and CI pay for packaging. It compares Runner with
+the Shadow JAR it replaces: <code>micronautRunnerJar</code> with STORED (<code>runner-stored</code>) and PRESERVE (<code>runner-preserve</code>)
+compression against <code>shadowJar</code> (<code>shadow</code>) and the sample&#8217;s STORED control <code>shadowJarStored</code> (<code>shadow-stored</code>).
+The <code>rerun</code> scenario runs <code>&lt;task&gt; --rerun</code>, which re-executes only the packaging task; <code>micronautRunnerJar</code> keeps
+no packaging state between executions, so this is the cold packaging path and there is no separate cold
+scenario. The <code>edit</code> scenario makes a bytecode-changing edit to <code>Application.java</code> and runs <code>&lt;task&gt;</code>, so
+compilation and the packaging task&#8217;s other dependencies execute as well. Each invocation records the packaging
+task&#8217;s action time and the wall time of the whole <code>gradlew</code> process. The comparisons are <code>runner-stored</code>/<code>shadow</code>
+(the defaults) and the compression-matched <code>runner-stored</code>/<code>shadow-stored</code> (neither archive deflated) and
+<code>runner-preserve</code>/<code>shadow</code> (both deflated), each the median of per-round differences.</p>
+</div>
+<div class="paragraph">
+<p>Maven Shade is not compared. <code>test-suite/samples/maven-basic</code> configures no <code>maven-shade-plugin</code>, and in that
+small sample Maven&#8217;s own startup would dominate the timings. The Maven plugin packages with the same
+<code>runner-build</code> code path as the Gradle task, which the Runner rows here and <code>packagingProfile</code> already cover.</p>
+</div>
 </dd>
 <dt class="hdlist1">Startup</dt>
 <dd>
@@ -1758,6 +1776,7 @@ inferring it from default JDK class sharing.</p>
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">./gradlew :benchmarks:jmh
 ./gradlew :benchmarks:packagingProfile
+./gradlew :benchmarks:packagingComparison
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.optionalRows=true -Pbenchmarks.iterations=40</code></pre>
@@ -1776,8 +1795,18 @@ explicit sample. Short smoke runs must remain labelled descriptive rather than b
 claims.</p>
 </div>
 <div class="paragraph">
+<p><code>packagingComparison</code> always uses <code>benchmark-large</code> and ignores <code>-Pbenchmarks.sample</code>. It runs 3 warm-up rounds
+and then 10 measured rounds, the fewest that give a 95% interval; <code>-Pbenchmarks.packagingComparisonIterations=20</code>
+changes the measured count. Each round runs one untimed <code>classes</code> build, then every variant in the <code>rerun</code>
+scenario and then in the <code>edit</code> scenario, each scenario in a fresh order shuffled from a seed that the report
+records. Its nested builds run with <code>--no-build-cache --no-configuration-cache</code> in a daemon that its unique JVM
+options keep apart from every other daemon and that stops itself 60 seconds after the task ends; the harness
+never runs <code>--stop</code>.</p>
+</div>
+<div class="paragraph">
 <p>Reports are written to <code>benchmarks/build/reports/</code>. The startup task builds its variants and trains its caches
-in <code>benchmarks/build/tmp/startupBenchmark</code>. In CI the benchmarks run weekly and on demand rather than on every
+in <code>benchmarks/build/tmp/startupBenchmark</code>, and the packaging comparison builds its copy of the sample in
+<code>benchmarks/build/tmp/packagingComparison</code>. In CI the benchmarks run weekly and on demand rather than on every
 pull request, because shared runners are too noisy to gate a build on.</p>
 </div>
 <div class="paragraph">
