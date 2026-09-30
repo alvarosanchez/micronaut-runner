@@ -75,7 +75,7 @@ class BenchmarkClaimsTest {
                 List.of(result(uncached), result(shadowAot), result(storedAot), result(extractedAot)), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
-        assertTrue(json.contains("\"schemaVersion\": 6"), json);
+        assertTrue(json.contains("\"schemaVersion\": 7"), json);
         assertTrue(json.contains("\"cacheBytes\": 1024,\n      \"cacheSha256\": \"" + reusedSha + "\""), json);
         assertTrue(json.contains("\"cacheBytes\": 2048,\n      \"cacheSha256\": \"" + trainedSha + "\""), json);
         assertTrue(json.contains("\"cacheBytes\": null,\n      \"cacheSha256\": null"), json);

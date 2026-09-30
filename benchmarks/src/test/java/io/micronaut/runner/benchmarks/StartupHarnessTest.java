@@ -21,6 +21,7 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -177,8 +178,12 @@ class StartupHarnessTest {
         if (OS.MAC.isCurrentOs()) {
             assertTrue(snapshot.footprintBytes() > 0, snapshot.toString());
             assertTrue(snapshot.peakFootprintBytes() >= snapshot.footprintBytes(), snapshot.toString());
+            assertEquals(-1, snapshot.majorFaults(), snapshot.toString());
+            assertEquals(-1, snapshot.readBytes(), snapshot.toString());
         } else {
             assertTrue(snapshot.anonBytes() > 0, snapshot.toString());
+            assertTrue(snapshot.majorFaults() >= 0, snapshot.toString());
+            assertTrue(snapshot.readBytes() >= 0, snapshot.toString());
         }
         assertStopped(lifecycle);
     }
@@ -206,7 +211,7 @@ class StartupHarnessTest {
         Path lifecycle = directory.resolve("slow-probe.pid");
         AtomicInteger calls = new AtomicInteger();
         AtomicBoolean aliveDuringProbe = new AtomicBoolean();
-        ReadinessSnapshot recorded = new ReadinessSnapshot(-1, 42, -1, -1, -1, -1, -1, 7, 3);
+        ReadinessSnapshot recorded = new ReadinessSnapshot(-1, 42, -1, -1, -1, -1, -1, 7, 3, -1, -1);
         StartupHarness.ReadinessProbe probe = (pid, java) -> {
             calls.incrementAndGet();
             try {
@@ -253,16 +258,46 @@ class StartupHarnessTest {
         assertStopped(lifecycle);
     }
 
+    @Test
+    void theLaunchHookRunsBeforeEveryLaunchAndItsFailureFailsTheRun(@TempDir Path directory) throws Exception {
+        List<String> prepared = new ArrayList<>();
+        StartupHarness.BeforeLaunch recording = variant -> prepared.add(variant.name());
+        try (StartupHarness harness = harness(Duration.ofSeconds(2), Map.of(), ReadinessSnapshot::take, recording)) {
+            harness.run(fixture("success", directory.resolve("first.pid")), 0, true);
+            harness.run(fixture("success", directory.resolve("second.pid")), 1, false);
+        }
+        assertEquals(List.of("success", "success"), prepared);
+
+        StartupHarness.BeforeLaunch failing = variant -> {
+            throw new IOException("posix_fadvise returned 9");
+        };
+        try (StartupHarness harness = harness(Duration.ofSeconds(2), Map.of(), ReadinessSnapshot::take, failing)) {
+            StartupHarness.LaunchPreparationFailure failure = assertThrows(
+                    StartupHarness.LaunchPreparationFailure.class,
+                    () -> harness.run(fixture("success", directory.resolve("never.pid")), 0, false));
+            assertTrue(failure.getMessage().contains("posix_fadvise returned 9"), failure.getMessage());
+        }
+        assertFalse(Files.exists(directory.resolve("never.pid")), "nothing was spawned");
+    }
+
     private static StartupHarness harness(Duration startupTimeout, Map<String, String> environment) {
         return harness(startupTimeout, environment, ReadinessSnapshot::take);
     }
 
     private static StartupHarness harness(Duration startupTimeout,
                                           Map<String, String> environment,
-                                          StartupHarness.ReadinessProbe probe) {
+                                          StartupHarness.ReadinessProbe probe,
+                                          StartupHarness.BeforeLaunch beforeLaunch) {
         return new StartupHarness("/ready", startupTimeout, new StartupHarness.Settings(
                 Duration.ofMillis(2), Duration.ofMillis(100), Duration.ofMillis(250),
-                Duration.ofSeconds(2), Duration.ofMillis(50), StartupHarness::freePort, environment, probe));
+                Duration.ofSeconds(2), Duration.ofMillis(50), StartupHarness::freePort, environment, probe,
+                List.of(), beforeLaunch));
+    }
+
+    private static StartupHarness harness(Duration startupTimeout,
+                                          Map<String, String> environment,
+                                          StartupHarness.ReadinessProbe probe) {
+        return harness(startupTimeout, environment, probe, StartupHarness.BeforeLaunch.NONE);
     }
 
     private static Set<Long> childPids() {

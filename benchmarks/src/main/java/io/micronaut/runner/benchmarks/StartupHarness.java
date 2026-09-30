@@ -53,6 +53,9 @@ import java.util.regex.Pattern;
  *   <li><strong>Nothing between spawn and readiness but polling.</strong> Memory and loaded classes are read
  *       once, by the {@link ReadinessProbe}, after readiness is final and before any wait or
  *       {@code destroy()}, so the probe can neither move the readiness time nor miss the process.</li>
+ *   <li><strong>Launch preparation stays off the clock.</strong> The {@link BeforeLaunch} hook, where the
+ *       page-cache modes evict, runs before the clock starts; a CPU limit's {@code taskset} prefix is spawned with
+ *       the child and costs the same exec in every variant.</li>
  *   <li><strong>A free port per run, never a fixed one.</strong></li>
  *   <li><strong>The process is destroyed in a {@code finally} block,</strong> whether the run succeeded,
  *       timed out or threw. A leaked JVM holding a port would poison every run after it.</li>
@@ -142,7 +145,68 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
         ReadinessSnapshot take(long pid, Path javaExecutable);
     }
 
-    /** Injectable timing, port, environment and probe policy used by deterministic forked tests. */
+    /**
+     * Runs immediately before the clock of every launch starts (warm-up, measured and diagnostic), after the
+     * previous child has exited. The page-cache modes evict here, so eviction is never part of a timed interval.
+     */
+    interface BeforeLaunch {
+
+        /** Does nothing: the default, and {@code uncontrolled}. */
+        BeforeLaunch NONE = new BeforeLaunch() {
+            @Override
+            public void run(Variant variant) {
+                // Nothing to prepare.
+            }
+
+            @Override
+            public boolean evicts() {
+                return false;
+            }
+        };
+
+        /**
+         * Prepares the launch.
+         *
+         * @param variant the variant about to be started
+         * @throws IOException if the preparation fails, which fails the whole benchmark run
+         */
+        void run(Variant variant) throws IOException;
+
+        /**
+         * Whether this hook evicts pages. A child still alive after a forced kill keeps its mapped pages cached,
+         * so under an evicting hook that attempt fails instead of skewing the next one.
+         *
+         * @return {@code true} unless this is {@link #NONE}
+         */
+        default boolean evicts() {
+            return true;
+        }
+    }
+
+    /** The {@link BeforeLaunch} hook failed: the run cannot establish the page-cache state it promised. */
+    static final class LaunchPreparationFailure extends RuntimeException {
+
+        LaunchPreparationFailure(String message, IOException cause) {
+            super(message, cause);
+        }
+    }
+
+    /**
+     * Injectable timing, port, environment, probe, command-prefix and launch-hook policy used by deterministic
+     * forked tests.
+     *
+     * @param pollInterval   how often readiness is polled
+     * @param pollTimeout    how long one poll may take
+     * @param logLineGrace   how long to wait for the startup line after readiness
+     * @param shutdownGrace  how long a destroyed child is given before it is killed
+     * @param servingGrace   how long a non-200 answer is tolerated
+     * @param portSupplier   picks each run's port
+     * @param environment    the child's environment, before the ambient JVM options are removed
+     * @param readinessProbe reads memory and classes at readiness
+     * @param commandPrefix  what the spawned command starts with, for example {@code taskset -c 0}; never part of
+     *                       {@link Variant#command()}
+     * @param beforeLaunch   runs immediately before the clock of every launch starts
+     */
     record Settings(Duration pollInterval,
                     Duration pollTimeout,
                     Duration logLineGrace,
@@ -150,15 +214,30 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
                     Duration servingGrace,
                     IntSupplier portSupplier,
                     Map<String, String> environment,
-                    ReadinessProbe readinessProbe) {
+                    ReadinessProbe readinessProbe,
+                    List<String> commandPrefix,
+                    BeforeLaunch beforeLaunch) {
 
         Settings {
             environment = Map.copyOf(environment);
+            commandPrefix = List.copyOf(commandPrefix);
         }
 
         static Settings defaults() {
             return new Settings(POLL_INTERVAL, POLL_TIMEOUT, LOG_LINE_GRACE, SHUTDOWN_GRACE, SERVING_GRACE,
-                    StartupHarness::freePort, System.getenv(), ReadinessSnapshot::take);
+                    StartupHarness::freePort, System.getenv(), ReadinessSnapshot::take, List.of(), BeforeLaunch.NONE);
+        }
+
+        /**
+         * These settings with a command prefix and a launch hook.
+         *
+         * @param commandPrefix the prefix, for example {@code taskset -c 0}
+         * @param beforeLaunch  the hook
+         * @return the copy
+         */
+        Settings with(List<String> commandPrefix, BeforeLaunch beforeLaunch) {
+            return new Settings(pollInterval, pollTimeout, logLineGrace, shutdownGrace, servingGrace, portSupplier,
+                    environment, readinessProbe, commandPrefix, beforeLaunch);
         }
     }
 
@@ -175,6 +254,19 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
      */
     StartupHarness(String readinessPath, Duration startupTimeout) {
         this(readinessPath, startupTimeout, Settings.defaults());
+    }
+
+    /**
+     * Creates a harness whose children run under a command prefix and whose launches are preceded by a hook.
+     *
+     * @param readinessPath  the path polled for readiness
+     * @param startupTimeout how long an application may take to answer before the run is failed
+     * @param commandPrefix  what every spawned command starts with; empty for none
+     * @param beforeLaunch   runs immediately before the clock of every launch starts
+     */
+    StartupHarness(String readinessPath, Duration startupTimeout, List<String> commandPrefix,
+                   BeforeLaunch beforeLaunch) {
+        this(readinessPath, startupTimeout, Settings.defaults().with(commandPrefix, beforeLaunch));
     }
 
     StartupHarness(String readinessPath, Duration startupTimeout, Settings settings) {
@@ -228,12 +320,8 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
     private StartupSample run(Variant variant, int iteration, boolean warmup, List<String> extraJvmArgs)
             throws IOException, InterruptedException {
         int port = settings.portSupplier().getAsInt();
-        List<String> command = new ArrayList<>(variant.command().size() + extraJvmArgs.size());
-        command.add(variant.command().get(0));
-        command.addAll(extraJvmArgs);
-        command.addAll(variant.command().subList(1, variant.command().size()));
-
-        ProcessBuilder builder = new ProcessBuilder(command)
+        ProcessBuilder builder = new ProcessBuilder(processCommand(settings.commandPrefix(), variant.command(),
+                extraJvmArgs))
                 .directory(variant.workingDirectory().toFile())
                 .redirectErrorStream(true);
         builder.environment().clear();
@@ -248,6 +336,12 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
         Thread drain = null;
         Capture capture = null;
         try {
+            try {
+                settings.beforeLaunch().run(variant);
+            } catch (IOException e) {
+                throw new LaunchPreparationFailure("could not prepare the launch of " + variant.name() + ": "
+                        + e.getMessage(), e);
+            }
             long start = System.nanoTime();
             process = builder.start();
             capture = new Capture(start);
@@ -300,12 +394,18 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
             // neither move readinessMillis nor miss the process.
             ReadinessSnapshot atReadiness = probe(process, Path.of(variant.command().get(0)), ready);
             awaitStartupLine(capture, settings.logLineGrace());
+            int exitCode = destroy(process, drain, settings.shutdownGrace());
+            if (exitCode == -1 && settings.beforeLaunch().evicts()) {
+                // Eviction cannot drop pages a live process still maps, so the next launch would start warm.
+                throw new RunFailure(variant.name() + " was still alive after a forced kill; under page-cache"
+                        + " eviction the attempt fails rather than leave the next launch's pages cached", null);
+            }
             return new StartupSample(iteration, warmup, port,
                     (ready - start) / 1_000_000.0,
                     capture.logLineMillis(),
                     capture.reportedMillis(),
                     (ready - lastFailureEnd) / 1_000_000.0,
-                    destroy(process, drain, settings.shutdownGrace()),
+                    exitCode,
                     atReadiness);
         } finally {
             if (process != null && process.isAlive()) {
@@ -315,10 +415,29 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
     }
 
     /**
+     * The command a run spawns: the prefix, then the variant's command with the extra JVM arguments directly after
+     * its {@code java}. The arguments go after {@code java}, never after the prefix's own executable, and the
+     * prefix never enters {@link Variant#command()}, so the reported commands are the same with or without it.
+     *
+     * @param prefix         what the spawned command starts with, for example {@code taskset -c 0}; empty for none
+     * @param variantCommand the variant's command, {@code java} first
+     * @param extraJvmArgs   JVM arguments for this run only, such as a diagnostic {@code -Xlog}
+     * @return the spawned command
+     */
+    static List<String> processCommand(List<String> prefix, List<String> variantCommand, List<String> extraJvmArgs) {
+        List<String> command = new ArrayList<>(prefix.size() + variantCommand.size() + extraJvmArgs.size());
+        command.addAll(prefix);
+        command.add(variantCommand.get(0));
+        command.addAll(extraJvmArgs);
+        command.addAll(variantCommand.subList(1, variantCommand.size()));
+        return List.copyOf(command);
+    }
+
+    /**
      * Takes the readiness snapshot. A failing probe yields an unavailable snapshot, never a failed run.
      *
      * @param process        the ready child
-     * @param javaExecutable the variant's {@code java}, even if a prefix is ever put in front of the command
+     * @param javaExecutable the variant's {@code java}, not the command prefix's executable
      * @param ready          the readiness instant
      * @return the snapshot, with the time from readiness to its completion
      */
