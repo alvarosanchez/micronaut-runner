@@ -1,0 +1,33 @@
+/*
+ * Applied with --init-script by the "Transform corpus" workflow to test-suite/corpus and to the sample
+ * applications. It adds writeRuntimeClasspath to every project that has a runtime class path: the task writes
+ * that class path, one absolute path per line in resolution order, to <transformCorpusDir>/<name>.txt, where
+ * <name> is the root project's name, followed by the project's own for a subproject.
+ *
+ * -PtransformCorpusDir=<directory> chooses the directory; without it, the files go to build/transform-corpus of
+ * each project.
+ */
+def corpusDirectory = gradle.startParameter.projectProperties.get('transformCorpusDir')
+
+allprojects { project ->
+    project.tasks.register('writeRuntimeClasspath') { task ->
+        task.group = 'verification'
+        task.description = 'Writes the runtime class path for the class transform corpus'
+        // The corpus always wants the current answer.
+        task.outputs.upToDateWhen { false }
+        task.doLast {
+            def runtimeClasspath = project.configurations.findByName('runtimeClasspath')
+            if (runtimeClasspath == null) {
+                return
+            }
+            def directory = corpusDirectory != null
+                    ? new File(corpusDirectory)
+                    : project.layout.buildDirectory.dir('transform-corpus').get().asFile
+            directory.mkdirs()
+            def name = project == project.rootProject ? project.name : "${project.rootProject.name}-${project.name}"
+            def output = new File(directory, "${name}.txt")
+            output.text = runtimeClasspath.files.collect { it.absolutePath }.join('\n') + '\n'
+            println "writeRuntimeClasspath: wrote ${output}"
+        }
+    }
+}

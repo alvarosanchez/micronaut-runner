@@ -56,7 +56,8 @@ class TypedOptionConformanceTest {
 
     /** The task properties that carry build-tool facts rather than packaging options. */
     private static final Set<String> BUILD_TOOL_FACTS = Set.of(
-            "mainClass", "applicationOutput", "applicationJar", "classpath", "coordinates", "dependencyInputs",
+            "mainClass", "applicationOutput", "applicationJar", "classpath", "coordinates", "projectModules",
+            "dependencyInputs",
             "inheritedManifest", "inheritedManifestAttributes", "archiveFile", "archiveBaseName", "archiveVersion",
             "archiveClassifier", "destinationDirectory", "options");
 

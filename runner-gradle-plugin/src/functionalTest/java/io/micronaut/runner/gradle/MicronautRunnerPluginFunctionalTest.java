@@ -20,13 +20,22 @@ import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.MethodModel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.jar.Attributes;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -345,6 +354,131 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, RUNNER_JAR_TASK));
         assertEquals("from-doFirst",
                 manifestOf(directory.resolve(DEFAULT_ARCHIVE)).getValue("Implementation-Vendor"));
+    }
+
+    /**
+     * A project dependency is a module of the same build: its classes are nested as the {@code jar} task wrote
+     * them, local-variable tables included (Gradle compiles with {@code -g}), while a file dependency's classes
+     * are stripped of theirs.
+     *
+     * @param directory a fresh build directory
+     * @throws IOException          if the fixture cannot be written or the archive cannot be read
+     * @throws InterruptedException if the forked application is interrupted
+     */
+    @Test
+    void theClassesOfAProjectDependencyKeepTheirLocalVariableTables(@TempDir Path directory)
+            throws IOException, InterruptedException {
+        writeSettings(directory, "include 'app', 'lib'");
+        write(directory.resolve("lib/build.gradle"), """
+                plugins {
+                    id 'java-library'
+                }
+                tasks.withType(Jar).configureEach {
+                    preserveFileTimestamps = false
+                    reproducibleFileOrder = true
+                }
+                """);
+        write(directory.resolve("lib/src/main/java/com/example/module/Counter.java"), """
+                package com.example.module;
+
+                public final class Counter {
+                    public static int count(String text) {
+                        int total = 0;
+                        for (char letter : text.toCharArray()) {
+                            total += Character.isLetter(letter) ? 1 : 0;
+                        }
+                        return total;
+                    }
+                }
+                """);
+        write(directory.resolve("app/build.gradle"), """
+                plugins {
+                    id 'application'
+                    id '@plugin@'
+                }
+                version = '1.0'
+                application {
+                    mainClass = 'com.example.App'
+                }
+                dependencies {
+                    implementation project(':lib')
+                    implementation files('libs/debug.jar')
+                }
+                """.replace("@plugin@", PLUGIN_ID));
+        write(directory.resolve("app/src/main/java/com/example/App.java"), """
+                package com.example;
+
+                public final class App {
+                    public static void main(String[] args) {
+                        System.out.println("letters=" + com.example.module.Counter.count("a1b2"));
+                        System.out.println("sum=" + com.example.debug.Adder.sum(2, 3));
+                        System.out.println("RESULT OK");
+                    }
+                }
+                """);
+        debugJar(directory.resolve("app/libs/debug.jar"), "com.example.debug.Adder", """
+                package com.example.debug;
+
+                public final class Adder {
+                    public static int sum(int first, int second) {
+                        int total = first + second;
+                        return total;
+                    }
+                }
+                """);
+
+        BuildResult result = build(directory, ":app:micronautRunnerJar");
+
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, ":app:micronautRunnerJar"));
+        Path archive = directory.resolve("app/build/libs/app-1.0-all.jar");
+        Map<String, byte[]> module = nestedClasses(archive, "MICRONAUT-INF/lib/lib.jar");
+        Map<String, byte[]> built = classesOf(Files.readAllBytes(directory.resolve("lib/build/libs/lib.jar")));
+        assertEquals(built.keySet(), module.keySet());
+        for (Map.Entry<String, byte[]> entry : module.entrySet()) {
+            assertTrue(Arrays.equals(built.get(entry.getKey()), entry.getValue()),
+                    () -> entry.getKey() + " of the project dependency was rewritten");
+            assertTrue(hasLocalVariableTable(entry.getValue()), () -> entry.getKey() + " lost its locals");
+        }
+        Map<String, byte[]> file = nestedClasses(archive, "MICRONAUT-INF/lib/debug.jar");
+        assertEquals(Set.of("com/example/debug/Adder.class"), file.keySet());
+        assertFalse(hasLocalVariableTable(file.get("com/example/debug/Adder.class")),
+                "the file dependency's classes are stripped");
+
+        String output = runJarSuccessfully(archive);
+        assertTrue(output.contains("letters=2"), () -> output);
+        assertTrue(output.contains("sum=5"), () -> output);
+    }
+
+    private static Map<String, byte[]> nestedClasses(Path archive, String name) throws IOException {
+        try (ZipFile zip = new ZipFile(archive.toFile())) {
+            ZipEntry nested = zip.getEntry(name);
+            assertTrue(nested != null, () -> name + " is not in " + archive);
+            try (InputStream in = zip.getInputStream(nested)) {
+                return classesOf(in.readAllBytes());
+            }
+        }
+    }
+
+    private static Map<String, byte[]> classesOf(byte[] jar) throws IOException {
+        Map<String, byte[]> classes = new TreeMap<>();
+        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(jar))) {
+            for (ZipEntry entry = in.getNextEntry(); entry != null; entry = in.getNextEntry()) {
+                if (entry.getName().endsWith(".class")) {
+                    classes.put(entry.getName(), in.readAllBytes());
+                }
+            }
+        }
+        return classes;
+    }
+
+    private static boolean hasLocalVariableTable(byte[] bytes) {
+        for (MethodModel method : ClassFile.of().parse(bytes).methods()) {
+            if (method.code().flatMap(code -> code.findAttribute(
+                    java.lang.classfile.Attributes.localVariableTable())).isPresent()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void assertInheritedMainAttributes(Path archive) throws IOException {

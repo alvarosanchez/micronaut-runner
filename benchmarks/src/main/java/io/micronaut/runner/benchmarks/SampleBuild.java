@@ -99,6 +99,8 @@ final class SampleBuild {
     private static final String RUNNER_STORED_POSITIONAL_AOT = "runner-stored-positional-aot";
     private static final String RUNNER_STORED_JORAN = "runner-stored-joran";
     private static final String RUNNER_STORED_JORAN_AOT = "runner-stored-joran-aot";
+    private static final String RUNNER_STORED_KEEPDEBUG = "runner-stored-keepdebug";
+    private static final String RUNNER_STORED_KEEPDEBUG_AOT = "runner-stored-keepdebug-aot";
     private static final String RUNNER_PRESERVE = "runner-preserve";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
     private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
@@ -110,6 +112,11 @@ final class SampleBuild {
             "Runner jar, nested dependencies re-packed uncompressed; archiveReads POSITIONAL (index mapped only)";
     private static final String RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION =
             "The same POSITIONAL Runner jar with a verified JDK AOT cache";
+    private static final String RUNNER_STORED_KEEPDEBUG_DESCRIPTION =
+            "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub;"
+                    + " local-variable tables kept";
+    private static final String RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION =
+            "The same local-variable-table control with a verified JDK AOT cache";
 
     private static final String RUNNER_STORED_JORAN_DESCRIPTION =
             "The same stored Runner jar with precompileLogback=false: logback.xml read by Joran (control)";
@@ -291,7 +298,11 @@ final class SampleBuild {
                 new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_JORAN,
                         "Precompiled Logback vs Joran at startup (Runner-only control)"),
                 new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_JORAN_AOT,
-                        "Precompiled Logback vs Joran at startup (Runner-only control) + AOT cache"));
+                        "Precompiled Logback vs Joran at startup (Runner-only control) + AOT cache"),
+                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_KEEPDEBUG,
+                        "Local-variable tables stripped vs kept"),
+                new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_KEEPDEBUG_AOT,
+                        "Local-variable tables stripped vs kept, with the AOT cache"));
     }
 
     /**
@@ -324,6 +335,9 @@ final class SampleBuild {
                     RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION, reason));
             variants.add(Variant.unavailable(RUNNER_STORED_JORAN, RUNNER_STORED_JORAN_DESCRIPTION, reason));
             variants.add(Variant.unavailable(RUNNER_STORED_JORAN_AOT, RUNNER_STORED_JORAN_AOT_DESCRIPTION, reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_KEEPDEBUG, RUNNER_STORED_KEEPDEBUG_DESCRIPTION, reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_KEEPDEBUG_AOT, RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION,
+                    reason));
         }
         variants.add(Variant.unavailable(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub", reason));
@@ -378,6 +392,14 @@ final class SampleBuild {
             variants.add(joran);
             variants.add(attempt(RUNNER_STORED_JORAN_AOT, RUNNER_STORED_JORAN_AOT_DESCRIPTION,
                     () -> AotCache.prepare(joran, RUNNER_STORED_JORAN_AOT, aotRequest())));
+            // The default strips local-variable tables; this control keeps them. Drop both rows once the default
+            // has shipped for one release.
+            Variant keepDebug = attempt(RUNNER_STORED_KEEPDEBUG, RUNNER_STORED_KEEPDEBUG_DESCRIPTION,
+                    () -> runnerJar(RUNNER_STORED_KEEPDEBUG, Compression.STORED, EntryMode.STUB,
+                            RunnerJarOptions.DEFAULTS.withStripLocalVariables(false)));
+            variants.add(keepDebug);
+            variants.add(attempt(RUNNER_STORED_KEEPDEBUG_AOT, RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION,
+                    () -> AotCache.prepare(keepDebug, RUNNER_STORED_KEEPDEBUG_AOT, aotRequest())));
         }
         variants.add(attempt(RUNNER_PRESERVE,
                 "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
@@ -584,6 +606,9 @@ final class SampleBuild {
         if (options.precompileLogback() != null) {
             builder.precompileLogback(options.precompileLogback());
         }
+        if (options.stripLocalVariables() != null) {
+            builder.stripLocalVariables(options.stripLocalVariables());
+        }
         RunnerJarSpec spec = builder.build();
         RunnerJarBuilder.build(spec, BuildLogger.noOp());
         // Rebuilt in every run with the same bytes; the pin keeps the time a trained cache recorded.
@@ -601,7 +626,8 @@ final class SampleBuild {
                         ? "; plugin-default entry stub" : "; reflection ablation")
                         + (options.archiveReads() == null ? ""
                         : "; archiveReads " + options.archiveReads().name())
-                        + (Boolean.FALSE.equals(options.precompileLogback()) ? "; logback.xml left to Joran" : ""),
+                        + (Boolean.FALSE.equals(options.precompileLogback()) ? "; logback.xml left to Joran" : "")
+                        + (spec.stripLocalVariables() ? "" : "; local-variable tables kept"),
                 command, artifacts, output, deploymentSize, requestedEntryMode, effectiveEntryMode);
     }
 
@@ -624,13 +650,16 @@ final class SampleBuild {
      * the builder default in place, so a row that does not set an option measures whatever default the option
      * table declares. A row that needs another option adds a field here rather than another overload.
      *
-     * @param archiveReads how the launcher reads the archive, or {@code null} for the builder default
-     * @param precompileLogback whether to precompile {@code logback.xml}, or {@code null} for the builder default
+     * @param archiveReads        how the launcher reads the archive, or {@code null} for the builder default
+     * @param precompileLogback   whether to precompile {@code logback.xml}, or {@code null} for the builder
+     *                            default
+     * @param stripLocalVariables whether dependency classes lose their local-variable tables, or {@code null}
+     *                            for the builder default
      */
-    record RunnerJarOptions(ArchiveReads archiveReads, Boolean precompileLogback) {
+    record RunnerJarOptions(ArchiveReads archiveReads, Boolean precompileLogback, Boolean stripLocalVariables) {
 
         /** Every option at the builder default. */
-        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null);
+        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null);
 
         /**
          * These options with another archive read mode.
@@ -639,7 +668,7 @@ final class SampleBuild {
          * @return the new options
          */
         RunnerJarOptions withArchiveReads(ArchiveReads value) {
-            return new RunnerJarOptions(value, precompileLogback);
+            return new RunnerJarOptions(value, precompileLogback, stripLocalVariables);
         }
 
         /**
@@ -649,7 +678,17 @@ final class SampleBuild {
          * @return the new options
          */
         RunnerJarOptions withPrecompileLogback(boolean value) {
-            return new RunnerJarOptions(archiveReads, value);
+            return new RunnerJarOptions(archiveReads, value, stripLocalVariables);
+        }
+
+        /**
+         * These options with local-variable stripping set.
+         *
+         * @param value whether dependency classes lose their local-variable tables
+         * @return the new options
+         */
+        RunnerJarOptions withStripLocalVariables(boolean value) {
+            return new RunnerJarOptions(archiveReads, precompileLogback, value);
         }
     }
 

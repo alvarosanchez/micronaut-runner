@@ -145,6 +145,7 @@ class ToolsTest {
     private static final String GENERATED_SERVICE_ENTRY =
             "META-INF/services/ch.qos.logback.classic.spi.Configurator";
     private static final long DOS_TIME = 0x00210000L;
+    private static final String TRANSFORMS_COUNTS = DEPENDENCY_ONE + "\tstripLocalVariables\t1\t0\t0\t120";
 
     private static final byte[] EMPTY = new byte[0];
     private static final byte[] CONFIGURATION_BYTES = bytes("greeting: hello\n");
@@ -230,6 +231,7 @@ class ToolsTest {
         assertEquals(archive.length() + " bytes", header(output, "Outer file length"), output);
         assertEquals("mapped", header(output, "Archive reads"), output);
         assertEquals("a memory mapping", header(output, "Read through"), output);
+        assertEquals("none", header(output, "Build transforms"), output);
 
         String[] application = columns(line(output, IndexFormat.CLASSES_PREFIX));
         assertEquals("0", application[0], output);
@@ -269,6 +271,25 @@ class ToolsTest {
             }
         } finally {
             System.clearProperty(ArchiveSource.MMAP_PROPERTY);
+        }
+    }
+
+    @Test
+    void inspectPrintsTheBuildTransformsWhenTheArchiveRecordsThem() throws Throwable {
+        File transformed = writeArchive(workspace.resolve("transforms/app.jar"), Flavour.TRANSFORMS);
+        try (ArchiveSource transformedSource = ArchiveSource.open(transformed)) {
+            Index transformedIndex = Index.open(transformedSource);
+            String output = capture(() -> Inspect.run(new String[0], transformed, transformedIndex,
+                    transformedSource));
+
+            // Any line break: System.out ends each line with the platform's separator.
+            List<String> lines = List.of(output.split("\\R"));
+            int heading = lines.indexOf("Build transforms");
+            assertTrue(heading >= 0, output);
+            assertEquals("  Micronaut-Runner-Version\t" + LAUNCHER_VERSION, lines.get(heading + 1), output);
+            assertEquals("  " + TRANSFORMS_COUNTS, lines.get(heading + 2), output);
+            assertEquals(null, header(output, "Build transforms"), "no \"none\" when the entry is present");
+            assertEquals(MAIN_CLASS, header(output, "Main class"), output);
         }
     }
 
@@ -932,6 +953,10 @@ class ToolsTest {
         if (flavour == Flavour.ESCAPING_ENTRY) {
             outer.stored(IndexFormat.CLASSES_PREFIX + "../evil.txt", bytes("gotcha"));
         }
+        if (flavour == Flavour.TRANSFORMS) {
+            outer.stored(IndexFormat.TRANSFORMS_ENTRY_NAME, bytes("Micronaut-Runner-Version\t" + LAUNCHER_VERSION
+                    + "\n" + TRANSFORMS_COUNTS + "\n"));
+        }
         if (flavour != Flavour.NO_DEPENDENCIES) {
             outer.stored(flavour == Flavour.ENCODED_DEPENDENCIES
                     ? ENCODED_DEPENDENCY_ONE : DEPENDENCY_ONE, dependencyOneJar);
@@ -1260,7 +1285,10 @@ class ToolsTest {
         POSITIONAL,
 
         /** The index header names no entry stub, as when the packager generated none. */
-        NO_STUB
+        NO_STUB,
+
+        /** An archive that records what the build-time class transforms did. */
+        TRANSFORMS
     }
 
     /**

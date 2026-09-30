@@ -110,7 +110,13 @@ public enum RunnerJarOption {
      * Whether to compile the application's {@code logback.xml} into a Logback {@code Configurator} when it is
      * packaged. See {@link RunnerJarSpec.Builder#precompileLogback(boolean)}.
      */
-    PRECOMPILE_LOGBACK("precompileLogback", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
+    PRECOMPILE_LOGBACK("precompileLogback", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
+
+    /**
+     * Whether to drop the local-variable tables of dependency classes when they are re-packed. See
+     * {@link RunnerJarSpec.Builder#stripLocalVariables(boolean)}.
+     */
+    STRIP_LOCAL_VARIABLES("stripLocalVariables", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
 
     private final String optionName;
     private final Class<?> valueType;

@@ -34,6 +34,9 @@ compilation and the packaging task's other dependencies execute as well. Each in
 task's action time and the wall time of the whole `gradlew` process. The comparisons are `runner-stored`/`shadow`
 (the defaults) and the compression-matched `runner-stored`/`shadow-stored` (neither archive deflated) and
 `runner-preserve`/`shadow` (both deflated), each the median of per-round differences.
+The `runner-stored` time includes the default class transform, which strips the local-variable tables of the
+dependency classes (see <<localVariableTables,Local-variable tables>>); `runner-preserve` nests the dependencies
+byte for byte and runs none.
 +
 Maven Shade is not compared. `test-suite/samples/maven-basic` configures no `maven-shade-plugin`, and in that
 small sample Maven's own startup would dominate the timings. The Maven plugin packages with the same
@@ -87,6 +90,14 @@ compared with `runner-stored-aot` and `shadow-aot`
 |`runner-stored-joran-aot`
 |Opt-in control: that Joran Runner JAR with a trained, application-class-verified JDK AOT cache
 
+|`runner-stored-keepdebug`
+|Opt-in, non-gating control: the same stored Runner JAR inputs with `stripLocalVariables` off, so dependency
+classes keep their local-variable tables (see <<localVariableTables,Local-variable tables>>)
+
+|`runner-stored-keepdebug-aot`
+|Opt-in, non-gating control: the identical `runner-stored-keepdebug` JAR with a trained, application-class-verified
+JDK AOT cache
+
 |`runner-preserve`
 |Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub
 
@@ -109,6 +120,11 @@ working directory, measured workload and JVM options except for the one applicat
 Default JDK class sharing remains enabled when the selected JDK enables it, but reuse of platform classes from
 the JDK's default archive is not evidence of trained application-class AOT cache reuse; default JDK class
 sharing is a separate baseline condition.
+
+Every Runner row builds with the packaging library's defaults, so `runner-stored` and the rows derived from it,
+`runner-stored-aot`, `runner-extracted` and `runner-extracted-aot`, measure dependency classes stripped of their
+local-variable tables. The opt-in pairs `runner-stored`/`runner-stored-keepdebug` and
+`runner-stored-aot`/`runner-stored-keepdebug-aot` measure that default against keeping the tables.
 
 The compression-matched pairs are `runner-stored`/`shadow-stored`, where neither side inflates class bytes, and
 `runner-preserve`/`shadow`, where both do; they measure what Runner's layout itself buys. `runner-stored`/`shadow`
@@ -190,8 +206,8 @@ Run it locally with:
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.optionalRows=true -Pbenchmarks.iterations=40
 ----
 
-The last command adds the opt-in rows, such as the entry-stub ablation. Run it with 40 iterations: at 20, the
-stub effect's interval still spanned zero.
+The last command adds the opt-in rows, such as the entry-stub ablation and the local-variable-table controls. Run
+it with 40 iterations: at 20, the stub effect's interval still spanned zero.
 
 `-Pbenchmarks.workloads=no-manifest,small,representative,wide` selects packaging shapes and
 `-Pbenchmarks.packagingIterations=2` changes the number of independent packaging workers. The JMH resource
