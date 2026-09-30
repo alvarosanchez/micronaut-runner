@@ -61,7 +61,7 @@ jobs:
       - name: "📈 Run benchmarks"
         env:
           BENCHMARK_ITERATIONS: ${{ github.event.inputs.iterations || '20' }}
-        run: ./gradlew :benchmarks:benchmarkIntegrationTest :benchmarks:jmh :benchmarks:packagingProfile :benchmarks:startupBenchmark "-Pbenchmarks.iterations=$BENCHMARK_ITERATIONS" --no-daemon
+        run: ./gradlew :benchmarks:benchmarkIntegrationTest :benchmarks:jmh :benchmarks:packagingProfile :benchmarks:startupBenchmark :benchmarks:packagingComparison "-Pbenchmarks.iterations=$BENCHMARK_ITERATIONS" --no-daemon
 
       - name: "📝 Summarise"
         if: always()
@@ -76,6 +76,11 @@ jobs:
           else
             echo 'No packaging profile summary was produced.' >> "$GITHUB_STEP_SUMMARY"
           fi
+          if [ -f benchmarks/build/reports/packaging-comparison/summary.md ]; then
+            cat benchmarks/build/reports/packaging-comparison/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No packaging comparison summary was produced.' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: "📜 Upload results"
         if: always()
@@ -88,6 +93,8 @@ jobs:
             benchmarks/build/reports/startup/diagnostics/**
             benchmarks/build/reports/packaging/packaging-results.json
             benchmarks/build/reports/packaging/packaging-summary.md
+            benchmarks/build/reports/packaging-comparison/results.json
+            benchmarks/build/reports/packaging-comparison/summary.md
             benchmarks/build/reports/jmh/results.json
           if-no-files-found: warn
           retention-days: 30
