@@ -192,8 +192,19 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
      */
     @Override
     public boolean matches(String entryName, byte[] bytes) {
-        return isCandidate(entryName) && bytes.length > 8 && u4(bytes, 0) == CLASS_MAGIC
-                && u2(bytes, 6) >= INDY_MAJOR && LocalVariableStripper.contains(bytes, MARKER);
+        return isCandidate(entryName) && matchesBytes(bytes);
+    }
+
+    /**
+     * The pre-filter's test of the bytes alone: a class file of a version that has {@code invokedynamic} that
+     * names {@code LambdaMetafactory}. The class path scan applies it to every class it reads.
+     *
+     * @param bytes the class bytes
+     * @return whether the class may hold a lambda call site
+     */
+    static boolean matchesBytes(byte[] bytes) {
+        return bytes.length > 8 && u4(bytes, 0) == CLASS_MAGIC && u2(bytes, 6) >= INDY_MAJOR
+                && LocalVariableStripper.contains(bytes, MARKER);
     }
 
     /**
@@ -258,6 +269,11 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
      * Plans one jar, or the application layer: reads the classes that pass the pre-filter, and the nest hosts
      * they need, decides which sites are rewritten and allocates the generated and bridge names.
      *
+     * <p>The class path scan has already applied the pre-filter to every class, so only the classes it marked
+     * are read again, and only the copy of a name that the runtime loads, which is the only one that can be
+     * rewritten: a copy that an earlier layer shadows or that a multi-release variant replaces is never
+     * loaded, so its sites are neither rewritten nor counted.</p>
+     *
      * @param layer   the jar
      * @param classes its classes
      * @return the plan
@@ -269,6 +285,11 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
         for (ClassTransformPipeline.ClassEntry entry : classes.classes()) {
             String name = entry.name();
             if (!isCandidate(name) || entry.size() > ClassTransformPipeline.MAX_CLASS_SIZE) {
+                continue;
+            }
+            Optional<ClassPathModel.Copy> copy = model.winner(name.substring(0, name.length() - CLASS_SUFFIX.length()));
+            if (copy.isEmpty() || !copy.get().lambdas() || copy.get().layer() != layer.index()
+                    || copy.get().version() != 0) {
                 continue;
             }
             byte[] bytes = planner.read(name);
@@ -439,12 +460,16 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
         ALT_METAFACTORY("altMetafactory"),
 
         /**
-         * The host, its nest host or the implementation's owner is not the copy the runtime is sure to load:
-         * an earlier layer holds the name, a jar holds it twice, or a newer runtime would pick another variant.
+         * The host, its nest host or the implementation's owner is not the copy the runtime is sure to load: a
+         * newer runtime would pick another variant, a jar holds the name twice, or, for a nest host or an owner,
+         * an earlier layer holds it. A host copy that an earlier layer shadows is not counted: it is never loaded.
          */
         SHADOWED_OR_UNCERTAIN("shadowedOrUncertain"),
 
-        /** The host or its nest host has a multi-release variant, which replaces it at run time. */
+        /**
+         * The host's nest host has a multi-release variant, which replaces it at run time. A host that has one is
+         * not counted at all: the runtime never loads it.
+         */
         MULTI_RELEASE("multiRelease"),
 
         /** The host's nest host is not a class of the same jar that lists the host as a member. */

@@ -388,7 +388,7 @@ class ClassTransformPipelineTest {
                 new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/signed.jar", 0, false, true, false));
 
         assertEquals(false, run.reads(subject.length), "a signed jar's classes are never read into memory");
-        run.skip();
+        run.pass(SUBJECT + ".class");
         assertEquals(List.of(new ClassTransformPipeline.StepCount("rewriteLdc", 0, 1, 0, 0)), run.report().counts());
         assertEquals(0, rewriteLdc.hits.get());
     }
@@ -538,7 +538,7 @@ class ClassTransformPipelineTest {
         ClassTransformPipeline.JarRun first = pipeline.start(DEPENDENCY);
         first.process(SUBJECT + ".class", subject);
         ClassTransformPipeline.JarRun second = pipeline.start(DEPENDENCY);
-        second.skip();
+        second.pass(SUBJECT + ".class");
 
         List<TransformReport> totals = pipeline.totals(List.of(first.report(), second.report()));
 

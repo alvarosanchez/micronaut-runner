@@ -673,19 +673,9 @@ final class ClassTransformPipeline {
         }
 
         /**
-         * Counts a class that is written without being read: it is too large, or no step applies to the jar.
-         */
-        void skip() {
-            for (int i = 0; i < unchanged.length; i++) {
-                if (counted[i]) {
-                    unchanged[i]++;
-                }
-            }
-        }
-
-        /**
-         * Counts a class that is written without being read, by its name: a class whose nest fell back from
-         * desugaring counts as a fallback of that step.
+         * Counts a class that is written without being read: it is too large, no step applies to the jar, or no
+         * step but the planning one does and the class is not part of an accepted nest. A class whose nest fell
+         * back from desugaring counts as a fallback of that step.
          *
          * @param entryName the class's entry name
          */

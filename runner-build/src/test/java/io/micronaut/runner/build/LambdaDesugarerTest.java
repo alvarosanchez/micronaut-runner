@@ -421,8 +421,9 @@ class LambdaDesugarerTest {
                 LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/second.jar", later)), false);
 
         assertUntouched(later, outcome.outputs().get(1));
-        assertEquals(Map.of(LambdaDesugarer.Reason.SHADOWED_OR_UNCERTAIN, 2),
-                outcome.reports().get(1).desugared().left(), "the shadowed host and the member of its nest");
+        assertEquals(Map.of(LambdaDesugarer.Reason.SHADOWED_OR_UNCERTAIN, 1),
+                outcome.reports().get(1).desugared().left(),
+                "the member of the nest; the shadowed copy of its host is never loaded, so it is not counted");
         assertEquals(List.of("nest/Outer.class", "nest/Outer$$Lambda$R0.class"),
                 List.copyOf(outcome.outputs().get(0).keySet()), "the winning copy is rewritten where it is");
         assertEquals(List.of(), outcome.reports().get(1).notes(), "nothing was planned, so nothing fell back");
@@ -547,8 +548,8 @@ class LambdaDesugarerTest {
                 "META-INF/versions/21/mr/Host.class", "META-INF/versions/21/mr/Outer.class")) {
             assertArrayEquals(entries.get(name), output.get(name), name + " keeps its bytes");
         }
-        assertEquals(Map.of(LambdaDesugarer.Reason.MULTI_RELEASE, 2), outcome.reports().get(0).desugared().left(),
-                "the base host a variant replaces, and the member of a nest whose host has a variant");
+        assertEquals(Map.of(LambdaDesugarer.Reason.MULTI_RELEASE, 1), outcome.reports().get(0).desugared().left(),
+                "the member of a nest whose host has a variant; the base copy a variant replaces is not counted");
         assertEquals(1, outcome.reports().get(0).desugared().sites(), "a class without a variant is rewritten");
         assertNotNull(output.get("mr/Plain$$Lambda$R0.class"));
         assertEquals(entries.size() + 1, output.size(), "and nothing else is generated");

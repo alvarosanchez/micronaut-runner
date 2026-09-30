@@ -45,8 +45,8 @@ import java.util.function.Predicate;
  * entry. A variant counts only in a jar whose manifest says {@code Multi-Release: true}, or in the application
  * layer when it is declared multi-release, and only under the rules {@code IndexWriter.versionOf} and
  * {@code pathOf} apply to the index. For the winning copy it records the access flags, the superclass and the
- * interfaces, and, when a step asks for them, its nest host and the name, descriptor and flags of every field
- * and method.</p>
+ * interfaces, and, when a step asks for them, its nest host, the name, descriptor and flags of every field
+ * and method, and whether its bytes pass the desugar step's pre-filter.</p>
  *
  * <p>A name whose chain holds a variant for a version above {@value #RUNTIME_FEATURE}, ahead of its winner, is
  * {@linkplain #uncertain(String) uncertain}: a newer runtime would load another copy.</p>
@@ -322,9 +322,10 @@ final class ClassPathModel implements ClassHierarchyResolver {
         private final List<String> interfaces;
         private final List<Member> members;
         private final String nestHost;
+        private final boolean lambdas;
 
         private Copy(String name, int layer, int version, int flags, String superName, List<String> interfaces,
-                     List<Member> members, String nestHost) {
+                     List<Member> members, String nestHost, boolean lambdas) {
             this.name = name;
             this.layer = layer;
             this.version = version;
@@ -333,6 +334,19 @@ final class ClassPathModel implements ClassHierarchyResolver {
             this.interfaces = interfaces;
             this.members = members;
             this.nestHost = nestHost;
+            this.lambdas = lambdas;
+        }
+
+        /**
+         * Whether the class passes the desugar step's pre-filter ({@link LambdaDesugarer#matches(String, byte[])}),
+         * which the scan checks on the bytes it read anyway, so that the step reads again only the classes it
+         * may rewrite.
+         *
+         * @return whether the class names {@code LambdaMetafactory}; {@code false} when the model was built
+         * without member tables
+         */
+        boolean lambdas() {
+            return lambdas;
         }
 
         /**
@@ -510,7 +524,8 @@ final class ClassPathModel implements ClassHierarchyResolver {
             int version = entryName.equals(path) ? 0 : IndexWriter.versionOf(entryName);
             Copy copy;
             try {
-                copy = read(internalName, version, PARSER.parse(bytes));
+                copy = read(internalName, version, PARSER.parse(bytes),
+                        members && LambdaDesugarer.matchesBytes(bytes));
             } catch (IllegalArgumentException e) {
                 // The ClassFile API reads lazily: a truncated class, or a header index that points at the wrong
                 // kind of constant, only fails when the superclass, an interface or a member is asked for, so
@@ -528,7 +543,7 @@ final class ClassPathModel implements ClassHierarchyResolver {
          * @return the copy, or {@code null} when the class does not declare the name its entry implies
          * @throws IllegalArgumentException if any part of the header, or of a member, is malformed
          */
-        private Copy read(String internalName, int version, ClassModel model) {
+        private Copy read(String internalName, int version, ClassModel model, boolean lambdas) {
             if (!model.thisClass().asInternalName().equals(internalName)) {
                 return null;
             }
@@ -556,7 +571,7 @@ final class ClassPathModel implements ClassHierarchyResolver {
                     .orElse(null);
             return new Copy(strings.intern(internalName), layer, version, model.flags().flagsMask(),
                     superName, interfaces.isEmpty() ? List.of() : Collections.unmodifiableList(interfaces),
-                    table, nestHost);
+                    table, nestHost, lambdas);
         }
 
         /**
