@@ -59,6 +59,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#field-detail" tabindex="0">Field Details</a>
 <ol class="toc-list">
 <li><a href="#TASK_NAME" tabindex="0">TASK_NAME</a></li>
+<li><a href="#RECORD_TASK_NAME" tabindex="0">RECORD_TASK_NAME</a></li>
 <li><a href="#SHADOW_COLLISION_TASK_NAME" tabindex="0">SHADOW_COLLISION_TASK_NAME</a></li>
 <li><a href="#EXTENSION_NAME" tabindex="0">EXTENSION_NAME</a></li>
 <li><a href="#ELEMENTS_CONFIGURATION_NAME" tabindex="0">ELEMENTS_CONFIGURATION_NAME</a></li>
@@ -110,7 +111,11 @@ also <code>micronaut.runner</code> in a build that applies a Micronaut plugin. I
 applies the <code>application</code> plugin: the main class comes from the <code>application</code> block, the
 application classes and resources from the main source set's output, and the dependencies from the
 runtime classpath in resolution order. Only a project that applies a Shadow plugin also gets
-<a href="#SHADOW_COLLISION_TASK_NAME">"validateMicronautRunnerShadowOutputs"</a>, which both archive tasks depend on.</p></div>
+<a href="#SHADOW_COLLISION_TASK_NAME">"validateMicronautRunnerShadowOutputs"</a>, which both archive tasks depend on.</p>
+
+<p>It also registers <a href="#RECORD_TASK_NAME">"recordStartupProfile"</a>, which launches the archive and records the classes it loads
+at startup to <a href="../build/StartupProfileRecorder.html#PROFILE_LOCATION">"src/main/micronaut-runner/startup-classes.txt"</a>. The task runs only
+when it is asked for. Once the file exists, the archive embeds it, and the launcher preloads its classes.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -145,18 +150,23 @@ publication.</div>
 <div class="block">The name of the extension this plugin creates on the project.</div>
 </div>
 <div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#SHADOW_COLLISION_TASK_NAME" class="member-name-link">SHADOW_COLLISION_TASK_NAME</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#RECORD_TASK_NAME" class="member-name-link">RECORD_TASK_NAME</a></code></div>
 <div class="col-last odd-row-color">
-<div class="block">The task that checks Runner and Shadow output locations before either producer executes.</div>
+<div class="block">The task that records the startup profile.</div>
 </div>
 <div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#TASK_NAME" class="member-name-link">TASK_NAME</a></code></div>
+<div class="col-second even-row-color"><code><a href="#SHADOW_COLLISION_TASK_NAME" class="member-name-link">SHADOW_COLLISION_TASK_NAME</a></code></div>
 <div class="col-last even-row-color">
-<div class="block">The name of the task this plugin registers.</div>
+<div class="block">The task that checks Runner and Shadow output locations before either producer executes.</div>
 </div>
 <div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#USAGE" class="member-name-link">USAGE</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#TASK_NAME" class="member-name-link">TASK_NAME</a></code></div>
 <div class="col-last odd-row-color">
+<div class="block">The name of the task this plugin registers.</div>
+</div>
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="#USAGE" class="member-name-link">USAGE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The <code>Usage</code> of <a href="#ELEMENTS_CONFIGURATION_NAME">"micronautRunnerElements"</a>.</div>
 </div>
 </div>
@@ -217,6 +227,24 @@ publication.</div>
 <dd>
 <ul class="tag-list">
 <li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.TASK_NAME">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="RECORD_TASK_NAME">
+<h3>RECORD_TASK_NAME</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">RECORD_TASK_NAME</span></div>
+<div class="block">The task that records the startup profile. It launches the application, so it is never part of
+<code>assemble</code>, <code>build</code> or <code>check</code>.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.RECORD_TASK_NAME">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>

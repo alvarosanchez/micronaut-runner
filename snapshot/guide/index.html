@@ -338,7 +338,8 @@ archives under one name. The plugin fails the build if it detects that.
         manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
 
         // A recorded startup class list, which the launcher preloads on a background thread (see "Preloading the
-        // startup classes" in the runtime chapter). There is no default.
+        // startup classes" in the runtime chapter). Defaults to src/main/micronaut-runner/startup-classes.txt,
+        // which recordStartupProfile writes, when that file exists.
         // startupClasses = file('startup-classes.log')
 
         // Options without a typed property, by name (see the table below):
@@ -460,7 +461,7 @@ tool resolve the path against the project and, in Gradle, rebuild the archive wh
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>startupClasses</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">file</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">none</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>src/main/micronaut-runner/startup-classes.txt</code> if it exists</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">typed</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
 </tr>
@@ -1220,8 +1221,8 @@ cost from framework cost.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.preload</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Set to <code>false</code> so that the launcher does not start the thread that
-<a href="#preload">preloads the recorded startup classes</a>. It only has an effect on an archive packaged with
-<code>startupClasses</code>.</p></td>
+<a href="#preload">preloads the recorded startup classes</a>. It only has an effect on an archive packaged with a startup
+profile or <code>startupClasses</code>.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.mmap</code></p></td>
@@ -1372,73 +1373,150 @@ MiB, 60 pairs; 4 to 6.5 MiB across sessions), while in the container private mem
 two, build the JAR with the list first and train the cache on that JAR (<a href="#cdsAndAot">[cdsAndAot]</a>).</p>
 </div>
 <div class="paragraph">
-<p><strong>Record the list.</strong> Run the training script (<a href="#trainingSnippet">[trainingSnippet]</a>) on the runner JAR with two substitutions and
-nothing else changed: <code>CACHE=startup-classes.log</code>, and in place of <code>-XX:AOTCacheOutput="$CACHE"</code></p>
+<p><strong>Record the profile.</strong> The build records the list from the runner JAR it produces:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">-Dmicronaut.runner.preload=false -Djava.util.concurrent.ForkJoinPool.common.parallelism=0 -Xlog:class+load=info:file="$CACHE"</code></pre>
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">./gradlew recordStartupProfile
+mvn package mn-runner:record-startup-profile</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>The result is the JVM&#8217;s own class-load log, in load order. <code>micronaut.runner.preload=false</code> keeps a JAR that already
-carries a list from replaying it into the new recording. The common-pool flag makes Micronaut load its services on
-the main thread, so two recordings list the classes in nearly the same order; it belongs to the recording run only.
-Three rules keep the recording useful:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>Record without a CDS or AOT cache. A class served from a cache is logged as <code>shared objects file</code>, not as a class
-of the archive, and the build then warns that the list holds nothing to preload.</p>
-</li>
-<li>
-<p>End the run with SIGTERM, as the script does. <code>jcmd AOT.end_recording</code> ends an AOT recording, which this run does
-not have.</p>
-</li>
-<li>
-<p>Record from a JAR built with the packaging options that production uses, because they decide which classes load.</p>
-</li>
-</ul>
+<p>It writes <code>src/main/micronaut-runner/startup-classes.txt</code>, the startup profile: the classes the runner class loader
+defined up to the end of the workload, in load order, then as <code>jrt:</code> lines the JDK classes the run loaded from the
+runtime image rather than from the JDK&#8217;s default CDS archive, which the launcher loads after them. Commit it. From
+then on <code>micronautRunnerJar</code> and <code>mn-runner:package</code> embed it with no configuration, and
+<code>java -Dmicronaut.runner.mode=inspect -jar my-app-0.1-all.jar</code> prints <code>Preload classes N</code>, where N is the file&#8217;s
+<code>classes:</code> line. Recording launches the application, so it is never part of <code>assemble</code>, <code>build</code>, <code>check</code> or
+<code>package</code>: it runs only when you ask for it.</p>
 </div>
 <div class="paragraph">
-<p><strong>Embed it.</strong> Pass the file to the packager. It keeps the classes that the run loaded from the archive, and the JDK
-classes that the run loaded from the runtime image rather than from the JDK&#8217;s default CDS archive, which the launcher
-loads after the archive&#8217;s. A file with one binary class name per line works too; blank lines and lines starting with
-<code>#</code> are ignored, and <code>jrt:&lt;name&gt;</code> marks a JDK class.</p>
+<p>The recording launch runs the production JAR with the JDK of the project&#8217;s toolchain (Gradle) or of the
+<code>maven-toolchains-plugin</code> (Maven), or else the one that runs the build. It passes a free port in
+<code>MICRONAUT_SERVER_PORT</code> and removes <code>JAVA_TOOL_OPTIONS</code>, <code>JDK_JAVA_OPTIONS</code>, <code>_JAVA_OPTIONS</code> and <code>JDK_AOT_VM_OPTIONS</code>
+from the environment, so no class cache takes part. Preloading is off, so an older profile is not replayed into the
+new one, and <code>-Djava.util.concurrent.ForkJoinPool.common.parallelism=0</code> makes two recordings list the classes in nearly
+the same order. The launch waits until the port accepts a connection, and then for the readiness path if one is set,
+sends the workload, and reads the class-load log before it stops the application, so classes that only the shutdown
+loads stay out. Every process it started is ended when the recording succeeds, fails, times out or is cancelled,
+and when the build&#8217;s JVM exits or is stopped in an orderly way, such as by SIGTERM on Linux and macOS. That last
+cleanup runs in a shutdown hook, so a build JVM that is killed outright takes nothing down with it: after SIGKILL,
+or when Windows terminates the process (as <code>taskkill /F</code> does), end the application yourself.</p>
+</div>
+<div id="trainingSettings" class="paragraph">
+<p><strong>Training settings.</strong> The workload decides a few hundred of the classes, so point it at the application&#8217;s hot paths.
+Without one, the launch sends a single <code>GET /</code> and the build warns.</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">micronaut {
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">micronaut {            // micronautRunner { } in a build without a Micronaut plugin
     runner {
-        startupClasses = file('startup-classes.log')
+        training {
+            readinessPath = '/health'
+            workloadPaths = ['/hello', '/orders']
+        }
     }
 }</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p><code>micronautRunner { }</code> is the same block in a build without a Micronaut plugin, and a value set on a task,
-<code>micronautRunnerJar { startupClasses = file('startup-classes.log') }</code>, wins for that task. In Maven, pass
-<code>-Dmicronaut.runner.startupClasses=startup-classes.log</code> or set <code>&lt;startupClasses&gt;</code> in the plugin&#8217;s configuration.
-These are the only ways to set it: by name, through <code>options</code> or <code>&lt;runnerOptions&gt;</code>, the build fails, because the path
-would not be resolved against the project and Gradle would not rebuild the archive when the list changes.
-<code>java -Dmicronaut.runner.mode=inspect -jar my-app-0.1-all.jar</code> prints how many classes the archive carries as
-<code>Preload classes</code> and <code>Preload JDK classes</code>.</p>
+<p>In Maven each setting is the property <code>micronaut.runner.training.&lt;name&gt;</code>, with <code>-D</code> or in <code>&lt;properties&gt;</code>: lists are
+comma-separated, timeouts are in seconds, and <code>environment</code> takes <code>NAME=value</code> entries.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 22%;">
+<col style="width: 18%;">
+<col style="width: 60%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Setting</th>
+<th class="tableblock halign-left valign-top">Default</th>
+<th class="tableblock halign-left valign-top">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>readinessPath</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">none</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Once the port accepts a connection, <code>GET</code> it until it answers 2xx.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>workloadPaths</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">none</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>GET</code> each path in order; each must answer 2xx.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>workloadRepeat</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How many times the paths are requested.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>workloadCommand</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">none</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A command run after the paths, with <code>MICRONAUT_RUNNER_TRAINING_URL=http://127.0.0.1:&lt;port&gt;</code>.
+It must exit 0.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runToExit</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">For an application that exits by itself, such as one that is not a server: no readiness, workload
+or stop, and it must exit 0. Then the list also holds what the shutdown loads.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>stopPath</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">none</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>POST</code> it instead of ending the process, for example Micronaut&#8217;s <code>/stop</code> endpoint with
+<code>ENDPOINTS_STOP_ENABLED=true</code> and <code>ENDPOINTS_STOP_SENSITIVE=false</code> in <code>environment</code>.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>jvmArgs</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">none</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">JVM arguments of the recording launch. Name no class cache in them.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>environment</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">none</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Environment variables added to the launch.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>portVariable</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>MICRONAUT_SERVER_PORT</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The variable that receives the port.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>readinessTimeout</code>, <code>workloadTimeout</code>, <code>stopTimeout</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">60 s, 60 s, 30 s</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">In Gradle a <code>java.time.Duration</code>.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Record it again</strong> after upgrading Micronaut, Netty or any other dependency, or changing the JDK or the packaging
+options, even when the build does not warn: a class that the application no longer loads stays listed and is loaded
+for nothing. The build drops the names the archive no longer holds and says how many in one warning, and when more
+than a tenth were dropped, that the profile looks stale.</p>
 </div>
 <div class="paragraph">
-<p><strong>When it does not run.</strong> <code>-Dmicronaut.runner.preload=false</code> switches preloading off. The launcher also leaves the
-thread out when the JVM sees fewer than two processors, which in a container means a CPU limit of one: there is no
-spare core for it to use. It applies only when the single JAR runs: the extracted layout (<a href="#aotLayout">[aotLayout]</a>) has no
-launcher and ignores the list.</p>
+<p><strong>Another list.</strong> An explicit <code>startupClasses</code> wins over the profile: the JVM&#8217;s own class-load log, or a file with one
+binary class name per line, where blank lines and lines starting with <code>#</code> are ignored and <code>jrt:&lt;name&gt;</code> marks a JDK
+class. Set it on the extension (<code>micronaut { runner { startupClasses = file('startup-classes.log') } }</code>), on
+<code>micronautRunnerJar</code>, or in Maven with <code>-Dmicronaut.runner.startupClasses=&#8230;&#8203;</code> or <code>&lt;startupClasses&gt;</code>; by name, through
+<code>options</code> or <code>&lt;runnerOptions&gt;</code>, the build fails. <code>null</code> falls back to the profile, so to build without it, delete the
+file.</p>
 </div>
 <div class="paragraph">
-<p><strong>A stale list is safe, and worth refreshing.</strong> The list does not depend on the JAR&#8217;s bytes, so it can be committed.
-The build drops the names the archive no longer holds and says how many in one warning. A class that is still in
-the archive but that the application no longer uses is loaded for nothing: the launcher loads a listed class and
-never initialises it, so nothing of the application runs early and its behaviour does not change, but the
-background work is wasted. Record the list again after upgrading Micronaut or Netty, or after changing packaging
-options, even when the build drops nothing. A listed JDK class that the runtime does not have, in a <code>jlink</code> image
-for example, is skipped.</p>
+<p><strong>When it does not run.</strong> <code>-Dmicronaut.runner.preload=false</code> switches preloading off at run time. The launcher also
+leaves the thread out when the JVM sees fewer than two processors, which in a container means a CPU limit of one:
+there is no spare core for it to use. It applies only when the single JAR runs: the extracted layout (<a href="#aotLayout">[aotLayout]</a>)
+has no launcher and ignores the list.</p>
+</div>
+<div class="paragraph">
+<p><strong>A stale list is safe.</strong> The list does not depend on the JAR&#8217;s bytes. A class that is still in the archive but that
+the application no longer uses is loaded for nothing: the launcher loads a listed class and never initialises it, so
+nothing of the application runs early and its behaviour does not change, but the background work is wasted. A listed
+JDK class that the runtime does not have, in a <code>jlink</code> image for example, is skipped.</p>
 </div>
 <div class="paragraph">
 <p><strong>Agents.</strong> An agent attached to the running JVM sees the preloaded classes as already loaded, so it has to
@@ -1993,8 +2071,8 @@ plugin-default entry stub against reflective entry</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-preload</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the same stored Runner JAR inputs packaged with the startup class list that this run records
-from <code>runner-stored</code>; compared with <code>runner-stored</code> and <code>shadow</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the same stored Runner JAR inputs packaged with the startup profile that this run records
+from <code>runner-stored</code>, with the recorder that <code>recordStartupProfile</code> uses; compared with <code>runner-stored</code> and <code>shadow</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-preload-aot</code></p></td>
@@ -2164,7 +2242,8 @@ Shadow reads its JAR with <code>read</code> calls, which are not faults.</p>
 <div class="paragraph">
 <p><code>-Pbenchmarks.cpus=N</code> (Linux, needs <code>taskset</code>) runs every child JVM, the AOT-cache training and verification
 launches included, on the first <code>N</code> CPUs the harness may use, and pins the harness&#8217;s own threads to the rest
-once the variants are prepared. <code>N</code> must leave the harness at least one CPU. Before the sample build the harness
+once the variants are prepared. The one exception is the launch that records the preload rows' startup profile,
+which the build plugins' recorder starts itself, on every CPU; the class list barely depends on the CPU count. <code>N</code> must leave the harness at least one CPU. Before the sample build the harness
 starts a probe JVM under the limit, requires it to see exactly <code>N</code> CPUs and records its ergonomic flags, the
 collector among them: below two CPUs, JDK 25 selects SerialGC and fewer compiler threads, and Netty and the
 fork-join pool size themselves from the CPU count. A limited AOT cache has its own identity, so a cache trained

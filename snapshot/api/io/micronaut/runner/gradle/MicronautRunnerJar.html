@@ -317,8 +317,9 @@ typed property here.</div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getStartupClasses()" class="member-name-link">getStartupClasses</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">The recorded startup class list the launcher preloads on a background thread: the
-<code>-Xlog:class+load</code> output of a run of the archive, or a file of binary class names.</div>
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the profile that
+<code>recordStartupProfile</code> writes, the <code>-Xlog:class+load</code> output of a run of the archive, or a
+file of binary class names.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageArchive()" class="member-name-link">packageArchive</a>()</code></div>
@@ -740,9 +741,10 @@ extension's value as the convention.</div>
 @Optional
 @PathSensitive(NONE)
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.file.RegularFileProperty</span>&nbsp;<span class="element-name">getStartupClasses</span>()</div>
-<div class="block">The recorded startup class list the launcher preloads on a background thread: the
-<code>-Xlog:class+load</code> output of a run of the archive, or a file of binary class names. It has no
-default, and without it nothing is preloaded. The plugin sets the extension's value as the convention.
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the profile that
+<code>recordStartupProfile</code> writes, the <code>-Xlog:class+load</code> output of a run of the archive, or a
+file of binary class names. Without it nothing is preloaded. The plugin sets the extension's value as the
+convention, which is the project's committed profile when it has one.
 
 <p>Only the content is an input: editing the list rebuilds the archive, and moving it does not.</p></div>
 <dl class="notes">

@@ -74,14 +74,16 @@ loadScripts(document, 'script');</script>
 <div class="table-header col-last">Description</div>
 <div class="col-first even-row-color"><a href="../package-summary.html">io.micronaut.runner</a></div>
 <div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><a href="../benchmarks/package-summary.html">io.micronaut.runner.benchmarks</a></div>
+<div class="col-first odd-row-color"><a href="training/package-summary.html">io.micronaut.runner.build.training</a></div>
 <div class="col-last odd-row-color">&nbsp;</div>
-<div class="col-first even-row-color"><a href="../gradle/package-summary.html">io.micronaut.runner.gradle</a></div>
+<div class="col-first even-row-color"><a href="../benchmarks/package-summary.html">io.micronaut.runner.benchmarks</a></div>
 <div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><a href="../maven/package-summary.html">io.micronaut.runner.maven</a></div>
+<div class="col-first odd-row-color"><a href="../gradle/package-summary.html">io.micronaut.runner.gradle</a></div>
 <div class="col-last odd-row-color">&nbsp;</div>
-<div class="col-first even-row-color"><a href="../tools/package-summary.html">io.micronaut.runner.tools</a></div>
+<div class="col-first even-row-color"><a href="../maven/package-summary.html">io.micronaut.runner.maven</a></div>
 <div class="col-last even-row-color">&nbsp;</div>
+<div class="col-first odd-row-color"><a href="../tools/package-summary.html">io.micronaut.runner.tools</a></div>
+<div class="col-last odd-row-color">&nbsp;</div>
 </div>
 </div>
 </li>
@@ -142,8 +144,13 @@ how the build plugins expose it and the Runner release that added it.</div>
 <div class="col-last odd-row-color class-summary class-summary-tab2">
 <div class="block">Describes a runner jar step by step.</div>
 </div>
-<div class="col-first even-row-color class-summary class-summary-tab2"><a href="TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></div>
+<div class="col-first even-row-color class-summary class-summary-tab2"><a href="StartupProfileRecorder.html" title="class in io.micronaut.runner.build">StartupProfileRecorder</a></div>
 <div class="col-last even-row-color class-summary class-summary-tab2">
+<div class="block">Records the startup profile of an application: the classes a run of its runner jar loaded, in load order,
+written to a file that is meant to be committed and that the packager embeds for the launcher to preload.</div>
+</div>
+<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab2">
 <div class="block">What one build-time class transform did to the dependency classes of a runner jar: how many it rewrote,
 how many it left as they were, and how many it had to give up on.</div>
 </div>

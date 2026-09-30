@@ -186,6 +186,10 @@ or by mapping only the index and reading classes positionally.</div>
 <dd>
 <div class="block">Takes a snapshot of the builder.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#build()" class="member-name-link">build()</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Validates and builds the settings.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#build(io.micronaut.runner.build.RunnerJarSpec,io.micronaut.runner.build.BuildLogger)" class="member-name-link">build(RunnerJarSpec, BuildLogger)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarBuilder.html" title="class in io.micronaut.runner.build">RunnerJarBuilder</a></dt>
 <dd>
 <div class="block">Packages an application.</div>
@@ -193,6 +197,10 @@ or by mapping only the index and reading classes positionally.</div>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#builder()" class="member-name-link">builder()</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
 <dd>
 <div class="block">Starts describing a runner jar.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#builder()" class="member-name-link">builder()</a> - Static method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Starts from the defaults.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/BuildLogger.html" class="type-name-link" title="interface in io.micronaut.runner.build">BuildLogger</a> - Interface in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
@@ -345,6 +353,22 @@ every class defined from it, and the seal base of every package it seals.</div>
 <dd>
 <div class="block">The default archive classifier.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#DEFAULT_PORT_VARIABLE" class="member-name-link">DEFAULT_PORT_VARIABLE</a> - Static variable in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">The environment variable Micronaut reads the server port from, whatever the application configures.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#DEFAULT_READINESS_TIMEOUT" class="member-name-link">DEFAULT_READINESS_TIMEOUT</a> - Static variable in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">The default of <a href="io/micronaut/runner/build/training/TrainingSettings.html#readinessTimeout()"><code>TrainingSettings.readinessTimeout()</code></a>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#DEFAULT_STOP_TIMEOUT" class="member-name-link">DEFAULT_STOP_TIMEOUT</a> - Static variable in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">The default of <a href="io/micronaut/runner/build/training/TrainingSettings.html#stopTimeout()"><code>TrainingSettings.stopTimeout()</code></a>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#DEFAULT_WORKLOAD_TIMEOUT" class="member-name-link">DEFAULT_WORKLOAD_TIMEOUT</a> - Static variable in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">The default of <a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadTimeout()"><code>TrainingSettings.workloadTimeout()</code></a>.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#defaultDescription()" class="member-name-link">defaultDescription()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
 <div class="block">The default as documentation states it: the value itself, <code>empty</code> for an empty list or map,
@@ -353,6 +377,12 @@ how a conditional default is chosen, or <code>none</code>.</div>
 <dt><a href="io/micronaut/runner/RunnerClassLoader.html#defaultParent()" class="member-name-link">defaultParent()</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/RunnerClassLoader.html" title="class in io.micronaut.runner">RunnerClassLoader</a></dt>
 <dd>
 <div class="block">The parent the launcher gives a loader for an application.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#defaults()" class="member-name-link">defaults()</a> - Static method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">The settings of an application about which nothing is known: a server that reads its port from
+<a href="io/micronaut/runner/build/training/TrainingSettings.html#DEFAULT_PORT_VARIABLE">"MICRONAUT_SERVER_PORT"</a>, is ready when the port accepts a connection, and is stopped by
+destroying the process.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#defaultValue()" class="member-name-link">defaultValue()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
@@ -381,6 +411,10 @@ how a conditional default is chosen, or <code>none</code>.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#dependency-staging-heading" class="search-tag-link">Dependency staging</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#destroyed()" class="member-name-link">destroyed()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-destroyed"><code>destroyed</code></a> record component.</div>
+</dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#dosTimeToMillis(long)" class="member-name-link">dosTimeToMillis(long)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>
 <div class="block">Converts a packed MS-DOS date and time word, as a ZIP header stores it, into epoch milliseconds
@@ -653,8 +687,24 @@ for it.</div>
 </dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#enumeration-heading" class="search-tag-link">Enumeration</a> - Section in class io.micronaut.runner.NestedJarFile</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#environment()" class="member-name-link">environment()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-environment"><code>environment</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#environment(java.util.Map)" class="member-name-link">environment(Map)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#environment()"><code>TrainingSettings.environment()</code></a>.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/Dependency.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
+<dd>
+<div class="block">Indicates whether some other object is "equal to" this one.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Indicates whether some other object is "equal to" this one.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#equals(java.net.URL,java.net.URL)" class="member-name-link">equals(URL, URL)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
@@ -663,12 +713,18 @@ for it.</div>
 </dd>
 <dt><a href="io/micronaut/runner/maven/PackageMojo.html#execute()" class="member-name-link">execute()</a> - Method in class io.micronaut.runner.maven.<a href="io/micronaut/runner/maven/PackageMojo.html" title="class in io.micronaut.runner.maven">PackageMojo</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/maven/RecordStartupProfileMojo.html#execute()" class="member-name-link">execute()</a> - Method in class io.micronaut.runner.maven.<a href="io/micronaut/runner/maven/RecordStartupProfileMojo.html" title="class in io.micronaut.runner.maven">RecordStartupProfileMojo</a></dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/Launcher.html#EXIT_LAUNCHER_ERROR" class="member-name-link">EXIT_LAUNCHER_ERROR</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/Launcher.html" title="class in io.micronaut.runner">Launcher</a></dt>
 <dd>
 <div class="block">Exit status for a launcher level failure, as opposed to an exception out of the application.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Launcher.html#exit-codes-heading" class="search-tag-link">Exit codes</a> - Section in class io.micronaut.runner.Launcher</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#exitStatus()" class="member-name-link">exitStatus()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-exitStatus"><code>exitStatus</code></a> record component.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#exposure()" class="member-name-link">exposure()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
 <div class="block">How the build plugins expose the option.</div>
@@ -755,6 +811,10 @@ chain, without building that name.</div>
 <dd>
 <div class="block">The header flags.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#forced()" class="member-name-link">forced()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-forced"><code>forced</code></a> record component.</div>
+</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#FORMAT_VERSION" class="member-name-link">FORMAT_VERSION</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">The only format version this release reads or writes.</div>
@@ -806,6 +866,10 @@ manifest that the <code>jar</code> task's configuration cannot describe.</div>
 <dd>
 <div class="block">Where the archive is written: <code>&lt;destinationDirectory&gt;/&lt;archiveBaseName&gt;[-&lt;archiveVersion&gt;]
 [-&lt;archiveClassifier&gt;].jar</code>, as an archive task names it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/RecordStartupProfile.html#getArchiveFile()" class="member-name-link">getArchiveFile()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/RecordStartupProfile.html" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a></dt>
+<dd>
+<div class="block">The runner jar to record from.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getArchiveVersion()" class="member-name-link">getArchiveVersion()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
@@ -903,6 +967,10 @@ name relative to the nested jar rather than the one the super class would have p
 <div class="block">Whether to generate the entry stub that lets the launcher call the application main method through
 an interface rather than by reflection.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getEnvironment()" class="member-name-link">getEnvironment()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">Environment variables added to the training launch.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html#getFile()" class="member-name-link">getFile()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar.DependencyInput</a></dt>
 <dd>
 <div class="block">The dependency bytes, without their machine-specific path.</div>
@@ -952,6 +1020,14 @@ of a nested jar, or the one shared handle on the outer archive.</div>
 <dd>
 <div class="block">The URL of the jar this connection reads from: the nested jar for a nested entry, and the outer
 archive's file URL for an entry of the application layer.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/RecordStartupProfile.html#getJavaLauncher()" class="member-name-link">getJavaLauncher()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/RecordStartupProfile.html" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a></dt>
+<dd>
+<div class="block">The JVM the application is launched with.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getJvmArgs()" class="member-name-link">getJvmArgs()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">JVM arguments of the training launch.</div>
 </dd>
 <dt><a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html#getLastModified()" class="member-name-link">getLastModified()</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html" title="class in io.micronaut.runner.protocol.jar">RunnerJarURLConnection</a></dt>
 <dd>
@@ -1007,9 +1083,25 @@ property.</div>
 <div class="block">Packaging options by <a href="io/micronaut/runner/build/RunnerJarOption.html#optionName()">name</a>, for the options that have no
 typed property here.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getPortVariable()" class="member-name-link">getPortVariable()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">The environment variable that receives the free loopback port the application is to listen on.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/RecordStartupProfile.html#getProfileFile()" class="member-name-link">getProfileFile()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/RecordStartupProfile.html" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a></dt>
+<dd>
+<div class="block">The profile to write.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getProjectModules()" class="member-name-link">getProjectModules()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
 <div class="block">The absolute paths of the dependencies that another project of this build produced.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getReadinessPath()" class="member-name-link">getReadinessPath()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">The path to <code>GET</code> until it answers <code>2xx</code>, once the port accepts a connection.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getReadinessTimeout()" class="member-name-link">getReadinessTimeout()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">How long the application may take to become ready.</div>
 </dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#getRealName()" class="member-name-link">getRealName()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>
@@ -1028,19 +1120,64 @@ ordinary entry, and the <code>META-INF/versions/&lt;n&gt;/...</code> name for a 
 <dd>
 <div class="block">The runner archive location.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getRunToExit()" class="member-name-link">getRunToExit()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">Whether the application ends by itself, as one that is not a server does.</div>
+</dd>
 <dt><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html#getShadowArchive()" class="member-name-link">getShadowArchive()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></dt>
 <dd>
 <div class="block">The Shadow archive location.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getStartupClasses()" class="member-name-link">getStartupClasses()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
 <dd>
-<div class="block">The recorded startup class list the launcher preloads on a background thread: the
-<code>-Xlog:class+load</code> output of a run of the archive, or a file of binary class names.</div>
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the profile that
+<code>recordStartupProfile</code> writes, the <code>-Xlog:class+load</code> output of a run of the archive, or a
+file of binary class names.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getStartupClasses()" class="member-name-link">getStartupClasses()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
-<div class="block">The recorded startup class list the launcher preloads on a background thread: the
-<code>-Xlog:class+load</code> output of a run of the archive, or a file of binary class names.</div>
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the profile that
+<code>recordStartupProfile</code> writes, the <code>-Xlog:class+load</code> output of a run of the archive, or a
+file of binary class names.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getStopPath()" class="member-name-link">getStopPath()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">The path to <code>POST</code> to stop the application, where an orderly stop needs a request rather than a
+signal, as on Windows.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getStopTimeout()" class="member-name-link">getStopTimeout()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">How long the application may take to exit once asked to, before it is killed.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getTraining()" class="member-name-link">getTraining()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">How a task that launches the application, such as <code>recordStartupProfile</code>, reaches, exercises and
+stops it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/RecordStartupProfile.html#getTraining()" class="member-name-link">getTraining()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/RecordStartupProfile.html" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a></dt>
+<dd>
+<div class="block">How the application is reached, exercised and stopped.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/RecordStartupProfile.html#getWorkDirectory()" class="member-name-link">getWorkDirectory()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/RecordStartupProfile.html" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a></dt>
+<dd>
+<div class="block">The working directory of the launch, which is emptied first.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getWorkloadCommand()" class="member-name-link">getWorkloadCommand()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">A command and its arguments, run after the paths with <code>MICRONAUT_RUNNER_TRAINING_URL</code> set to the
+application's base URL.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getWorkloadPaths()" class="member-name-link">getWorkloadPaths()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">The paths to <code>GET</code> in order, each of which must answer <code>2xx</code>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getWorkloadRepeat()" class="member-name-link">getWorkloadRepeat()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">How many times the whole list of <a href="io/micronaut/runner/gradle/TrainingSpec.html#getWorkloadPaths()"><code>TrainingSpec.getWorkloadPaths()</code></a> is requested.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#getWorkloadTimeout()" class="member-name-link">getWorkloadTimeout()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">How long the paths and the command may take together.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:H">H</h2>
@@ -1128,6 +1265,14 @@ every URL the class loader hands out.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/Dependency.html#hashCode()" class="member-name-link">hashCode()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#hashCode()" class="member-name-link">hashCode()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
+<dd>
+<div class="block">Returns a hash code value for this object.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#hashCode()" class="member-name-link">hashCode()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns a hash code value for this object.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#hashCode()" class="member-name-link">hashCode()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#hashCode(java.net.URL)" class="member-name-link">hashCode(URL)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
@@ -1208,6 +1353,8 @@ launcher never has to parse a nested archive's central directory at startup.</di
 <dt><a href="io/micronaut/runner/benchmarks/package-summary.html">io.micronaut.runner.benchmarks</a> - package io.micronaut.runner.benchmarks</dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a> - package io.micronaut.runner.build</dt>
+<dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a> - package io.micronaut.runner.build.training</dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a> - package io.micronaut.runner.gradle</dt>
 <dd>&nbsp;</dd>
@@ -1412,6 +1559,14 @@ platform class loader after the archive's classes.</div>
 <dt><a href="io/micronaut/runner/Index.html#jdkPreloadName(int)" class="member-name-link">jdkPreloadName(int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">One JDK class of the recorded startup class list.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#jvmArgs()" class="member-name-link">jvmArgs()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-jvmArgs"><code>jvmArgs</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#jvmArgs(java.util.List)" class="member-name-link">jvmArgs(List)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#jvmArgs()"><code>TrainingSettings.jvmArgs()</code></a>.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:L">L</h2>
@@ -1720,6 +1875,10 @@ classes straight from the mapping.</div>
 <dd>
 <div class="block">A logger that discards everything, for callers that read <a href="io/micronaut/runner/build/RunnerJarResult.html#warnings()"><code>RunnerJarResult.warnings()</code></a> instead.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html#NOTHING" class="member-name-link">NOTHING</a> - Static variable in interface io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html" title="interface in io.micronaut.runner.build.training">TrainingDriver.AfterWorkload</a></dt>
+<dd>
+<div class="block">The callback of a run that has nothing to do at this point.</div>
+</dd>
 </dl>
 <h2 class="title" id="I:O">O</h2>
 <dl class="index">
@@ -1786,6 +1945,10 @@ typed setter or not.</div>
 <dd>
 <div class="block">The option's name, in camel case, as a build script, a POM and
 <a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#option(java.lang.String,java.lang.String)"><code>RunnerJarSpec.Builder.option(String, String)</code></a> spell it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#%3Cinit%3E(int,boolean,boolean,java.time.Duration,java.time.Duration)" class="member-name-link">Outcome(int, boolean, boolean, Duration, Duration)</a> - Constructor for record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
+<dd>
+<div class="block">Creates an instance of a <code>Outcome</code> record class.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Index.html#outerFileLength()" class="member-name-link">outerFileLength()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
@@ -1960,6 +2123,14 @@ and so is case, so <code>" Preserve "</code> is <a href="io/micronaut/runner/bui
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#path-safety-heading" class="search-tag-link">Path safety</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#portVariable()" class="member-name-link">portVariable()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-portVariable"><code>portVariable</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#portVariable(java.lang.String)" class="member-name-link">portVariable(String)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#portVariable()"><code>TrainingSettings.portVariable()</code></a>.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/ArchiveReads.html#POSITIONAL" class="member-name-link">POSITIONAL</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ArchiveReads.html" title="enum class in io.micronaut.runner.build">ArchiveReads</a></dt>
 <dd>
 <div class="block">Map only the index, and read each STORED class with one positional read into a pooled direct buffer.</div>
@@ -2001,6 +2172,10 @@ it is packaged.</div>
 <dd>
 <div class="block">Copy every dependency byte for byte, keeping its original compression.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/StartupProfileRecorder.html#PROFILE_LOCATION" class="member-name-link">PROFILE_LOCATION</a> - Static variable in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/StartupProfileRecorder.html" title="class in io.micronaut.runner.build">StartupProfileRecorder</a></dt>
+<dd>
+<div class="block">Where a project keeps its startup profile, relative to the project directory.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/Dependency.html#projectModule()" class="member-name-link">projectModule()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
 <dd>
 <div class="block">Whether the build that packages the application also produced this jar: another project of a Gradle
@@ -2025,16 +2200,68 @@ build, or another module of a Maven reactor.</div>
 <dd>
 <div class="block">Copies a region of the archive into a new array.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#readiness()" class="member-name-link">readiness()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-readiness"><code>readiness</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#readinessPath()" class="member-name-link">readinessPath()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-readinessPath"><code>readinessPath</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#readinessPath(java.lang.String)" class="member-name-link">readinessPath(String)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#readinessPath()"><code>TrainingSettings.readinessPath()</code></a>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#readinessTimeout()" class="member-name-link">readinessTimeout()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-readinessTimeout"><code>readinessTimeout</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#readinessTimeout(java.time.Duration)" class="member-name-link">readinessTimeout(Duration)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#readinessTimeout()"><code>TrainingSettings.readinessTimeout()</code></a>.</div>
+</dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#read-modes-heading" class="search-tag-link">Read modes</a> - Section in class io.micronaut.runner.ArchiveSource</dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/Index.html#REBUILD_MESSAGE" class="member-name-link">REBUILD_MESSAGE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">The message every validation failure carries.</div>
 </dd>
+<dt><a href="io/micronaut/runner/gradle/RecordStartupProfile.html#record()" class="member-name-link">record()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/RecordStartupProfile.html" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a></dt>
+<dd>
+<div class="block">Records the profile.</div>
+</dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#record()" class="member-name-link">record()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>
 <div class="block">The index record behind this entry, so that a reader that already has the entry does not have to
 look it up again.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/StartupProfileRecorder.html#record(java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.BuildLogger)" class="member-name-link">record(Path, Path, TrainingSettings, Path, Path, String, BuildLogger)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/StartupProfileRecorder.html" title="class in io.micronaut.runner.build">StartupProfileRecorder</a></dt>
+<dd>
+<div class="block">Launches a runner jar, records the classes it loads up to the end of the training workload and writes
+them to the profile, replacing it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#RECORD_TASK_NAME" class="member-name-link">RECORD_TASK_NAME</a> - Static variable in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html" title="class in io.micronaut.runner.gradle">MicronautRunnerPlugin</a></dt>
+<dd>
+<div class="block">The task that records the startup profile.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/RecordStartupProfile.html" class="type-name-link" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a> - Class in <a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a></dt>
+<dd>
+<div class="block">Records the startup profile of the application: launches the runner jar, waits until it is ready, sends
+it the training workload and writes the classes it loaded to a file that is meant to be committed.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/RecordStartupProfile.html#%3Cinit%3E()" class="member-name-link">RecordStartupProfile()</a> - Constructor for class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/RecordStartupProfile.html" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a></dt>
+<dd>
+<div class="block">Gradle creates the task, while the project is configured.</div>
+</dd>
+<dt><a href="io/micronaut/runner/maven/RecordStartupProfileMojo.html" class="type-name-link" title="class in io.micronaut.runner.maven">RecordStartupProfileMojo</a> - Class in <a href="io/micronaut/runner/maven/package-summary.html">io.micronaut.runner.maven</a></dt>
+<dd>
+<div class="block">Records the startup profile of the application: launches the runner jar that <code>mn-runner:package</code>
+wrote, waits until it is ready, sends it the training workload and writes the classes it loaded to
+<a href="io/micronaut/runner/build/StartupProfileRecorder.html#PROFILE_LOCATION">"src/main/micronaut-runner/startup-classes.txt"</a>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/maven/RecordStartupProfileMojo.html#%3Cinit%3E()" class="member-name-link">RecordStartupProfileMojo()</a> - Constructor for class io.micronaut.runner.maven.<a href="io/micronaut/runner/maven/RecordStartupProfileMojo.html" title="class in io.micronaut.runner.maven">RecordStartupProfileMojo</a></dt>
+<dd>
+<div class="block">Creates the goal; Maven sets its parameters.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Launcher.html#register(io.micronaut.runner.Entry)" class="member-name-link">register(Entry)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Launcher.html" title="class in io.micronaut.runner">Launcher</a></dt>
 <dd>
@@ -2048,6 +2275,11 @@ to serve it.</div>
 <dt><a href="io/micronaut/runner/Handlers.html#registered()" class="member-name-link">registered()</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
 <div class="block">Whether an archive is registered.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#requireOrderlyExit()" class="member-name-link">requireOrderlyExit()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
+<dd>
+<div class="block">Fails unless the application shut down in an orderly way: with status 0, or with the status of a
+JVM that SIGTERM ended when the driver destroyed the process.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Index.html#resolve(int,int)" class="member-name-link">resolve(int, int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
@@ -2064,6 +2296,10 @@ to serve it.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#rules-heading" class="search-tag-link">Rules</a> - Section in enum class io.micronaut.runner.build.RunnerJarOption</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html#run(java.lang.ProcessHandle)" class="member-name-link">run(ProcessHandle)</a> - Method in interface io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html" title="interface in io.micronaut.runner.build.training">TrainingDriver.AfterWorkload</a></dt>
+<dd>
+<div class="block">Runs while the application is still up and its workload is complete.</div>
+</dd>
 <dt><a href="io/micronaut/runner/Entry.html#run(java.lang.String%5B%5D)" class="member-name-link">run(String[])</a> - Method in interface io.micronaut.runner.<a href="io/micronaut/runner/Entry.html" title="interface in io.micronaut.runner">Entry</a></dt>
 <dd>
 <div class="block">Runs the application.</div>
@@ -2079,6 +2315,10 @@ to serve it.</div>
 <dt><a href="io/micronaut/runner/tools/ListEntries.html#run(java.lang.String%5B%5D,java.io.File,io.micronaut.runner.Index,io.micronaut.runner.ArchiveSource)" class="member-name-link">run(String[], File, Index, ArchiveSource)</a> - Static method in class io.micronaut.runner.tools.<a href="io/micronaut/runner/tools/ListEntries.html" title="class in io.micronaut.runner.tools">ListEntries</a></dt>
 <dd>
 <div class="block">Prints the logical names the index holds.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.html#run(java.nio.file.Path,java.nio.file.Path,java.util.List,io.micronaut.runner.build.training.TrainingSettings,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingDriver.AfterWorkload,io.micronaut.runner.build.BuildLogger)" class="member-name-link">run(Path, Path, List, TrainingSettings, Path, Path, TrainingDriver.AfterWorkload, BuildLogger)</a> - Static method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.html" title="class in io.micronaut.runner.build.training">TrainingDriver</a></dt>
+<dd>
+<div class="block">Runs the application once.</div>
 </dd>
 <dt><a href="io/micronaut/runner/RunnerClassLoader.html" class="type-name-link" title="class in io.micronaut.runner">RunnerClassLoader</a> - Class in <a href="io/micronaut/runner/package-summary.html">io.micronaut.runner</a></dt>
 <dd>
@@ -2120,6 +2360,14 @@ how the build plugins expose it and the Runner release that added it.</div>
 <dt><a href="io/micronaut/runner/protocol/jar/RunnerJarURLConnection.html" class="type-name-link" title="class in io.micronaut.runner.protocol.jar">RunnerJarURLConnection</a> - Class in <a href="io/micronaut/runner/protocol/jar/package-summary.html">io.micronaut.runner.protocol.jar</a></dt>
 <dd>
 <div class="block">A connection to an entry of a runner archive, served from the index and the memory mapped archive.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#runToExit()" class="member-name-link">runToExit()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-runToExit"><code>runToExit</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#runToExit(boolean)" class="member-name-link">runToExit(boolean)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#runToExit()"><code>TrainingSettings.runToExit()</code></a>.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:S">S</h2>
@@ -2198,10 +2446,31 @@ file of binary class names.</div>
 <dd>
 <div class="block">Sets the recorded startup class list the launcher preloads on a background thread.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/StartupProfileRecorder.html" class="type-name-link" title="class in io.micronaut.runner.build">StartupProfileRecorder</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
+<dd>
+<div class="block">Records the startup profile of an application: the classes a run of its runner jar loaded, in load order,
+written to a file that is meant to be committed and that the packager embeds for the launcher to preload.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#step()" class="member-name-link">step()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>
 <div class="block">The transform's name, which is the name of the <a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> that enables it, such as
 <code>stripLocalVariables</code>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#stopPath()" class="member-name-link">stopPath()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-stopPath"><code>stopPath</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#stopPath(java.lang.String)" class="member-name-link">stopPath(String)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#stopPath()"><code>TrainingSettings.stopPath()</code></a>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#stopTimeout()" class="member-name-link">stopTimeout()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-stopTimeout"><code>stopTimeout</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#stopTimeout(java.time.Duration)" class="member-name-link">stopTimeout(Duration)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#stopTimeout()"><code>TrainingSettings.stopTimeout()</code></a>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/Compression.html#STORED" class="member-name-link">STORED</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
 <dd>
@@ -2291,8 +2560,59 @@ then the main attributes, then the package sections.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarResult.html#toString()" class="member-name-link">toString()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#toString()" class="member-name-link">toString()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
+<dd>
+<div class="block">Returns a string representation of this record class.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#toString()" class="member-name-link">toString()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns a string representation of this record class.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#toString()" class="member-name-link">toString()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#total()" class="member-name-link">total()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-total"><code>total</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#training(org.gradle.api.Action)" class="member-name-link">training(Action)</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
+<dd>
+<div class="block">Configures <a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getTraining()"><code>MicronautRunnerExtension.getTraining()</code></a>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.html" class="type-name-link" title="class in io.micronaut.runner.build.training">TrainingDriver</a> - Class in <a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a></dt>
+<dd>
+<div class="block">Launches an application once for a training run and takes it down again, whatever happens in between.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html" class="type-name-link" title="interface in io.micronaut.runner.build.training">TrainingDriver.AfterWorkload</a> - Interface in <a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a></dt>
+<dd>
+<div class="block">What a training run does between its workload and its stop: read what the application recorded, or
+tell the JVM to finish a recording.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" class="type-name-link" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a> - Record Class in <a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a></dt>
+<dd>
+<div class="block">How a training run ended.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html" class="type-name-link" title="class in io.micronaut.runner.build.training">TrainingSettings</a> - Record Class in <a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a></dt>
+<dd>
+<div class="block">How a training run exercises the application: how the <a href="io/micronaut/runner/build/training/TrainingDriver.html" title="class in io.micronaut.runner.build.training"><code>TrainingDriver</code></a> knows it is ready, what it
+asks of it, and how it stops it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#%3Cinit%3E(java.lang.String,java.util.List,int,java.util.List,boolean,java.lang.String,java.util.List,java.util.Map,java.lang.String,java.time.Duration,java.time.Duration,java.time.Duration)" class="member-name-link">TrainingSettings(String, List, int, List, boolean, String, List, Map, String, Duration, Duration, Duration)</a> - Constructor for record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Validates the settings and copies the collections.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" class="type-name-link" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a> - Class in <a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a></dt>
+<dd>
+<div class="block">Collects training settings, starting from the defaults.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html" class="type-name-link" title="class in io.micronaut.runner.gradle">TrainingSpec</a> - Class in <a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a></dt>
+<dd>
+<div class="block">How a training run exercises the application: how the build knows it is ready, what it asks of it and how
+it stops it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/gradle/TrainingSpec.html#%3Cinit%3E()" class="member-name-link">TrainingSpec()</a> - Constructor for class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></dt>
+<dd>
+<div class="block">Gradle creates the block.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html" class="type-name-link" title="class in io.micronaut.runner.build">TransformReport</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
 <div class="block">What one build-time class transform did to the dependency classes of a runner jar: how many it rewrote,
@@ -2343,6 +2663,11 @@ change in them, or it does not apply to them.</div>
 <dt><a href="io/micronaut/runner/Handlers.html#unregister()" class="member-name-link">unregister()</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
 <div class="block">Forgets the registered archive and closes the jar files opened for it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingDriver.html#URL_VARIABLE" class="member-name-link">URL_VARIABLE</a> - Static variable in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.html" title="class in io.micronaut.runner.build.training">TrainingDriver</a></dt>
+<dd>
+<div class="block">The environment variable that tells a <a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadCommand()">workload command</a>
+where the application listens: <code>http://127.0.0.1:&lt;port&gt;</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Handlers.html#urlFor(int,java.lang.String)" class="member-name-link">urlFor(int, String)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
@@ -2460,6 +2785,38 @@ dependency whose signatures were removed, a <code>Class-Path</code> attribute th
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#withCachedForm(java.lang.String)" class="member-name-link">withCachedForm(String)</a> - Static method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>
 <div class="block">Launcher-internal; public only because <a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> is in another package.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadCommand()" class="member-name-link">workloadCommand()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-workloadCommand"><code>workloadCommand</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#workloadCommand(java.util.List)" class="member-name-link">workloadCommand(List)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadCommand()"><code>TrainingSettings.workloadCommand()</code></a>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadPaths()" class="member-name-link">workloadPaths()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-workloadPaths"><code>workloadPaths</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#workloadPaths(java.util.List)" class="member-name-link">workloadPaths(List)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadPaths()"><code>TrainingSettings.workloadPaths()</code></a>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadRepeat()" class="member-name-link">workloadRepeat()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-workloadRepeat"><code>workloadRepeat</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#workloadRepeat(int)" class="member-name-link">workloadRepeat(int)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadRepeat()"><code>TrainingSettings.workloadRepeat()</code></a>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadTimeout()" class="member-name-link">workloadTimeout()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
+<dd>
+<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingSettings.html#param-workloadTimeout"><code>workloadTimeout</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#workloadTimeout(java.time.Duration)" class="member-name-link">workloadTimeout(Duration)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
+<dd>
+<div class="block">Sets <a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadTimeout()"><code>TrainingSettings.workloadTimeout()</code></a>.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:Z">Z</h2>

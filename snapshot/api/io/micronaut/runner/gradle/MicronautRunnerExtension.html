@@ -71,6 +71,8 @@ loadScripts(document, 'script');</script>
 <li><a href="#getAddExports()" tabindex="0">getAddExports()</a></li>
 <li><a href="#getManifestAttributes()" tabindex="0">getManifestAttributes()</a></li>
 <li><a href="#getStartupClasses()" tabindex="0">getStartupClasses()</a></li>
+<li><a href="#getTraining()" tabindex="0">getTraining()</a></li>
+<li><a href="#training(org.gradle.api.Action)" tabindex="0">training(Action)</a></li>
 <li><a href="#getOptions()" tabindex="0">getOptions()</a></li>
 </ol>
 </li>
@@ -136,7 +138,7 @@ typed or not, can also be set by name through <a href="#getOptions()"><code>getO
 <section class="method-summary" id="method-summary">
 <h2>Method Summary</h2>
 <div id="method-summary-table">
-<div class="table-tabs" role="tablist" aria-orientation="horizontal"><button id="method-summary-table-tab0" role="tab" aria-selected="true" aria-controls="method-summary-table.tabpanel" tabindex="0" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table', 3)" class="active-table-tab">All Methods</button><button id="method-summary-table-tab2" role="tab" aria-selected="false" aria-controls="method-summary-table.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table-tab2', 3)" class="table-tab">Instance Methods</button><button id="method-summary-table-tab3" role="tab" aria-selected="false" aria-controls="method-summary-table.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table-tab3', 3)" class="table-tab">Abstract Methods</button></div>
+<div class="table-tabs" role="tablist" aria-orientation="horizontal"><button id="method-summary-table-tab0" role="tab" aria-selected="true" aria-controls="method-summary-table.tabpanel" tabindex="0" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table', 3)" class="active-table-tab">All Methods</button><button id="method-summary-table-tab2" role="tab" aria-selected="false" aria-controls="method-summary-table.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table-tab2', 3)" class="table-tab">Instance Methods</button><button id="method-summary-table-tab3" role="tab" aria-selected="false" aria-controls="method-summary-table.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table-tab3', 3)" class="table-tab">Abstract Methods</button><button id="method-summary-table-tab4" role="tab" aria-selected="false" aria-controls="method-summary-table.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('method-summary-table', 'method-summary-table-tab4', 3)" class="table-tab">Concrete Methods</button></div>
 <div id="method-summary-table.tabpanel" role="tabpanel" aria-labelledby="method-summary-table-tab0">
 <div class="summary-table three-column-summary">
 <div class="table-header col-first">Modifier and Type</div>
@@ -193,8 +195,20 @@ property.</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getStartupClasses()" class="member-name-link">getStartupClasses</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">The recorded startup class list the launcher preloads on a background thread: the
-<code>-Xlog:class+load</code> output of a run of the archive, or a file of binary class names.</div>
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the profile that
+<code>recordStartupProfile</code> writes, the <code>-Xlog:class+load</code> output of a run of the archive, or a
+file of binary class names.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract <a href="TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getTraining()" class="member-name-link">getTraining</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="block">How a task that launches the application, such as <code>recordStartupProfile</code>, reaches, exercises and
+stops it.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#training(org.gradle.api.Action)" class="member-name-link">training</a><wbr>(org.gradle.api.Action&lt;? super <a href="TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a>&gt;&nbsp;action)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Configures <a href="#getTraining()"><code>getTraining()</code></a>.</div>
 </div>
 </div>
 </div>
@@ -346,12 +360,44 @@ registers is skipped.</div>
 <h3>getStartupClasses</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.file.RegularFileProperty</span>&nbsp;<span class="element-name">getStartupClasses</span>()</div>
-<div class="block">The recorded startup class list the launcher preloads on a background thread: the
-<code>-Xlog:class+load</code> output of a run of the archive, or a file of binary class names. It has no
-convention: without it nothing is preloaded.</div>
+<div class="block">The recorded startup class list the launcher preloads on a background thread: the profile that
+<code>recordStartupProfile</code> writes, the <code>-Xlog:class+load</code> output of a run of the archive, or a
+file of binary class names. Without it nothing is preloaded.
+
+<p>The convention is the project's committed profile,
+<a href="../build/StartupProfileRecorder.html#PROFILE_LOCATION">"src/main/micronaut-runner/startup-classes.txt"</a>, when that file exists, so a
+project that has recorded a profile preloads it with no configuration. Setting the property to
+<code>null</code> falls back to that convention: to build without the profile, delete the file.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the startup class list</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="getTraining()">
+<h3>getTraining</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public abstract</span>&nbsp;<span class="return-type"><a href="TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></span>&nbsp;<span class="element-name">getTraining</span>()</div>
+<div class="block">How a task that launches the application, such as <code>recordStartupProfile</code>, reaches, exercises and
+stops it. The API is experimental.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the training settings</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="training(org.gradle.api.Action)">
+<h3>training</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">void</span>&nbsp;<span class="element-name">training</span><wbr><span class="parameters">(org.gradle.api.Action&lt;? super <a href="TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a>&gt;&nbsp;action)</span></div>
+<div class="block">Configures <a href="#getTraining()"><code>getTraining()</code></a>.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>action</code> - the configuration</dd>
 </dl>
 </div>
 </section>
