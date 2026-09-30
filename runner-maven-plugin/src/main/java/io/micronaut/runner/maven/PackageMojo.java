@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.maven;
 
-import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
@@ -30,7 +29,6 @@ import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
@@ -468,26 +466,6 @@ public class PackageMojo extends AbstractMojo {
             configured.forEach((name, value) -> options.put(name, value == null ? "" : value));
         }
         return options;
-    }
-
-    /** Bridges the packaging library's log calls to Maven's logger. */
-    private static final class MavenBuildLogger implements BuildLogger {
-
-        private final Log log;
-
-        private MavenBuildLogger(Log log) {
-            this.log = log;
-        }
-
-        @Override
-        public void info(String message) {
-            log.info(message);
-        }
-
-        @Override
-        public void warn(String message) {
-            log.warn(message);
-        }
     }
 
 }

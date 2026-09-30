@@ -18,6 +18,7 @@ package io.micronaut.runner.suite;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
 import org.gradle.testkit.runner.TaskOutcome;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -73,6 +74,9 @@ class HelloNettySampleTest {
 
     /** The task the Gradle plugin registers. */
     private static final String TASK = ":micronautRunnerJar";
+
+    /** The interim plugin's experimental task that trains and verifies a JDK AOT cache. */
+    private static final String JDK_AOT_CACHE_TASK = ":micronautRunnerJdkAotCache";
 
     /** Where that task writes, with the classifier the plugin defaults to. */
     private static final String ARCHIVE = "build/libs/hello-netty-0.1-all.jar";
@@ -307,6 +311,54 @@ class HelloNettySampleTest {
         assertTrue(hasEntry(applicationJar, "META-INF/services/ch.qos.logback.classic.spi.Configurator"));
         Run fromExtracted = run(applicationJar, sample, Map.of(), List.of());
         assertTrue(fromExtracted.body().startsWith("hello from "), fromExtracted.output());
+    }
+
+    /**
+     * Trains a JDK AOT cache for the sample's extracted layout with the interim plugin's task, then launches the
+     * layout the way the docs say to, {@code java @app.jvmopts -jar <jar>} from the cache's directory, in strict mode:
+     * the JDK's own class loader answers, from a cache that the launch accepted.
+     */
+    @Test
+    void trainsAJdkAotCacheForTheLayoutAndServesWithIt(@TempDir Path work) throws Exception {
+        // hello-netty has no stop endpoint: on Windows only jcmd, on JDK 25.0.4 and later, ends the recording.
+        Assumptions.assumeTrue(!System.getProperty("os.name", "").startsWith("Windows")
+                        || Runtime.version().compareToIgnoreOptional(Runtime.Version.parse("25.0.4")) >= 0,
+                "on Windows the recording needs jcmd's AOT.end_recording, JDK 25.0.4 or later");
+        Path sample = Samples.sample("hello-netty");
+        Path init = work.resolve("jdk-aot-cache.init.gradle");
+        Files.writeString(init, """
+                allprojects {
+                    pluginManager.withPlugin('io.micronaut.runner.standalone') {
+                        micronautRunner {
+                            training {
+                                readinessPath = '/hello'
+                                workloadPaths = ['/hello']
+                            }
+                        }
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+        BuildResult result = gradle(sample, "clean", JDK_AOT_CACHE_TASK, "--init-script", init.toString());
+        assertEquals(TaskOutcome.SUCCESS, result.task(JDK_AOT_CACHE_TASK).getOutcome(), result::getOutput);
+
+        Path cache = sample.resolve("build/micronaut-runner/jdk-aot-cache");
+        String report = Files.readString(cache.resolve("aot-report.json"), StandardCharsets.UTF_8);
+        assertTrue(report.contains("\"verdict\": \"passed\"") && report.contains("\"target\": \"layout\""), report);
+        int port = Samples.freePort();
+        ForkedApplication application = ForkedApplication.start(cache.resolve("hello-netty-0.1-all.jar"), cache,
+                Map.of("SERVER_PORT", Integer.toString(port)), List.of("@app.jvmopts", "-XX:AOTMode=on"));
+        try {
+            String body = application.awaitBody(URI.create("http://localhost:" + port + "/hello"), STARTUP_TIMEOUT);
+            assertEquals("hello from AppClassLoader", body, application::describe);
+        } finally {
+            application.close();
+        }
+        String path = sample.resolve("build/micronaut-runner").toString();
+        List<String> left = ProcessHandle.allProcesses()
+                .filter(process -> process.info().commandLine().map(line -> line.contains(path)).orElse(false))
+                .map(process -> process.pid() + " " + process.info().commandLine().orElse(""))
+                .toList();
+        assertTrue(left.isEmpty(), () -> "processes left behind: " + left);
     }
 
     private static void writeLogbackXml(Path file, String marker) throws IOException {

@@ -82,6 +82,11 @@ import java.util.Set;
  * at startup to {@value io.micronaut.runner.build.StartupProfileRecorder#PROFILE_LOCATION}. The task runs only
  * when it is asked for. Once the file exists, the archive embeds it, and the launcher preloads its classes.</p>
  *
+ * <p>Experimentally, and only in this interim plugin, it registers {@value #JDK_AOT_CACHE_TASK_NAME}, which trains
+ * and verifies a JDK AOT cache for the archive's extracted layout (or the archive itself) with the project's
+ * toolchain, and {@value #LAYOUT_TASK_NAME}, which writes the layout alone. {@code assemble} builds the cache only
+ * with {@code jdkAotCache.enabled = true}.</p>
+ *
  * @since 1.0
  */
 public class MicronautRunnerPlugin implements Plugin<Project> {
@@ -101,6 +106,18 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
      * {@code assemble}, {@code build} or {@code check}.
      */
     public static final String RECORD_TASK_NAME = "recordStartupProfile";
+
+    /**
+     * The task that writes the extracted layout, for a build that trains its JDK AOT cache elsewhere. Experimental,
+     * and part of this interim plugin only.
+     */
+    public static final String LAYOUT_TASK_NAME = "micronautRunnerLayout";
+
+    /**
+     * The task that trains and verifies a JDK AOT cache. It is part of {@code assemble} only with
+     * {@code jdkAotCache.enabled = true}. Experimental, and part of this interim plugin only.
+     */
+    public static final String JDK_AOT_CACHE_TASK_NAME = "micronautRunnerJdkAotCache";
 
     /**
      * The task that checks Runner and Shadow output locations before either producer executes. It exists
@@ -195,6 +212,7 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
         extension.getStartupClasses().convention(project.getProviders().provider(
                 () -> profile.getAsFile().isFile() ? profile : null));
         TrainingSpec.defaults(extension.getTraining());
+        JdkAotCacheSpec.defaults(extension.getJdkAotCache());
 
         // A Micronaut plugin may be applied before or after this one, and whichever comes last adds the
         // alias. Both happen while plugins are applied, so the Kotlin DSL generates an accessor for it.
@@ -252,6 +270,41 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
                     .dir("micronaut-runner/record-startup-profile"));
             onlyIfEnabled(task, extension);
         });
+
+        // The JDK AOT cache and its layout: experimental, and only in this interim plugin.
+        project.getTasks().register(LAYOUT_TASK_NAME, MicronautRunnerLayout.class, task -> {
+            task.setGroup(LifecycleBasePlugin.BUILD_GROUP);
+            task.setDescription("Writes the extracted layout of the runner jar, for a JDK AOT cache trained"
+                    + " elsewhere (experimental)");
+            task.getArchiveFile().convention(runnerJar.flatMap(MicronautRunnerJar::getArchiveFile));
+            task.getJavaLauncher().convention(toolchains.launcherFor(java.getToolchain()));
+            task.getDestinationDirectory().convention(project.getLayout().getBuildDirectory()
+                    .dir("micronaut-runner/layout"));
+            onlyIfEnabled(task, extension);
+        });
+        TaskProvider<MicronautRunnerJdkAotCache> jdkAotCache = project.getTasks().register(JDK_AOT_CACHE_TASK_NAME,
+                MicronautRunnerJdkAotCache.class, task -> {
+                    task.setGroup(LifecycleBasePlugin.BUILD_GROUP);
+                    task.setDescription("Trains and verifies a JDK AOT cache for the runner jar, in its own"
+                            + " directory with a launch argfile (experimental)");
+                    task.getArchiveFile().convention(runnerJar.flatMap(MicronautRunnerJar::getArchiveFile));
+                    task.getJavaLauncher().convention(toolchains.launcherFor(java.getToolchain()));
+                    task.getJdkBuild().convention(task.getJavaLauncher().map(launcher ->
+                            launcher.getMetadata().getJavaRuntimeVersion() + " / "
+                                    + launcher.getMetadata().getJvmVersion()));
+                    JdkAotCacheSpec.conventions(task.getJdkAotCache(), extension.getJdkAotCache());
+                    TrainingSpec.conventions(task.getTraining(), extension.getTraining());
+                    // The cache's launches take jdkAotCache.jvmArgs. training.jvmArgs belong to the startup
+                    // profile, so a change to them must not train the cache again.
+                    task.getTraining().getJvmArgs().convention(List.of());
+                    task.getOutputDirectory().convention(project.getLayout().getBuildDirectory()
+                            .dir("micronaut-runner/jdk-aot-cache"));
+                    onlyIfEnabled(task, extension);
+                });
+        // Wired lazily, so that the configuration cache holds the decision with the value it read.
+        Provider<List<Object>> cacheOnAssemble = extension.getJdkAotCache().getEnabled()
+                .map(enabled -> enabled ? List.<Object>of(jdkAotCache) : List.of());
+        project.getTasks().named(LifecycleBasePlugin.ASSEMBLE_TASK_NAME, task -> task.dependsOn(cacheOnAssemble));
 
         // Its own Usage keeps the archive out of every Java consumer's variant selection: a consumer asks for
         // this configuration by name.

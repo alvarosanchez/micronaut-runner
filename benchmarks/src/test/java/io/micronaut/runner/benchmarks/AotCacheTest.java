@@ -214,29 +214,6 @@ class AotCacheTest {
         assertEquals(0, uncached.exit(), "without -XX:AOTMode=on the JVM runs uncached: " + uncached.output());
     }
 
-    @Test
-    void compatibleOopCompressionProbeParsesPrintFlagsFinal() {
-        List<String> jdk25 = List.of(
-                "[Global flags]",
-                "    ccstr AOTCacheOutput                           =                                           {product} {default}",
-                "     bool AOTClassLinking                          = false                                     {product} {default}",
-                "    ccstr AOTMode                                  =                                           {product} {default}",
-                "openjdk version \"25.0.4.1\" 2026-08-18",
-                "OpenJDK 64-Bit Server VM Homebrew (build 25.0.4.1, mixed mode, sharing)");
-        List<String> jdk27 = List.of(
-                "[Global flags]",
-                "    ccstr AOTCacheOutput                           =                                           {product} {default}",
-                "     bool AOTCompatibleOopCompression              = false                          {diagnostic lp64_product} {ergonomic}",
-                "    ccstr AOTMode                                  =                                           {product} {default}",
-                "openjdk version \"27\" 2026-09-15",
-                "OpenJDK 64-Bit Server VM Homebrew (build 27, mixed mode, sharing)");
-
-        assertEquals(List.of(), AotCache.compatibleOopCompressionFlags(jdk25));
-        assertEquals(List.of("-XX:+UnlockDiagnosticVMOptions", "-XX:+AOTCompatibleOopCompression"),
-                AotCache.compatibleOopCompressionFlags(jdk27));
-        assertEquals(List.of(), AotCache.compatibleOopCompressionFlags(List.of()));
-    }
-
     private static AotCache.Request request(Path directory, ByteArrayOutputStream console) {
         return new AotCache.Request(directory.resolve("managed-aot"), "/ready", List.of("/work"),
                 Duration.ofSeconds(30), AotCacheFixture.class.getName(), List.of(), List.of(),
