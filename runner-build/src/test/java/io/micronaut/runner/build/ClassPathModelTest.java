@@ -238,6 +238,42 @@ class ClassPathModelTest {
     }
 
     @Test
+    void aNameIsKnownWhicheverCopyWinsAndTheNestHostIsRecordedWithTheMembers(@org.junit.jupiter.api.io.TempDir
+            java.nio.file.Path temp) throws Exception {
+        Map<String, byte[]> compiled = ClassFixtures.classes(ClassFixtures.compile(temp.resolve("src"),
+                temp.resolve("classes"), List.of("--release", "25"), ClassFixtures.source("com.example.Outer", """
+                        package com.example;
+                        public class Outer {
+                            public static class Inner {
+                                private void hidden() {
+                                }
+                            }
+                        }
+                        """)));
+        Map<String, byte[]> versionedOnly = Map.of(
+                "META-INF/versions/27/" + entry("com/example/Future"), type("com/example/Future", "java/lang/Object"));
+
+        ClassPathModel with = model(true, layer(0, "application", false, compiled),
+                layer(1, "multi-release", true, versionedOnly));
+        ClassPathModel without = model(false, layer(0, "application", false, compiled));
+
+        assertTrue(with.hasMembers());
+        assertFalse(without.hasMembers());
+        assertEquals("com/example/Outer", with.winner("com/example/Outer$Inner").orElseThrow().nestHost());
+        assertEquals(null, with.winner("com/example/Outer").orElseThrow().nestHost(), "a nest host names none");
+        assertEquals(null, without.winner("com/example/Outer$Inner").orElseThrow().nestHost(),
+                "the nest host is recorded with the member tables");
+        ClassPathModel.Member hidden = with.winner("com/example/Outer$Inner").orElseThrow().member("hidden", "()V");
+        assertEquals(java.lang.classfile.ClassFile.ACC_PRIVATE, hidden.flags());
+        assertEquals(null, with.winner("com/example/Outer$Inner").orElseThrow().member("hidden", "(I)V"));
+        assertEquals(null, without.winner("com/example/Outer$Inner").orElseThrow().member("hidden", "()V"));
+        assertTrue(with.known("com/example/Outer"));
+        assertTrue(with.known("com/example/Future"), "a name only a newer runtime loads is still taken");
+        assertTrue(with.winner("com/example/Future").isEmpty());
+        assertFalse(with.known("com/example/Missing"));
+    }
+
+    @Test
     void aClassAboveTheSizeLimitIsNotRead() {
         ClassPathModel.LayerScan scan = ClassPathModel.scan(1, "dependency", false, false, name -> false,
                 new ClassPathModel.Interner());
