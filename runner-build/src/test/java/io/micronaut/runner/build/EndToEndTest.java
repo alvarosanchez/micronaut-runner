@@ -194,7 +194,9 @@ class EndToEndTest {
 
                 public static void main(String[] args) throws Exception {
                     // In an archive that preloads, wait for the launcher's thread, so that every check below
-                    // runs against classes it has already defined.
+                    // runs against classes it has already defined. A short list can be done before this
+                    // looks, so the line says only that the thread was still running: its absence proves
+                    // nothing about an archive that preloads.
                     for (Thread thread : Thread.getAllStackTraces().keySet()) {
                         if ("micronaut-runner-preload".equals(thread.getName())) {
                             thread.join();
@@ -819,7 +821,10 @@ class EndToEndTest {
         Forked run = fork(preloading, workspace, List.of("-Dmicronaut.runner.timing=true"), List.of());
         assertPassed(run);
         if (Runtime.getRuntime().availableProcessors() >= 2) {
-            assertTrue(run.output().contains("PRELOAD JOINED") && run.output().contains(checkpoint),
+            // Only the checkpoint: the preloader prints it before it ends, so it is there whether the thread
+            // was done before main looked for it or main joined it. "PRELOAD JOINED" is printed only in the
+            // second case, and this list is short enough for the first.
+            assertTrue(run.output().contains(checkpoint),
                     () -> "the startup classes were not preloaded\n" + run.output());
         } else {
             assertFalse(run.output().contains("preload finished"), run::output);

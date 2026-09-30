@@ -53,8 +53,10 @@ import java.util.stream.Collectors;
  *     <li>{@link Map}: one {@code Name: value} pair per line, as in {@code MANIFEST.MF} but without
  *     continuation lines. Surrounding whitespace of names and values is ignored and blank lines are
  *     skipped, so the empty string is the empty map.</li>
- *     <li>{@link Path}: a file path, as {@link Path#of(String, String...)} reads it. The empty string is no
- *     file.</li>
+ *     <li>{@link Path}: a file path, as {@link Path#of(String, String...)} reads it, so a relative path is
+ *     read against the working directory of the process. The empty string is no file. A build plugin does
+ *     not take a {@link Exposure#TYPED} option of this type by name: only its typed property lets the build
+ *     tool resolve the path against the project and track the file's content.</li>
  * </ul>
  *
  * @since 1.0

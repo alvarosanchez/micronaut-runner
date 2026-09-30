@@ -94,8 +94,10 @@ task wins for that task.
 
 Micronaut Runner's packaging library owns every option, its default and its validation; the plugins only pass
 what you set. Every option can be set by name, with the value as text: `true` or `false` for a boolean, a
-comma-separated list, one `Name: value` line per manifest attribute, or a file path. An option set by name wins over its
-typed property, and an unknown name fails the build.
+comma-separated list, or one `Name: value` line per manifest attribute. An option set by name wins over its
+typed property, and an unknown name fails the build. The exception is an option that names a file, `startupClasses`:
+it is set only through its typed property, and by name it fails the build, because only a file property lets the build
+tool resolve the path against the project and, in Gradle, rebuild the archive when the file's content changes.
 
 [cols="2,1,1,1,1",options="header"]
 |===

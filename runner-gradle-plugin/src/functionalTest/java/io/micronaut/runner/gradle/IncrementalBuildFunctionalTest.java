@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
@@ -121,6 +122,36 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
         BuildResult edited = build(directory, "micronautRunnerJar", "-Plist=profiles/recorded.log");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(edited, RUNNER_JAR_TASK),
                 () -> "an edited list must rebuild the archive:\n" + edited.getOutput());
+    }
+
+    /**
+     * The startup class list cannot be set by name. As an entry of {@code options} its path is a string input,
+     * so Gradle would not hash the file and an edited list would leave a stale archive up to date. The task
+     * refuses it and names the property to use, on the task and on the extension alike.
+     *
+     * @param directory a fresh project directory
+     * @throws IOException if the fixture cannot be written
+     */
+    @Test
+    void theStartupClassListSetByNameFailsTheTaskAndNamesItsProperty(@TempDir Path directory)
+            throws IOException {
+        writeFixture(directory, """
+                if (providers.gradleProperty('onExtension').present) {
+                    micronautRunner { options.put('startupClasses', 'startup-classes.log') }
+                } else {
+                    micronautRunnerJar { options.put('startupClasses', 'startup-classes.log') }
+                }
+                """, "");
+        write(directory.resolve("startup-classes.log"), MAIN_CLASS + "\n");
+
+        for (String where : List.of("-PonTask", "-PonExtension")) {
+            BuildResult result = buildAndFail(directory, "micronautRunnerJar", where);
+            assertEquals(TaskOutcome.FAILED, outcomeOf(result, RUNNER_JAR_TASK), result::getOutput);
+            assertTrue(result.getOutput().contains("Option 'startupClasses' names a file: set it through the"
+                    + " startupClasses property, not through options."), result::getOutput);
+            assertFalse(Files.exists(directory.resolve(DEFAULT_ARCHIVE)),
+                    "an archive was written from a list Gradle does not track");
+        }
     }
 
     /**

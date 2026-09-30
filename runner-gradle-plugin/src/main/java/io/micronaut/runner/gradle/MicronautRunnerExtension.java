@@ -125,7 +125,8 @@ public abstract class MicronautRunnerExtension {
     /**
      * Packaging options by {@linkplain RunnerJarOption#optionName() name}, for the options that have no typed
      * property. Each value uses the grammar {@link RunnerJarOption} documents; the packaging library parses and
-     * validates it, and an unknown name fails the task.
+     * validates it, and an unknown name fails the task. So does a typed option that names a file, such as
+     * {@code startupClasses}: it is set only through its property, which Gradle tracks by content.
      *
      * @return the options by name
      */

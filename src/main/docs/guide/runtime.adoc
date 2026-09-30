@@ -124,14 +124,18 @@ of the application loaded. The launcher then loads them, in that order, on one b
 application starts, so that the main thread usually finds a class already defined.
 
 Preloading is the accelerator for launches without a JDK cache. On `benchmark-large` (Micronaut 5.1.15, Netty
-4.2.18) the uncached single JAR reached readiness about 100 ms sooner with its recorded list: -98.8 ms (95% CI -109.2
-to -89.9, 20 pairs) on macOS with 12 CPUs and JDK 25.0.4.1, and -106.0 ms (95% CI -116.8 to -94.3, 20 pairs) in a Linux
+4.2.18) the uncached single JAR reached readiness about 100 ms sooner with its recorded list: -108.0 ms (95% CI -120.1
+to -97.4, 60 pairs) on macOS with 12 CPUs and JDK 25.0.4.1, and -106.0 ms (95% CI -116.8 to -94.3, 20 pairs) in a Linux
 container limited to 2 CPUs with JDK 25.0.4. The same class loading happens earlier and on two threads, which can cost
-memory while the application starts: on macOS, private memory at readiness was 3 to 12 MiB higher from one session to
+memory while the application starts: on macOS, private memory at readiness was 3 to 17 MiB higher from one session to
 the next, with the process's peak footprint within 5 MB; in the container it rose by at most 2 MiB.
 
 With a JDK AOT cache the recorded classes are already cheap to load, and preloading is not what makes a cached launch
-fast: the same two runs measured -8.5 ms (95% CI -16.3 to -2.5) and -14.8 ms (95% CI -22.5 to +7.0). To combine the
+fast: the same two runs measured -10.1 ms (95% CI -16.1 to -3.9) and -14.8 ms (95% CI -22.5 to +7.0). That small gain
+has a memory cost of its own. With a cache the preloader gets through the whole list before readiness, and the list,
+recorded without a cache over a whole run, names classes that a cached launch loads later or not at all: about 460
+more classes were loaded at readiness. On macOS that was 5.4 MiB more private memory at readiness (95% CI 4.7 to 6.5
+MiB, 60 pairs; 4 to 6.5 MiB across sessions), while in the container private memory did not change. To combine the
 two, build the JAR with the list first and train the cache on that JAR (<<cdsAndAot>>).
 
 *Record the list.* Run the training script (<<trainingSnippet>>) on the runner JAR with two substitutions and
@@ -170,6 +174,8 @@ micronaut {
 `micronautRunner { }` is the same block in a build without a Micronaut plugin, and a value set on a task,
 `micronautRunnerJar { startupClasses = file('startup-classes.log') }`, wins for that task. In Maven, pass
 `-Dmicronaut.runner.startupClasses=startup-classes.log` or set `<startupClasses>` in the plugin's configuration.
+These are the only ways to set it: by name, through `options` or `<runnerOptions>`, the build fails, because the path
+would not be resolved against the project and Gradle would not rebuild the archive when the list changes.
 `java -Dmicronaut.runner.mode=inspect -jar my-app-0.1-all.jar` prints how many classes the archive carries as
 `Preload classes` and `Preload JDK classes`.
 
