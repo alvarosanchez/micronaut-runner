@@ -78,7 +78,9 @@ import java.util.Random;
  * measured run. Explicit partial mode exits {@code 0} when at least one measured run succeeded. Both
  * reports are written before either decision. The required variants are the selected core rows,
  * {@link Options#requiredVariants()}; an opt-in row, whether added by {@code --optional-rows} or named in
- * {@code --variants}, is never required.</p>
+ * {@code --variants}, is never required. A {@code --variants} selection of only opt-in rows therefore has no
+ * required variant: it is never reported complete and, under either policy, exits {@code 0} only when at least
+ * one measured run succeeded.</p>
  */
 public final class StartupBenchmark {
 
@@ -214,8 +216,10 @@ public final class StartupBenchmark {
         log.println("[startup-benchmark] wrote " + context.outputDirectory().resolve(Reports.SUMMARY_FILE));
         BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
         if (status.exitCode() != 0) {
-            System.err.println("[startup-benchmark] benchmark matrix is incomplete under the "
-                    + context.completenessPolicy().externalName() + " policy; see "
+            System.err.println("[startup-benchmark] " + (BenchmarkStatus.hasRequiredVariant(context)
+                    ? "benchmark matrix is incomplete under the " + context.completenessPolicy().externalName()
+                            + " policy"
+                    : "no required variant was selected and no measured run succeeded") + "; see "
                     + context.outputDirectory().resolve(Reports.SUMMARY_FILE));
         }
         return status.exitCode();
@@ -390,7 +394,8 @@ public final class StartupBenchmark {
 
         /**
          * The selected core rows, which gate the exit code. A selected opt-in row is built and measured but never
-         * gates it.
+         * gates it, so the list is empty when only opt-in rows were named; {@link BenchmarkStatus} then requires
+         * a measured success instead.
          *
          * @return the required variant names, in report order
          */

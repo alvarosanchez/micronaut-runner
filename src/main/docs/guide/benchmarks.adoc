@@ -304,7 +304,9 @@ when the attempt produced a valid measurement. A build-unavailable variant is sk
 failed process attempt. A warm-up failure is visible but does not by itself invalidate a complete measured
 matrix. Opt-in rows are built only with `-Pbenchmarks.optionalRows=true` or when named in
 `-Pbenchmarks.variants`, and their failures are reported but never change the exit code. With
-`-Pbenchmarks.variants`, the required variants are the named core rows.
+`-Pbenchmarks.variants`, the required variants are the named core rows. A selection that names only opt-in rows
+has no required variant: both reports say so instead of calling the run complete, and the task exits zero only
+when at least one measured attempt succeeded.
 
 `results.json` uses a versioned, relocatable provenance schema. It records runner and sample revisions plus
 clean/dirty state, exact JDK and platform identity, logical processor count and physical memory, cache policy,

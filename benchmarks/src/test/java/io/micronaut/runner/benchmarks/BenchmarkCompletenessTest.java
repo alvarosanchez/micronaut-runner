@@ -109,6 +109,70 @@ class BenchmarkCompletenessTest {
         assertTrue(markdown.contains("| `runner-stored-reflection` | measured | 2 | 2 | 0 | 2 | 0 |"), markdown);
     }
 
+    /**
+     * A selection of only opt-in rows has no required variant. An empty requirement list must not read as a
+     * completed required comparison: a failed sample build, where nothing is built or measured, exits nonzero.
+     */
+    @Test
+    void anOptInOnlySelectionIsNeverCompleteAndNeedsAMeasuredSuccess(@TempDir Path output) throws Exception {
+        Path sample = Files.createDirectories(output.resolve("sample"));
+        for (CompletenessPolicy policy : CompletenessPolicy.values()) {
+            List<String> arguments = new ArrayList<>(List.of("--sample", sample.toString(), "--repo", "file:/repo",
+                    "--version", "1.0", "--iterations", "2", "--warmup", "0", "--out",
+                    output.resolve(policy.externalName()).toString(),
+                    "--variants", "runner-stored-positional,runner-stored-positional-aot"));
+            if (policy == CompletenessPolicy.PARTIAL) {
+                arguments.add("--allow-partial");
+            }
+            StartupBenchmark.Options options = StartupBenchmark.Options.parse(arguments.toArray(String[]::new));
+            List<String> selection = options.selection();
+            assertEquals(List.of("runner-stored-positional", "runner-stored-positional-aot"), selection);
+            assertEquals(List.of(), options.requiredVariants());
+            RunContext context = new RunContext(sample, "file:/repo", "1.0", options.outputDirectory(),
+                    options.iterations(), options.warmupIterations(), options.seed(), options.readinessPath(),
+                    options.diagnostics(), "2026-09-30T00:00:00Z", options.requiredVariants(), policy);
+
+            List<VariantResult> unbuilt = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
+                throw new AssertionError("an unavailable variant must not reach the runner");
+            }), SampleBuild.unavailableVariants("the sample's Gradle build failed", selection), options, log());
+
+            BenchmarkStatus nothingMeasured = BenchmarkStatus.evaluate(context, unbuilt);
+            assertFalse(nothingMeasured.complete(), policy.externalName());
+            assertFalse(nothingMeasured.anyMeasuredSuccess(), policy.externalName());
+            assertEquals(1, nothingMeasured.exitCode(), policy.externalName());
+            assertEquals(1, StartupBenchmark.finish(context, unbuilt, List.of(), log()), policy.externalName());
+            String json = Files.readString(options.outputDirectory().resolve(Reports.RESULTS_FILE));
+            assertTrue(json.contains("\"requiredVariants\": []"), json);
+            assertTrue(json.contains("\"complete\": false"), json);
+            assertTrue(json.contains("\"exitCode\": 1"), json);
+            String markdown = Files.readString(options.outputDirectory().resolve(Reports.SUMMARY_FILE));
+            assertTrue(markdown.contains("**NO REQUIRED VARIANT SELECTED**"), markdown);
+            assertTrue(markdown.contains("exits nonzero because no measured run succeeded"), markdown);
+            assertFalse(markdown.contains("COMPLETE required comparison"), markdown);
+
+            List<Variant> built = selection.stream().map(BenchmarkCompletenessTest::available).toList();
+            List<VariantResult> measured = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
+                if (variant.name().equals("runner-stored-positional-aot")) {
+                    throw new StartupHarness.RunFailure("opt-in fixture failure", 1);
+                }
+                return sample(iteration, warmup);
+            }), built, options, log());
+
+            BenchmarkStatus oneRowMeasured = BenchmarkStatus.evaluate(context, measured);
+            assertFalse(oneRowMeasured.complete(), policy.externalName());
+            assertTrue(oneRowMeasured.anyMeasuredSuccess(), policy.externalName());
+            assertEquals(0, oneRowMeasured.exitCode(), "an opt-in row's failure never gates: " + policy);
+            assertEquals(0, StartupBenchmark.finish(context, measured, List.of(), log()), policy.externalName());
+            markdown = Files.readString(options.outputDirectory().resolve(Reports.SUMMARY_FILE));
+            assertTrue(markdown.contains("**NO REQUIRED VARIANT SELECTED**"), markdown);
+            assertTrue(markdown.contains("exits 0 because at least one measured run succeeded"), markdown);
+            assertTrue(markdown.contains("No required variant was selected: every row of this run is opt-in"),
+                    markdown);
+            assertFalse(markdown.contains("COMPLETE required comparison"), markdown);
+            assertFalse(markdown.contains("## Incomplete matrix details"), markdown);
+        }
+    }
+
     @Test
     void workDirectoryDefaultsUnderTheOutputDirectoryAndCanBeMovedOutOfIt(@TempDir Path output) {
         Path out = output.resolve("reports");

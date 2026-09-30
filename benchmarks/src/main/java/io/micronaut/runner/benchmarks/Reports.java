@@ -514,7 +514,14 @@ final class Reports {
         StringBuilder out = new StringBuilder(8 * 1024);
         BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
         out.append("# Startup benchmark\n\n");
-        if (status.complete()) {
+        if (!BenchmarkStatus.hasRequiredVariant(context)) {
+            out.append("**NO REQUIRED VARIANT SELECTED** — only opt-in rows were selected, so there is no required")
+                    .append(" comparison to complete. ")
+                    .append(status.anyMeasuredSuccess()
+                            ? "This invocation exits 0 because at least one measured run succeeded."
+                            : "This invocation exits nonzero because no measured run succeeded.")
+                    .append("\n\n");
+        } else if (status.complete()) {
             out.append("**COMPLETE required comparison** — every required variant completed every requested")
                     .append(" measured run.\n\n");
         } else if (context.completenessPolicy() == CompletenessPolicy.REQUIRED) {
@@ -1058,6 +1065,11 @@ final class Reports {
                                                 RunContext context,
                                                 List<VariantResult> results,
                                                 BenchmarkStatus status) {
+        if (!BenchmarkStatus.hasRequiredVariant(context)) {
+            out.append("No required variant was selected: every row of this run is opt-in, and an opt-in row never")
+                    .append(" gates the exit code.\n\n");
+            return;
+        }
         if (status.complete()) {
             out.append("All ").append(context.requiredVariants().size())
                     .append(" required variants completed all ").append(context.iterations())

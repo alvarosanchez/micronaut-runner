@@ -52,13 +52,33 @@ final class PageCacheEviction implements StartupHarness.BeforeLaunch {
 
     private static final Duration COMMAND_TIMEOUT = Duration.ofMinutes(5);
 
+    private static final List<String> SYNC = List.of("sync");
+
+    /** Runs the {@code sync} and {@code sudo} commands for real. */
+    private static final CommandRunner COMMANDS = command -> Commands.run(command, Map.of(), COMMAND_TIMEOUT);
+
+    /** Runs one helper command to completion; injectable so a test can see the commands without running them. */
+    @FunctionalInterface
+    interface CommandRunner {
+
+        /**
+         * Runs the command.
+         *
+         * @param command the command
+         * @return its exit status and output
+         */
+        Commands.Result run(List<String> command);
+    }
+
     private final PageCacheMode mode;
     private final boolean macOs;
+    private final CommandRunner commands;
     private final Map<String, List<Path>> evictionSets = new HashMap<>();
 
-    private PageCacheEviction(PageCacheMode mode, String osName) {
+    private PageCacheEviction(PageCacheMode mode, String osName, CommandRunner commands) {
         this.mode = mode;
         this.macOs = PageCacheMode.macOs(osName);
+        this.commands = commands;
     }
 
     /**
@@ -69,8 +89,20 @@ final class PageCacheEviction implements StartupHarness.BeforeLaunch {
      * @return {@link StartupHarness.BeforeLaunch#NONE} for {@code uncontrolled}, otherwise an evicting hook
      */
     static StartupHarness.BeforeLaunch forMode(PageCacheMode mode, String osName) {
+        return forMode(mode, osName, COMMANDS);
+    }
+
+    /**
+     * The hook for a mode, running its helper commands through the given runner.
+     *
+     * @param mode     the page-cache mode
+     * @param osName   the {@code os.name} system property
+     * @param commands runs {@code drop-all}'s {@code sync} and {@code sudo} commands
+     * @return {@link StartupHarness.BeforeLaunch#NONE} for {@code uncontrolled}, otherwise an evicting hook
+     */
+    static StartupHarness.BeforeLaunch forMode(PageCacheMode mode, String osName, CommandRunner commands) {
         return mode == PageCacheMode.UNCONTROLLED ? StartupHarness.BeforeLaunch.NONE
-                : new PageCacheEviction(mode, osName);
+                : new PageCacheEviction(mode, osName, commands);
     }
 
     @Override
@@ -86,7 +118,11 @@ final class PageCacheEviction implements StartupHarness.BeforeLaunch {
                     evict(file);
                 }
             }
-            case DROP_ALL -> dropAll(macOs);
+            case DROP_ALL -> {
+                for (List<String> command : dropAllCommands(macOs)) {
+                    require(commands, command);
+                }
+            }
             case UNCONTROLLED -> {
                 // Never constructed for this mode.
             }
@@ -129,7 +165,7 @@ final class PageCacheEviction implements StartupHarness.BeforeLaunch {
      * @throws IOException if {@code sync} fails
      */
     static void sync() throws IOException {
-        require(List.of("sync"));
+        require(COMMANDS, SYNC);
     }
 
     /**
@@ -152,14 +188,20 @@ final class PageCacheEviction implements StartupHarness.BeforeLaunch {
         Fadvise.dontNeed(file);
     }
 
-    private static void dropAll(boolean macOs) throws IOException {
-        sync();
-        require(macOs ? List.of("sudo", "-n", "purge")
+    /**
+     * What {@code drop-all} runs before every launch, in order: {@code sync}, because dirty pages cannot be
+     * dropped, then the drop itself through passwordless {@code sudo}.
+     *
+     * @param macOs whether this is macOS, which has {@code purge} instead of {@code /proc/sys/vm/drop_caches}
+     * @return the commands, each of which must exit with status 0
+     */
+    static List<List<String>> dropAllCommands(boolean macOs) {
+        return List.of(SYNC, macOs ? List.of("sudo", "-n", "purge")
                 : List.of("sudo", "-n", "sh", "-c", "echo 3 > /proc/sys/vm/drop_caches"));
     }
 
-    private static void require(List<String> command) throws IOException {
-        Commands.Result result = Commands.run(command, Map.of(), COMMAND_TIMEOUT);
+    private static void require(CommandRunner commands, List<String> command) throws IOException {
+        Commands.Result result = commands.run(command);
         if (result.exitCode() != 0) {
             throw new IOException(String.join(" ", command) + " exited with " + result.exitCode() + ": "
                     + result.output().trim());

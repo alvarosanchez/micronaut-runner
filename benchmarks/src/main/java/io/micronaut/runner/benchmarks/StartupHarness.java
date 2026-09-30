@@ -394,16 +394,16 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
             // neither move readinessMillis nor miss the process.
             ReadinessSnapshot atReadiness = probe(process, Path.of(variant.command().get(0)), ready);
             awaitStartupLine(capture, settings.logLineGrace());
-            int exitCode = destroy(process, drain, settings.shutdownGrace());
-            if (exitCode == -1 && settings.beforeLaunch().evicts()) {
-                // Eviction cannot drop pages a live process still maps, so the next launch would start warm.
-                throw new RunFailure(variant.name() + " was still alive after a forced kill; under page-cache"
-                        + " eviction the attempt fails rather than leave the next launch's pages cached", null);
-            }
+            // Read before destroy(), as when destroy() was the sample's last argument: a startup line the drain
+            // thread hands over after the grace has ended stays unrecorded instead of getting a late timestamp.
+            double logLineMillis = capture.logLineMillis();
+            double frameworkMillis = capture.reportedMillis();
+            int exitCode = requireGone(variant.name(), destroy(process, drain, settings.shutdownGrace()),
+                    settings.beforeLaunch());
             return new StartupSample(iteration, warmup, port,
                     (ready - start) / 1_000_000.0,
-                    capture.logLineMillis(),
-                    capture.reportedMillis(),
+                    logLineMillis,
+                    frameworkMillis,
                     (ready - lastFailureEnd) / 1_000_000.0,
                     exitCode,
                     atReadiness);
@@ -431,6 +431,26 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
         command.addAll(extraJvmArgs);
         command.addAll(variantCommand.subList(1, variantCommand.size()));
         return List.copyOf(command);
+    }
+
+    /**
+     * Fails the attempt whose child is still alive after the forced kill when the launch hook evicts: eviction
+     * cannot drop pages a live process still maps, so the next launch would start warm. Without an evicting hook a
+     * surviving child is recorded as exit status {@code -1}, as it always was.
+     *
+     * @param variantName  the variant that was launched
+     * @param exitCode     what {@code destroy} returned: the child's exit status, or {@code -1} when it is still
+     *                     alive
+     * @param beforeLaunch the launch hook of this run
+     * @return {@code exitCode}
+     * @throws RunFailure if the child survived and the hook evicts
+     */
+    static int requireGone(String variantName, int exitCode, BeforeLaunch beforeLaunch) throws RunFailure {
+        if (exitCode == -1 && beforeLaunch.evicts()) {
+            throw new RunFailure(variantName + " was still alive after a forced kill; under page-cache"
+                    + " eviction the attempt fails rather than leave the next launch's pages cached", null);
+        }
+        return exitCode;
     }
 
     /**

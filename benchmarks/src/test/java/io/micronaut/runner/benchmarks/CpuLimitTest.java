@@ -130,9 +130,10 @@ class CpuLimitTest {
         assertEquals(1, probe.availableProcessors());
         assertTrue(probe.flags().endsWith("-XX:+UseSerialGC"), probe.flags());
         assertEquals(-1, CpuLimit.parseProbe("Error: Could not find or load main class\n").availableProcessors());
-        assertEquals(List.of("taskset", "-c", "0", "/jdk/bin/java", "-XX:+PrintCommandLineFlags", "-cp", "cp",
+        Path java = Path.of("/jdk/bin/java");
+        assertEquals(List.of("taskset", "-c", "0", java.toString(), "-XX:+PrintCommandLineFlags", "-cp", "cp",
                         CpuProbe.class.getName()),
-                CpuLimit.probeCommand(List.of("taskset", "-c", "0"), Path.of("/jdk/bin/java"), "cp"));
+                CpuLimit.probeCommand(List.of("taskset", "-c", "0"), java, "cp"));
     }
 
     @Test

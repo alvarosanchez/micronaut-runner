@@ -31,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -102,11 +103,61 @@ class PageCacheModeTest {
     }
 
     @Test
-    void uncontrolledAddsNoHookAndEveryOtherModeFailsASurvivingChild() {
+    void uncontrolledAddsNoHookAndEveryOtherModeIsAnEvictingHook() {
         assertSame(StartupHarness.BeforeLaunch.NONE, PageCacheEviction.forMode(PageCacheMode.UNCONTROLLED, "Linux"));
         assertFalse(StartupHarness.BeforeLaunch.NONE.evicts());
         assertTrue(PageCacheEviction.forMode(PageCacheMode.EVICT_ARTIFACTS, "Linux").evicts());
         assertTrue(PageCacheEviction.forMode(PageCacheMode.DROP_ALL, "Linux").evicts());
+    }
+
+    @Test
+    void dropAllSyncsAndThenDropsThroughSudoBeforeEveryLaunch() throws IOException {
+        Variant variant = Variant.available("shadow", "fixture", List.of("java"), Path.of("."), Path.of("app.jar"));
+        List<String> sync = List.of("sync");
+        List<String> dropCaches = List.of("sudo", "-n", "sh", "-c", "echo 3 > /proc/sys/vm/drop_caches");
+        List<String> purge = List.of("sudo", "-n", "purge");
+
+        List<List<String>> linux = new ArrayList<>();
+        StartupHarness.BeforeLaunch onLinux = PageCacheEviction.forMode(PageCacheMode.DROP_ALL, "Linux", command -> {
+            linux.add(command);
+            return new Commands.Result(0, "");
+        });
+        onLinux.run(variant);
+        assertEquals(List.of(sync, dropCaches), linux);
+        onLinux.run(variant);
+        assertEquals(List.of(sync, dropCaches, sync, dropCaches), linux, "every launch drops again");
+
+        List<List<String>> mac = new ArrayList<>();
+        PageCacheEviction.forMode(PageCacheMode.DROP_ALL, "Mac OS X", command -> {
+            mac.add(command);
+            return new Commands.Result(0, "");
+        }).run(variant);
+        assertEquals(List.of(sync, purge), mac);
+    }
+
+    @Test
+    void aFailedDropAllCommandFailsTheLaunchPreparation() {
+        Variant variant = Variant.available("shadow", "fixture", List.of("java"), Path.of("."), Path.of("app.jar"));
+
+        List<List<String>> afterFailedDrop = new ArrayList<>();
+        IOException drop = assertThrows(IOException.class,
+                () -> PageCacheEviction.forMode(PageCacheMode.DROP_ALL, "Linux", command -> {
+                    afterFailedDrop.add(command);
+                    return command.get(0).equals("sudo") ? new Commands.Result(1, "sudo: a password is required\n")
+                            : new Commands.Result(0, "");
+                }).run(variant));
+        assertTrue(drop.getMessage().contains("drop_caches exited with 1: sudo: a password is required"),
+                drop.getMessage());
+        assertEquals(2, afterFailedDrop.size());
+
+        List<List<String>> afterFailedSync = new ArrayList<>();
+        IOException sync = assertThrows(IOException.class,
+                () -> PageCacheEviction.forMode(PageCacheMode.DROP_ALL, "Linux", command -> {
+                    afterFailedSync.add(command);
+                    return new Commands.Result(-1, "sync could not be started");
+                }).run(variant));
+        assertTrue(sync.getMessage().startsWith("sync exited with -1"), sync.getMessage());
+        assertEquals(List.of(List.of("sync")), afterFailedSync, "nothing is dropped after a failed sync");
     }
 
     @Test
