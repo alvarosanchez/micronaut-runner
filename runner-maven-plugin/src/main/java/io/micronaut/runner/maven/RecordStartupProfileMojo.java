@@ -15,23 +15,18 @@
  */
 package io.micronaut.runner.maven;
 
-import io.micronaut.runner.build.BuildLogger;
-import io.micronaut.runner.build.RunnerJarReader;
 import io.micronaut.runner.build.StartupProfileRecorder;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
-import org.apache.maven.toolchain.Toolchain;
 import org.apache.maven.toolchain.ToolchainManager;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
@@ -89,7 +84,7 @@ public class RecordStartupProfileMojo extends AbstractTrainingMojo {
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         File archive = PackageMojo.archiveFile(outputDirectory, finalName, classifier);
-        if (!isRunnerJar(archive)) {
+        if (!MojoSupport.isRunnerJar(archive)) {
             throw new MojoFailureException("There is no runner jar at " + archive + " to record the startup"
                     + " profile from: run `" + RERECORD_COMMAND + "`");
         }
@@ -122,45 +117,6 @@ public class RecordStartupProfileMojo extends AbstractTrainingMojo {
      * @return the executable
      */
     Path java() {
-        Toolchain toolchain = toolchainManager == null ? null
-                : toolchainManager.getToolchainFromBuildContext("jdk", session);
-        if (toolchain != null) {
-            String tool = toolchain.findTool("java");
-            if (tool != null) {
-                getLog().info("Recording with the java of the toolchain " + toolchain);
-                return Path.of(tool);
-            }
-        }
-        Path home = Path.of(System.getProperty("java.home"));
-        Path java = home.resolve("bin").resolve("java");
-        return Files.isExecutable(java) ? java : home.resolve("bin").resolve("java.exe");
-    }
-
-    private static boolean isRunnerJar(File archive) {
-        try {
-            return archive.isFile() && RunnerJarReader.isRunnerJar(archive.toPath());
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    /** Bridges the packaging library's log calls to Maven's logger. */
-    private static final class MavenBuildLogger implements BuildLogger {
-
-        private final Log log;
-
-        private MavenBuildLogger(Log log) {
-            this.log = log;
-        }
-
-        @Override
-        public void info(String message) {
-            log.info(message);
-        }
-
-        @Override
-        public void warn(String message) {
-            log.warn(message);
-        }
+        return MojoSupport.java(toolchainManager, session, getLog(), "Recording");
     }
 }
