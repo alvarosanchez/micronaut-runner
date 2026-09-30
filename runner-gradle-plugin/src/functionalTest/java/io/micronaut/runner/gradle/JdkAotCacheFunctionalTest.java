@@ -173,6 +173,11 @@ class JdkAotCacheFunctionalTest extends AbstractFunctionalTest {
         assertEquals("-XX:AOTCache=app.aot\n-XX:AOTMode=on\n-Xmx256m\n-XX:+UseSerialGC\n",
                 Files.readString(out.resolve("app.jvmopts")));
 
+        // training.jvmArgs belong to the startup profile: the cache never uses them, so it is not trained again.
+        append(buildFile, "micronautRunner { training { jvmArgs = ['-Dprofile.only=true'] } }");
+        BuildResult profileArgs = build(directory, "micronautRunnerJdkAotCache");
+        assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(profileArgs, CACHE_TASK), profileArgs::getOutput);
+
         // The layout alone, for a cache trained elsewhere.
         BuildResult layout = build(directory, "micronautRunnerLayout");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(layout, LAYOUT_TASK), layout::getOutput);

@@ -294,6 +294,9 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
                                     + launcher.getMetadata().getJvmVersion()));
                     JdkAotCacheSpec.conventions(task.getJdkAotCache(), extension.getJdkAotCache());
                     TrainingSpec.conventions(task.getTraining(), extension.getTraining());
+                    // The cache's launches take jdkAotCache.jvmArgs. training.jvmArgs belong to the startup
+                    // profile, so a change to them must not train the cache again.
+                    task.getTraining().getJvmArgs().convention(List.of());
                     task.getOutputDirectory().convention(project.getLayout().getBuildDirectory()
                             .dir("micronaut-runner/jdk-aot-cache"));
                     onlyIfEnabled(task, extension);

@@ -102,7 +102,9 @@ public abstract class MicronautRunnerJdkAotCache extends DefaultTask {
 
     /**
      * How the application is reached, exercised and stopped. Each property takes the value of the extension's
-     * {@code training { }} block as its convention; the block's {@code jvmArgs} are not used, the cache's are.
+     * {@code training { }} block as its convention, except {@code jvmArgs}: the block's belong to the startup
+     * profile, and the cache's launches take {@code jdkAotCache.jvmArgs}, so a change to the block's does not
+     * make this task out of date.
      *
      * @return the training settings
      */
