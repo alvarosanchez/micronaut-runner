@@ -395,7 +395,11 @@ file of binary class names.</div>
 <div class="member-signature"><span class="annotations">@InputFiles
 @PathSensitive(RELATIVE)
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.file.ConfigurableFileCollection</span>&nbsp;<span class="element-name">getApplicationOutput</span>()</div>
-<div class="block">The application's own classes and resources, which become the application layer of the archive.</div>
+<div class="block">The application's own classes and resources, which become the application layer of the archive.
+
+<p>Each file is a directory of classes and resources or a JAR of them. <code>micronautRunnerJar</code> takes the
+main source set's output directories, and <code>optimizedMicronautRunnerJar</code> the archive of Micronaut
+AOT's <code>optimizedJitJar</code> task. When two of them hold an entry of the same name, the first one wins.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the application output</dd>

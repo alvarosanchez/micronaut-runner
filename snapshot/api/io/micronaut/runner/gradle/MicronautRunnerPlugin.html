@@ -59,12 +59,14 @@ loadScripts(document, 'script');</script>
 <li><a href="#field-detail" tabindex="0">Field Details</a>
 <ol class="toc-list">
 <li><a href="#TASK_NAME" tabindex="0">TASK_NAME</a></li>
+<li><a href="#OPTIMIZED_TASK_NAME" tabindex="0">OPTIMIZED_TASK_NAME</a></li>
 <li><a href="#RECORD_TASK_NAME" tabindex="0">RECORD_TASK_NAME</a></li>
 <li><a href="#SHADOW_COLLISION_TASK_NAME" tabindex="0">SHADOW_COLLISION_TASK_NAME</a></li>
 <li><a href="#EXTENSION_NAME" tabindex="0">EXTENSION_NAME</a></li>
 <li><a href="#ELEMENTS_CONFIGURATION_NAME" tabindex="0">ELEMENTS_CONFIGURATION_NAME</a></li>
 <li><a href="#USAGE" tabindex="0">USAGE</a></li>
 <li><a href="#DEFAULT_CLASSIFIER" tabindex="0">DEFAULT_CLASSIFIER</a></li>
+<li><a href="#OPTIMIZED_CLASSIFIER" tabindex="0">OPTIMIZED_CLASSIFIER</a></li>
 </ol>
 </li>
 <li><a href="#constructor-detail" tabindex="0">Constructor Details</a>
@@ -110,8 +112,17 @@ also <code>micronaut.runner</code> in a build that applies a Micronaut plugin. I
 <a href="#ELEMENTS_CONFIGURATION_NAME">"micronautRunnerElements"</a> configuration. It needs no configuration in a project that already
 applies the <code>application</code> plugin: the main class comes from the <code>application</code> block, the
 application classes and resources from the main source set's output, and the dependencies from the
-runtime classpath in resolution order. Only a project that applies a Shadow plugin also gets
-<a href="#SHADOW_COLLISION_TASK_NAME">"validateMicronautRunnerShadowOutputs"</a>, which both archive tasks depend on.</p>
+runtime classpath in resolution order.</p>
+
+<p>A project that applies <code>io.micronaut.aot</code> together with a Micronaut application or library plugin
+also gets <a href="#OPTIMIZED_TASK_NAME">"optimizedMicronautRunnerJar"</a>, in <code>assemble</code> too. It packages the archive of Micronaut AOT's
+<code>optimizedJitJar</code> task as the application layer, with the same dependencies and options, into
+<code>-all-optimized.jar</code>, as Shadow users get <code>optimizedJitJarAll</code> beside <code>shadowJar</code>.
+<a href="#TASK_NAME">"micronautRunnerJar"</a> never packages Micronaut AOT output, and this plugin never applies or runs Micronaut AOT
+on its own.</p>
+
+<p>Only a project that applies a Shadow plugin also gets <a href="#SHADOW_COLLISION_TASK_NAME">"validateMicronautRunnerShadowOutputs"</a>, which each
+Runner task and the Shadow task that writes the same archive name by default depend on.</p>
 
 <p>It also registers <a href="#RECORD_TASK_NAME">"recordStartupProfile"</a>, which launches the archive and records the classes it loads
 at startup to <a href="../build/StartupProfileRecorder.html#PROFILE_LOCATION">"src/main/micronaut-runner/startup-classes.txt"</a>. The task runs only
@@ -150,6 +161,16 @@ publication.</div>
 <div class="block">The name of the extension this plugin creates on the project.</div>
 </div>
 <div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#OPTIMIZED_CLASSIFIER" class="member-name-link">OPTIMIZED_CLASSIFIER</a></code></div>
+<div class="col-last odd-row-color">
+<div class="block">The default archive classifier of <a href="#OPTIMIZED_TASK_NAME">"optimizedMicronautRunnerJar"</a>.</div>
+</div>
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="#OPTIMIZED_TASK_NAME" class="member-name-link">OPTIMIZED_TASK_NAME</a></code></div>
+<div class="col-last even-row-color">
+<div class="block">The task that packages the Micronaut AOT-optimized application.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color"><code><a href="#RECORD_TASK_NAME" class="member-name-link">RECORD_TASK_NAME</a></code></div>
 <div class="col-last odd-row-color">
 <div class="block">The task that records the startup profile.</div>
@@ -162,7 +183,7 @@ publication.</div>
 <div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color"><code><a href="#TASK_NAME" class="member-name-link">TASK_NAME</a></code></div>
 <div class="col-last odd-row-color">
-<div class="block">The name of the task this plugin registers.</div>
+<div class="block">The name of the task this plugin registers in every project.</div>
 </div>
 <div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second even-row-color"><code><a href="#USAGE" class="member-name-link">USAGE</a></code></div>
@@ -221,12 +242,31 @@ publication.</div>
 <h3>TASK_NAME</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">TASK_NAME</span></div>
-<div class="block">The name of the task this plugin registers.</div>
+<div class="block">The name of the task this plugin registers in every project.</div>
 <dl class="notes">
 <dt>See Also:</dt>
 <dd>
 <ul class="tag-list">
 <li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.TASK_NAME">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="OPTIMIZED_TASK_NAME">
+<h3>OPTIMIZED_TASK_NAME</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">OPTIMIZED_TASK_NAME</span></div>
+<div class="block">The task that packages the Micronaut AOT-optimized application. It exists only in a project that applies
+<code>io.micronaut.aot</code> and a Micronaut application or library plugin, which is when Micronaut AOT
+registers the <code>optimizedJitJar</code> task whose archive this one packages.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.OPTIMIZED_TASK_NAME">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>
@@ -334,6 +374,24 @@ Dockerfiles and CI jobs that already refer to the shaded artifact keep working u
 <dd>
 <ul class="tag-list">
 <li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.DEFAULT_CLASSIFIER">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="OPTIMIZED_CLASSIFIER">
+<h3>OPTIMIZED_CLASSIFIER</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">OPTIMIZED_CLASSIFIER</span></div>
+<div class="block">The default archive classifier of <a href="#OPTIMIZED_TASK_NAME">"optimizedMicronautRunnerJar"</a>. It matches the one Micronaut AOT gives
+<code>optimizedJitJarAll</code>, its Shadow JAR of the optimized application.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.OPTIMIZED_CLASSIFIER">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>

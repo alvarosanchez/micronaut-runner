@@ -60,13 +60,15 @@
                                 
                                 <div class="toc-item" style="margin-left:0"><a href="#cdsAndAot"><strong>7</strong><span>Class Data Sharing and the AOT Cache</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#benchmarks"><strong>8</strong><span>Benchmarks</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#micronautAot"><strong>8</strong><span>Micronaut AOT</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#troubleshooting"><strong>9</strong><span>Troubleshooting</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#benchmarks"><strong>9</strong><span>Benchmarks</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#repository"><strong>10</strong><span>Repository</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#troubleshooting"><strong>10</strong><span>Troubleshooting</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#releaseHistory"><strong>11</strong><span>Release History</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#repository"><strong>11</strong><span>Repository</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#releaseHistory"><strong>12</strong><span>Release History</span></a></div>
                                 
                             </div>
                         </div>
@@ -111,13 +113,15 @@
         
         <div class="toc-item" style="margin-left:0px" id="toc-item-cdsAndAot"><a href="#cdsAndAot"><strong>7</strong><span>Class Data Sharing and the AOT Cache</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-benchmarks"><a href="#benchmarks"><strong>8</strong><span>Benchmarks</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-micronautAot"><a href="#micronautAot"><strong>8</strong><span>Micronaut AOT</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-troubleshooting"><a href="#troubleshooting"><strong>9</strong><span>Troubleshooting</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-benchmarks"><a href="#benchmarks"><strong>9</strong><span>Benchmarks</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-repository"><a href="#repository"><strong>10</strong><span>Repository</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-troubleshooting"><a href="#troubleshooting"><strong>10</strong><span>Troubleshooting</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-releaseHistory"><a href="#releaseHistory"><strong>11</strong><span>Release History</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-repository"><a href="#repository"><strong>11</strong><span>Repository</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-releaseHistory"><a href="#releaseHistory"><strong>12</strong><span>Release History</span></a></div>
         
         </div>
     </div>
@@ -306,6 +310,11 @@ archives under one name. The plugin fails the build if it detects that.
 </td>
 </tr>
 </table>
+</div>
+<div class="paragraph">
+<p>A project that also applies <code>io.micronaut.aot</code> gets a second task, <code>optimizedMicronautRunnerJar</code>, which packages the
+Micronaut AOT-optimized application into <code>build/libs/my-app-0.1-all-optimized.jar</code>; <code>micronautRunnerJar</code> and its
+<code>-all.jar</code> stay the plain application. See <a href="#micronautAot">[micronautAot]</a>.</p>
 </div>
 <div class="sect2">
 <h3 id="_configuration">Configuration</h3>
@@ -2048,7 +2057,322 @@ java -Xshare:on -XX:SharedArchiveFile=app.jsa -Xlog:class+load -jar my-app-0.1-a
 </div>
 </div>
 
-<h1 id="benchmarks"><a class="anchor" href="#benchmarks"></a>8 Benchmarks</h1>
+<h1 id="micronautAot"><a class="anchor" href="#micronautAot"></a>8 Micronaut AOT</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/micronautAot.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p><a href="https://micronaut-projects.github.io/micronaut-aot/latest/guide/">Micronaut AOT</a> does part of an application&#8217;s
+startup work when the application is built. Micronaut Launch applies the <code>io.micronaut.aot</code> Gradle plugin to every new
+Gradle application of the default type, next to Shadow, so the fat JAR such a project deploys for a fast JIT start is <code>optimizedJitJarAll</code>,
+the Shadow JAR of the AOT-optimized application. Micronaut Runner packages the same optimized application, without
+applying or running Micronaut AOT itself: it only packages what your build already asked Micronaut AOT for.</p>
+</div>
+<div class="sect1">
+<h2 id="_what_micronaut_aot_does">What Micronaut AOT does</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut AOT starts an <code>ApplicationContext</code> in the build: it loads the application&#8217;s configuration and evaluates the
+<code>@Requires</code> conditions of its beans. From what it finds, it generates classes that replace work at startup, and removes
+resources that are then no longer read. The optimizers behind the flags of the plugin&#8217;s <code>aot { }</code> block are:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 22.2222%;">
+<col style="width: 22.2222%;">
+<col style="width: 55.5556%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Flag</th>
+<th class="tableblock halign-left valign-top">Optimizer</th>
+<th class="tableblock halign-left valign-top">At run time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>replaceLogbackXml</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>logback.xml.to.java</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A generated Logback <code>Configurator</code> replaces <code>logback.xml</code>, so neither the JDK&#8217;s XML parser nor Joran loads</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>optimizeClassLoading</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>known.missing.types</code>, <code>scan.reactive.types</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The classes that Micronaut probes for and that are absent are known, and so are the reactive types: Reactor&#8217;s <code>Flux</code>
+and <code>Mono</code> are then loaded but not initialised at startup</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>optimizeNetty</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>netty.properties</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Netty&#8217;s machine and process IDs are set, not computed</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>deduceEnvironment</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>deduce.environment</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The environments deduced in the build are the application&#8217;s default environments</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>precomputeOperations</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>precompute.environment.properties</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The Micronaut property names of the build machine&#8217;s environment variables are computed in the build</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>cacheEnvironment</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>cached.environment</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Nothing on Micronaut 5: the framework reads the setting before the generated code sets it</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><code>replaceLogbackXml</code> and <code>optimizeClassLoading</code> carry the whole startup gain. In paired A/B runs outside the startup
+harness, on <code>benchmark-large&#8217;s `optimizedJitJarAll</code> with JDK 25.0.4.1, those two plus <code>optimizeNetty</code> made readiness
+47.6 ms (95% CI 42.3 to 58.3) and 57.6 ms (53.7 to 60.9) earlier than no optimizer, in two sessions of 30 pairs, and
+adding <code>cacheEnvironment</code>, <code>deduceEnvironment</code> and <code>precomputeOperations</code> changed nothing measurable (+0.7 ms, −9.3 to
++12.9, and +2.4 ms, −4.6 to +6.2). Micronaut Launch 5.2.0 and later generate those three as <code>false</code>, and so do the
+samples this guide measures.</p>
+</div>
+<div class="paragraph">
+<p>Micronaut AOT 3 does not optimize service loading. Its <code>optimizeServiceLoading</code> flag only logs a warning, so the
+application still discovers its beans and services from <code>META-INF/micronaut</code> and <code>META-INF/services</code> at startup, in a
+Shadow JAR and in a Runner JAR alike. What Micronaut Runner&#8217;s index and its <a href="#staticServices">static service table</a>
+save there therefore still counts in the optimized archive (see <a href="#micronautAotWithRunner">below</a>).</p>
+</div>
+<div class="paragraph">
+<p>Micronaut AOT is not the JDK AOT cache. Micronaut AOT generates application classes in the build, and its output is a
+different application JAR. The JDK AOT cache (<code>-XX:AOTCache</code>, see <a href="#cdsAndAot">[cdsAndAot]</a>) is a file the JVM writes after a
+training run, which stores loaded and linked classes of an unchanged application. They are independent, and they
+combine: see <a href="#micronautAotWithJdkCache">below</a>.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_gradle_optimizedmicronautrunnerjar">Gradle: <code>optimizedMicronautRunnerJar</code></h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>In a project that applies <code>io.micronaut.aot</code> beside a Micronaut application or library plugin, the Runner plugin
+registers a second task, <code>optimizedMicronautRunnerJar</code>. It packages the archive of Micronaut AOT&#8217;s
+<code>optimizedJitJar</code> task as the application layer, with the dependencies, the manifest attributes and the options of
+<code>micronautRunnerJar</code>, into <code>build/libs/my-app-0.1-all-optimized.jar</code>. It is part of <code>assemble</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">plugins {
+    id 'io.micronaut.application' version '5.0.2'
+    id 'io.micronaut.aot' version '5.0.2'
+    id 'io.micronaut.runner.standalone' version '{version}'
+}
+
+micronaut {
+    aot {
+        optimizeClassLoading = true
+        optimizeNetty = true
+        replaceLogbackXml = true
+    }
+}</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">./gradlew optimizedMicronautRunnerJar
+java -jar build/libs/my-app-0.1-all-optimized.jar</code></pre>
+</div>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>optimizedMicronautRunnerJar</code> runs Micronaut AOT&#8217;s tasks, <code>writeJitAOTConfig</code>, <code>prepareJitOptimizations</code>,
+<code>mergeServiceFilesForOptimizedJitJar</code> and <code>optimizedJitJar</code>, and <code>jar</code>, whose archive the service-file merge reads.</p>
+</li>
+<li>
+<p><code>micronautRunnerJar</code> runs none of them. <code>-all.jar</code> stays the plain application, as Shadow&#8217;s <code>-all.jar</code> does, so
+choosing Runner over Shadow never changes what the application does at run time.</p>
+</li>
+<li>
+<p>The options in <code>micronaut { runner { } }</code> apply to both tasks, and a setting on one task wins for that task. That
+includes the committed <a href="#preload">startup profile</a>: both archives embed it, and <code>recordStartupProfile</code> records it
+from <code>-all.jar</code>. A list fits the archive it was recorded from, and the optimized application loads other classes, so
+for the optimized archive record the JVM&#8217;s class-load log of a run of <code>-all-optimized.jar</code>, with
+<code>-Dmicronaut.runner.preload=false</code> so the embedded profile is not replayed into it, and set it with
+<code>optimizedMicronautRunnerJar { startupClasses = file('&#8230;&#8203;') }</code>. A list that does not fit is safe; its extra classes
+are loaded for nothing.</p>
+</li>
+<li>
+<p><code>micronautRunnerElements</code> carries <code>-all.jar</code> only (see <a href="#quickStart">[quickStart]</a>).</p>
+</li>
+<li>
+<p>Without <code>io.micronaut.aot</code>, or without a Micronaut application or library plugin, there is no
+<code>optimizedMicronautRunnerJar</code>.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>With a Shadow plugin also applied, Micronaut AOT&#8217;s <code>optimizedJitJarAll</code> writes the same <code>-all-optimized.jar</code>, as
+<code>shadowJar</code> and <code>micronautRunnerJar</code> both write <code>-all.jar</code>. The plugin fails every build that requests one of those
+four tasks while a pair shares a file, before either task of the pair writes it. Remove Shadow, or give one task of
+each pair another classifier. Micronaut AOT registers <code>optimizedJitJarAll</code> after the build script has run, so a name
+filter configures it:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">tasks.named('shadowJar') {
+    archiveClassifier = 'shadow'
+}
+tasks.named { it == 'optimizedJitJarAll' }.configureEach {
+    archiveClassifier = 'shadow-optimized'
+}</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_what_the_optimized_archive_changes_at_run_time">What the optimized archive changes at run time</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><code>-all-optimized.jar</code> is a different application from <code>-all.jar</code>, in a Runner JAR exactly as in <code>optimizedJitJarAll</code>.
+With Micronaut AOT 3.0.0, which micronaut-gradle-plugin 5.0.2 uses by default:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Logback.</strong> The generated configurator ignores <code>-Dlogback.configurationFile</code>, <code>-Dlogger.config</code> and <code>LOGGER_CONFIG</code>:
+the configuration compiled in the build is the one that applies
+(<a href="https://github.com/micronaut-projects/micronaut-aot/issues/512">micronaut-projects/micronaut-aot#512</a>,
+<a href="https://github.com/micronaut-projects/micronaut-core/issues/13390">micronaut-projects/micronaut-core#13390</a>). <code>-all.jar</code>
+honours all three, with and without <a href="#precompiledLogback">Runner&#8217;s own precompiled configuration</a>.</p>
+</li>
+<li>
+<p><strong>Netty.</strong> With <code>optimizeNetty</code>, the generated code always sets <code>io.netty.machineId</code> and <code>io.netty.processId</code>, so
+<code>-Dio.netty.machineId</code> and <code>-Dio.netty.processId</code> are overridden.</p>
+</li>
+<li>
+<p><strong>Reactive types.</strong> With <code>optimizeClassLoading</code>, the lists of reactive types are fixed-size, so
+<code>Publishers.registerReactiveType</code>, <code>registerReactiveSingle</code> and <code>registerReactiveCompletable</code> throw
+<code>UnsupportedOperationException</code>. micronaut-core 5.1 to 5.3, micronaut-reactor, micronaut-rxjava3 and micronaut-kotlin
+never call them.</p>
+</li>
+<li>
+<p><strong>Environments.</strong> With <code>deduceEnvironment</code>, the environments deduced on the build machine become the application&#8217;s
+default environments, and deduction at startup is off.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The Netty and reactive-type behaviour is fixed on micronaut-aot&#8217;s <code>3.1.x</code> branch and not yet released
+(<a href="https://github.com/micronaut-projects/micronaut-aot/issues/513">micronaut-projects/micronaut-aot#513</a>). The way back
+is always the same: deploy <code>-all.jar</code>, or turn off the flag that causes the change, for Logback
+<code>replaceLogbackXml = false</code>.</p>
+</div>
+<div id="micronautAotWithRunner" class="paragraph">
+<p>In <code>-all-optimized.jar</code>, Micronaut Runner&#8217;s <a href="#precompiledLogback">Logback precompilation</a> stands down, because Micronaut
+AOT has removed <code>logback.xml</code> and registered its own <code>Configurator</code>. The archive therefore has Micronaut AOT&#8217;s Logback
+behaviour above, not Runner&#8217;s. The <a href="#staticServices">static service table</a> still applies: Micronaut AOT 3 leaves
+service discovery to the scan, so the table&#8217;s loader is put in front of Micronaut AOT&#8217;s own in the application&#8217;s
+<code>META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader</code>. For a Micronaut AOT whose loaders supply
+Micronaut&#8217;s service loaders, the table stands down by itself. The <a href="#classTransforms">dependency class transforms</a> apply
+to both archives.</p>
+</div>
+<div class="paragraph">
+<p>Until a micronaut-core release probes the reactive types without initialising them
+(<a href="https://github.com/micronaut-projects/micronaut-core/issues/13387">micronaut-projects/micronaut-core#13387</a>, merged
+for 5.3), <code>optimizeClassLoading</code> is how a Runner JAR gets that deferral.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_maven">Maven</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Maven has no separate optimized archive. micronaut-maven-plugin&#8217;s <code>aot-analysis</code> goal runs in <code>prepare-package</code> and
+rewrites <code>target/classes</code>: it adds the generated classes and deletes the resources they replace. Micronaut Runner&#8217;s
+<code>package</code> goal runs later and packages <code>target/classes</code>, so whenever <code>aot-analysis</code> runs, the Runner JAR is the
+optimized application. Each plugin follows its own build tool&#8217;s convention.</p>
+</div>
+<div class="paragraph">
+<p>In a project built on <code>micronaut-parent</code>, micronaut-maven-plugin binds <code>aot-analysis</code> itself, and
+<code>micronaut.aot.enabled</code> turns it on. A project without the parent adds the standalone plugin, as this profile does;
+it is the setup that was checked with Micronaut Runner:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;profile&gt;
+    &lt;id&gt;micronaut-aot&lt;/id&gt;
+    &lt;properties&gt;
+        &lt;micronaut.aot.enabled&gt;true&lt;/micronaut.aot.enabled&gt;
+        &lt;micronaut.aot.version&gt;3.0.0&lt;/micronaut.aot.version&gt;
+        &lt;micronaut.aot.packageName&gt;com.example.aot&lt;/micronaut.aot.packageName&gt;
+    &lt;/properties&gt;
+    &lt;build&gt;
+        &lt;plugins&gt;
+            &lt;plugin&gt;
+                &lt;groupId&gt;io.micronaut.maven&lt;/groupId&gt;
+                &lt;artifactId&gt;micronaut-maven-aot-plugin&lt;/artifactId&gt;
+                &lt;version&gt;5.0.2&lt;/version&gt;
+                &lt;configuration&gt;
+                    &lt;aotDependencies&gt;
+                        &lt;dependency&gt;
+                            &lt;groupId&gt;ch.qos.logback&lt;/groupId&gt;
+                            &lt;artifactId&gt;logback-classic&lt;/artifactId&gt;
+                            &lt;version&gt;1.5.37&lt;/version&gt;
+                        &lt;/dependency&gt;
+                    &lt;/aotDependencies&gt;
+                &lt;/configuration&gt;
+                &lt;executions&gt;
+                    &lt;execution&gt;
+                        &lt;goals&gt;
+                            &lt;goal&gt;aot-analysis&lt;/goal&gt;
+                        &lt;/goals&gt;
+                    &lt;/execution&gt;
+                &lt;/executions&gt;
+            &lt;/plugin&gt;
+        &lt;/plugins&gt;
+    &lt;/build&gt;
+&lt;/profile&gt;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The optimizers are chosen in <code>aot.properties</code>, next to the POM:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">logback.xml.to.java.enabled = true</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><code>mvn package -Pmicronaut-aot</code> then writes a Runner JAR with <code>com/example/aot/AOTApplicationContextConfigurer.class</code> in
+its application layer and no <code>logback.xml</code>. To deploy the plain application, package without the profile.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="micronautAotWithJdkCache">With the JDK AOT cache</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Train the cache on the archive that production launches: run the training script of <a href="#cdsAndAot">[cdsAndAot]</a>
+(<a href="#trainingSnippet">[trainingSnippet]</a>) with <code>JAR</code> set to the <code>optimizedMicronautRunnerJar</code> archive, then launch with
+<code>java -XX:AOTCache=app.aot -jar my-app-0.1-all-optimized.jar</code>, adding <code>-XX:AOTMode=on</code> when the application must not
+start without its cache. A cache trained on <code>-all.jar</code> does not fit <code>-all-optimized.jar</code>.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_is_it_worth_it">Is it worth it</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Without a JDK cache, yes: on <code>benchmark-large</code> with JDK 25, <code>-all-optimized.jar</code> was ready about 78 ms before Micronaut
+AOT&#8217;s <code>optimizedJitJarAll</code>, and even Runner&#8217;s plain <code>-all.jar</code> was about 58 ms ahead of it. With a JDK AOT cache on
+both sides, no: the single <code>-all-optimized.jar</code> was about 23 ms behind <code>optimizedJitJarAll</code> on JDK 25, and on JDK 27 the
+cache stores none of a single Runner JAR&#8217;s application classes (<a href="#cdsAndAot">[cdsAndAot]</a>). <a href="#micronautAotResults">[micronautAotResults]</a> has the
+numbers, the sizes and the second session.</p>
+</div>
+</div>
+</div>
+
+<h1 id="benchmarks"><a class="anchor" href="#benchmarks"></a>9 Benchmarks</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/benchmarks.adoc"'>
@@ -2230,6 +2554,25 @@ application-class-verified JDK AOT cache; compared with <code>runner-stored-aot<
 <td class="tableblock halign-left valign-top"><p class="tableblock">The identical extracted layout and manifest class path with a trained, application-class-verified JDK AOT
 cache</p></td>
 </tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-maot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Micronaut AOT&#8217;s <code>optimizedJitJarAll</code>, unmodified: the AOT-optimized application flattened by Shadow. In a row name,
+<code>maot</code> is Micronaut AOT (<a href="#micronautAot">[micronautAot]</a>), and the <code>-aot</code> suffix stays the JDK AOT cache</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-maot-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the identical <code>optimizedJitJarAll</code> with a trained, application-class-verified JDK AOT cache</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR of the Micronaut AOT-optimized application: <code>runner-stored</code> with the sample&#8217;s <code>optimizedJitJar</code> archive as
+its application layer, which is what the Gradle plugin&#8217;s <code>optimizedMicronautRunnerJar</code> packages. It is built with the
+packaging library&#8217;s defaults of the day, like <code>runner-stored</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the identical <code>runner-maot</code> JAR with a trained, application-class-verified JDK AOT cache</p></td>
+</tr>
 </tbody>
 </table>
 </dd>
@@ -2243,8 +2586,9 @@ it captures class loading on the first request. The framework&#8217;s own "start
 separately rather than substituted for readiness.</p>
 </div>
 <div class="paragraph">
-<p>The cache pairs are <code>runner-stored</code>/<code>runner-stored-aot</code>, <code>shadow</code>/<code>shadow-aot</code>, and
-<code>runner-extracted</code>/<code>runner-extracted-aot</code>. Each pair shares the exact artifact bytes, ordered class path,
+<p>The cache pairs are <code>runner-stored</code>/<code>runner-stored-aot</code>, <code>shadow</code>/<code>shadow-aot</code>,
+<code>runner-extracted</code>/<code>runner-extracted-aot</code> and, with the opt-in rows, <code>shadow-maot</code>/<code>shadow-maot-aot</code> and
+<code>runner-maot</code>/<code>runner-maot-aot</code>. Each pair shares the exact artifact bytes, ordered class path,
 working directory, measured workload and JVM options except for the one application-cache selection option.
 Default JDK class sharing remains enabled when the selected JDK enables it, but reuse of platform classes from
 the JDK&#8217;s default archive is not evidence of trained application-class AOT cache reuse; default JDK class
@@ -2260,6 +2604,15 @@ local-variable tables. The opt-in pairs <code>runner-stored</code>/<code>runner-
 <p>The compression-matched pairs are <code>runner-stored</code>/<code>shadow-stored</code>, where neither side inflates class bytes, and
 <code>runner-preserve</code>/<code>shadow</code>, where both do; they measure what Runner&#8217;s layout itself buys. <code>runner-stored</code>/<code>shadow</code>
 is the default-vs-default pair, and its difference also includes the cost of inflating Shadow&#8217;s DEFLATED entries.</p>
+</div>
+<div class="paragraph">
+<p>The Micronaut AOT pairs are <code>runner-maot</code>/<code>shadow-maot</code>, the like-for-like pair, in which both archives hold the same
+AOT-optimized application; <code>runner-stored</code>/<code>shadow-maot</code>, Runner&#8217;s <code>-all.jar</code> against Shadow&#8217;s <code>-all-optimized.jar</code>;
+and <code>runner-maot</code>/<code>runner-stored</code> and <code>shadow-maot</code>/<code>shadow</code>, which measure what Micronaut AOT adds to each packaging.
+<code>runner-maot</code> takes the same packaging defaults as <code>runner-stored</code>, so <code>runner-maot</code>/<code>runner-stored</code> is what
+<code>-all-optimized.jar</code> adds on top of them: Micronaut AOT&#8217;s own Logback configurator takes the place of the
+<a href="#precompiledLogback">precompiled one</a>, which is why that gain is smaller than Micronaut AOT&#8217;s gain on Shadow. With
+the opt-in rows, <code>runner-maot-aot</code>/<code>shadow-maot-aot</code> compares the two with a JDK AOT cache on each side.</p>
 </div>
 </div>
 </div>
@@ -2378,8 +2731,9 @@ covers it: it is checked at one CPU by hand with <code>taskset -c 0</code>.</p>
 <div class="sect2">
 <h3 id="_trained_cache_matrix">Trained-cache matrix</h3>
 <div class="paragraph">
-<p>All three cache pairs, <code>runner-stored</code>/<code>runner-stored-aot</code>, <code>shadow</code>/<code>shadow-aot</code> and
-<code>runner-extracted</code>/<code>runner-extracted-aot</code>, use the JDK AOT cache, so a trained Runner layout is never compared
+<p>All the cache pairs, <code>runner-stored</code>/<code>runner-stored-aot</code>, <code>shadow</code>/<code>shadow-aot</code>,
+<code>runner-extracted</code>/<code>runner-extracted-aot</code> and the opt-in <code>shadow-maot</code>/<code>shadow-maot-aot</code> and
+<code>runner-maot</code>/<code>runner-maot-aot</code>, use the JDK AOT cache, so a trained Runner layout is never compared
 only with an untrained Shadow layout. Classes that Runner&#8217;s loader defines are cached but not AOT-linked. JDK AOT
 caching is not GraalVM Native Image.</p>
 </div>
@@ -2401,7 +2755,7 @@ measurements. The cached variants require JDK 25 or later: training
 uses <code>-XX:AOTCacheOutput=&lt;cache&gt;</code> and measured use adds <code>-XX:AOTMode=on -XX:AOTCache=&lt;cache&gt;</code>, so a missing or
 unusable cache fails the launch. They launch the actual Shadow JAR, Runner JAR or extracted application JAR,
 with no helper or wrapper added to either paired class path. See <a href="#cdsAndAot">[cdsAndAot]</a> for the reproducible extraction
-and deployment workflow. These three rows make the trained application cache mode explicit rather than
+and deployment workflow. These rows make the trained application cache mode explicit rather than
 inferring it from default JDK class sharing.</p>
 </div>
 <div class="paragraph">
@@ -2419,9 +2773,9 @@ inferring it from default JDK class sharing.</p>
 </div>
 </div>
 <div class="paragraph">
-<p>The <code>optionalRows</code> command adds the opt-in rows, such as the entry-stub ablation and the local-variable-table
-controls. Run it with 40 iterations: at 20, the stub effect&#8217;s interval still spanned zero. The last command
-measures one pair on one CPU; see <a href="#benchmarkConditions">Page cache, CPU limit and row selection</a>.</p>
+<p>The <code>optionalRows</code> command adds the opt-in rows, such as the entry-stub ablation, the local-variable-table
+controls and the cached Micronaut AOT pair. Run it with 40 iterations: at 20, the stub effect&#8217;s interval still
+spanned zero. The last command measures one pair on one CPU; see <a href="#benchmarkConditions">Page cache, CPU limit and row selection</a>.</p>
 </div>
 <div class="paragraph">
 <p>The description of every Runner row says <code>static services: N slots (core V)</code> when its JAR carries a
@@ -2503,6 +2857,88 @@ compressing only resources could not close that gap.</p>
 </div>
 </div>
 <div class="sect1">
+<h2 id="micronautAotResults">Runner against Micronaut AOT&#8217;s Shadow JAR</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut Launch applies <code>io.micronaut.aot</code> and Shadow to every new Gradle application of the default type, so the fat
+JAR that Runner has to beat is <code>optimizedJitJarAll</code> (<code>shadow-maot</code>), not <code>shadowJar</code>. On <code>benchmark-large</code> (Micronaut 5.1.15, Netty
+4.2.18, Micronaut AOT 3.0.0 with the <code>aot { }</code> block of Micronaut Launch 5.2.0), on macOS 26.6.2 with 12 Apple Silicon
+CPUs and JDK 25.0.4.1, one interleaved run of 20 pairs gave these paired median differences, candidate − baseline:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 16.6666%;">
+<col style="width: 25%;">
+<col style="width: 25.0001%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Comparison</th>
+<th class="tableblock halign-left valign-top">Δ readiness</th>
+<th class="tableblock halign-left valign-top">95% CI</th>
+<th class="tableblock halign-left valign-top">Medians</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot</code> − <code>shadow-maot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−77.8 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−85.1 to −70.2 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">391.0 against 465.7 ms</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored</code> − <code>shadow-maot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−57.8 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−73.6 to −48.2 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">412.3 against 465.7 ms</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot</code> − <code>runner-stored</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−24.3 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−44.9 to −13.7 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">391.0 against 412.3 ms</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-maot</code> − <code>shadow</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−48.2 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−58.8 to −42.8 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">465.7 against 515.3 ms</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot-aot</code> − <code>shadow-maot-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+23.4 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+17.3 to +27.1 ms</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">245.8 against 224.7 ms</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>A second complete session, limited to these rows with <code>-Pbenchmarks.variants</code>, gave medians of the same sign and
+intervals that overlap these: in the order of the table, −83.3 ms (−89.9 to −78.5), −66.8 ms (−74.7 to −56.4),
+−20.8 ms (−23.8 to −13.6), −53.7 ms (−62.6 to −42.9) and +22.8 ms (+21.1 to +26.6).</p>
+</div>
+<div class="paragraph">
+<p>Without a JDK cache, Runner beats Micronaut AOT&#8217;s Shadow JAR: by about 78 ms when both hold the AOT-optimized
+application, and by about 58 ms when the Runner JAR is the plain <code>-all.jar</code>. With a JDK AOT cache on both sides it does
+not: the single <code>-all-optimized.jar</code> was about 23 ms behind on JDK 25 (on JDK 27 and later, see <a href="#cdsAndAot">[cdsAndAot]</a>). The
+Runner rows used the packaging defaults of the day: STORED, the entry stub, stripped local-variable tables, precompiled
+Logback, which stands down in <code>runner-maot</code> for Micronaut AOT&#8217;s own configurator, and the static service table, which
+applies to both. That is why Micronaut AOT adds less to Runner than to Shadow, whose plain JAR still configures Logback
+with Joran.</p>
+</div>
+<div class="paragraph">
+<p>Size and memory go the other way in places. The <code>runner-maot</code> JAR is 2.22 times the <code>shadow-maot</code> JAR on disk
+(32,815,589 against 14,773,677 B) and 0.64 times gzipped (8,368,963 against 13,083,293 B); with their caches the
+deployments are 78,019,045 against 64,007,597 B raw (1.22 times) and 19,033,547 against 24,704,764 B gzipped (0.77
+times). Private memory at readiness is not a paired result: the harness reports it as the difference of the two
+per-variant medians, with no interval, and the uncached gap moved between sessions. <code>runner-maot</code> used 16.4 MiB less
+than <code>shadow-maot</code> in the run above and 43.7 MiB less in the second session; <code>runner-maot-aot</code> used 17.7 and 17.1 MiB
+more than <code>shadow-maot-aot</code>.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
 <h2 id="_publishing_results">Publishing results</h2>
 <div class="sectionbody">
 <div class="paragraph">
@@ -2529,7 +2965,7 @@ environment of interest and treat its output as local descriptive evidence rathe
 </div>
 </div>
 
-<h1 id="troubleshooting"><a class="anchor" href="#troubleshooting"></a>9 Troubleshooting</h1>
+<h1 id="troubleshooting"><a class="anchor" href="#troubleshooting"></a>10 Troubleshooting</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/troubleshooting.adoc"'>
@@ -2625,7 +3061,7 @@ of them.</p>
 </div>
 </div>
 
-<h1 id="repository"><a class="anchor" href="#repository"></a>10 Repository</h1>
+<h1 id="repository"><a class="anchor" href="#repository"></a>11 Repository</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/repository.adoc"'>
@@ -2641,7 +3077,7 @@ of them.</p>
 <p><a href="https://github.com/micronaut-projects/micronaut-runner">https://github.com/micronaut-projects/micronaut-runner</a></p>
 </div>
 
-<h1 id="releaseHistory"><a class="anchor" href="#releaseHistory"></a>11 Release History</h1>
+<h1 id="releaseHistory"><a class="anchor" href="#releaseHistory"></a>12 Release History</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/releaseHistory.adoc"'>

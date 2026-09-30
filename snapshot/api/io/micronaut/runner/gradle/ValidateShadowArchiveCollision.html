@@ -64,8 +64,7 @@ loadScripts(document, 'script');</script>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
-<li><a href="#getRunnerArchive()" tabindex="0">getRunnerArchive()</a></li>
-<li><a href="#getShadowArchive()" tabindex="0">getShadowArchive()</a></li>
+<li><a href="#getArchivePairs()" tabindex="0">getArchivePairs()</a></li>
 <li><a href="#validate()" tabindex="0">validate()</a></li>
 </ol>
 </li>
@@ -93,7 +92,12 @@ loadScripts(document, 'script');</script>
 <div class="type-signature"><span class="annotations">@DisableCachingByDefault(because="The collision must be checked before every archive task execution")
 </span><span class="modifiers">public abstract class </span><span class="element-name type-name-label">ValidateShadowArchiveCollision</span>
 <span class="extends-implements">extends org.gradle.api.DefaultTask</span></div>
-<div class="block">Rejects a Shadow archive that shares the runner archive's output before either producer executes.
+<div class="block">Rejects a Shadow archive that shares a runner archive's output before either producer executes.
+
+<p>A Runner task and a Shadow task form a pair when they write the same archive name by default:
+<code>micronautRunnerJar</code> and <code>shadowJar</code>, and, with Micronaut AOT, <code>optimizedMicronautRunnerJar</code>
+and <code>optimizedJitJarAll</code>. Every task of every pair depends on this one, which checks all of the pairs,
+so a build that requests one archive also learns that another pair would collide.</p>
 
 <p>This task deliberately declares no outputs, so Gradle runs the validation even when the archive tasks
 are up to date or restored from the build cache. The archive locations are internal rather than file
@@ -107,6 +111,17 @@ include generated archive contents in another task's cache key.</p></div>
 <li>
 <section class="nested-class-summary" id="nested-class-summary">
 <h2>Nested Class Summary</h2>
+<div class="caption"><span>Nested Classes</span></div>
+<div class="summary-table three-column-summary">
+<div class="table-header col-first">Modifier and Type</div>
+<div class="table-header col-second">Class</div>
+<div class="table-header col-last">Description</div>
+<div class="col-first even-row-color"><code>static final record&nbsp;</code></div>
+<div class="col-second even-row-color"><code><a href="ValidateShadowArchiveCollision.ArchivePair.html" class="type-name-link" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision.ArchivePair</a></code></div>
+<div class="col-last even-row-color">
+<div class="block">A Runner task and the Shadow task that writes the same archive name by default.</div>
+</div>
+</div>
 <div class="inherited-list">
 <h3 id="nested-classes-inherited-from-class-org.gradle.api.Named">Nested classes/interfaces inherited from interface&nbsp;org.gradle.api.Named</h3>
 <code>org.gradle.api.Named.Namer</code></div>
@@ -145,20 +160,15 @@ include generated archive contents in another task's cache key.</p></div>
 <div class="table-header col-first">Modifier and Type</div>
 <div class="table-header col-second">Method</div>
 <div class="table-header col-last">Description</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getRunnerArchive()" class="member-name-link">getRunnerArchive</a>()</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.ListProperty<wbr>&lt;<a href="ValidateShadowArchiveCollision.ArchivePair.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision.ArchivePair</a>&gt;</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getArchivePairs()" class="member-name-link">getArchivePairs</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">The runner archive location.</div>
+<div class="block">The Runner and Shadow tasks that must not write one file, with where each one writes.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getShadowArchive()" class="member-name-link">getShadowArchive</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
-<div class="block">The Shadow archive location.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#validate()" class="member-name-link">validate</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Rejects equal output locations before either archive producer executes.</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#validate()" class="member-name-link">validate</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Rejects equal output locations before either archive producer of a pair executes.</div>
 </div>
 </div>
 </div>
@@ -203,29 +213,15 @@ include generated archive contents in another task's cache key.</p></div>
 <h2>Method Details</h2>
 <ul class="member-list">
 <li>
-<section class="detail" id="getRunnerArchive()">
-<h3>getRunnerArchive</h3>
+<section class="detail" id="getArchivePairs()">
+<h3>getArchivePairs</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="annotations">@Internal
-</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.file.RegularFileProperty</span>&nbsp;<span class="element-name">getRunnerArchive</span>()</div>
-<div class="block">The runner archive location.</div>
+</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.ListProperty&lt;<a href="ValidateShadowArchiveCollision.ArchivePair.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision.ArchivePair</a>&gt;</span>&nbsp;<span class="element-name">getArchivePairs</span>()</div>
+<div class="block">The Runner and Shadow tasks that must not write one file, with where each one writes.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the runner archive</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="getShadowArchive()">
-<h3>getShadowArchive</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="annotations">@Internal
-</span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.file.RegularFileProperty</span>&nbsp;<span class="element-name">getShadowArchive</span>()</div>
-<div class="block">The Shadow archive location.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>the Shadow archive</dd>
+<dd>the pairs</dd>
 </dl>
 </div>
 </section>
@@ -235,7 +231,7 @@ include generated archive contents in another task's cache key.</p></div>
 <h3>validate</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">void</span>&nbsp;<span class="element-name">validate</span>()</div>
-<div class="block">Rejects equal output locations before either archive producer executes.</div>
+<div class="block">Rejects equal output locations before either archive producer of a pair executes.</div>
 </div>
 </section>
 </li>
