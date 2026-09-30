@@ -96,8 +96,10 @@ loadScripts(document, 'script');</script>
 <li><a href="#H_LAUNCHER_VERSION" tabindex="0">H_LAUNCHER_VERSION</a></li>
 <li><a href="#H_PACKAGE_COUNT" tabindex="0">H_PACKAGE_COUNT</a></li>
 <li><a href="#H_RESERVED" tabindex="0">H_RESERVED</a></li>
+<li><a href="#H_LARGEST_STORED_CLASS" tabindex="0">H_LARGEST_STORED_CLASS</a></li>
 <li><a href="#HEADER_FLAG_NESTED_STORED" tabindex="0">HEADER_FLAG_NESTED_STORED</a></li>
 <li><a href="#HEADER_FLAG_APP_MULTI_RELEASE" tabindex="0">HEADER_FLAG_APP_MULTI_RELEASE</a></li>
+<li><a href="#HEADER_FLAG_POSITIONAL_READS" tabindex="0">HEADER_FLAG_POSITIONAL_READS</a></li>
 <li><a href="#JAR_RECORD_SIZE" tabindex="0">JAR_RECORD_SIZE</a></li>
 <li><a href="#APPLICATION_JAR_ID" tabindex="0">APPLICATION_JAR_ID</a></li>
 <li><a href="#J_DATA_OFFSET" tabindex="0">J_DATA_OFFSET</a></li>
@@ -420,44 +422,56 @@ directory.</div>
 <div class="col-second odd-row-color"><code><a href="#H_JAR_TABLE_OFFSET" class="member-name-link">H_JAR_TABLE_OFFSET</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_LAUNCHER_VERSION" class="member-name-link">H_LAUNCHER_VERSION</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_MAGIC" class="member-name-link">H_MAGIC</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_MAX_PROBE" class="member-name-link">H_MAX_PROBE</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_OUTER_FILE_LENGTH" class="member-name-link">H_OUTER_FILE_LENGTH</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_PACKAGE_COUNT" class="member-name-link">H_PACKAGE_COUNT</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_PACKAGE_TABLE_OFFSET" class="member-name-link">H_PACKAGE_TABLE_OFFSET</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_RESERVED" class="member-name-link">H_RESERVED</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_START_CLASS" class="member-name-link">H_START_CLASS</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_STRING_TABLE_LENGTH" class="member-name-link">H_STRING_TABLE_LENGTH</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_STRING_TABLE_OFFSET" class="member-name-link">H_STRING_TABLE_OFFSET</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#HEADER_FLAG_APP_MULTI_RELEASE" class="member-name-link">HEADER_FLAG_APP_MULTI_RELEASE</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_LARGEST_STORED_CLASS" class="member-name-link">H_LARGEST_STORED_CLASS</a></code></div>
 <div class="col-last even-row-color">
-<div class="block">Header flag: the application layer is itself multi-release.</div>
+<div class="block">The largest uncompressed size of a STORED <code>.class</code> record, which sizes the launcher's pooled read
+buffers.</div>
 </div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#HEADER_FLAG_NESTED_STORED" class="member-name-link">HEADER_FLAG_NESTED_STORED</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_LAUNCHER_VERSION" class="member-name-link">H_LAUNCHER_VERSION</a></code></div>
+<div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#H_MAGIC" class="member-name-link">H_MAGIC</a></code></div>
+<div class="col-last even-row-color">&nbsp;</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#H_MAX_PROBE" class="member-name-link">H_MAX_PROBE</a></code></div>
+<div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#H_OUTER_FILE_LENGTH" class="member-name-link">H_OUTER_FILE_LENGTH</a></code></div>
+<div class="col-last even-row-color">&nbsp;</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#H_PACKAGE_COUNT" class="member-name-link">H_PACKAGE_COUNT</a></code></div>
+<div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#H_PACKAGE_TABLE_OFFSET" class="member-name-link">H_PACKAGE_TABLE_OFFSET</a></code></div>
+<div class="col-last even-row-color">&nbsp;</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#H_RESERVED" class="member-name-link">H_RESERVED</a></code></div>
+<div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#H_START_CLASS" class="member-name-link">H_START_CLASS</a></code></div>
+<div class="col-last even-row-color">&nbsp;</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#H_STRING_TABLE_LENGTH" class="member-name-link">H_STRING_TABLE_LENGTH</a></code></div>
+<div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#H_STRING_TABLE_OFFSET" class="member-name-link">H_STRING_TABLE_OFFSET</a></code></div>
+<div class="col-last even-row-color">&nbsp;</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#HEADER_FLAG_APP_MULTI_RELEASE" class="member-name-link">HEADER_FLAG_APP_MULTI_RELEASE</a></code></div>
 <div class="col-last odd-row-color">
+<div class="block">Header flag: the application layer is itself multi-release.</div>
+</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#HEADER_FLAG_NESTED_STORED" class="member-name-link">HEADER_FLAG_NESTED_STORED</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Header flag: the nested jars were re-packed with all entries STORED.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#HEADER_FLAG_POSITIONAL_READS" class="member-name-link">HEADER_FLAG_POSITIONAL_READS</a></code></div>
+<div class="col-last odd-row-color">
+<div class="block">Header flag: the packager chose positional reads, so a launcher left to decide maps only the index and
+reads every class with a positional read into a pooled buffer instead of mapping the whole archive.</div>
 </div>
 <div class="col-first even-row-color"><code>static final int</code></div>
 <div class="col-second even-row-color"><code><a href="#HEADER_SIZE" class="member-name-link">HEADER_SIZE</a></code></div>
@@ -1266,6 +1280,24 @@ directory.</div>
 </section>
 </li>
 <li>
+<section class="detail" id="H_LARGEST_STORED_CLASS">
+<h3>H_LARGEST_STORED_CLASS</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">H_LARGEST_STORED_CLASS</span></div>
+<div class="block">The largest uncompressed size of a STORED <code>.class</code> record, which sizes the launcher's pooled read
+buffers. Written only together with <a href="#HEADER_FLAG_POSITIONAL_READS"><code>HEADER_FLAG_POSITIONAL_READS</code></a>; <code>0</code> means not recorded.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.H_LARGEST_STORED_CLASS">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
 <section class="detail" id="HEADER_FLAG_NESTED_STORED">
 <h3>HEADER_FLAG_NESTED_STORED</h3>
 <div class="horizontal-scroll">
@@ -1293,6 +1325,25 @@ directory.</div>
 <dd>
 <ul class="tag-list">
 <li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="HEADER_FLAG_POSITIONAL_READS">
+<h3>HEADER_FLAG_POSITIONAL_READS</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">HEADER_FLAG_POSITIONAL_READS</span></div>
+<div class="block">Header flag: the packager chose positional reads, so a launcher left to decide maps only the index and
+reads every class with a positional read into a pooled buffer instead of mapping the whole archive.
+Launchers that predate the flag ignore it; <code>micronaut.runner.mmap</code> overrides it.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.HEADER_FLAG_POSITIONAL_READS">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>

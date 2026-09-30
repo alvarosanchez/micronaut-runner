@@ -135,8 +135,26 @@ precedence.</div>
 <dd>
 <div class="block">The registered archive.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#ARCHIVE_READS" class="member-name-link">ARCHIVE_READS</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">How the launcher reads the archive when <code>micronaut.runner.mmap</code> does not say, an
+<a href="io/micronaut/runner/build/ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a> name.</div>
+</dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#archive-immutability-heading" class="search-tag-link">Archive immutability</a> - Section in class io.micronaut.runner.ArchiveSource</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#archiveReads()" class="member-name-link">archiveReads()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
+<dd>
+<div class="block">How the launcher reads the archive when <code>micronaut.runner.mmap</code> does not say: by mapping all of it,
+or by mapping only the index and reading classes positionally.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#archiveReads(io.micronaut.runner.build.ArchiveReads)" class="member-name-link">archiveReads(ArchiveReads)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
+<dd>
+<div class="block">Sets how the launcher reads the archive when <code>micronaut.runner.mmap</code> does not say.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/ArchiveReads.html" class="type-name-link" title="enum class in io.micronaut.runner.build">ArchiveReads</a> - Enum Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
+<dd>
+<div class="block">How the launcher reads the runner jar at run time when <code>micronaut.runner.mmap</code> does not say.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarResult.html#archiveSize()" class="member-name-link">archiveSize()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
 <div class="block">The length of the archive.</div>
@@ -261,7 +279,7 @@ precedence.</div>
 </dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#close()" class="member-name-link">close()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
-<div class="block">Releases the mapping and the file handle.</div>
+<div class="block">Releases the mappings, the buffer pool and the file handle.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarReader.html#close()" class="member-name-link">close()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></dt>
 <dd>
@@ -1011,6 +1029,11 @@ ordinary entry, and the <code>META-INF/versions/&lt;n&gt;/...</code> name for a 
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#H_JAR_TABLE_OFFSET" class="member-name-link">H_JAR_TABLE_OFFSET</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/IndexFormat.html#H_LARGEST_STORED_CLASS" class="member-name-link">H_LARGEST_STORED_CLASS</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
+<dd>
+<div class="block">The largest uncompressed size of a STORED <code>.class</code> record, which sizes the launcher's pooled read
+buffers.</div>
+</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#H_LAUNCHER_VERSION" class="member-name-link">H_LAUNCHER_VERSION</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#H_MAGIC" class="member-name-link">H_MAGIC</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
@@ -1072,6 +1095,11 @@ URLs.</div>
 <dd>
 <div class="block">Header flag: the nested jars were re-packed with all entries STORED.</div>
 </dd>
+<dt><a href="io/micronaut/runner/IndexFormat.html#HEADER_FLAG_POSITIONAL_READS" class="member-name-link">HEADER_FLAG_POSITIONAL_READS</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
+<dd>
+<div class="block">Header flag: the packager chose positional reads, so a launcher left to decide maps only the index and
+reads every class with a positional read into a pooled buffer instead of mapping the whole archive.</div>
+</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#HEADER_SIZE" class="member-name-link">HEADER_SIZE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">Size of the fixed header, in bytes.</div>
@@ -1106,6 +1134,10 @@ launcher never parses a nested archive at startup.</div>
 <dd>
 <div class="block">The on-disk layout of <code>MICRONAUT-INF/index.bin</code>, the index a runner jar carries so that the
 launcher never has to parse a nested archive's central directory at startup.</div>
+</dd>
+<dt><a href="io/micronaut/runner/ArchiveSource.html#indexOnly()" class="member-name-link">indexOnly()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
+<dd>
+<div class="block">Whether only the index is mapped, and every other read is positional.</div>
 </dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#inflate(long,int,int)" class="member-name-link">inflate(long, int, int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
@@ -1318,6 +1350,11 @@ sealed unless a package section says otherwise.</div>
 </dl>
 <h2 class="title" id="I:L">L</h2>
 <dl class="index">
+<dt><a href="io/micronaut/runner/Index.html#largestStoredClass()" class="member-name-link">largestStoredClass()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
+<dd>
+<div class="block">The largest uncompressed size of a STORED class the packager recorded, which sizes the pooled buffers
+of positional reads.</div>
+</dd>
 <dt><a href="io/micronaut/runner/Launcher.html" class="type-name-link" title="class in io.micronaut.runner">Launcher</a> - Class in <a href="io/micronaut/runner/package-summary.html">io.micronaut.runner</a></dt>
 <dd>
 <div class="block">The <code>Main-Class</code> of every runner jar.</div>
@@ -1447,7 +1484,11 @@ sealed unless a package section says otherwise.</div>
 </dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#mapped()" class="member-name-link">mapped()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
-<div class="block">Whether the archive is memory mapped.</div>
+<div class="block">Whether the whole archive is memory mapped.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/ArchiveReads.html#MAPPED" class="member-name-link">MAPPED</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ArchiveReads.html" title="enum class in io.micronaut.runner.build">ArchiveReads</a></dt>
+<dd>
+<div class="block">Map the whole archive and define every STORED class straight from the mapping.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#MAX_COMMENT_SIZE" class="member-name-link">MAX_COMMENT_SIZE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
@@ -1511,7 +1552,8 @@ remains an intact nested jar.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#MMAP_PROPERTY" class="member-name-link">MMAP_PROPERTY</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
-<div class="block">System property that disables memory mapping when set to exactly <code>"false"</code>.</div>
+<div class="block">System property that selects the read mode: <code>full</code> (or <code>true</code>), <code>index</code> or
+<code>false</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Launcher.html#MODE_EXTRACT" class="member-name-link">MODE_EXTRACT</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/Launcher.html" title="class in io.micronaut.runner">Launcher</a></dt>
 <dd>
@@ -1804,6 +1846,11 @@ applies.</div>
 <dd>
 <div class="block">Value of <a href="io/micronaut/runner/RunnerClassLoader.html#PARENT_PROPERTY">"micronaut.runner.parent"</a> that selects <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#getSystemClassLoader()" title="class or interface in java.lang" class="external-link"><code>ClassLoader.getSystemClassLoader()</code></a>.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/ArchiveReads.html#parse(java.lang.String)" class="member-name-link">parse(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ArchiveReads.html" title="enum class in io.micronaut.runner.build">ArchiveReads</a></dt>
+<dd>
+<div class="block">Reads an archive read mode the way a build script or a POM spells it: surrounding whitespace is ignored
+and so is case, so <code>" Positional "</code> is <a href="io/micronaut/runner/build/ArchiveReads.html#POSITIONAL"><code>ArchiveReads.POSITIONAL</code></a>.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/Compression.html#parse(java.lang.String)" class="member-name-link">parse(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
 <dd>
 <div class="block">Reads a compression mode the way a build script or a POM spells it: surrounding whitespace is ignored
@@ -1829,6 +1876,15 @@ and so is case, so <code>" Preserve "</code> is <a href="io/micronaut/runner/bui
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#path-safety-heading" class="search-tag-link">Path safety</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/ArchiveReads.html#POSITIONAL" class="member-name-link">POSITIONAL</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ArchiveReads.html" title="enum class in io.micronaut.runner.build">ArchiveReads</a></dt>
+<dd>
+<div class="block">Map only the index, and read each STORED class with one positional read into a pooled direct buffer.</div>
+</dd>
+<dt><a href="io/micronaut/runner/Index.html#positionalReads()" class="member-name-link">positionalReads()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
+<dd>
+<div class="block">Whether the packager chose positional reads, which makes a launcher left to decide map only the index
+and read classes with positional reads into pooled buffers.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/Compression.html#PRESERVE" class="member-name-link">PRESERVE</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
 <dd>
 <div class="block">Copy every dependency byte for byte, keeping its original compression.</div>
@@ -1848,6 +1904,8 @@ and so is case, so <code>" Preserve "</code> is <a href="io/micronaut/runner/bui
 <dd>
 <div class="block">Copies a region of the archive into a new array.</div>
 </dd>
+<dt><a href="io/micronaut/runner/ArchiveSource.html#read-modes-heading" class="search-tag-link">Read modes</a> - Section in class io.micronaut.runner.ArchiveSource</dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/Index.html#REBUILD_MESSAGE" class="member-name-link">REBUILD_MESSAGE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">The message every validation failure carries.</div>
@@ -2141,6 +2199,10 @@ with the documented default.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#value-grammar-heading" class="search-tag-link">Value grammar</a> - Section in enum class io.micronaut.runner.build.RunnerJarOption</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/ArchiveReads.html#valueOf(java.lang.String)" class="member-name-link">valueOf(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ArchiveReads.html" title="enum class in io.micronaut.runner.build">ArchiveReads</a></dt>
+<dd>
+<div class="block">Returns the enum constant of this class with the specified name.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/Compression.html#valueOf(java.lang.String)" class="member-name-link">valueOf(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
 <dd>
 <div class="block">Returns the enum constant of this class with the specified name.</div>
@@ -2152,6 +2214,11 @@ with the documented default.</div>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#valueOf(java.lang.String)" class="member-name-link">valueOf(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
 <div class="block">Returns the enum constant of this class with the specified name.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/ArchiveReads.html#values()" class="member-name-link">values()</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/ArchiveReads.html" title="enum class in io.micronaut.runner.build">ArchiveReads</a></dt>
+<dd>
+<div class="block">Returns an array containing the constants of this enum class, in
+the order they are declared.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/Compression.html#values()" class="member-name-link">values()</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
 <dd>
@@ -2171,7 +2238,7 @@ the order they are declared.</div>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#valueType()" class="member-name-link">valueType()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
 <div class="block">The type of the option's value, which decides how its text is read: <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link"><code>Boolean</code></a>,
-<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a>.</div>
+<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="io/micronaut/runner/build/ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/RunnerClassLoader.html#VERIFY_PROPERTY" class="member-name-link">VERIFY_PROPERTY</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/RunnerClassLoader.html" title="class in io.micronaut.runner">RunnerClassLoader</a></dt>
 <dd>

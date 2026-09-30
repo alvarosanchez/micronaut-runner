@@ -335,6 +335,9 @@ archives under one name. The plugin fails the build if it detects that.
 
         // Options without a typed property, by name (see the table below):
         // options.put('&lt;name&gt;', '&lt;value&gt;')
+
+        // POSITIONAL maps only the index and reads classes with pooled positional reads: lower RSS, slightly slower start.
+        // options.put('archiveReads', 'positional')
     }
 }</code></pre>
 </div>
@@ -415,6 +418,13 @@ typed property, and an unknown name fails the build.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">map</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">empty</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">typed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>archiveReads</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>MAPPED</code> or <code>POSITIONAL</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>MAPPED</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">passthrough</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
 </tr>
 </tbody>
@@ -567,6 +577,11 @@ attach it as an additional artifact instead and leave the main one untouched.</p
 scalar ones also read <code>-Dmicronaut.runner.&lt;name&gt;</code>. <code>&lt;runnerOptions&gt;</code> and <code>-Dmicronaut.runner.&lt;name&gt;</code> set the same
 options by name, <code>-Dmicronaut.runner.&lt;name&gt;</code> only for passthrough options, and a <code>&lt;runnerOptions&gt;</code> entry wins.</p>
 </div>
+<div class="paragraph">
+<p>To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
+pass <code>-Dmicronaut.runner.archiveReads=positional</code> or set
+<code>&lt;runnerOptions&gt;&lt;archiveReads&gt;positional&lt;/archiveReads&gt;&lt;/runnerOptions&gt;</code>.</p>
+</div>
 </div>
 </div>
 <div class="sect1">
@@ -673,7 +688,9 @@ inflating is not specific to this format; <a href="#benchmarks">[benchmarks]</a>
 mapping, with bounds checks but no parsing into objects. It consists of a fixed 128-byte header followed
 by five sections: a jar table, a package table, an entry table, a hash table and a string table. The exact
 byte layout is defined, as compile-time constants with documentation, in <code>IndexFormat</code> in the
-<code>micronaut-runner-launcher</code> artifact, which is the authoritative description.</p>
+<code>micronaut-runner-launcher</code> artifact, which is the authoritative description. An archive packaged with
+<code>archiveReads</code> set to <code>POSITIONAL</code> carries a header flag that makes the launcher map only the index and read classes
+with positional reads, and its header records the largest <code>STORED</code> class, which sizes the launcher&#8217;s read buffers.</p>
 </div>
 <div class="paragraph">
 <p>The parts worth understanding:</p>
@@ -822,12 +839,17 @@ ready, application entered. Use it to separate launcher cost from framework cost
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.mmap</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Set to <code>false</code> to read the archive with positional file reads instead of a memory mapping. Slower, and
-only needed on a platform or file system where mapping is unavailable or undesirable. Thread interrupts are
-harmless in this mode: a read that an interrupt cuts short reopens the archive by its path and carries on.
-If that path no longer names the file this JVM opened, class loading fails and asks for a restart, so
-publish new versions under new paths as described in the archive lifetime section below.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">from the archive (<code>archiveReads</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How the launcher reads the archive. <code>full</code> (or <code>true</code>) maps the whole file and defines <code>STORED</code> classes straight
+from the mapping. <code>index</code> maps only the index and reads each class with one positional read into a pooled direct
+buffer, so the class bytes stay in the page cache instead of the process&#8217;s resident set: lower RSS, slightly
+slower start (see <a href="#archiveReads">Mapped or positional reads</a>). <code>false</code> maps nothing and reads everything onto the heap; it is slower and
+only needed on a platform or file system where mapping is unavailable or undesirable. Unset, or any other value,
+follows the <code>archiveReads</code> option the archive was packaged with: <code>index</code> for <code>POSITIONAL</code>, and <code>full</code> for
+<code>MAPPED</code>, the default. Thread interrupts are harmless in the <code>index</code> and <code>false</code> modes: a read that an interrupt
+cuts short reopens the archive by its path and carries on. If that path no longer names the file this JVM
+opened, class loading fails and asks for a restart, so publish new versions under new paths as described in the
+archive lifetime section below.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.verify</code></p></td>
@@ -879,11 +901,64 @@ its format version is not supported.</p></td>
 </div>
 </div>
 <div class="sect1">
+<h2 id="archiveReads">Mapped or positional reads</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>By default the launcher maps the whole runner JAR and defines each <code>STORED</code> class straight from the mapping. Every
+page a class read touches then stays mapped in the process as a clean, file-backed page: it counts in the RSS that
+<code>ps</code> and <code>top</code> report until the process exits, although the kernel can drop it at any time and it is not private
+memory. Packaging with <code>archiveReads</code> set to <code>POSITIONAL</code>, or starting with <code>-Dmicronaut.runner.mmap=index</code>, maps
+only the index instead and reads each class with one positional read into a direct buffer borrowed from a pool of
+at most 16 buffers of at most 64 KiB; a larger class is read into a heap array.</p>
+</div>
+<div class="paragraph">
+<p>Measured on <code>test-suite/samples/benchmark-large</code>, with paired, interleaved launches (30 pairs per run, two runs per
+platform), positional reads against the default:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 22%;">
+<col style="width: 26%;">
+<col style="width: 26%;">
+<col style="width: 26%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Platform</th>
+<th class="tableblock halign-left valign-top">RSS at readiness</th>
+<th class="tableblock halign-left valign-top">Private memory</th>
+<th class="tableblock halign-left valign-top">Readiness</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">macOS 26.6, Apple Silicon, Homebrew JDK 25.0.4.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-24 MiB; -20 to -23 MiB with the JDK AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-3.0 to +0.8 MiB (<code>phys_footprint</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+9 to +11 ms (+2.1 to +2.4%); +8 ms (+3.1 to +3.2%) with the AOT cache</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Linux container, Temurin JDK 25.0.4+7, 6 CPUs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-24 to -25 MiB without a cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+4 to +6 MiB without a cache (<code>RssAnon</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+13 ms (+3.2%); +7 to +9 ms (+3.0 to +3.9%) with the AOT cache</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>The Runner JAR&#8217;s resident mapping falls from 25 MiB (macOS) or 30 MiB (Linux) to 1.2 MiB, the index. Positional
+reads change RSS, not page-cache use: in a Linux container the working set that Kubernetes reports
+(<code>memory.current</code> minus <code>inactive_file</code>) did not drop, because the archive&#8217;s pages sit on the inactive file list
+whether they are mapped or read. The slower start is why <code>MAPPED</code> is the default.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
 <h2 id="archiveLifetime">Archive lifetime</h2>
 <div class="sectionbody">
 <div class="paragraph">
 <p>As with any JAR a running JVM reads, a Shadow JAR included, do not modify, truncate or overwrite a runner
-JAR while a JVM runs from it: publish each version under a new path. In the default mmap mode, STORED
+JAR while a JVM runs from it: publish each version under a new path. In the default <code>full</code> mode, STORED
 classes are defined straight from the mapping, so truncating the file under a running JVM can terminate
 the JVM instead of raising an exception; the JDK&#8217;s own <code>ZipFile</code> does not memory-map the archive. The
 recorded length (checked when the archive opens) and each nested JAR&#8217;s local header (checked once, on
@@ -1396,6 +1471,17 @@ control</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-reflection</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating ablation: the same stored Runner JAR inputs with the entry stub disabled, which measures the
 plugin-default entry stub against reflective entry</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-positional</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the same stored Runner JAR inputs packaged with <code>archiveReads</code> set to <code>POSITIONAL</code>, so the
+launcher maps only the index and reads each class with one positional read; compared with <code>runner-stored</code> and
+<code>shadow</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-positional-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the identical <code>POSITIONAL</code> Runner JAR with a trained, application-class-verified JDK AOT cache;
+compared with <code>runner-stored-aot</code> and <code>shadow-aot</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve</code></p></td>
