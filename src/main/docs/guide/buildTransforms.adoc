@@ -170,22 +170,22 @@ before the application is ready. Measured by the startup harness (<<benchmarks,B
 |Measure |Desugared minus lambdas kept
 
 |Readiness without a JDK cache
-|−30.1 ms paired median, 95% CI [−53.6, −21.9] (423.4 ms against 447.6 ms)
+|−35.5 ms paired median, 95% CI [−41.6, −29.5] (395.6 ms against 429.1 ms)
 
 |Readiness with the JDK AOT cache
-|−27.8 ms, 95% CI [−31.8, −21.5] (240.2 ms against 273.4 ms)
+|−32.7 ms, 95% CI [−36.0, −28.3] (225.7 ms against 260.8 ms)
 
 |Maximum RSS
-|135.4 against 166.4 MiB without a cache, 146.3 against 166.1 MiB with the AOT cache (medians of three runs)
+|135.5 against 167.5 MiB without a cache, 147.6 against 167.8 MiB with the AOT cache (medians of three runs)
 
 |Archive size
-|35,951,587 against 32,738,324 bytes raw (+9.8%), 8,763,041 against 8,349,075 bytes gzip -6 (+5.0%); the AOT cache
-is 0.5 MB larger
+|35,957,542 against 32,744,299 bytes raw (+9.8%), 8,765,542 against 8,352,172 bytes gzip -6 (+4.9%); the AOT cache
+is 0.6 MB larger
 |===
 
 Packaging does the extra work on the staging threads. With both class transforms on, the sample's
-`micronautRunnerJar` task took 0.22 s instead of 0.10 s with both off (medians of ten warm-daemon rounds), against
-0.73 s for its `shadowJar`.
+`micronautRunnerJar` task took 0.27 s instead of 0.10 s with both off, and 0.24 s with desugaring alone off (medians
+of ten warm-daemon rounds), against 0.77 s for its `shadowJar`.
 
 To keep every lambda an `invokedynamic` call site, set the `desugarLambdas` option to `false`. In Gradle:
 
