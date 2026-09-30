@@ -177,6 +177,31 @@ class MavenBasicSampleTest {
             application.close();
         }
 
+        // The same archive once more, with the static service table checked against Micronaut's own scan. The
+        // sample runs on the micronaut-core the build passes in: when the packager serves that version, the
+        // launch must report a match; when it does not, the build log must say that this is why there is no table.
+        // packagesTheSampleOnAServedMicronautCoreAndVerifiesItsStaticServiceTable covers an archive with a table
+        // whichever way this one goes.
+        boolean table = log.toString().contains("Generated a static Micronaut service table: ");
+        if (!table) {
+            assertTrue(log.toString().contains("No static Micronaut service table was generated because micronaut-core ")
+                            && log.toString().contains(" is outside the supported range "),
+                    () -> "the build neither generated a static service table nor named the version gate:\n" + log);
+        }
+        ForkedApplication verified = ForkedApplication.start(archive, sample, Map.of(),
+                List.of("-Dmicronaut.runner.static-services.verify=true"));
+        try {
+            int exit = verified.awaitExit(RUN_TIMEOUT);
+            assertEquals(0, exit, () -> "the verified application exited with " + exit + verified.describe());
+            assertEquals(table, verified.output().contains("[micronaut-runner] static services verified: ")
+                            && verified.output().contains(" entries, 0 mismatches"),
+                    () -> "a static service table is verified exactly when the build generated one"
+                            + verified.describe());
+            assertTrue(verified.output().contains(EXPECTED_OUTPUT), verified::describe);
+        } finally {
+            verified.close();
+        }
+
         Path pom = sample.resolve("pom.xml");
         String secondPom = Files.readString(pom, StandardCharsets.UTF_8)
                 .replace("<fixture.main.version>v1</fixture.main.version>",
@@ -198,6 +223,50 @@ class MavenBasicSampleTest {
         assertManifestVersion(archive, null, "v2");
     }
 
+    /**
+     * Packages a copy of the sample on a micronaut-core the static service table serves, and runs it once with
+     * the table checked against Micronaut's own scan. The micronaut-core the build itself uses may be outside
+     * the served range, in which case {@link #packagesTheSampleAndRunsTheRunnerJar()} packages no table at all.
+     */
+    @Test
+    void packagesTheSampleOnAServedMicronautCoreAndVerifiesItsStaticServiceTable() throws Exception {
+        Samples.requireIntegrationScenario();
+        Samples.requirePublishedArtifact("io/micronaut/runner/micronaut-runner-maven-plugin/"
+                + Samples.VERSION + "/micronaut-runner-maven-plugin-" + Samples.VERSION + ".jar");
+        requireMavenCanLoadThePlugin();
+        String core = Samples.MICRONAUT_CORE_51_VERSION;
+        assertNotNull(core, "runner.test.micronautCore51Version is not set; run this suite through Gradle");
+        Path sample = Samples.copySample(Samples.sample("maven-basic"), temporary.resolve("maven-basic-table"));
+        Path archive = sample.resolve("target/maven-basic-0.1.jar");
+
+        StringBuilder log = new StringBuilder();
+        int status = mavenOn(core, sample, log, "clean", "package");
+        assertEquals(0, status, () -> "the Maven build failed:\n" + log);
+
+        assertTrue(log.toString().contains("Generated a static Micronaut service table: ")
+                        && log.toString().contains(" for micronaut-core " + core + " in "),
+                () -> "the build generated no static service table for micronaut-core " + core + ":\n" + log);
+        try (JarFile jar = new JarFile(archive.toFile())) {
+            assertNotNull(jar.getEntry(
+                    "MICRONAUT-INF/classes/io/micronaut/runner/generated/services/RunnerServiceTable.class"),
+                    () -> "the archive carries no static service table:\n" + log);
+        }
+
+        ForkedApplication verified = ForkedApplication.start(archive, sample, Map.of(),
+                List.of("-Dmicronaut.runner.static-services.verify=true"));
+        try {
+            int exit = verified.awaitExit(RUN_TIMEOUT);
+            assertEquals(0, exit, () -> "the verified application exited with " + exit + verified.describe());
+            assertTrue(verified.output().contains("[micronaut-runner] static services verified: ")
+                            && verified.output().contains(" entries, 0 mismatches"),
+                    () -> "the static service table was not verified against Micronaut's scan"
+                            + verified.describe());
+            assertTrue(verified.output().contains(EXPECTED_OUTPUT), verified::describe);
+        } finally {
+            verified.close();
+        }
+    }
+
     // ------------------------------------------------------------------ plumbing
 
     /** Fails closed when the published descriptor cannot be loaded in required mode. */
@@ -210,8 +279,18 @@ class MavenBasicSampleTest {
         }
     }
 
-    /** Runs Maven against the sample, capturing everything it prints. */
+    /** Runs Maven against the sample on the build's own micronaut-core, capturing everything it prints. */
     private static int maven(Path projectDirectory, StringBuilder log, String... goals) throws Exception {
+        return mavenOn(Samples.MICRONAUT_VERSION, projectDirectory, log, goals);
+    }
+
+    /**
+     * Runs Maven against the sample, capturing everything it prints.
+     *
+     * @param micronautCore the micronaut-core the sample is built and run on, or {@code null} for its own
+     */
+    private static int mavenOn(String micronautCore, Path projectDirectory, StringBuilder log, String... goals)
+            throws Exception {
         Path localRepository = Samples.mavenLocalRepository();
         Files.createDirectories(localRepository);
         Samples.deleteRecursively(localRepository.resolve(RUNNER_GROUP_PATH));
@@ -222,8 +301,8 @@ class MavenBasicSampleTest {
         if (Samples.MICRONAUT_PLATFORM_VERSION != null) {
             properties.setProperty("micronaut.platform.version", Samples.MICRONAUT_PLATFORM_VERSION);
         }
-        if (Samples.MICRONAUT_VERSION != null) {
-            properties.setProperty("micronaut.core.version", Samples.MICRONAUT_VERSION);
+        if (micronautCore != null) {
+            properties.setProperty("micronaut.core.version", micronautCore);
         }
 
         InvocationRequest request = new DefaultInvocationRequest()

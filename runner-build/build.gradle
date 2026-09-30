@@ -22,14 +22,24 @@ configurations {
             attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
         }
     }
+    // micronaut-inject 5.1.x and what it links against: the dependencies of the fixture applications that the
+    // static service table tests package. They reach the tests as files and never join a class path.
+    micronautCore51 {
+        canBeResolved = true
+        canBeConsumed = false
+    }
 }
 
 // The Logback front end of LogbackPrecompiler, and the JoranFallback class it copies into runner jars. It is
 // compiled against Logback but never put on this library's class path: it ships as a jar resource, like the
 // launcher, and runs only in an isolated class loader next to the application's own Logback jars. So the main
 // code has no Logback dependency and the published POM does not change.
+//
+// The same goes for the classes StaticServiceTableGenerator copies into an application that gets a static
+// service table: compiled against micronaut-core, shipped as a jar resource, never on this library's class path.
 sourceSets {
     logbackFrontend
+    staticServices
 }
 
 dependencies {
@@ -43,12 +53,23 @@ dependencies {
     compileOnly 'io.micronaut:micronaut-core'
 
     logbackFrontendCompileOnly libs.logback.classic
+    // The line of micronaut-core the table serves.
+    staticServicesCompileOnly "io.micronaut:micronaut-core:${libs.versions.micronaut.core51.get()}"
+    micronautCore51 "io.micronaut:micronaut-inject:${libs.versions.micronaut.core51.get()}"
 
     // micronaut-core is only needed by the service-discovery tests, never at packaging runtime.
     testImplementation platform(libs.micronaut.core)
     testImplementation 'io.micronaut:micronaut-inject'
     // The differential tests of LogbackPrecompiler configure Logback with Joran and with the generated classes.
     testImplementation libs.logback.classic
+}
+
+tasks.withType(Test).configureEach {
+    def micronautCore51 = configurations.micronautCore51
+    inputs.files(micronautCore51).withPropertyName('micronautCore51').withNormalizer(ClasspathNormalizer)
+    jvmArgumentProviders.add({ ->
+        ["-Drunner.test.micronautCore51=${micronautCore51.asPath}".toString()]
+    } as CommandLineArgumentProvider)
 }
 
 tasks.named('compileLogbackFrontendJava', JavaCompile) {
@@ -95,12 +116,32 @@ tasks.register('transformCorpusTest', Test) {
     testLogging.showStandardStreams = true
 }
 
+tasks.named('compileStaticServicesJava', JavaCompile) {
+    options.release = 25
+    // These classes run while the application starts: no invokedynamic string concatenation in them.
+    options.compilerArgs.addAll(['-XDstringConcat=inline'])
+    // Line numbers for stack traces, no local variable tables: every application carries these classes.
+    options.debugOptions.debugLevel = 'source,lines'
+}
+
+def staticServicesJar = tasks.register('staticServicesJar', Jar) {
+    description = 'Packages the static service table classes that runner-build carries as a resource'
+    archiveFileName = 'static-services.jar'
+    destinationDirectory = layout.buildDirectory.dir('static-services')
+    from sourceSets.staticServices.output
+    // Only the shape the other classes compile against: the generator writes the real table per application.
+    exclude '**/RunnerServiceTable.class'
+}
+
 tasks.named('processResources', ProcessResources) {
     from(configurations.launcherJar) {
         into 'META-INF/micronaut-runner'
         rename { 'launcher.jar' }
     }
     from(logbackFrontendJar) {
+        into 'META-INF/micronaut-runner'
+    }
+    from(staticServicesJar) {
         into 'META-INF/micronaut-runner'
     }
 }

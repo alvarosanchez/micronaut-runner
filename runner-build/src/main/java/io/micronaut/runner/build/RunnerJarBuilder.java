@@ -189,6 +189,8 @@ public final class RunnerJarBuilder {
     private final List<NestedJar> nested = new ArrayList<>();
     private final Map<String, ApplicationEntry> application = new LinkedHashMap<>();
     private final Set<String> serviceNames = new TreeSet<>();
+    /** The size of every merged {@code META-INF/micronaut/} file, by entry name, in the order it is stored. */
+    private final Map<String, Long> mergedServiceSizes = new LinkedHashMap<>();
     private final IndexWriter writer = new IndexWriter();
     /**
      * The buffer {@link #crc32(Path)} reads every application file through. It belongs to the calling
@@ -214,6 +216,7 @@ public final class RunnerJarBuilder {
     private int mergedServiceEntryCount;
     /** The build's class transforms, decided before any dependency is staged. */
     private ClassTransforms transforms;
+    private StaticServiceTableGenerator.Result staticServices;
 
     private RunnerJarBuilder(RunnerJarSpec spec, BuildLogger logger, int parallelism, Runnable beforeWrite) {
         this.spec = spec;
@@ -367,6 +370,7 @@ public final class RunnerJarBuilder {
             }
             describeApplicationJar();
             planMergedServices();
+            generateStaticServices();
             planApplicationEntries();
             planNestedJars();
 
@@ -394,7 +398,8 @@ public final class RunnerJarBuilder {
             // The caller reports the build with the result's summary(), so the builder logs no line of its own.
             return new RunnerJarResult(output, writer.jars().size(), layout.entryCount(),
                     application.size(), mergedServiceEntryCount, archiveSize, warnings, spec.effectiveOptions(),
-                    logbackPrecompiled, transformReports);
+                    logbackPrecompiled, transformReports, staticServices.slotCount(),
+                    staticServices.coreVersion());
         } catch (Throwable e) {
             failure = e;
             throw e;
@@ -1219,6 +1224,9 @@ public final class RunnerJarBuilder {
                     .crc32(entry.crc32)
                     .dosTime(dosTime);
             plan.add(entry);
+            if (!directory) {
+                mergedServiceSizes.put(name, entry.size);
+            }
         }
         StringBuilder message = new StringBuilder();
         message.append("Merged ").append(mergedServiceEntryCount)
@@ -1347,6 +1355,15 @@ public final class RunnerJarBuilder {
             }
         }
         return total;
+    }
+
+    /** Adds the static service table to the application layer, when it can have one; see {@link StaticServices}. */
+    private void generateStaticServices() throws IOException {
+        staticServices = StaticServices.generate(spec, logger, this::warn, mergedServiceSizes,
+                List.copyOf(application.keySet()), name -> applicationBytes(application.get(name)),
+                nested.stream().map(jar -> new StaticServices.NestedLayer(jar.dependency.path(), jar.file,
+                        jar.result.entries(), jar.manifest)).toList());
+        staticServices.entries().forEach((name, bytes) -> application.put(name, ApplicationEntry.ofBytes(bytes)));
     }
 
     private void planApplicationEntries() {

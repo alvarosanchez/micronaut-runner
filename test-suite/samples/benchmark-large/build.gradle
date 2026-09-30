@@ -35,6 +35,21 @@ dependencies {
     runtimeOnly 'ch.qos.logback:logback-classic'
 }
 
+// Benchmark control only: -PbenchmarkMicronautCore=<version> aligns every module of the micronaut-core
+// repository, the annotation processor included, to another version, so that the startup harness can measure
+// the same application on it. Without the property nothing here applies.
+def benchmarkMicronautCore = providers.gradleProperty('benchmarkMicronautCore').orNull
+if (benchmarkMicronautCore) {
+    configurations.configureEach {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'io.micronaut') {
+                details.useVersion(benchmarkMicronautCore)
+                details.because('the startup benchmark asked for micronaut-core ' + benchmarkMicronautCore)
+            }
+        }
+    }
+}
+
 application {
     mainClass = 'com.example.Application'
 }

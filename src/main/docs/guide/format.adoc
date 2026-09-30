@@ -136,3 +136,10 @@ is not empty.
 
 Classic `META-INF/services/` files are left exactly where they are, one per dependency: they are read as
 files through their URL, which works per JAR without any special handling.
+
+For an application whose micronaut-core the packager knows, it also adds a _static service table_ to the
+application layer: a few classes under `io/micronaut/runner/generated/services/`, and the line in
+`META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader` that registers them, put in front of the
+application's own file when it has one. The table lists, for each service type, the names in every JAR's
+`META-INF/services/` file and in the merged directory, in the order Micronaut's scan finds them, so that Micronaut
+reads neither when the application starts. See <<staticServices>>.

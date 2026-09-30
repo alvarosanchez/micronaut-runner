@@ -30,6 +30,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BenchmarkCompletenessTest {
@@ -55,6 +57,29 @@ class BenchmarkCompletenessTest {
         assertFalse(StartupBenchmark.Options.parse(core).optionalRows());
         assertTrue(StartupBenchmark.Options.parse(optIn).optionalRows());
         assertEquals(CompletenessPolicy.REQUIRED, StartupBenchmark.Options.parse(optIn).completenessPolicy());
+    }
+
+    @Test
+    void theMicronautCoreOverrideIsOffUnlessAVersionIsGiven(@TempDir Path output) {
+        String[] plain = {"--sample", output.toString(), "--repo", "file:/repo", "--version", "1.0",
+                "--iterations", "2", "--out", output.resolve("plain").toString()};
+        String[] overridden = {"--sample", output.toString(), "--repo", "file:/repo", "--version", "1.0",
+                "--iterations", "2", "--out", output.resolve("core").toString(), "--micronaut-core", "5.2.2"};
+        String[] noValue = {"--sample", output.toString(), "--repo", "file:/repo", "--version", "1.0",
+                "--iterations", "2", "--out", output.resolve("core").toString(), "--micronaut-core"};
+        String[] notAVersion = {"--sample", output.toString(), "--repo", "file:/repo", "--version", "1.0",
+                "--iterations", "2", "--out", output.resolve("core").toString(), "--micronaut-core", "-Pother=1"};
+
+        assertNull(StartupBenchmark.Options.parse(plain).micronautCore());
+        assertEquals("5.2.2", StartupBenchmark.Options.parse(overridden).micronautCore());
+        assertThrows(IllegalArgumentException.class, () -> StartupBenchmark.Options.parse(noValue));
+        assertThrows(IllegalArgumentException.class, () -> StartupBenchmark.Options.parse(notAVersion));
+
+        Path init = output.resolve("init.gradle");
+        assertFalse(SampleBuild.sampleBuildArguments(output, "file:/repo", "1.0", null, init).stream()
+                .anyMatch(argument -> argument.startsWith("-PbenchmarkMicronautCore")));
+        assertTrue(SampleBuild.sampleBuildArguments(output, "file:/repo", "1.0", "5.2.2", init)
+                .contains("-PbenchmarkMicronautCore=5.2.2"));
     }
 
     @Test
@@ -307,7 +332,7 @@ class BenchmarkCompletenessTest {
                 SampleBuild.variantNames());
         StartupBenchmark.Options options = new StartupBenchmark.Options(output, "file:/repo", "1.0", output,
                 output.resolve("artifacts"), 2, 1, 1234L, "/hello", Duration.ofSeconds(1), false,
-                CompletenessPolicy.REQUIRED, false, null, null, PageCacheMode.UNCONTROLLED);
+                CompletenessPolicy.REQUIRED, false, null, null, PageCacheMode.UNCONTROLLED, null);
         List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
             throw new AssertionError("an unavailable variant must not reach the runner");
         }), variants, options, log());
@@ -406,7 +431,7 @@ class BenchmarkCompletenessTest {
         Files.createDirectories(sample);
         return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, output.resolve("artifacts"),
                 iterations, warmup, 1234L, "/hello", Duration.ofSeconds(1), false, policy, false, null, null,
-                PageCacheMode.UNCONTROLLED);
+                PageCacheMode.UNCONTROLLED, null);
     }
 
     private static StartupBenchmark.Options options(Path output,
@@ -417,7 +442,7 @@ class BenchmarkCompletenessTest {
         Files.createDirectories(sample);
         return new StartupBenchmark.Options(sample, "file:/repo", "1.0", output, output.resolve("artifacts"),
                 iterations, warmup, seed, "/hello", Duration.ofSeconds(1), false, CompletenessPolicy.REQUIRED,
-                false, null, null, PageCacheMode.UNCONTROLLED);
+                false, null, null, PageCacheMode.UNCONTROLLED, null);
     }
 
     private static List<String> schedule(List<VariantResult> results) {

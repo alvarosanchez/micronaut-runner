@@ -85,7 +85,7 @@ class ResultTypesTest {
     void theTransformReportsOfAResultAreUnmodifiableAndAddUp() {
         TransformReport report = new TransformReport("stripLocalVariables", 7, 2, 1, 4096);
         RunnerJarResult result = new RunnerJarResult(Path.of("app.jar"), 2, 10, 3, 0, 1024, List.of(), Map.of(),
-                false, new ArrayList<>(List.of(report)));
+                false, new ArrayList<>(List.of(report)), 0, null);
 
         assertEquals(List.of(report), result.transforms());
         assertEquals(10, report.classes());
@@ -122,7 +122,22 @@ class ResultTypesTest {
     @Test
     void aNegativeCountIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> new RunnerJarResult(Path.of("app.jar"), -1, 0, 0, 0,
-                0, List.of(), Map.of(), false));
+                0, List.of(), Map.of(), false, List.of(), 0, null));
+        assertThrows(IllegalArgumentException.class, () -> new RunnerJarResult(Path.of("app.jar"), 0, 0, 0, 0,
+                0, List.of(), Map.of(), false, List.of(), -1, null));
+    }
+
+    @Test
+    void aResultWithoutAStaticServiceTableNamesNoMicronautCore() {
+        RunnerJarResult result = result(List.of(), Map.of());
+
+        assertEquals(0, result.staticServiceSlots());
+        assertEquals(Optional.empty(), result.staticServicesCoreVersion());
+
+        RunnerJarResult table = new RunnerJarResult(Path.of("app.jar"), 1, 1, 1, 0, 1, List.of(), Map.of(), false,
+                List.of(), 489, "5.1.15");
+        assertEquals(489, table.staticServiceSlots());
+        assertEquals(Optional.of("5.1.15"), table.staticServicesCoreVersion());
     }
 
     private static RunnerJarResult result(List<String> warnings, Map<String, String> options) {

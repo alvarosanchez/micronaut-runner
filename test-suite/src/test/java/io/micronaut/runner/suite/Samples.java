@@ -43,6 +43,8 @@ import java.util.stream.Stream;
  *       applications are started with.</li>
  *   <li>{@code runner.test.micronautVersion} and {@code runner.test.micronautPlatformVersion} - the
  *       Micronaut versions from the version catalog, handed to the Maven sample, which has no catalog.</li>
+ *   <li>{@code runner.test.micronautCore51Version} - the micronaut-core 5.1.x of the version catalog, which
+ *       the static service table serves; the Maven sample is packaged on it as well.</li>
  *   <li>{@code runner.test.mode} - {@code required} in CI and by default, or the explicit developer
  *       opt-out {@code offline}.</li>
  * </ul>
@@ -63,6 +65,9 @@ final class Samples {
 
     /** The Micronaut core version, for the Maven sample, which has no version catalog. */
     static final String MICRONAUT_VERSION = System.getProperty("runner.test.micronautVersion");
+
+    /** A micronaut-core the static service table serves, for the Maven sample's launch with a table. */
+    static final String MICRONAUT_CORE_51_VERSION = System.getProperty("runner.test.micronautCore51Version");
 
     /** The Micronaut platform BOM version, for the Maven sample. */
     static final String MICRONAUT_PLATFORM_VERSION = System.getProperty("runner.test.micronautPlatformVersion");

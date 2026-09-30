@@ -128,7 +128,13 @@ public enum RunnerJarOption {
      * {@code -Xlog:class+load} output of a run of the runner jar, or a file of binary class names. See
      * {@link RunnerJarSpec.Builder#startupClasses(Path)}.
      */
-    STARTUP_CLASSES("startupClasses", Path.class, null, Exposure.TYPED, "1.0");
+    STARTUP_CLASSES("startupClasses", Path.class, null, Exposure.TYPED, "1.0"),
+
+    /**
+     * Whether to generate the static service table that answers Micronaut's service lookups from names
+     * computed at packaging time. See {@link RunnerJarSpec.Builder#staticServices(boolean)}.
+     */
+    STATIC_SERVICES("staticServices", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
 
     private final String optionName;
     private final Class<?> valueType;

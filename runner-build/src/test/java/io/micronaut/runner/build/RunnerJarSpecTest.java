@@ -266,6 +266,26 @@ class RunnerJarSpecTest {
     }
 
     @Test
+    void staticServicesAreRequestedByDefaultAndTurnedOffByName() {
+        assertTrue(complete(RunnerJarSpec.builder()).build().staticServices(), "on by default, in one place");
+        assertEquals(RunnerJarOption.Exposure.PASSTHROUGH, RunnerJarOption.STATIC_SERVICES.exposure());
+        assertEquals(Boolean.class, RunnerJarOption.STATIC_SERVICES.valueType());
+        assertEquals(java.util.Optional.of("true"), RunnerJarOption.STATIC_SERVICES.defaultValue());
+
+        RunnerJarSpec off = complete(RunnerJarSpec.builder().option("staticServices", "false")).build();
+        assertFalse(off.staticServices());
+        assertEquals("false", off.effectiveOptions().get("staticServices"));
+        assertEquals("true", complete(RunnerJarSpec.builder()).build().effectiveOptions().get("staticServices"));
+        assertFalse(complete(RunnerJarSpec.builder().staticServices(false)).build().staticServices());
+        assertTrue(complete(RunnerJarSpec.builder()
+                .option("staticServices", "false")
+                .staticServices(true)).build().staticServices(), "the last call wins");
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> RunnerJarSpec.builder().option("staticServices", "off"));
+        assertTrue(failure.getMessage().contains("staticServices"), failure::getMessage);
+    }
+
+    @Test
     void aNullNameOrValueIsRejected() {
         assertThrows(NullPointerException.class, () -> RunnerJarSpec.builder().option(null, "true"));
         assertThrows(NullPointerException.class, () -> RunnerJarSpec.builder().option("entryStub", null));
