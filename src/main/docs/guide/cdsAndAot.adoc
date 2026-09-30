@@ -181,7 +181,8 @@ table omits the JDK 25.0.4.1 cache (52.3 MB, 12.4 MB gzipped, from one training,
 |===
 
 *What differs in the layout.* Every class of the application layer carries over except the generated entry stub, so a
-precompiled Logback configuration (<<precompiledLogback>>) still applies. What the launcher and the stub do at startup
+precompiled Logback configuration (<<precompiledLogback>>) and the static service table (<<staticServices>>) still
+apply. What the launcher and the stub do at startup
 does not run: the startup profile's preload (<<preload>>) has no effect, and a JAR built with it trains the same layout
 cache. The JDK's class loader replaces `RunnerClassLoader` and resolves classes in the same order; each JAR keeps its own
 `META-INF/micronaut`, a dependency's own manifest `Class-Path` becomes active, and the code sources are the `lib/` JARs'
