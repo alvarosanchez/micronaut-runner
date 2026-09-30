@@ -1084,7 +1084,8 @@ final class Reports {
         return redacted;
     }
 
-    private static String quote(String value) {
+    /** A JSON string literal, or {@code null}. {@link PackagingComparison} writes its report with it too. */
+    static String quote(String value) {
         if (value == null) {
             return "null";
         }

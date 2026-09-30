@@ -150,22 +150,30 @@ public final class PackagingComparison {
                 + " %d CPUs, JDK %s (%s). Seed %d; %d warm-up and %d measured rounds.", state.revision(), state.state(),
                 os, machine.osArch(), machine.availableProcessors(), machine.javaRuntimeVersion(), machine.javaVendor(),
                 seed, WARMUP_ROUNDS, iterations), attempts, sizes, seed));
+        Files.writeString(out.resolve("results.json"), results(machine, seed, iterations, attempts, sizes));
+    }
+
+    /** The {@code results.json} document; {@link Reports#quote} escapes every string value. */
+    static String results(BenchmarkProvenance machine, long seed, int iterations, List<Attempt> attempts,
+                          Map<String, DeploymentSize> sizes) {
         List<String> records = attempts.stream().map(a -> String.format(Locale.ROOT, "    {\"round\": %d, \"warmup\":"
-                + " %b, \"scenario\": \"%s\", \"variant\": \"%s\", \"taskMillis\": %.3f, \"wallMillis\": %.3f,"
-                + " \"archiveBytes\": %d}", a.round(), a.warmup(), a.scenario(), a.variant(), a.taskMillis(),
-                a.wallMillis(), a.archiveBytes())).toList();
-        List<String> archives = sizes.entrySet().stream().map(e -> String.format(Locale.ROOT, "    \"%s\":"
-                + " {\"rawBytes\": %d, \"gzipBytes\": %d}", e.getKey(), e.getValue().totalBytes(),
+                + " %b, \"scenario\": %s, \"variant\": %s, \"taskMillis\": %.3f, \"wallMillis\": %.3f,"
+                + " \"archiveBytes\": %d}", a.round(), a.warmup(), Reports.quote(a.scenario()),
+                Reports.quote(a.variant()), a.taskMillis(), a.wallMillis(), a.archiveBytes())).toList();
+        List<String> archives = sizes.entrySet().stream().map(e -> String.format(Locale.ROOT, "    %s:"
+                + " {\"rawBytes\": %d, \"gzipBytes\": %d}", Reports.quote(e.getKey()), e.getValue().totalBytes(),
                 e.getValue().totalGzipBytes())).toList();
-        Files.writeString(out.resolve("results.json"), String.format(Locale.ROOT, "{\n  \"schemaVersion\": 1,\n"
-                + "  \"generatedAt\": \"%s\",\n  \"runnerSource\": {\"revision\": \"%s\", \"state\": \"%s\"},\n"
-                + "  \"environment\": {\"javaRuntimeVersion\": \"%s\", \"javaVendor\": \"%s\", \"os\": \"%s\","
-                + " \"osArch\": \"%s\", \"availableProcessors\": %d, \"totalMemoryBytes\": %d},\n  \"sample\":"
+        return String.format(Locale.ROOT, "{\n  \"schemaVersion\": 1,\n"
+                + "  \"generatedAt\": \"%s\",\n  \"runnerSource\": {\"revision\": %s, \"state\": %s},\n"
+                + "  \"environment\": {\"javaRuntimeVersion\": %s, \"javaVendor\": %s, \"os\": %s,"
+                + " \"osArch\": %s, \"availableProcessors\": %d, \"totalMemoryBytes\": %d},\n  \"sample\":"
                 + " \"benchmark-large\",\n  \"seed\": %d,\n  \"warmupRounds\": %d,\n  \"measuredRounds\": %d,\n"
-                + "  \"attempts\": [\n%s\n  ],\n  \"sizes\": {\n%s\n  }\n}\n", Instant.now(), state.revision(),
-                state.state(), machine.javaRuntimeVersion(), machine.javaVendor(), os, machine.osArch(),
+                + "  \"attempts\": [\n%s\n  ],\n  \"sizes\": {\n%s\n  }\n}\n", Instant.now(),
+                Reports.quote(machine.runnerSource().revision()), Reports.quote(machine.runnerSource().state()),
+                Reports.quote(machine.javaRuntimeVersion()), Reports.quote(machine.javaVendor()),
+                Reports.quote(machine.osName() + " " + machine.osVersion()), Reports.quote(machine.osArch()),
                 machine.availableProcessors(), machine.totalMemoryBytes(), seed, WARMUP_ROUNDS, iterations,
-                String.join(",\n", records), String.join(",\n", archives)));
+                String.join(",\n", records), String.join(",\n", archives));
     }
 
     /** Copies the sample without its build state and points the copy at the repository's version catalog. */
@@ -194,7 +202,7 @@ public final class PackagingComparison {
                 : variant.equals("shadow") ? "shadowJar" : "shadowJarStored";
     }
 
-    private static List<String> arguments(String variant, boolean rerun) {
+    static List<String> arguments(String variant, boolean rerun) {
         String compression = variant.startsWith("runner-")
                 ? "-PpackagingComparison.compression=" + variant.substring(7).toUpperCase(Locale.ROOT) : null;
         return Stream.of(compression, task(variant), rerun ? "--rerun" : null).filter(Objects::nonNull).toList();

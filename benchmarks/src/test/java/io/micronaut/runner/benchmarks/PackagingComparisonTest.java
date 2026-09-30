@@ -142,6 +142,61 @@ class PackagingComparisonTest {
     }
 
     @Test
+    void everyVariantRunsItsOwnTaskWithItsOwnCompression() {
+        // Literal expectations: the harness derives the marker path from task(), so it cannot notice a swap itself.
+        assertEquals(List.of("runner-stored", "runner-preserve", "shadow", "shadow-stored"),
+                PackagingComparison.VARIANTS);
+        assertEquals("micronautRunnerJar", PackagingComparison.task("runner-stored"));
+        assertEquals("micronautRunnerJar", PackagingComparison.task("runner-preserve"));
+        assertEquals("shadowJar", PackagingComparison.task("shadow"));
+        assertEquals("shadowJarStored", PackagingComparison.task("shadow-stored"));
+
+        assertEquals(List.of("-PpackagingComparison.compression=STORED", "micronautRunnerJar", "--rerun"),
+                PackagingComparison.arguments("runner-stored", true));
+        assertEquals(List.of("-PpackagingComparison.compression=PRESERVE", "micronautRunnerJar", "--rerun"),
+                PackagingComparison.arguments("runner-preserve", true));
+        assertEquals(List.of("shadowJar", "--rerun"), PackagingComparison.arguments("shadow", true));
+        assertEquals(List.of("shadowJarStored", "--rerun"), PackagingComparison.arguments("shadow-stored", true));
+
+        // The edit scenario runs the same task without --rerun: the edit is what makes it execute.
+        assertEquals(List.of("-PpackagingComparison.compression=STORED", "micronautRunnerJar"),
+                PackagingComparison.arguments("runner-stored", false));
+        assertEquals(List.of("-PpackagingComparison.compression=PRESERVE", "micronautRunnerJar"),
+                PackagingComparison.arguments("runner-preserve", false));
+        assertEquals(List.of("shadowJar"), PackagingComparison.arguments("shadow", false));
+        assertEquals(List.of("shadowJarStored"), PackagingComparison.arguments("shadow-stored", false));
+    }
+
+    @Test
+    void resultsEscapeQuotesBackslashesAndControlCharacters(@TempDir Path directory) throws Exception {
+        // BenchmarkProvenance reads java.vendor in its constructor, so the property changes around that call only.
+        String vendor = System.getProperty("java.vendor");
+        BenchmarkProvenance machine;
+        try {
+            System.setProperty("java.vendor", "Acme \"JDK\" C:\\jdk\tbuild");
+            machine = BenchmarkProvenance.unavailable();
+        } finally {
+            System.setProperty("java.vendor", vendor);
+        }
+        Path archive = directory.resolve("x.jar");
+        Files.write(archive, new byte[1_000]);
+        Map<String, DeploymentSize> sizes = new LinkedHashMap<>();
+        sizes.put("sha\"dow", DeploymentSize.measure(DeploymentSize.input("archive", archive)));
+        List<Attempt> attempts = List.of(new Attempt(3, false, "re\\run", "sha\"dow", 812.5, 1_400.25, 1_000));
+
+        String json = PackagingComparison.results(machine, 7L, 1, attempts, sizes);
+
+        assertTrue(json.contains("\"javaVendor\": \"Acme \\\"JDK\\\" C:\\\\jdk\\tbuild\", \"os\": "), json);
+        assertTrue(json.contains(
+                "  \"runnerSource\": {\"revision\": \"<unavailable>\", \"state\": \"unavailable\"},\n"), json);
+        assertTrue(json.contains("    {\"round\": 3, \"warmup\": false, \"scenario\": \"re\\\\run\", \"variant\":"
+                + " \"sha\\\"dow\", \"taskMillis\": 812.500, \"wallMillis\": 1400.250, \"archiveBytes\": 1000}\n"),
+                json);
+        assertTrue(json.contains("    \"sha\\\"dow\": {\"rawBytes\": 1000, \"gzipBytes\": "), json);
+        assertTrue(json.contains("  \"seed\": 7,\n  \"warmupRounds\": 3,\n  \"measuredRounds\": 1,\n"), json);
+    }
+
+    @Test
     void copyLeavesBuildStateBehindAndPointsAtTheRootCatalog(@TempDir Path directory) throws Exception {
         Path sample = Files.createDirectories(directory.resolve("sample"));
         Files.writeString(sample.resolve("settings.gradle"),
