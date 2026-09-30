@@ -1437,6 +1437,11 @@ of positional reads.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/NestedJarFile.html#LOCVER" class="member-name-link">LOCVER</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#logbackPrecompiled()" class="member-name-link">logbackPrecompiled()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dd>
+<div class="block">Whether the build compiled the application's <code>logback.xml</code> into a Logback <code>Configurator</code>, which
+<a href="io/micronaut/runner/build/RunnerJarSpec.html#precompileLogback()"><code>RunnerJarSpec.precompileLogback()</code></a> requests.</div>
+</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#logical-names-heading" class="search-tag-link">Logical names</a> - Section in class io.micronaut.runner.IndexFormat</dt>
 <dd>&nbsp;</dd>
 </dl>
@@ -1884,6 +1889,21 @@ and so is case, so <code>" Preserve "</code> is <a href="io/micronaut/runner/bui
 <dd>
 <div class="block">Whether the packager chose positional reads, which makes a launcher left to decide map only the index
 and read classes with positional reads into pooled buffers.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#PRECOMPILE_LOGBACK" class="member-name-link">PRECOMPILE_LOGBACK</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
+packaged.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#precompileLogback()" class="member-name-link">precompileLogback()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
+<dd>
+<div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
+packaged, so that the application does not parse XML and run Joran on its main thread at every start.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#precompileLogback(boolean)" class="member-name-link">precompileLogback(boolean)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
+<dd>
+<div class="block">Requests that the application's <code>logback.xml</code> be compiled into a Logback <code>Configurator</code> when
+it is packaged.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/Compression.html#PRESERVE" class="member-name-link">PRESERVE</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
 <dd>

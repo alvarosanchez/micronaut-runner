@@ -71,6 +71,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#ADD_EXPORTS" tabindex="0">ADD_EXPORTS</a></li>
 <li><a href="#MANIFEST_ATTRIBUTES" tabindex="0">MANIFEST_ATTRIBUTES</a></li>
 <li><a href="#ARCHIVE_READS" tabindex="0">ARCHIVE_READS</a></li>
+<li><a href="#PRECOMPILE_LOGBACK" tabindex="0">PRECOMPILE_LOGBACK</a></li>
 </ol>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
@@ -205,6 +206,11 @@ and <a href="RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiv
 <div class="col-first odd-row-color"><code><a href="#MULTI_RELEASE" class="member-name-link">MULTI_RELEASE</a></code></div>
 <div class="col-last odd-row-color">
 <div class="block">Whether the application layer itself is multi-release.</div>
+</div>
+<div class="col-first even-row-color"><code><a href="#PRECOMPILE_LOGBACK" class="member-name-link">PRECOMPILE_LOGBACK</a></code></div>
+<div class="col-last even-row-color">
+<div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
+packaged.</div>
 </div>
 </div>
 </section>
@@ -367,6 +373,16 @@ the order they are declared.</div>
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">ARCHIVE_READS</span></div>
 <div class="block">How the launcher reads the archive when <code>micronaut.runner.mmap</code> does not say, an
 <a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a> name. See <a href="RunnerJarSpec.Builder.html#archiveReads(io.micronaut.runner.build.ArchiveReads)"><code>RunnerJarSpec.Builder.archiveReads(ArchiveReads)</code></a>.</div>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="PRECOMPILE_LOGBACK">
+<h3>PRECOMPILE_LOGBACK</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">PRECOMPILE_LOGBACK</span></div>
+<div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
+packaged. See <a href="RunnerJarSpec.Builder.html#precompileLogback(boolean)"><code>RunnerJarSpec.Builder.precompileLogback(boolean)</code></a>.</div>
 </div>
 </section>
 </li>

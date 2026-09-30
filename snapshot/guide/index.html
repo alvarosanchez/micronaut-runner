@@ -52,19 +52,21 @@
                                 
                                 <div class="toc-item" style="margin-left:0"><a href="#format"><strong>3</strong><span>The Runner JAR Format</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#runtime"><strong>4</strong><span>Running a Runner JAR</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#buildTransforms"><strong>4</strong><span>Build-Time Transformations</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#compatibility"><strong>5</strong><span>Compatibility and Limitations</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#runtime"><strong>5</strong><span>Running a Runner JAR</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#cdsAndAot"><strong>6</strong><span>Class Data Sharing and the AOT Cache</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#compatibility"><strong>6</strong><span>Compatibility and Limitations</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#benchmarks"><strong>7</strong><span>Benchmarks</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#cdsAndAot"><strong>7</strong><span>Class Data Sharing and the AOT Cache</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#troubleshooting"><strong>8</strong><span>Troubleshooting</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#benchmarks"><strong>8</strong><span>Benchmarks</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#repository"><strong>9</strong><span>Repository</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#troubleshooting"><strong>9</strong><span>Troubleshooting</span></a></div>
                                 
-                                <div class="toc-item" style="margin-left:0"><a href="#releaseHistory"><strong>10</strong><span>Release History</span></a></div>
+                                <div class="toc-item" style="margin-left:0"><a href="#repository"><strong>10</strong><span>Repository</span></a></div>
+                                
+                                <div class="toc-item" style="margin-left:0"><a href="#releaseHistory"><strong>11</strong><span>Release History</span></a></div>
                                 
                             </div>
                         </div>
@@ -101,19 +103,21 @@
         
         <div class="toc-item" style="margin-left:0px" id="toc-item-format"><a href="#format"><strong>3</strong><span>The Runner JAR Format</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-runtime"><a href="#runtime"><strong>4</strong><span>Running a Runner JAR</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-buildTransforms"><a href="#buildTransforms"><strong>4</strong><span>Build-Time Transformations</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-compatibility"><a href="#compatibility"><strong>5</strong><span>Compatibility and Limitations</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-runtime"><a href="#runtime"><strong>5</strong><span>Running a Runner JAR</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-cdsAndAot"><a href="#cdsAndAot"><strong>6</strong><span>Class Data Sharing and the AOT Cache</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-compatibility"><a href="#compatibility"><strong>6</strong><span>Compatibility and Limitations</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-benchmarks"><a href="#benchmarks"><strong>7</strong><span>Benchmarks</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-cdsAndAot"><a href="#cdsAndAot"><strong>7</strong><span>Class Data Sharing and the AOT Cache</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-troubleshooting"><a href="#troubleshooting"><strong>8</strong><span>Troubleshooting</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-benchmarks"><a href="#benchmarks"><strong>8</strong><span>Benchmarks</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-repository"><a href="#repository"><strong>9</strong><span>Repository</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-troubleshooting"><a href="#troubleshooting"><strong>9</strong><span>Troubleshooting</span></a></div>
         
-        <div class="toc-item" style="margin-left:0px" id="toc-item-releaseHistory"><a href="#releaseHistory"><strong>10</strong><span>Release History</span></a></div>
+        <div class="toc-item" style="margin-left:0px" id="toc-item-repository"><a href="#repository"><strong>10</strong><span>Repository</span></a></div>
+        
+        <div class="toc-item" style="margin-left:0px" id="toc-item-releaseHistory"><a href="#releaseHistory"><strong>11</strong><span>Release History</span></a></div>
         
         </div>
     </div>
@@ -338,6 +342,9 @@ archives under one name. The plugin fails the build if it detects that.
 
         // POSITIONAL maps only the index and reads classes with pooled positional reads: lower RSS, slightly slower start.
         // options.put('archiveReads', 'positional')
+
+        // On by default: compiles logback.xml at packaging time; anything it cannot compile is left to Logback.
+        // options.put('precompileLogback', 'false')
     }
 }</code></pre>
 </div>
@@ -427,6 +434,13 @@ typed property, and an unknown name fails the build.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">passthrough</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
 </tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>precompileLogback</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">boolean</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">passthrough</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
 </tbody>
 </table>
 <div class="paragraph">
@@ -442,6 +456,10 @@ Otherwise the packager reports why and the launcher calls <code>main</code> thro
 <div class="paragraph">
 <p><code>addOpens</code> and <code>addExports</code> entries are <code>module/package</code> pairs in manifest syntax, with no <code>=ALL-UNNAMED</code> suffix,
 and invalid entries fail packaging.</p>
+</div>
+<div class="paragraph">
+<p><code>precompileLogback</code> compiles <code>logback.xml</code> into a Logback <code>Configurator</code> when it is packaged, and leaves any file it
+cannot reproduce exactly to Logback; see <a href="#precompiledLogback">[precompiledLogback]</a>.</p>
 </div>
 <div class="paragraph">
 <p>The application&#8217;s <code>Implementation-*</code>, <code>Specification-*</code> and <code>Sealed</code> attributes and package sections come from the
@@ -575,7 +593,8 @@ attach it as an additional artifact instead and leave the main one untouched.</p
 <div class="paragraph">
 <p>The typed options are parameters of the same names, except that <code>manifestAttributes</code> is <code>&lt;manifestEntries&gt;</code>; the
 scalar ones also read <code>-Dmicronaut.runner.&lt;name&gt;</code>. <code>&lt;runnerOptions&gt;</code> and <code>-Dmicronaut.runner.&lt;name&gt;</code> set the same
-options by name, <code>-Dmicronaut.runner.&lt;name&gt;</code> only for passthrough options, and a <code>&lt;runnerOptions&gt;</code> entry wins.</p>
+options by name, <code>-Dmicronaut.runner.&lt;name&gt;</code> only for passthrough options, and a <code>&lt;runnerOptions&gt;</code> entry wins. For
+example, <code>-Dmicronaut.runner.precompileLogback=false</code> leaves <code>logback.xml</code> to Logback at startup.</p>
 </div>
 <div class="paragraph">
 <p>To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
@@ -779,7 +798,132 @@ files through their URL, which works per JAR without any special handling.</p>
 </div>
 </div>
 
-<h1 id="runtime"><a class="anchor" href="#runtime"></a>4 Running a Runner JAR</h1>
+<h1 id="buildTransforms"><a class="anchor" href="#buildTransforms"></a>4 Build-Time Transformations</h1>
+
+<div class='contribute-btn'>
+    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/buildTransforms.adoc"'>
+        <i class='fa fa-pencil-square-o'></i> Improve this doc
+    </button>
+</div>
+
+
+<div class="paragraph">
+<p>Packaging can do work once, at build time, that an application would otherwise repeat at every start. Each
+transformation is an option of the Runner JAR, fails closed, and names in the build log why it did nothing when it
+does nothing.</p>
+</div>
+<div class="sect1">
+<h2 id="precompiledLogback">Precompiled Logback configuration</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Runner JARs precompile logback.xml by default; Shadow JARs, Docker images and native images configure Logback with
+Joran at startup unless Micronaut AOT&#8217;s <code>logback.xml.to.java</code> has replaced <code>logback.xml</code>, so switching a project from
+Shadow to Runner changes how Logback is configured. The opt-out restores Joran.</p>
+</div>
+<div class="paragraph">
+<p>Without it, Logback parses <code>logback.xml</code> on the main thread at every start: it loads the JDK&#8217;s XML parser and
+Joran&#8217;s model classes, and <code>io.micronaut.runtime.Micronaut</code> waits for it. With it, the packager reads the file with
+Logback&#8217;s own parser, in an isolated class loader that holds only the application&#8217;s Logback and SLF4J jars, and
+generates <code>io.micronaut.runner.generated.logback.LogbackConfigurator</code>, registered as a
+<code>ch.qos.logback.classic.spi.Configurator</code> service. At startup that class creates the appenders and sets the loggers
+the file declares, in the order Joran does, without XML. <code>logback.xml</code> stays in the archive.</p>
+</div>
+<div class="sect2">
+<h3 id="_what_is_compiled">What is compiled</h3>
+<div class="paragraph">
+<p>A file is compiled only when all of it is within this subset:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>&lt;configuration&gt;</code> without <code>debug</code>, <code>scan</code>, <code>scanPeriod</code> or <code>packagingData</code>, or with them <code>false</code>;</p>
+</li>
+<li>
+<p><code>&lt;appender&gt;</code> elements of public <code>ch.qos.logback</code> appender classes, such as <code>ConsoleAppender</code> and <code>FileAppender</code>,
+with <code>String</code>, <code>boolean</code> or <code>int</code> properties (<code>&lt;target&gt;</code>, <code>&lt;file&gt;</code>, <code>&lt;append&gt;</code>) and at most one <code>&lt;encoder&gt;</code>, a
+<code>PatternLayoutEncoder</code> whose only child is a <code>&lt;pattern&gt;</code> using Logback&#8217;s built-in conversion words;</p>
+</li>
+<li>
+<p><code>&lt;logger&gt;</code> (name, level, <code>additivity</code>) and <code>&lt;root&gt;</code> elements that contain only `&lt;appender-ref&gt;`s.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>No value may use a variable. Anything else, such as <code>&lt;property&gt;</code>, <code>&lt;include&gt;</code>, <code>&lt;if&gt;</code>, <code>&lt;conversionRule&gt;</code>, a
+<code>&lt;filter&gt;</code>, a <code>&lt;rollingPolicy&gt;</code> or a custom appender, leaves the file to Joran. So does a file Joran itself
+corrects or complains about: two appenders writing to the same <code>&lt;file&gt;</code>, a property element without text, or a
+<code>&lt;name&gt;</code> element inside an appender.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_when_nothing_is_compiled">When nothing is compiled</h3>
+<div class="paragraph">
+<p>The packager also leaves the file to Joran when logback-classic, logback-core or slf4j-api is missing, when the two
+Logback jars differ in version or are outside 1.5.37 to 1.6 (exclusive), when there is no <code>logback.xml</code>, when any
+layer has a <code>logback-test.xml</code>, <code>logback.groovy</code> or versioned Logback file, when any layer already registers a
+<code>Configurator</code> (your own, or Micronaut AOT&#8217;s), and when a packaged <code>application*</code> or <code>bootstrap*</code> file may set
+<code>logger.config</code> or <code>logback.configurationFile</code>. That last check errs on the side of Joran: a <code>.properties</code> file is
+parsed, and any other format counts when its text names <code>configurationFile</code> or <code>logger.config</code>, or has the word
+<code>logger</code> and a <code>config</code> key anywhere, whatever the nesting or the line breaks. The build logs one line either way,
+at info level: <code>Precompiled logback.xml (application layer) into &#8230;&#8203;</code> or <code>No Logback configuration was precompiled
+because &lt;reason&gt;; Logback will configure itself with Joran at startup</code>. A generated class name that is already
+taken is a warning.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_at_runtime">At runtime</h3>
+<div class="paragraph">
+<p>The generated configurator hands the configuration to Joran when:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>-Dlogback.configurationFile</code> is set;</p>
+</li>
+<li>
+<p>Micronaut refreshes logging (any <code>logger.*</code> property does) and <code>-Dlogger.config</code>, <code>LOGGER_CONFIG</code>, or an
+environment variable named <code>logger.config</code> or <code>logback.configurationFile</code>, names a location: that file is
+configured, as without Micronaut Runner;</p>
+</li>
+<li>
+<p><code>-Dlogback.debug</code> or <code>-Dlogback.statusListenerClass</code> asks for Logback&#8217;s status output;</p>
+</li>
+<li>
+<p><code>-Dmicronaut.runner.logback.precompiled=false</code> is set.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>What changes when it applies: Joran&#8217;s INFO status messages about reading <code>logback.xml</code> are not recorded, and every
+way to see them falls back to Joran. <code>logback.xml</code> is read only on the paths above.</p>
+</div>
+<div class="paragraph">
+<p>One case is not covered: a <code>logger.config</code> set by configuration outside the archive, such as
+<code>-Dmicronaut.config.files</code>, an <code>application.yml</code> in the working directory or a <code>--logger.config</code> program argument,
+is not applied once a <code>Configurator</code> is registered, and the runtime opt-out does not change that. Set the location
+with <code>-Dlogger.config</code> or <code>LOGGER_CONFIG</code> instead, or turn precompilation off.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_turning_it_off">Turning it off</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">micronaut {
+    runner {
+        options.put('precompileLogback', 'false')
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>In Maven, pass <code>-Dmicronaut.runner.precompileLogback=false</code>, or add <code>&lt;precompileLogback&gt;false&lt;/precompileLogback&gt;</code> to
+<code>&lt;runnerOptions&gt;</code>.</p>
+</div>
+</div>
+</div>
+</div>
+
+<h1 id="runtime"><a class="anchor" href="#runtime"></a>5 Running a Runner JAR</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/runtime.adoc"'>
@@ -863,6 +1007,12 @@ Useful when you suspect a corrupted archive.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The parent of the application class loader. <code>platform</code> isolates the application from anything on the real
 <code>java.class.path</code>. <code>system</code> is an escape hatch for an agent or tool that must share types with the
 application.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.logback.precompiled</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code> hands a precompiled Logback configuration (<a href="#precompiledLogback">[precompiledLogback]</a>) over to Logback&#8217;s Joran at startup. It
+has no effect on an archive without one.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1000,7 +1150,7 @@ until the new layout is in place; if publication fails it is restored, or the er
 </div>
 </div>
 
-<h1 id="compatibility"><a class="anchor" href="#compatibility"></a>5 Compatibility and Limitations</h1>
+<h1 id="compatibility"><a class="anchor" href="#compatibility"></a>6 Compatibility and Limitations</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/compatibility.adoc"'>
@@ -1156,7 +1306,7 @@ checks detect corruption, not authorship. See <a href="#archiveLifetime">archive
 </div>
 </div>
 
-<h1 id="cdsAndAot"><a class="anchor" href="#cdsAndAot"></a>6 Class Data Sharing and the AOT Cache</h1>
+<h1 id="cdsAndAot"><a class="anchor" href="#cdsAndAot"></a>7 Class Data Sharing and the AOT Cache</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/cdsAndAot.adoc"'>
@@ -1373,7 +1523,7 @@ java -Xshare:on -XX:SharedArchiveFile=app.jsa -Xlog:class+load -jar my-app-0.1-a
 </div>
 </div>
 
-<h1 id="benchmarks"><a class="anchor" href="#benchmarks"></a>7 Benchmarks</h1>
+<h1 id="benchmarks"><a class="anchor" href="#benchmarks"></a>8 Benchmarks</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/benchmarks.adoc"'>
@@ -1482,6 +1632,14 @@ launcher maps only the index and reads each class with one positional read; comp
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-positional-aot</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the identical <code>POSITIONAL</code> Runner JAR with a trained, application-class-verified JDK AOT cache;
 compared with <code>runner-stored-aot</code> and <code>shadow-aot</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-joran</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in control: the same stored Runner JAR with <code>precompileLogback=false</code>, so Logback reads <code>logback.xml</code> with Joran</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-joran-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in control: that Joran Runner JAR with a trained, application-class-verified JDK AOT cache</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve</code></p></td>
@@ -1692,7 +1850,7 @@ environment of interest and treat its output as local descriptive evidence rathe
 </div>
 </div>
 
-<h1 id="troubleshooting"><a class="anchor" href="#troubleshooting"></a>8 Troubleshooting</h1>
+<h1 id="troubleshooting"><a class="anchor" href="#troubleshooting"></a>9 Troubleshooting</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/troubleshooting.adoc"'>
@@ -1788,7 +1946,7 @@ of them.</p>
 </div>
 </div>
 
-<h1 id="repository"><a class="anchor" href="#repository"></a>9 Repository</h1>
+<h1 id="repository"><a class="anchor" href="#repository"></a>10 Repository</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/repository.adoc"'>
@@ -1804,7 +1962,7 @@ of them.</p>
 <p><a href="https://github.com/micronaut-projects/micronaut-runner">https://github.com/micronaut-projects/micronaut-runner</a></p>
 </div>
 
-<h1 id="releaseHistory"><a class="anchor" href="#releaseHistory"></a>10 Release History</h1>
+<h1 id="releaseHistory"><a class="anchor" href="#releaseHistory"></a>11 Release History</h1>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/micronaut-projects/micronaut-runner/edit/master/src/main/docs/guide/releaseHistory.adoc"'>

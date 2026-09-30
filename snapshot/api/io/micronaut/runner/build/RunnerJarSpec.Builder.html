@@ -73,6 +73,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#addExports(java.util.List)" tabindex="0">addExports(List)</a></li>
 <li><a href="#enableNativeAccess(boolean)" tabindex="0">enableNativeAccess(boolean)</a></li>
 <li><a href="#archiveReads(io.micronaut.runner.build.ArchiveReads)" tabindex="0">archiveReads(ArchiveReads)</a></li>
+<li><a href="#precompileLogback(boolean)" tabindex="0">precompileLogback(boolean)</a></li>
 <li><a href="#option(java.lang.String,java.lang.String)" tabindex="0">option(String, String)</a></li>
 <li><a href="#timestamp(java.time.Instant)" tabindex="0">timestamp(Instant)</a></li>
 <li><a href="#build()" tabindex="0">build()</a></li>
@@ -218,8 +219,14 @@ typed setter or not.</div>
 <div class="block">Sets the file the runner jar is written to.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#precompileLogback(boolean)" class="member-name-link">precompileLogback</a><wbr>(boolean&nbsp;value)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Requests that the application's <code>logback.xml</code> be compiled into a Logback <code>Configurator</code> when
+it is packaged.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the instant every entry is dated with.</div>
 </div>
 </div>
@@ -522,6 +529,26 @@ default may cost; see <a href="ArchiveReads.html" title="enum class in io.micron
 <dd>this builder</dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/NullPointerException.html" title="class or interface in java.lang" class="external-link">NullPointerException</a></code> - if <code>value</code> is <code>null</code></dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="precompileLogback(boolean)">
+<h3>precompileLogback</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></span>&nbsp;<span class="element-name">precompileLogback</span><wbr><span class="parameters">(boolean&nbsp;value)</span></div>
+<div class="block">Requests that the application's <code>logback.xml</code> be compiled into a Logback <code>Configurator</code> when
+it is packaged. The packager generates nothing, and logs why, whenever it cannot prove that the result
+matches Joran's; see <a href="RunnerJarSpec.html#precompileLogback()"><code>RunnerJarSpec.precompileLogback()</code></a>. Setting this to <code>false</code> leaves
+<code>logback.xml</code> to Joran at startup.
+
+<p>Defaults to <code>true</code>.</p></div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>value</code> - whether to precompile <code>logback.xml</code></dd>
+<dt>Returns:</dt>
+<dd>this builder</dd>
 </dl>
 </div>
 </section>

@@ -72,6 +72,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#addExports()" tabindex="0">addExports()</a></li>
 <li><a href="#enableNativeAccess()" tabindex="0">enableNativeAccess()</a></li>
 <li><a href="#archiveReads()" tabindex="0">archiveReads()</a></li>
+<li><a href="#precompileLogback()" tabindex="0">precompileLogback()</a></li>
 <li><a href="#timestamp()" tabindex="0">timestamp()</a></li>
 <li><a href="#effectiveOptions()" tabindex="0">effectiveOptions()</a></li>
 </ol>
@@ -231,9 +232,15 @@ restricted method warnings a dependency using the foreign function API would oth
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Where the runner jar is written.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp()" class="member-name-link">timestamp</a>()</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#precompileLogback()" class="member-name-link">precompileLogback</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
+packaged, so that the application does not parse XML and run Joran on its main thread at every start.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp()" class="member-name-link">timestamp</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The instant every entry of the archive is dated with, converted to MS-DOS time in UTC.</div>
 </div>
 </div>
@@ -487,6 +494,38 @@ header.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the read mode, <a href="ArchiveReads.html#MAPPED"><code>ArchiveReads.MAPPED</code></a> unless configured otherwise</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="precompileLogback()">
+<h3>precompileLogback</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">precompileLogback</span>()</div>
+<div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
+packaged, so that the application does not parse XML and run Joran on its main thread at every start.
+
+<p>The packager generates <code>io.micronaut.runner.generated.logback.LogbackConfigurator</code> into the
+application layer and registers it as a <code>ch.qos.logback.classic.spi.Configurator</code> service. It applies to
+STORED and PRESERVE alike, since it touches only the application layer. It fails closed: it generates nothing,
+and logs why, when it cannot prove that the generated code reproduces Joran's result exactly. That is the
+case unless logback-classic and logback-core are both at the same version from 1.5.37 up to, but excluding,
+1.6; when there is no <code>logback.xml</code>, or a <code>logback-test.xml</code>, <code>logback.groovy</code> or versioned
+Logback file; when any layer already registers a <code>Configurator</code>, as Micronaut AOT's
+<code>logback.xml.to.java</code> output does; when a packaged <code>application*</code> or <code>bootstrap*</code> file may
+set <code>logger.config</code> or <code>logback.configurationFile</code>; and when the file uses anything beyond
+literal appenders with simple properties and a <code>PatternLayoutEncoder</code>, loggers, the root logger and
+appender references.</p>
+
+<p>What changes at runtime when it applies: Joran's INFO status messages about reading <code>logback.xml</code> are
+not recorded, and every way to see them (<code>logback.debug</code>, a status listener) falls back to Joran;
+<code>logback.xml</code> is still packaged but read only on the fallback paths, which are
+<code>-Dlogback.configurationFile</code>, a <code>logger.config</code> location on Micronaut's refresh, and
+<code>-Dmicronaut.runner.logback.precompiled=false</code>.</p></div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>whether to precompile <code>logback.xml</code></dd>
 </dl>
 </div>
 </section>

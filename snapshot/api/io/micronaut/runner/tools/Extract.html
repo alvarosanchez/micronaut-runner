@@ -117,10 +117,13 @@ jar carried.</p>
 
 <h2 id="what-is-left-out-of-the-application-jar-and-why-heading">What is left out of the application jar, and why</h2>
 <ul>
-  <li><strong><code>io/micronaut/runner/generated/**</code></strong> - the generated entry stub. It belongs
-      to the runner format: it implements <code>io.micronaut.runner.Entry</code> and registers itself with
+  <li><strong>the generated entry stub</strong> - the class the index header names, and its nested classes. It
+      belongs to the runner format: it implements <code>io.micronaut.runner.Entry</code> and registers itself with
       <code>Launcher</code>, neither of which exists in the extracted layout. The manifest names the real
-      application main class instead, so the stub would have no reader and could only fail to link.</li>
+      application main class instead, so the stub would have no reader and could only fail to link. Every
+      other class under <code>io/micronaut/runner/generated/</code>, such as a precompiled Logback configurator,
+      is generated support that runs on any class loader, and stays: a service file of the application layer
+      may name it, and a service file naming a missing class breaks the lookup.</li>
   <li><strong>the merged <code>META-INF/micronaut/</code> copy at the archive root</strong> - the packager
       writes one merged, zero-length copy of every Micronaut service entry of the application
       <em>and of every dependency</em> into the outer root, so that the runner class loader can answer
