@@ -134,6 +134,46 @@ class BenchmarkEntryModeTest {
     }
 
     @Test
+    void theJoranRowsAreComparedAsControlsOfThePrecompiledRows() {
+        List<String> pairs = SampleBuild.comparisons().stream()
+                .map(spec -> spec.candidate() + " - " + spec.baseline())
+                .toList();
+        assertTrue(pairs.containsAll(List.of(
+                "runner-stored - runner-stored-joran",
+                "runner-stored-aot - runner-stored-joran-aot")), pairs.toString());
+    }
+
+    @Test
+    void aJoranControlRowSetsItsOptionOnTheSharedRecordAndIsPinnedLikeEveryLaunchInput(@TempDir Path output)
+            throws Exception {
+        Path classes = compile(output.resolve("joran"), "fixture.JoranMain", """
+                package fixture;
+                public final class JoranMain {
+                    public static void main(String[] args) { }
+                }
+                """);
+        SampleBuild.RunnerJarOptions control = SampleBuild.RunnerJarOptions.DEFAULTS.withPrecompileLogback(false);
+        assertNull(control.archiveReads(), "the control leaves the archive read mode at the builder default");
+        assertNull(SampleBuild.RunnerJarOptions.DEFAULTS.precompileLogback());
+        assertEquals(Boolean.FALSE, control.withArchiveReads(ArchiveReads.POSITIONAL).precompileLogback(),
+                "one option does not reset the other");
+        assertEquals(ArchiveReads.POSITIONAL, SampleBuild.RunnerJarOptions.DEFAULTS
+                .withArchiveReads(ArchiveReads.POSITIONAL).withPrecompileLogback(false).archiveReads());
+
+        Variant joran = SampleBuild.runnerJar(output, "runner-stored-joran", "fixture.JoranMain",
+                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB, control);
+
+        assertTrue(joran.description().contains("logback.xml left to Joran"), joran.description());
+        assertFalse(joran.description().contains("archiveReads"), joran.description());
+        assertFalse(SampleBuild.logbackPrecompiled(joran.artifact()));
+        assertEquals(LaunchInputs.PINNED_MODIFICATION_TIME, Files.getLastModifiedTime(joran.artifact()),
+                "a trained cache of the -aot control stays valid across runs only if the jar's time is pinned");
+        try (RunnerJarReader reader = RunnerJarReader.open(joran.artifact())) {
+            assertFalse(reader.index().positionalReads());
+        }
+    }
+
+    @Test
     void reportsRequestedAndEffectiveEntryModes(@TempDir Path output) throws Exception {
         List<Variant> variants = List.of(
                 Variant.unavailable("runner-stored", "plugin-default fixture", "not built"),
