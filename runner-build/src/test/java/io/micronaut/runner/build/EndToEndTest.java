@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.runner.Index;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -45,6 +46,7 @@ import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -191,6 +193,14 @@ class EndToEndTest {
                 private static int failures;
 
                 public static void main(String[] args) throws Exception {
+                    // In an archive that preloads, wait for the launcher's thread, so that every check below
+                    // runs against classes it has already defined.
+                    for (Thread thread : Thread.getAllStackTraces().keySet()) {
+                        if ("micronaut-runner-preload".equals(thread.getName())) {
+                            thread.join();
+                            System.out.println("PRELOAD JOINED");
+                        }
+                    }
                     System.out.println("ARGS " + String.join("|", args));
 
                     ClassLoader loader = Thread.currentThread().getContextClassLoader();
@@ -601,6 +611,8 @@ class EndToEndTest {
     private static Path awkwardArchive;
     private static Path positionalArchive;
     private static Path positionalPreserveArchive;
+    /** What every archive of this class is built from; each build sets its own output and options. */
+    private static RunnerJarSpec.Builder common;
 
     @BeforeAll
     static void packageTheApplication() throws Exception {
@@ -713,7 +725,7 @@ class EndToEndTest {
         List<Dependency> dependencies = List.of(
                 Dependency.of(first, "org.example:dep-one:1.2.3"),
                 Dependency.of(second, "org.example:dep-two:2.0.0"));
-        RunnerJarSpec.Builder common = RunnerJarSpec.builder()
+        common = RunnerJarSpec.builder()
                 .mainClass("com.example.Application")
                 .applicationOutput(List.of(applicationClasses, applicationResources))
                 .applicationManifest(applicationManifest)
@@ -770,6 +782,58 @@ class EndToEndTest {
                         && run.output().contains("class loader ready")
                         && run.output().contains("application entered"),
                 () -> "the timing checkpoints were not printed\n" + run.output());
+    }
+
+    @Test
+    void preloadsARecordedStartupClassListAndEveryPromiseStillHolds() throws Exception {
+        // The documented recipe: run the jar once with a class-load log, then package with that log.
+        Path log = workspace.resolve("startup-classes.log");
+        Files.deleteIfExists(log);
+        assertPassed(fork(storedArchive, workspace,
+                List.of("-Dmicronaut.runner.preload=false", "-Xlog:class+load=info:file=" + log.getFileName()),
+                List.of()));
+        Path preloading = workspace.resolve("out/app-preload.jar");
+        RunnerJarResult result = RunnerJarBuilder.build(common.output(preloading)
+                .compression(Compression.STORED).archiveReads(ArchiveReads.MAPPED).startupClasses(log).build(),
+                BuildLogger.noOp());
+        assertTrue(result.warnings().stream().noneMatch(warning -> warning.contains("startup class")),
+                () -> "a list recorded from the same application has nothing to drop: " + result.warnings());
+        int count;
+        int jdkCount;
+        try (RunnerJarReader reader = RunnerJarReader.open(preloading)) {
+            Index index = reader.index();
+            count = index.preloadCount();
+            jdkCount = index.jdkPreloadCount();
+            List<String> listed = new ArrayList<>();
+            for (int position = 0; position < count; position++) {
+                listed.add(index.entryName(index.preloadRecord(position)));
+            }
+            assertTrue(listed.containsAll(List.of("com/example/Application.class", "org/depone/DepOne.class",
+                    "org/deptwo/Versioned.class")), () -> "the recording misses application classes: " + listed);
+            assertTrue(listed.indexOf("io/micronaut/runner/generated/AppEntry.class")
+                            < listed.indexOf("com/example/Application.class"),
+                    () -> "the list is not in load order: " + listed);
+        }
+        String checkpoint = "preload finished (" + count + " classes, " + jdkCount + " JDK classes)";
+
+        Forked run = fork(preloading, workspace, List.of("-Dmicronaut.runner.timing=true"), List.of());
+        assertPassed(run);
+        if (Runtime.getRuntime().availableProcessors() >= 2) {
+            assertTrue(run.output().contains("PRELOAD JOINED") && run.output().contains(checkpoint),
+                    () -> "the startup classes were not preloaded\n" + run.output());
+        } else {
+            assertFalse(run.output().contains("preload finished"), run::output);
+        }
+
+        Forked off = fork(preloading, workspace,
+                List.of("-Dmicronaut.runner.timing=true", "-Dmicronaut.runner.preload=false"), List.of());
+        assertPassed(off);
+        assertFalse(off.output().contains("PRELOAD JOINED") || off.output().contains("preload finished"),
+                () -> "micronaut.runner.preload=false must not start the preloader\n" + off.output());
+
+        Forked plain = fork(storedArchive, workspace, List.of("-Dmicronaut.runner.timing=true"), List.of());
+        assertFalse(plain.output().contains("PRELOAD JOINED") || plain.output().contains("preload finished"),
+                () -> "an archive without a list must not start the preloader\n" + plain.output());
     }
 
     @Test

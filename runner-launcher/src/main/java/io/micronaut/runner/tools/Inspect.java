@@ -142,6 +142,10 @@ public final class Inspect {
         label(out, "Nested compression", index.nestedStored() ? "stored" : "preserved from the original");
         label(out, "Application layer", index.applicationMultiRelease() ? "multi-release" : "single release");
         label(out, "Archive reads", index.positionalReads() ? "positional" : "mapped");
+        int preload = index.preloadCount();
+        label(out, "Preload classes", preload == 0 ? "none" : Integer.toString(preload));
+        int jdkPreload = index.jdkPreloadCount();
+        label(out, "Preload JDK classes", jdkPreload == 0 ? "none" : Integer.toString(jdkPreload));
         label(out, "Read through", source.mapped() ? "a memory mapping"
                 : source.indexOnly() ? "positional reads, index mapped" : "positional reads");
     }

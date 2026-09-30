@@ -54,6 +54,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class IndexWriterTest {
 
+    /**
+     * A startup class list for the writer-agreement fixture: a class with a versioned alias in a dependency,
+     * a class three jars hold and the application versions, a name no jar holds, the main class, and a repeat.
+     */
+    private static final List<String> STARTUP_CLASSES = List.of("com.example.dep.Dep", "com.example.Shared",
+            "com.example.Missing", "com.example.Application", "com.example.Shared");
+
+    /** The JDK classes of that list: two names, one of them repeated. */
+    private static final List<String> JDK_STARTUP_CLASSES =
+            List.of("java.util.zip.CRC32", "java.sql.Timestamp", "java.util.zip.CRC32");
+
     @Test
     void layoutReportsTheLengthTheWriteProduces() {
         IndexWriter writer = new IndexWriter().startClass("com.example.App");
@@ -142,6 +153,106 @@ class IndexWriterTest {
                 }
             }
         }
+    }
+
+    @Test
+    void withoutAStartupClassListTheHeaderBytesStayZeroAndTheIndexEndsWithTheStringTable() {
+        byte[] none = preloadFixture(List.of());
+        // Names that are not in the archive resolve to nothing, and nothing is what gets written.
+        byte[] unresolved = preloadFixture(List.of("com.example.Gone", "org.other.Missing", "com.example.dep"));
+
+        Decoded index = new Decoded(none);
+        for (int at = IndexFormat.H_PRELOAD_TABLE_OFFSET; at < IndexFormat.HEADER_SIZE; at++) {
+            assertEquals(0, index.u8(at), "header byte " + at);
+        }
+        assertEquals(index.stringTable() + index.stringTableLength(), index.length());
+        assertArrayEquals(none, unresolved,
+                "a list whose names all fail to resolve leaves the index byte for byte what it is without one");
+    }
+
+    @Test
+    void theStartupClassListBecomesAnAlignedTableOfChainHeadsInListOrder() {
+        List<String> listed = List.of("com.example.mr.Feature", "com.example.Gone", "com.example.dep.Dep",
+                "com.example.App", "com.example.dep.Dep", "com.example.mr.Feature");
+        IndexWriter writer = preloadWriter(listed);
+        IndexWriter.Layout layout = writer.layout();
+        byte[] bytes = writer.write(layout, 9999);
+        Decoded index = new Decoded(bytes);
+
+        List<String> expected = List.of("com.example.mr.Feature", "com.example.dep.Dep", "com.example.App");
+        assertEquals(expected.size(), layout.preloadCount(), "unknown and repeated names are dropped");
+        assertEquals(expected.size(), index.u32(IndexFormat.H_PRELOAD_COUNT));
+        long table = index.u64(IndexFormat.H_PRELOAD_TABLE_OFFSET);
+        long stringsEnd = index.stringTable() + index.stringTableLength();
+        assertEquals(0, table % 8, "the preload table starts 8 byte aligned");
+        assertTrue(table >= stringsEnd && table < stringsEnd + 8, "right after the string table");
+        assertEquals(table + 4L * expected.size(), index.length());
+        assertEquals(layout.length(), bytes.length, "the layout reports the length with the table");
+        for (int at = IndexFormat.H_JDK_PRELOAD_COUNT; at < IndexFormat.HEADER_SIZE; at++) {
+            assertEquals(0, index.u8(at), "without a JDK list, header byte " + at);
+        }
+
+        for (int position = 0; position < expected.size(); position++) {
+            String entry = expected.get(position).replace('.', '/') + ".class";
+            int record = index.i32(table + 4L * position);
+            assertEquals(index.find(entry), record, () -> entry + " is not listed by the head of its chain");
+            assertEquals(entry, index.entryName(record));
+        }
+        int feature = index.i32(table);
+        assertEquals(17, index.entryMrVersion(feature),
+                "a multi-release class is listed by the alias that heads its chain");
+        assertEquals(1, index.entryJarId(index.i32(table + 4)),
+                "a class two jars hold is listed from the first of them on the class path");
+    }
+
+    @Test
+    void theJdkClassesBecomeAnAlignedTableOfNamesAfterThePreloadTable() {
+        List<String> jdk = List.of("java.util.zip.CRC32", "java.sql.Timestamp", "java.util.zip.CRC32");
+        for (List<String> archiveClasses : List.of(List.of("com.example.App", "com.example.dep.Dep"),
+                List.<String>of())) {
+            IndexWriter writer = preloadWriter(archiveClasses).jdkStartupClasses(jdk);
+            IndexWriter.Layout layout = writer.layout();
+            byte[] bytes = writer.write(layout, 9999);
+            Decoded index = new Decoded(bytes);
+
+            assertEquals(2, layout.jdkPreloadCount(), "a repeated name is written once");
+            assertEquals(2L, index.u32(IndexFormat.H_JDK_PRELOAD_COUNT));
+            long table = index.u64(IndexFormat.H_JDK_PRELOAD_TABLE_OFFSET);
+            long before = archiveClasses.isEmpty()
+                    ? index.stringTable() + index.stringTableLength()
+                    : index.u64(IndexFormat.H_PRELOAD_TABLE_OFFSET) + 4L * archiveClasses.size();
+            assertEquals(0, table % 8, "the JDK preload table starts 8 byte aligned");
+            assertTrue(table >= before && table < before + 8, "right after what precedes it");
+            assertEquals(table + 8, index.length());
+            assertEquals(layout.length(), bytes.length);
+            assertEquals("java.util.zip.CRC32", index.string(index.i32(table)));
+            assertEquals("java.sql.Timestamp", index.string(index.i32(table + 4)));
+            assertEquals(archiveClasses.size(), index.u32(IndexFormat.H_PRELOAD_COUNT));
+            for (int at = IndexFormat.H_RESERVED; at < IndexFormat.HEADER_SIZE; at++) {
+                assertEquals(0, index.u8(at), "reserved header byte " + at);
+            }
+        }
+    }
+
+    /** The index of {@link #preloadWriter(List)}, written. */
+    private static byte[] preloadFixture(List<String> startupClasses) {
+        IndexWriter writer = preloadWriter(startupClasses);
+        return writer.write(writer.layout(), 9999);
+    }
+
+    /**
+     * An application class, a class two dependencies hold, and a multi-release class with a versioned alias.
+     */
+    private static IndexWriter preloadWriter(List<String> startupClasses) {
+        IndexWriter writer = new IndexWriter().startClass("com.example.App").startupClasses(startupClasses);
+        writer.addJar(IndexFormat.CLASSES_PREFIX).addEntry("com/example/App.class").sizes(120, 120);
+        IndexWriter.JarSpec first = writer.addJar("MICRONAUT-INF/lib/first.jar")
+                .addFlags(IndexFormat.JAR_FLAG_MULTI_RELEASE);
+        first.addEntry("com/example/dep/Dep.class").sizes(8, 8);
+        first.addEntry("com/example/mr/Feature.class").sizes(9, 9);
+        first.addEntry("META-INF/versions/17/com/example/mr/Feature.class").sizes(10, 10);
+        writer.addJar("MICRONAUT-INF/lib/second.jar").addEntry("com/example/dep/Dep.class").sizes(8, 8);
+        return writer;
     }
 
     @Test
@@ -436,10 +547,25 @@ class IndexWriterTest {
 
         int mapped = IndexFormat.HEADER_FLAG_NESTED_STORED | IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE;
         for (int flags : new int[] {mapped, mapped | IndexFormat.HEADER_FLAG_POSITIONAL_READS}) {
-            byte[] mine = buildWithIndexWriter(flags);
-            byte[] theirs = buildWithLauncherBuilder(type, flags);
+            byte[] mine = buildWithIndexWriter(flags, List.of(), List.of());
+            byte[] theirs = buildWithLauncherBuilder(type, flags, List.of(), List.of());
 
             assertArrayEquals(theirs, mine, () -> difference(theirs, mine));
+            byte[] minePreloading = buildWithIndexWriter(flags, STARTUP_CLASSES, List.of());
+            byte[] theirsPreloading = buildWithLauncherBuilder(type, flags, STARTUP_CLASSES, List.of());
+            assertArrayEquals(theirsPreloading, minePreloading,
+                    () -> "with a startup class list: " + difference(theirsPreloading, minePreloading));
+            assertEquals(3L, new Decoded(minePreloading).u32(IndexFormat.H_PRELOAD_COUNT),
+                    "the fixture's list has to resolve for the comparison to cover the preload table");
+            assertArrayEquals(mine, Arrays.copyOf(clearPreloadHeader(minePreloading), mine.length),
+                    "the preload table is appended: everything before it is what it is without a list");
+            for (List<String> archiveClasses : List.of(STARTUP_CLASSES, List.<String>of())) {
+                byte[] mineWithJdk = buildWithIndexWriter(flags, archiveClasses, JDK_STARTUP_CLASSES);
+                byte[] theirsWithJdk = buildWithLauncherBuilder(type, flags, archiveClasses, JDK_STARTUP_CLASSES);
+                assertArrayEquals(theirsWithJdk, mineWithJdk,
+                        () -> "with a JDK class list: " + difference(theirsWithJdk, mineWithJdk));
+                assertEquals(2L, new Decoded(mineWithJdk).u32(IndexFormat.H_JDK_PRELOAD_COUNT));
+            }
             Decoded index = new Decoded(mine);
             assertTrue((index.entryFlags(index.find("resources")) & IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN) != 0,
                     "the fixture has to exercise the directory twin flag for the comparison to cover it");
@@ -458,14 +584,19 @@ class IndexWriterTest {
      * sections with and without sealing, and metadata strings that repeat so the string table has to
      * deduplicate them.
      *
-     * @param flags the header flags
+     * @param flags             the header flags
+     * @param startupClasses    the startup class list, empty for none
+     * @param jdkStartupClasses the JDK classes of the startup class list, empty for none
      * @return the index as {@link IndexWriter} writes it
      */
-    private static byte[] buildWithIndexWriter(int flags) {
+    private static byte[] buildWithIndexWriter(int flags, List<String> startupClasses,
+            List<String> jdkStartupClasses) {
         IndexWriter writer = new IndexWriter()
                 .startClass("com.example.Application")
                 .launcherVersion("1.0.0-SNAPSHOT")
-                .headerFlags(flags);
+                .headerFlags(flags)
+                .startupClasses(startupClasses)
+                .jdkStartupClasses(jdkStartupClasses);
 
         IndexWriter.JarSpec application = writer.addJar(IndexFormat.CLASSES_PREFIX)
                 .addFlags(IndexFormat.JAR_FLAG_MULTI_RELEASE)
@@ -532,13 +663,22 @@ class IndexWriterTest {
      * Builds the same fixture with the launcher's own test builder, reached reflectively because it lives in
      * another module's test source set.
      *
-     * @param type  the {@code TestIndexBuilder} class
-     * @param flags the header flags
+     * @param type              the {@code TestIndexBuilder} class
+     * @param flags             the header flags
+     * @param startupClasses    the startup class list, empty for none
+     * @param jdkStartupClasses the JDK classes of the startup class list, empty for none
      * @return the index as that builder writes it
      * @throws Exception if the builder cannot be driven
      */
-    private static byte[] buildWithLauncherBuilder(Class<?> type, int flags) throws Exception {
+    private static byte[] buildWithLauncherBuilder(Class<?> type, int flags, List<String> startupClasses,
+            List<String> jdkStartupClasses) throws Exception {
         Object writer = type.getConstructor().newInstance();
+        for (String name : startupClasses) {
+            call(writer, "preloadClass", name);
+        }
+        for (String name : jdkStartupClasses) {
+            call(writer, "jdkPreloadClass", name);
+        }
         call(writer, "startClass", "com.example.Application");
         call(writer, "launcherVersion", "1.0.0-SNAPSHOT");
         call(writer, "headerFlags", flags);
@@ -588,6 +728,13 @@ class IndexWriterTest {
         entry(other, "resources", 300300L, 12L, 0xCDCDCDCDL);
 
         return (byte[]) call(writer, "build");
+    }
+
+    /** A copy of an index with the preload fields of its header zeroed, as they are without a list. */
+    private static byte[] clearPreloadHeader(byte[] index) {
+        byte[] copy = index.clone();
+        Arrays.fill(copy, IndexFormat.H_PRELOAD_TABLE_OFFSET, IndexFormat.H_RESERVED, (byte) 0);
+        return copy;
     }
 
     private static Object entry(Object jar, String name, long offset, long size, long crc) throws Exception {

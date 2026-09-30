@@ -348,6 +348,20 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     public abstract MapProperty<String, String> getManifestAttributes();
 
     /**
+     * The recorded startup class list the launcher preloads on a background thread: the
+     * {@code -Xlog:class+load} output of a run of the archive, or a file of binary class names. It has no
+     * default, and without it nothing is preloaded. The plugin sets the extension's value as the convention.
+     *
+     * <p>Only the content is an input: editing the list rebuilds the archive, and moving it does not.</p>
+     *
+     * @return the startup class list
+     */
+    @InputFile
+    @Optional
+    @PathSensitive(PathSensitivity.NONE)
+    public abstract RegularFileProperty getStartupClasses();
+
+    /**
      * Packaging options by {@linkplain RunnerJarOption#optionName() name}, for the options that have no
      * typed property here. Each value uses the grammar {@link RunnerJarOption} documents, and the packaging
      * library parses and validates it; an unknown name fails the task. An entry is applied after the typed
@@ -418,6 +432,10 @@ public abstract class MicronautRunnerJar extends DefaultTask {
         }
         if (getManifestAttributes().isPresent()) {
             spec.manifestAttributes(getManifestAttributes().get());
+        }
+        if (getStartupClasses().isPresent()) {
+            // @InputFile validation has already established that the file exists.
+            spec.startupClasses(getStartupClasses().get().getAsFile().toPath());
         }
         getOptions().get().forEach(spec::option);
 

@@ -174,6 +174,14 @@ public class PackageMojo extends AbstractMojo {
     private Boolean enableNativeAccess;
 
     /**
+     * The recorded startup class list the launcher preloads on a background thread: the
+     * {@code -Xlog:class+load} output of a run of the archive, or a file of binary class names. Unset, nothing
+     * is preloaded.
+     */
+    @Parameter(property = "micronaut.runner.startupClasses")
+    private File startupClasses;
+
+    /**
      * Packaging options by name, with values in the grammar {@link RunnerJarOption} documents. An entry wins
      * over the typed parameter and over the {@code micronaut.runner.<name>} property of the same option; an
      * unknown name fails the build.
@@ -342,6 +350,9 @@ public class PackageMojo extends AbstractMojo {
             }
             if (manifestEntries != null) {
                 spec.manifestAttributes(new LinkedHashMap<>(manifestEntries));
+            }
+            if (startupClasses != null) {
+                spec.startupClasses(startupClasses.toPath());
             }
             List<String> passthrough = Arrays.stream(RunnerJarOption.values())
                     .filter(option -> option.exposure() == RunnerJarOption.Exposure.PASSTHROUGH)

@@ -114,6 +114,9 @@ table omits the JDK 25.0.4.1 cache (52.3 MB, 12.4 MB gzipped, from one training,
 
 == Single-file option on JDK 25 and 26: the AOT cache on the single JAR
 
+<<preload,Preloading the recorded startup classes>> complements a cache: its gain is in launches without one. Build
+the JAR with the list first, then train the cache on that JAR.
+
 Run the training script (<<trainingSnippet>>) with `JAR` at the path production launches, then
 `java -XX:AOTCache=app.aot -jar my-app-0.1-all.jar`. On `benchmark-large` with JDK 25.0.4.1 this was ready 37.5 ms
 sooner than explicit CDS (95% CI 32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS, but 24–29 ms later than

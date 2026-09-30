@@ -17,9 +17,11 @@ package io.micronaut.runner.build;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -105,7 +107,8 @@ class RunnerJarSpecTest {
                 .option("enableNativeAccess", " true ")
                 .option("addOpens", "java.base/java.lang,java.base/java.util")
                 .option("addExports", "java.base/sun.nio.ch")
-                .option("manifestAttributes", "Implementation-Vendor: Example Ltd\nBuilt-By: ci"))
+                .option("manifestAttributes", "Implementation-Vendor: Example Ltd\nBuilt-By: ci")
+                .option("startupClasses", "profiles/startup-classes.log"))
                 .build();
 
         assertEquals(Compression.PRESERVE, spec.compression());
@@ -117,6 +120,28 @@ class RunnerJarSpecTest {
         assertEquals(Map.of("Implementation-Vendor", "Example Ltd", "Built-By", "ci"), spec.manifestAttributes());
         assertEquals(List.of("Implementation-Vendor", "Built-By"), List.copyOf(spec.manifestAttributes().keySet()),
                 "attributes keep the order of their lines");
+        assertEquals(Optional.of(Path.of("profiles/startup-classes.log")), spec.startupClasses());
+    }
+
+    @Test
+    void startupClassesIsAFileWithoutADefault() {
+        assertEquals(Path.class, RunnerJarOption.STARTUP_CLASSES.valueType());
+        assertEquals(Optional.empty(), RunnerJarOption.STARTUP_CLASSES.defaultValue());
+        assertEquals(RunnerJarOption.Exposure.TYPED, RunnerJarOption.STARTUP_CLASSES.exposure());
+
+        RunnerJarSpec defaults = complete(RunnerJarSpec.builder()).build();
+        assertEquals(Optional.empty(), defaults.startupClasses());
+        assertEquals("", defaults.effectiveOptions().get("startupClasses"), "no file is the empty value");
+
+        Path list = Path.of("profiles", "startup-classes.log");
+        RunnerJarSpec typed = complete(RunnerJarSpec.builder().startupClasses(list)).build();
+        assertEquals(Optional.of(list), typed.startupClasses());
+        assertEquals(list.toString(), typed.effectiveOptions().get("startupClasses"));
+
+        assertEquals(Optional.empty(), complete(RunnerJarSpec.builder().startupClasses(list)
+                .option("startupClasses", " ")).build().startupClasses(), "the empty value by name unsets the file");
+        assertEquals(Optional.empty(), complete(RunnerJarSpec.builder().startupClasses(list)
+                .startupClasses(null)).build().startupClasses(), "null unsets the file");
     }
 
     @Test

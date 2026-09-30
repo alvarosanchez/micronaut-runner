@@ -64,6 +64,7 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
@@ -244,6 +245,16 @@ class PackageMojoTest {
             assertTrue(RunnerJarOption.named(name).isEmpty(),
                     () -> name + " is a parameter of the goal and cannot be an option name");
         }
+    }
+
+    @Test
+    void theStartupClassListReachesTheSpecOnlyWhenItIsSet() throws MojoFailureException {
+        assertEquals(Optional.empty(), spec().startupClasses(), "unset, nothing is preloaded");
+
+        Path list = temp.resolve("startup-classes.log");
+        set("startupClasses", list.toFile());
+        assertEquals(Optional.of(list), spec().startupClasses());
+        assertEquals(list.toString(), spec().effectiveOptions().get("startupClasses"));
     }
 
     @Test

@@ -294,6 +294,22 @@ class ToolsTest {
     }
 
     @Test
+    void inspectPrintsTheNumberOfStartupClassesOrNone() throws Throwable {
+        String plain = capture(() -> Inspect.run(new String[0], archive, index, source));
+        assertEquals("none", header(plain, "Preload classes"), plain);
+        assertEquals("none", header(plain, "Preload JDK classes"), plain);
+
+        File preload = writeArchive(workspace.resolve("preload/app.jar"), Flavour.PRELOAD);
+        try (ArchiveSource other = ArchiveSource.open(preload)) {
+            Index otherIndex = Index.open(other);
+            String output = capture(() -> Inspect.run(new String[0], preload, otherIndex, other));
+            // Two of the three listed names are in the archive.
+            assertEquals("2", header(output, "Preload classes"), output);
+            assertEquals("1", header(output, "Preload JDK classes"), output);
+        }
+    }
+
+    @Test
     void inspectRefusesArgumentsItDoesNotUnderstand() {
         IOException failure = assertThrows(IOException.class,
                 () -> Inspect.run(new String[] {"--why"}, archive, index, source));
@@ -1062,6 +1078,10 @@ class ToolsTest {
         nested(dependencyTwo, secondBase + two[1], BASE_DATA.length, "data.txt");
         nested(dependencyTwo, secondBase + two[2], VERSIONED_DATA.length,
                 "META-INF/versions/21/data.txt");
+        if (flavour == Flavour.PRELOAD) {
+            builder.preloadClass("org.depone.DepOne").preloadClass(MAIN_CLASS).preloadClass("org.depone.Absent");
+            builder.jdkPreloadClass("java.util.zip.Adler32");
+        }
         return builder.build();
     }
 
@@ -1288,7 +1308,10 @@ class ToolsTest {
         NO_STUB,
 
         /** An archive that records what the build-time class transforms did. */
-        TRANSFORMS
+        TRANSFORMS,
+
+        /** A well-formed archive that carries a startup class list. */
+        PRELOAD
     }
 
     /**

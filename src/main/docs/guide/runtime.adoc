@@ -30,7 +30,15 @@ an exploded copy. The non-`run` modes consume the remaining command line argumen
 |`micronaut.runner.timing`
 |`false`
 |Prints the time reached by each startup phase to standard error: archive opened, index read, class loader
-ready, application entered. Use it to separate launcher cost from framework cost.
+ready, application entered. An archive that <<preload,preloads its startup classes>> also prints
+`preload finished (N classes, M JDK classes)` when its background thread is done. Use it to separate launcher
+cost from framework cost.
+
+|`micronaut.runner.preload`
+|`true`
+|Set to `false` so that the launcher does not start the thread that
+<<preload,preloads the recorded startup classes>>. It only has an effect on an archive packaged with
+`startupClasses`.
 
 |`micronaut.runner.mmap`
 |from the archive (`archiveReads`)
@@ -106,6 +114,81 @@ The Runner JAR's resident mapping falls from 25 MiB (macOS) or 30 MiB (Linux) to
 reads change RSS, not page-cache use: in a Linux container the working set that Kubernetes reports
 (`memory.current` minus `inactive_file`) did not drop, because the archive's pages sit on the inactive file list
 whether they are mapped or read. The slower start is why `MAPPED` is the default.
+
+[[preload]]
+== Preloading the startup classes
+
+Without a JDK cache, the launcher defines each class when something first asks for it, and most of those requests
+come from the main thread while the framework starts. A runner JAR can instead carry the list of classes that a run
+of the application loaded. The launcher then loads them, in that order, on one background thread while the
+application starts, so that the main thread usually finds a class already defined.
+
+Preloading is the accelerator for launches without a JDK cache. On `benchmark-large` (Micronaut 5.1.15, Netty
+4.2.18) the uncached single JAR reached readiness about 100 ms sooner with its recorded list: -98.8 ms (95% CI -109.2
+to -89.9, 20 pairs) on macOS with 12 CPUs and JDK 25.0.4.1, and -106.0 ms (95% CI -116.8 to -94.3, 20 pairs) in a Linux
+container limited to 2 CPUs with JDK 25.0.4. The same class loading happens earlier and on two threads, which can cost
+memory while the application starts: on macOS, private memory at readiness was 3 to 12 MiB higher from one session to
+the next, with the process's peak footprint within 5 MB; in the container it rose by at most 2 MiB.
+
+With a JDK AOT cache the recorded classes are already cheap to load, and preloading is not what makes a cached launch
+fast: the same two runs measured -8.5 ms (95% CI -16.3 to -2.5) and -14.8 ms (95% CI -22.5 to +7.0). To combine the
+two, build the JAR with the list first and train the cache on that JAR (<<cdsAndAot>>).
+
+*Record the list.* Run the training script (<<trainingSnippet>>) on the runner JAR with two substitutions and
+nothing else changed: `CACHE=startup-classes.log`, and in place of `-XX:AOTCacheOutput="$CACHE"`
+
+[source,bash]
+----
+-Dmicronaut.runner.preload=false -Djava.util.concurrent.ForkJoinPool.common.parallelism=0 -Xlog:class+load=info:file="$CACHE"
+----
+
+The result is the JVM's own class-load log, in load order. `micronaut.runner.preload=false` keeps a JAR that already
+carries a list from replaying it into the new recording. The common-pool flag makes Micronaut load its services on
+the main thread, so two recordings list the classes in nearly the same order; it belongs to the recording run only.
+Three rules keep the recording useful:
+
+* Record without a CDS or AOT cache. A class served from a cache is logged as `shared objects file`, not as a class
+of the archive, and the build then warns that the list holds nothing to preload.
+* End the run with SIGTERM, as the script does. `jcmd AOT.end_recording` ends an AOT recording, which this run does
+not have.
+* Record from a JAR built with the packaging options that production uses, because they decide which classes load.
+
+*Embed it.* Pass the file to the packager. It keeps the classes that the run loaded from the archive, and the JDK
+classes that the run loaded from the runtime image rather than from the JDK's default CDS archive, which the launcher
+loads after the archive's. A file with one binary class name per line works too; blank lines and lines starting with
+`#` are ignored, and `jrt:<name>` marks a JDK class.
+
+[source,groovy]
+----
+micronaut {
+    runner {
+        startupClasses = file('startup-classes.log')
+    }
+}
+----
+
+`micronautRunner { }` is the same block in a build without a Micronaut plugin, and a value set on a task,
+`micronautRunnerJar { startupClasses = file('startup-classes.log') }`, wins for that task. In Maven, pass
+`-Dmicronaut.runner.startupClasses=startup-classes.log` or set `<startupClasses>` in the plugin's configuration.
+`java -Dmicronaut.runner.mode=inspect -jar my-app-0.1-all.jar` prints how many classes the archive carries as
+`Preload classes` and `Preload JDK classes`.
+
+*When it does not run.* `-Dmicronaut.runner.preload=false` switches preloading off. The launcher also leaves the
+thread out when the JVM sees fewer than two processors, which in a container means a CPU limit of one: there is no
+spare core for it to use. It applies only when the single JAR runs: the extracted layout (<<aotLayout>>) has no
+launcher and ignores the list.
+
+*A stale list is safe, and worth refreshing.* The list does not depend on the JAR's bytes, so it can be committed.
+The build drops the names the archive no longer holds and says how many in one warning. A class that is still in
+the archive but that the application no longer uses is loaded for nothing: the launcher loads a listed class and
+never initialises it, so nothing of the application runs early and its behaviour does not change, but the
+background work is wasted. Record the list again after upgrading Micronaut or Netty, or after changing packaging
+options, even when the build drops nothing. A listed JDK class that the runtime does not have, in a `jlink` image
+for example, is skipped.
+
+*Agents.* An agent attached to the running JVM sees the preloaded classes as already loaded, so it has to
+retransform them to instrument them. An agent started with `-javaagent` is unaffected: it transforms each class as
+it is defined, on whichever thread defines it.
 
 [[archiveLifetime]]
 == Archive lifetime

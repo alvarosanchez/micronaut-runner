@@ -137,11 +137,11 @@ class TypedOptionConformanceTest {
         for (RunnerJarOption option : typedOptions()) {
             Object onExtension = getter(MicronautRunnerExtension.class, option.optionName()).invoke(extension);
             Object onTask = getter(MicronautRunnerJar.class, option.optionName()).invoke(task);
-            set(onExtension, option, "extension");
-            assertEquals(sample(option, "extension"), ((Provider<?>) onTask).get(),
+            set(onExtension, sample(project, option, "extension"), option);
+            assertEquals(sample(project, option, "extension"), ((Provider<?>) onTask).get(),
                     () -> option.optionName() + " on the task does not follow the extension");
-            set(onTask, option, "task");
-            assertEquals(sample(option, "task"), ((Provider<?>) onTask).get(),
+            set(onTask, sample(project, option, "task"), option);
+            assertEquals(sample(project, option, "task"), ((Provider<?>) onTask).get(),
                     () -> option.optionName() + " set on the task does not win over the extension");
         }
 
@@ -197,8 +197,11 @@ class TypedOptionConformanceTest {
     }
 
     /** A value of an option's type that no default has, distinct for each owner. */
-    private static Object sample(RunnerJarOption option, String owner) {
+    private static Object sample(Project project, RunnerJarOption option, String owner) {
         Class<?> type = option.valueType();
+        if (type == Path.class) {
+            return project.getLayout().getProjectDirectory().file(owner + "-" + option.optionName() + ".log");
+        }
         if (type == Boolean.class) {
             return !Boolean.parseBoolean(option.defaultValue().orElse("false")) ^ "task".equals(owner);
         }
@@ -212,8 +215,7 @@ class TypedOptionConformanceTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static void set(Object property, RunnerJarOption option, String owner) {
-        Object value = sample(option, owner);
+    private static void set(Object property, Object value, RunnerJarOption option) {
         switch (property) {
             case HasMultipleValues<?> list -> ((HasMultipleValues<Object>) list).set((Iterable<Object>) value);
             case MapProperty<?, ?> map -> ((MapProperty<Object, Object>) map).set((Map<Object, Object>) value);

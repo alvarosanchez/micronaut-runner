@@ -64,6 +64,8 @@ class BenchmarkEntryModeTest {
     /** The opt-in rows, in the order they follow {@code runner-stored-aot}. */
     private static final List<String> OPT_IN_ROWS = List.of(
             "runner-stored-reflection",
+            "runner-stored-preload",
+            "runner-stored-preload-aot",
             "runner-stored-positional",
             "runner-stored-positional-aot",
             "runner-stored-joran",
@@ -94,6 +96,12 @@ class BenchmarkEntryModeTest {
         assertTrue(core.stream().noneMatch(name -> name.contains("joran")), core.toString());
         assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("joran")));
         assertEquals(EntryMode.REFLECTION, EntryMode.requestedBy("runner-stored-reflection"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-preload"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-preload-aot"));
+        assertEquals(List.of("runner-stored-preload", "runner-stored-preload-aot"),
+                withOptIn.subList(withOptIn.indexOf("runner-stored-reflection") + 1,
+                        withOptIn.indexOf("runner-stored-reflection") + 3),
+                "both preload rows come right after the reflection row");
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional"));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional-aot"));
         assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran"));
@@ -115,6 +123,53 @@ class BenchmarkEntryModeTest {
                 "runner-stored-positional-aot - runner-stored-aot",
                 "runner-stored-positional - shadow",
                 "runner-stored-positional-aot - shadow-aot")), pairs.toString());
+    }
+
+    @Test
+    void thePreloadRowsAreComparedWithTheListFreeRowsAndWithShadow() {
+        List<String> pairs = SampleBuild.comparisons().stream()
+                .map(spec -> spec.candidate() + " - " + spec.baseline())
+                .toList();
+        assertEquals(List.of(
+                "runner-stored-preload - runner-stored",
+                "runner-stored-preload - shadow",
+                "runner-stored-preload-aot - runner-stored-aot"), pairs.subList(pairs.size() - 3, pairs.size()),
+                "the three preload comparisons are appended to the list");
+    }
+
+    @Test
+    void aPreloadRowPackagesTheStartupClassesAndFailsWhenNoneIsEmbedded(@TempDir Path output) throws Exception {
+        Path classes = compile(output.resolve("preload"), "fixture.PreloadMain", """
+                package fixture;
+                public final class PreloadMain {
+                    public static void main(String[] args) { }
+                }
+                """);
+        Path list = Files.writeString(output.resolve("startup-classes.log"), """
+                [0.010s][info][class,load] java.lang.Object source: shared objects file
+                [0.050s][info][class,load] fixture.PreloadMain source: jar:file:/work/app.jar!/MICRONAUT-INF/classes/
+                """);
+        Path cached = Files.writeString(output.resolve("cached.log"), """
+                [0.050s][info][class,load] fixture.PreloadMain source: shared objects file
+                """);
+
+        Variant preload = SampleBuild.runnerJar(output, "runner-stored-preload", "fixture.PreloadMain",
+                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB,
+                SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(list));
+        Variant plain = SampleBuild.runnerJar(output, "runner-stored", "fixture.PreloadMain",
+                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
+
+        assertTrue(preload.description().contains("1 recorded startup classes preloaded"), preload.description());
+        try (RunnerJarReader reader = RunnerJarReader.open(preload.artifact())) {
+            assertEquals(1, reader.index().preloadCount());
+        }
+        try (RunnerJarReader reader = RunnerJarReader.open(plain.artifact())) {
+            assertEquals(0, reader.index().preloadCount(), "a row that sets no list preloads nothing");
+        }
+        IOException failure = assertThrows(IOException.class, () -> SampleBuild.runnerJar(output,
+                "runner-stored-preload", "fixture.PreloadMain", List.of(classes), List.of(), Compression.STORED,
+                EntryMode.STUB, SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(cached)));
+        assertTrue(failure.getMessage().contains("embeds no class"), failure.getMessage());
     }
 
     @Test

@@ -95,6 +95,8 @@ final class SampleBuild {
     private static final String RUNNER_STORED = "runner-stored";
     private static final String RUNNER_STORED_AOT = "runner-stored-aot";
     private static final String RUNNER_STORED_REFLECTION = "runner-stored-reflection";
+    private static final String RUNNER_STORED_PRELOAD = "runner-stored-preload";
+    private static final String RUNNER_STORED_PRELOAD_AOT = "runner-stored-preload-aot";
     private static final String RUNNER_STORED_POSITIONAL = "runner-stored-positional";
     private static final String RUNNER_STORED_POSITIONAL_AOT = "runner-stored-positional-aot";
     private static final String RUNNER_STORED_JORAN = "runner-stored-joran";
@@ -108,6 +110,11 @@ final class SampleBuild {
     private static final String SHADOW_DESCRIPTION = "Everything flattened into one jar by the Shadow plugin";
     private static final String SHADOW_STORED_DESCRIPTION =
             "The same Shadow inputs written with STORED entries (compression-matched control)";
+    private static final String RUNNER_STORED_PRELOAD_DESCRIPTION =
+            "Runner jar, nested dependencies re-packed uncompressed; startup classes recorded in this run and"
+                    + " preloaded";
+    private static final String RUNNER_STORED_PRELOAD_AOT_DESCRIPTION =
+            "The same preloading Runner jar with a verified JDK AOT cache";
     private static final String RUNNER_STORED_POSITIONAL_DESCRIPTION =
             "Runner jar, nested dependencies re-packed uncompressed; archiveReads POSITIONAL (index mapped only)";
     private static final String RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION =
@@ -128,6 +135,17 @@ final class SampleBuild {
     /** The configurator runner-build generates from logback.xml when it precompiles it. */
     private static final String GENERATED_LOGBACK_CONFIGURATOR =
             "io.micronaut.runner.generated.logback.LogbackConfigurator";
+
+    /** The class-load log the preload row records in every run, in the artifacts directory. */
+    private static final String STARTUP_CLASSES_LOG = "startup-classes.log";
+
+    /**
+     * What the recording launch adds to the class-load log option. With a common pool of parallelism zero,
+     * Micronaut's parallel service loading runs on the main thread, so two recordings list the classes in
+     * nearly the same order.
+     */
+    private static final List<String> RECORDING_JVM_ARGUMENTS =
+            List.of("-Djava.util.concurrent.ForkJoinPool.common.parallelism=0");
 
     /** The task the init script registers on the sample's build. */
     private static final String METADATA_TASK = "runnerBenchmarkMetadata";
@@ -302,7 +320,12 @@ final class SampleBuild {
                 new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_KEEPDEBUG,
                         "Local-variable tables stripped vs kept"),
                 new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_KEEPDEBUG_AOT,
-                        "Local-variable tables stripped vs kept, with the AOT cache"));
+                        "Local-variable tables stripped vs kept, with the AOT cache"),
+                new ComparisonSpec(RUNNER_STORED_PRELOAD, RUNNER_STORED,
+                        "Startup class preload vs none"),
+                new ComparisonSpec(RUNNER_STORED_PRELOAD, SHADOW, "Runner + startup class preload vs Shadow"),
+                new ComparisonSpec(RUNNER_STORED_PRELOAD_AOT, RUNNER_STORED_AOT,
+                        "Startup class preload + AOT cache vs AOT cache alone"));
     }
 
     /**
@@ -329,6 +352,9 @@ final class SampleBuild {
         if (optionalRows) {
             variants.add(Variant.unavailable(RUNNER_STORED_REFLECTION,
                     "Runner jar, nested dependencies re-packed uncompressed; reflection ablation", reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_PRELOAD, RUNNER_STORED_PRELOAD_DESCRIPTION, reason));
+            variants.add(Variant.unavailable(RUNNER_STORED_PRELOAD_AOT, RUNNER_STORED_PRELOAD_AOT_DESCRIPTION,
+                    reason));
             variants.add(Variant.unavailable(RUNNER_STORED_POSITIONAL, RUNNER_STORED_POSITIONAL_DESCRIPTION,
                     reason));
             variants.add(Variant.unavailable(RUNNER_STORED_POSITIONAL_AOT,
@@ -381,6 +407,11 @@ final class SampleBuild {
             variants.add(attempt(RUNNER_STORED_REFLECTION,
                     "Runner jar, nested dependencies re-packed uncompressed; reflection ablation",
                     () -> runnerJar(RUNNER_STORED_REFLECTION, Compression.STORED, EntryMode.REFLECTION)));
+            Variant preload = attempt(RUNNER_STORED_PRELOAD, RUNNER_STORED_PRELOAD_DESCRIPTION,
+                    () -> preloadingRunnerJar(stored));
+            variants.add(preload);
+            variants.add(attempt(RUNNER_STORED_PRELOAD_AOT, RUNNER_STORED_PRELOAD_AOT_DESCRIPTION,
+                    () -> AotCache.prepare(preload, RUNNER_STORED_PRELOAD_AOT, aotRequest())));
             Variant positional = attempt(RUNNER_STORED_POSITIONAL, RUNNER_STORED_POSITIONAL_DESCRIPTION,
                     () -> runnerJar(RUNNER_STORED_POSITIONAL, Compression.STORED, EntryMode.STUB,
                             RunnerJarOptions.DEFAULTS.withArchiveReads(ArchiveReads.POSITIONAL)));
@@ -522,6 +553,42 @@ final class SampleBuild {
         return Variant.available(name, description, command, directory, copy, deploymentSize);
     }
 
+    /**
+     * Records the startup class list from the list-free {@code runner-stored} jar and packages the same inputs
+     * again with it.
+     *
+     * <p>The recording is one launch without a cache through the AOT training lifecycle: readiness, the
+     * workload, SIGTERM. It is taken afresh in every run, because the log is a measurement input and not a
+     * cache. Classes that ForkJoin workers load can land in a slightly different order each time, so the jar,
+     * and with it the identity of its AOT cache, may differ between runs; that costs only a retraining.</p>
+     *
+     * @param stored the list-free STORED runner jar
+     * @return the preloading variant
+     * @throws IOException          if the recording launch fails, or the jar embeds no startup class
+     * @throws InterruptedException if the recording launch is interrupted
+     */
+    private Variant preloadingRunnerJar(Variant stored) throws IOException, InterruptedException {
+        if (!stored.available()) {
+            throw new IOException("there is no runner jar to record the startup classes from: "
+                    + stored.unavailableReason());
+        }
+        Path log = artifacts.resolve(STARTUP_CLASSES_LOG);
+        Files.deleteIfExists(log);
+        List<String> arguments = new ArrayList<>();
+        arguments.add("-Xlog:class+load=info:file=" + log.toAbsolutePath().normalize());
+        arguments.addAll(RECORDING_JVM_ARGUMENTS);
+        try {
+            AotCache.runOnce(stored, arguments, aotRequest());
+        } catch (IOException e) {
+            throw new IOException("recording the startup classes failed: " + e.getMessage(), e);
+        }
+        if (!Files.isRegularFile(log) || Files.size(log) == 0) {
+            throw new IOException("the recording launch wrote no class-load log at " + log);
+        }
+        return runnerJar(RUNNER_STORED_PRELOAD, Compression.STORED, EntryMode.STUB,
+                RunnerJarOptions.DEFAULTS.withStartupClasses(log));
+    }
+
     private Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode) throws IOException {
         return runnerJar(name, compression, requestedEntryMode, RunnerJarOptions.DEFAULTS);
     }
@@ -609,12 +676,14 @@ final class SampleBuild {
         if (options.stripLocalVariables() != null) {
             builder.stripLocalVariables(options.stripLocalVariables());
         }
+        builder.startupClasses(options.startupClasses());
         RunnerJarSpec spec = builder.build();
         RunnerJarBuilder.build(spec, BuildLogger.noOp());
         // Rebuilt in every run with the same bytes; the pin keeps the time a trained cache recorded.
         LaunchInputs.pin(output);
         EntryMode effectiveEntryMode = inspectEntryMode(output, requestedEntryMode);
         inspectArchiveReads(output, spec.archiveReads());
+        int preloaded = inspectPreload(output, options.startupClasses());
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 output.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", output));
@@ -627,7 +696,9 @@ final class SampleBuild {
                         + (options.archiveReads() == null ? ""
                         : "; archiveReads " + options.archiveReads().name())
                         + (Boolean.FALSE.equals(options.precompileLogback()) ? "; logback.xml left to Joran" : "")
-                        + (spec.stripLocalVariables() ? "" : "; local-variable tables kept"),
+                        + (spec.stripLocalVariables() ? "" : "; local-variable tables kept")
+                        + (options.startupClasses() == null ? ""
+                        : "; " + preloaded + " recorded startup classes preloaded"),
                 command, artifacts, output, deploymentSize, requestedEntryMode, effectiveEntryMode);
     }
 
@@ -646,6 +717,26 @@ final class SampleBuild {
     }
 
     /**
+     * Fails a row that asked for a startup class list whose jar embeds none, so that a row meant to measure
+     * preloading is reported unavailable rather than measuring a plain launch under its name.
+     *
+     * @return the number of startup classes the index carries, {@code 0} when no list was requested
+     */
+    private static int inspectPreload(Path output, Path startupClasses) throws IOException {
+        if (startupClasses == null) {
+            return 0;
+        }
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            int count = reader.index().preloadCount();
+            if (count == 0) {
+                throw new IOException("a startup class list was requested, but the index of " + output
+                        + " embeds no class from " + startupClasses);
+            }
+            return count;
+        }
+    }
+
+    /**
      * The packaging options a row sets on top of the packaging library's defaults. A {@code null} field leaves
      * the builder default in place, so a row that does not set an option measures whatever default the option
      * table declares. A row that needs another option adds a field here rather than another overload.
@@ -655,11 +746,13 @@ final class SampleBuild {
      *                            default
      * @param stripLocalVariables whether dependency classes lose their local-variable tables, or {@code null}
      *                            for the builder default
+     * @param startupClasses      the recorded startup class list to embed, or {@code null} for none
      */
-    record RunnerJarOptions(ArchiveReads archiveReads, Boolean precompileLogback, Boolean stripLocalVariables) {
+    record RunnerJarOptions(ArchiveReads archiveReads, Boolean precompileLogback, Boolean stripLocalVariables,
+                            Path startupClasses) {
 
         /** Every option at the builder default. */
-        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null);
+        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null, null);
 
         /**
          * These options with another archive read mode.
@@ -668,7 +761,7 @@ final class SampleBuild {
          * @return the new options
          */
         RunnerJarOptions withArchiveReads(ArchiveReads value) {
-            return new RunnerJarOptions(value, precompileLogback, stripLocalVariables);
+            return new RunnerJarOptions(value, precompileLogback, stripLocalVariables, startupClasses);
         }
 
         /**
@@ -678,7 +771,7 @@ final class SampleBuild {
          * @return the new options
          */
         RunnerJarOptions withPrecompileLogback(boolean value) {
-            return new RunnerJarOptions(archiveReads, value, stripLocalVariables);
+            return new RunnerJarOptions(archiveReads, value, stripLocalVariables, startupClasses);
         }
 
         /**
@@ -688,7 +781,17 @@ final class SampleBuild {
          * @return the new options
          */
         RunnerJarOptions withStripLocalVariables(boolean value) {
-            return new RunnerJarOptions(archiveReads, precompileLogback, value);
+            return new RunnerJarOptions(archiveReads, precompileLogback, value, startupClasses);
+        }
+
+        /**
+         * These options with a startup class list.
+         *
+         * @param value the recorded class-load log or list of binary names, or {@code null} for none
+         * @return the new options
+         */
+        RunnerJarOptions withStartupClasses(Path value) {
+            return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, value);
         }
     }
 

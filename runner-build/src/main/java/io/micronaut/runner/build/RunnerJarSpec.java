@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -72,6 +73,7 @@ public final class RunnerJarSpec {
     private final ArchiveReads archiveReads;
     private final boolean precompileLogback;
     private final boolean stripLocalVariables;
+    private final Path startupClasses;
     private final Instant timestamp;
     private final Map<String, String> effectiveOptions;
 
@@ -97,6 +99,7 @@ public final class RunnerJarSpec {
         this.archiveReads = builder.archiveReads;
         this.precompileLogback = builder.precompileLogback;
         this.stripLocalVariables = builder.stripLocalVariables;
+        this.startupClasses = builder.startupClasses;
         this.timestamp = builder.timestamp;
         Map<String, String> effective = new LinkedHashMap<>();
         for (RunnerJarOption option : RunnerJarOption.values()) {
@@ -324,6 +327,21 @@ public final class RunnerJarSpec {
     }
 
     /**
+     * The recorded startup class list: the {@code -Xlog:class+load} output of a run of the runner jar, or a
+     * file of binary class names.
+     *
+     * <p>The packager embeds the classes of the list that the archive holds, in the order of the list, and
+     * the launcher defines them on one background thread while the application starts, followed by the JDK
+     * classes of the list. The launcher loads them and never initialises them, so a list that names a class
+     * the application no longer uses costs background work and changes no behaviour.</p>
+     *
+     * @return the list file, if one was configured
+     */
+    public Optional<Path> startupClasses() {
+        return Optional.ofNullable(startupClasses);
+    }
+
+    /**
      * The instant every entry of the archive is dated with, converted to MS-DOS time in UTC.
      *
      * @return the reproducible timestamp
@@ -360,6 +378,7 @@ public final class RunnerJarSpec {
             case ARCHIVE_READS -> archiveReads.name();
             case PRECOMPILE_LOGBACK -> Boolean.toString(precompileLogback);
             case STRIP_LOCAL_VARIABLES -> Boolean.toString(stripLocalVariables);
+            case STARTUP_CLASSES -> startupClasses == null ? "" : startupClasses.toString();
         };
     }
 
@@ -403,6 +422,7 @@ public final class RunnerJarSpec {
         private ArchiveReads archiveReads;
         private boolean precompileLogback;
         private boolean stripLocalVariables;
+        private Path startupClasses;
         private Instant timestamp = ZipWriter.DEFAULT_TIMESTAMP;
 
         /**
@@ -736,6 +756,27 @@ public final class RunnerJarSpec {
         }
 
         /**
+         * Sets the recorded startup class list the launcher preloads on a background thread.
+         *
+         * <p>The file is either the raw output of {@code -Xlog:class+load=info} from a run of the runner jar
+         * without a CDS or AOT cache, or one binary class name per line, where blank lines and lines starting
+         * with {@code #} are ignored and {@code jrt:<name>} marks a JDK class. Of a class-load log, the classes
+         * the runner class loader defined and the JDK classes loaded from the runtime image are kept. The
+         * order of the file is kept and a repeated name counts once.</p>
+         *
+         * <p>Names the archive does not hold are dropped with one warning, so a list recorded before a
+         * dependency upgrade stays usable. Record the list from a jar built with the same packaging options
+         * as this one. There is no default: without a list nothing is preloaded.</p>
+         *
+         * @param value the list file, or {@code null} for none
+         * @return this builder
+         */
+        public Builder startupClasses(Path value) {
+            this.startupClasses = value;
+            return this;
+        }
+
+        /**
          * Sets a packaging option by its {@linkplain RunnerJarOption#optionName() name}, whether it has a
          * typed setter or not. This is how a build plugin passes the options it has no typed property for.
          *
@@ -775,6 +816,7 @@ public final class RunnerJarSpec {
                 case ARCHIVE_READS -> archiveReads(ArchiveReads.parse(value));
                 case PRECOMPILE_LOGBACK -> precompileLogback(parseBoolean(option, value));
                 case STRIP_LOCAL_VARIABLES -> stripLocalVariables(parseBoolean(option, value));
+                case STARTUP_CLASSES -> startupClasses(parsePath(option, value));
             };
         }
 
@@ -792,6 +834,22 @@ public final class RunnerJarSpec {
             }
             throw new IllegalArgumentException("Option '" + option.optionName()
                     + "' must be true or false, not '" + value + "'");
+        }
+
+        /**
+         * Reads a file path. The empty string is no file, which is how an option without a default is
+         * reported and therefore how it is read back.
+         */
+        private static Path parsePath(RunnerJarOption option, String value) {
+            if (value.isBlank()) {
+                return null;
+            }
+            try {
+                return Path.of(value);
+            } catch (InvalidPathException e) {
+                throw new IllegalArgumentException("Option '" + option.optionName() + "' is not a file path: '"
+                        + value + "'", e);
+            }
         }
 
         private static List<String> parseList(String value) {

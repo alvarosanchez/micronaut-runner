@@ -89,6 +89,41 @@ class IncrementalBuildFunctionalTest extends AbstractFunctionalTest {
     }
 
     /**
+     * The startup class list is a file input hashed by content and blind to its path: editing the list
+     * rebuilds the archive, and the same list at another path does not. A Gradle plugin that offers the option
+     * has to keep both halves, which is why this is a real build.
+     *
+     * @param directory a fresh project directory
+     * @throws IOException if the fixture cannot be written
+     */
+    @Test
+    void theStartupClassListIsHashedByContentNotByPath(@TempDir Path directory) throws IOException {
+        writeFixture(directory, """
+                micronautRunnerJar {
+                    startupClasses = layout.projectDirectory.file(
+                            providers.gradleProperty('list').orElse('startup-classes.log'))
+                }
+                """, "");
+        write(directory.resolve("startup-classes.log"), MAIN_CLASS + "\n");
+
+        BuildResult first = build(directory, "micronautRunnerJar");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(first, RUNNER_JAR_TASK));
+        BuildResult unchanged = build(directory, "micronautRunnerJar");
+        assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(unchanged, RUNNER_JAR_TASK),
+                () -> "the list did not change:\n" + unchanged.getOutput());
+
+        write(directory.resolve("profiles/recorded.log"), MAIN_CLASS + "\n");
+        BuildResult moved = build(directory, "micronautRunnerJar", "-Plist=profiles/recorded.log");
+        assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(moved, RUNNER_JAR_TASK),
+                () -> "the same list at another path must not rebuild the archive:\n" + moved.getOutput());
+
+        write(directory.resolve("profiles/recorded.log"), MAIN_CLASS + "\ncom.example.lib.Greeter\n");
+        BuildResult edited = build(directory, "micronautRunnerJar", "-Plist=profiles/recorded.log");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(edited, RUNNER_JAR_TASK),
+                () -> "an edited list must rebuild the archive:\n" + edited.getOutput());
+    }
+
+    /**
      * Of the {@code jar} task's manifest, only the attributes the archive carries are inputs, and they are
      * taken from its configuration: a thin JAR left over from an earlier build is never read.
      *
