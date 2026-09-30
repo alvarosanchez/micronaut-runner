@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -93,7 +94,7 @@ class AotCacheGateTest {
         AotCacheGate.Coverage coverage = AotCacheGate.coverage(log, RECORD_LOG);
 
         assertEquals(List.of("io.micronaut.inject.Unexpected", "io.micronaut.inject.Another"), coverage.unexpected());
-        List<String> problems = AotCacheGate.coverageProblems(coverage, 0.95);
+        List<String> problems = AotCacheGate.coverageProblems(coverage, 0.95, true);
         assertEquals(2, problems.size(), problems::toString);
         assertTrue(problems.get(0).contains("40.0% of the classes came from the cache, less than the minimum of 95.0%"),
                 problems.get(0));
@@ -107,11 +108,20 @@ class AotCacheGateTest {
         AotCacheGate.Coverage coverage = AotCacheGate.coverage(CLASS_LOAD, List.of());
         assertEquals(2, coverage.unexpected().size(), "without the recording's skips nothing is allowed");
         assertEquals(List.of(), AotCacheGate.coverageProblems(
-                AotCacheGate.coverage(CLASS_LOAD, RECORD_LOG), 0.5), "0.5 is enough, and every class is allowed");
+                AotCacheGate.coverage(CLASS_LOAD, RECORD_LOG), 0.5, true), "0.5 is enough, and every class is allowed");
 
         // The gate turns problems into failures only when coverage is enforced; the single-JAR target reports them.
-        assertEquals(2, AotCacheGate.coverageProblems(coverage, 0.95).size());
-        assertEquals(false, AotCacheSettings.defaults().withEnforceCoverage(false).enforceCoverage());
+        assertEquals(2, AotCacheGate.coverageProblems(coverage, 0.95, false).size());
+        List<String> many = new java.util.ArrayList<>();
+        for (int i = 0; i < 25; i++) {
+            many.add("[0.3s][info][class,load] io.micronaut.many.C" + i + " source: jrt:/x");
+        }
+        AotCacheGate.Coverage lots = AotCacheGate.coverage(many, List.of());
+        String reported = AotCacheGate.coverageProblems(lots, 0, false).get(0);
+        assertTrue(reported.endsWith("io.micronaut.many.C9 and 15 more"), reported);
+        String enforced = AotCacheGate.coverageProblems(lots, 0, true).get(0);
+        assertTrue(enforced.endsWith("io.micronaut.many.C24"), "an enforced failure lists every offender");
+        assertFalse(AotCacheSettings.defaults().withEnforceCoverage(false).enforceCoverage());
     }
 
     @Test

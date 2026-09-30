@@ -71,6 +71,9 @@ public final class AotCacheGate {
     /** The whole class-load log, which the JVM writes until it exits. */
     private static final String CLASS_LOAD_LOG_FULL = "aot-verify-class-load.full.log";
 
+    /** How many offending classes a coverage problem that does not fail the gate names. */
+    private static final int NAMED_OFFENDERS = 10;
+
     /** What a coverage problem that does not fail the gate is reported with. */
     private static final String NOT_ENFORCED = "Not enforced: ";
 
@@ -186,7 +189,7 @@ public final class AotCacheGate {
         Coverage coverage = coverage(readLines(classLoadLog), recordLog);
         findings.coverage = coverage;
         log.info("JDK AOT cache coverage: " + coverage.summary());
-        List<String> problems = coverageProblems(coverage, settings.minCoverage());
+        List<String> problems = coverageProblems(coverage, settings.minCoverage(), settings.enforceCoverage());
         if (settings.enforceCoverage() && !problems.isEmpty()) {
             throw findings.fail(dir, problems);
         }
@@ -255,18 +258,24 @@ public final class AotCacheGate {
      *
      * @param coverage    the coverage
      * @param minCoverage the minimum share of classes from the cache
+     * @param listAll     whether every offending class is named; otherwise the first ten are, and the report's
+     *                    {@code micronautNotFromCache} has them all
      * @return the problems, empty when there are none
      */
-    static List<String> coverageProblems(Coverage coverage, double minCoverage) {
+    static List<String> coverageProblems(Coverage coverage, double minCoverage, boolean listAll) {
         List<String> problems = new ArrayList<>();
         if (coverage.ratio() < minCoverage) {
             problems.add(String.format(Locale.ROOT, "%.1f%% of the classes came from the cache, less than the"
                     + " minimum of %.1f%%", coverage.ratio() * 100, minCoverage * 100));
         }
         if (!coverage.unexpected().isEmpty()) {
+            List<String> named = listAll || coverage.unexpected().size() <= NAMED_OFFENDERS ? coverage.unexpected()
+                    : coverage.unexpected().subList(0, NAMED_OFFENDERS);
             problems.add(coverage.unexpected().size() + " io.micronaut classes did not come from the cache, and"
                     + " the recording did not skip them for failing verification or as JFR event classes: "
-                    + String.join(", ", coverage.unexpected()));
+                    + String.join(", ", named)
+                    + (named.size() < coverage.unexpected().size()
+                    ? " and " + (coverage.unexpected().size() - named.size()) + " more" : ""));
         }
         return problems;
     }

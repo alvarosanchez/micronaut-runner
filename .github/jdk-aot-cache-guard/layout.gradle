@@ -1,0 +1,30 @@
+// The JDK AOT cache guard's configuration of benchmark-large for the layout target (see
+// .github/workflows/jdk-aot-cache-guard.yml). The cache is trained with the JDK of -Pguard.javaVersion, which the
+// workflow passes, found through -Porg.gradle.java.installations.paths; compilation keeps the JDK running Gradle.
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JavaToolchainService
+
+def feature = Integer.parseInt(startParameter.projectProperties.getOrDefault('guard.javaVersion', '25'))
+
+allprojects {
+    pluginManager.withPlugin('io.micronaut.runner.standalone') {
+        micronautRunner {
+            training {
+                readinessPath = '/hello'
+                workloadPaths = ['/hello']
+            }
+            jdkAotCache {
+                target = 'layout'
+                verifyProbes = 20
+            }
+        }
+        def launcher = extensions.getByType(JavaToolchainService).launcherFor {
+            languageVersion = JavaLanguageVersion.of(feature)
+        }
+        tasks.configureEach { task ->
+            if (task.name in ['micronautRunnerJdkAotCache', 'micronautRunnerLayout']) {
+                task.javaLauncher = launcher
+            }
+        }
+    }
+}

@@ -1,0 +1,148 @@
+# JDK AOT cache guard. Not synced from micronaut-project-template.
+#
+# Trains and verifies the JDK AOT cache of benchmark-large with the interim Gradle plugin's
+# micronautRunnerJdkAotCache task, once per target, on the LTS, the newest GA and the early-access JDK, on Linux
+# and macOS. It times nothing: it catches a JDK build that stops caching Runner's classes, such as a 25u backport
+# of JDK-8380291, which would empty the single-JAR cache without a failure anywhere else.
+#
+# It runs weekly, one hour after the benchmarks job, on demand, and on pull requests that change the guard or the
+# cache engine. If the interim plugins go away, the change that removes them moves this guard to a benchmarks task
+# that calls AotCacheOutput on the same sample, so the check outlives them.
+name: JDK AOT cache guard
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * 1'
+  pull_request:
+    branches:
+      - master
+      - '[0-9]+.[0-9]+.x'
+    paths:
+      - '.github/workflows/jdk-aot-cache-guard.yml'
+      - '.github/jdk-aot-cache-guard/**'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/aotcache/**'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/AotCacheOutput.java'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/AotLayout.java'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/AotTarget.java'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/training/**'
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  guard:
+    name: "${{ matrix.os }} JDK ${{ matrix.java }}"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        # The LTS, the newest GA and the early access. Bump the last two at each GA; 27 GA superseded 26.
+        java: ['25', '27', '28-ea']
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: "🔧 Setup JDK ${{ matrix.java }} for the cache"
+        id: jdk
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      # Installed last, so JAVA_HOME and Gradle stay on 25 whatever the matrix JDK is.
+      - name: "🔧 Setup JDK 25 for Gradle"
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: "🔧 Setup Gradle"
+        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+
+      - name: "📦 Publish the -DUMMY plugins"
+        run: ./gradlew :benchmarks:prepareRepository --no-daemon
+
+      - name: "🧭 Resolve the build arguments"
+        run: |
+          version=$(sed -n 's/^projectVersion=//p' gradle.properties)
+          java='${{ matrix.java }}'
+          {
+            echo "RUNNER_VERSION=${version/-SNAPSHOT/-DUMMY}"
+            echo "RUNNER_REPO=file://$PWD/benchmarks/build/aggregated-repo/"
+            echo "GUARD_JAVA=${java%%-*}"
+          } >> "$GITHUB_ENV"
+          mkdir -p guard-reports
+
+      # Both targets write the same directory, so each report is copied right after its build.
+      - name: "🧊 Train and verify the layout cache"
+        run: |
+          status=0
+          ./gradlew -p test-suite/samples/benchmark-large --no-daemon \
+            -Prunner.repo="$RUNNER_REPO" -Prunner.version="$RUNNER_VERSION" \
+            micronautRunnerJdkAotCache \
+            --init-script .github/jdk-aot-cache-guard/layout.gradle \
+            -Pguard.javaVersion="$GUARD_JAVA" \
+            -Porg.gradle.java.installations.paths='${{ steps.jdk.outputs.path }}' \
+            -Porg.gradle.java.installations.auto-download=false || status=$?
+          report=test-suite/samples/benchmark-large/build/micronaut-runner/jdk-aot-cache/aot-report.json
+          if [ -f "$report" ]; then cp "$report" guard-reports/layout.json; fi
+          exit "$status"
+
+      # Enforced on the LTS only: JDK 27 and later do not cache RunnerClassLoader's classes (JDK-8380291), so there
+      # this step reports and warns until #158 makes it gating.
+      - name: "🧊 Train and verify the single-JAR cache"
+        continue-on-error: ${{ matrix.java != '25' }}
+        run: |
+          status=0
+          ./gradlew -p test-suite/samples/benchmark-large --no-daemon \
+            -Prunner.repo="$RUNNER_REPO" -Prunner.version="$RUNNER_VERSION" \
+            micronautRunnerJdkAotCache \
+            --init-script .github/jdk-aot-cache-guard/singleJar.gradle \
+            -Pguard.javaVersion="$GUARD_JAVA" \
+            -Porg.gradle.java.installations.paths='${{ steps.jdk.outputs.path }}' \
+            -Porg.gradle.java.installations.auto-download=false || status=$?
+          report=test-suite/samples/benchmark-large/build/micronaut-runner/jdk-aot-cache/aot-report.json
+          if [ -f "$report" ]; then cp "$report" guard-reports/singleJar.json; fi
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::The singleJar cache build failed on JDK ${{ matrix.java }}"
+            exit "$status"
+          fi
+          # Half of the io.micronaut classes from the cache: a JDK that stops caching RunnerClassLoader's
+          # classes fails this on the LTS and warns on the newer JDKs.
+          if ! jq -e '.micronautFromCache * 2 >= .micronautLoaded' guard-reports/singleJar.json > /dev/null; then
+            echo "::warning::On JDK ${{ matrix.java }} the single-JAR cache served $(jq -r '"\(.micronautFromCache) of \(.micronautLoaded)"' guard-reports/singleJar.json) io.micronaut classes"
+            exit 1
+          fi
+
+      - name: "📝 Summarize the reports"
+        if: always()
+        run: |
+          {
+            echo "### JDK AOT cache guard: ${{ matrix.os }}, JDK ${{ matrix.java }}"
+            echo
+            echo "| Target | JDK | Coverage | io.micronaut from the cache | Lambdas spun at run time | Record stop | Strict probes failed | Verdict | Warnings |"
+            echo "|---|---|---|---|---|---|---|---|---|"
+            for target in layout singleJar; do
+              file="guard-reports/$target.json"
+              if [ -f "$file" ]; then
+                jq -r --arg t "$target" '"| \($t) | \(.jdk) | \((.coverage * 1000 | round) / 10)% | \(.micronautFromCache) of \(.micronautLoaded) | \(.runtimeLambdas) | \(.recordStop) | \(.probeFailures) of \(.probes) | \(.verdict) | \(.warnings | length) |"' "$file"
+              else
+                echo "| $target | | | | | | | no report | |"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "📤 Upload the reports"
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: jdk-aot-cache-guard-${{ matrix.os }}-${{ matrix.java }}
+          path: |
+            guard-reports/
+            test-suite/samples/benchmark-large/build/micronaut-runner/jdk-aot-cache/*.log
+            test-suite/samples/benchmark-large/build/micronaut-runner/jdk-aot-cache/app.aot.properties
+          if-no-files-found: warn
