@@ -234,13 +234,15 @@ class DefinitionPrefetchParityTest {
     }
 
     /**
-     * Turned off, by the property or by a common pool with fewer than three threads, the prefetch loads one class more
-     * than an archive without it, the configurer Micronaut instantiates as a service, and never the task.
+     * Turned off, by the property or by a common pool with fewer than three threads, the prefetch loads one class
+     * more than an archive without it, the configurer Micronaut instantiates as a service, and never the task. Turned
+     * on, everything it loads verifies: that start runs with {@code -Xverify:all}.
      */
     @Test
     void thePrefetchClassIsNotLoadedWhenThePrefetchIsOff() throws IOException {
-        assertTrue(loaded(archive, "on", prefetching()).contains(" " + TASK_CLASS + " "),
-                "the prefetch did not start");
+        List<String> verified = new ArrayList<>(prefetching());
+        verified.add("-Xverify:all");
+        assertTrue(loaded(archive, "on", verified).contains(" " + TASK_CLASS + " "), "the prefetch did not start");
         for (Map.Entry<String, String> off : Map.of("opt-out", OPT_OUT, "two-threads", TWO_THREADS).entrySet()) {
             String classes = loaded(archive, off.getKey(), List.of(off.getValue()));
 

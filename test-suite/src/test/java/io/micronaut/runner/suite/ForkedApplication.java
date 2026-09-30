@@ -246,20 +246,28 @@ final class ForkedApplication implements AutoCloseable {
 
     @Override
     public void close() {
-        stop(SHUTDOWN_GRACE);
+        if (process.isAlive()) {
+            process.destroy();
+            awaitStop(SHUTDOWN_GRACE);
+        }
     }
 
     /**
-     * Asks the process to stop and kills it when it has not within the grace period. A JVM that writes an AOT
-     * cache as it shuts down needs longer than {@link #close()} gives it.
+     * Asks the process to stop, as {@link #close()} does, but keeps reading its output and gives it longer. A JVM
+     * that writes an AOT cache as it shuts down needs both: {@code Process.destroy()} also closes the output
+     * pipe, and a training JVM whose output pipe is closed before it stops still exits with 143 but writes no
+     * cache.
      *
-     * @param grace how long the process has to stop by itself
+     * @param grace how long the process has to stop by itself before it is killed
      */
     void stop(Duration grace) {
-        if (!process.isAlive()) {
-            return;
+        if (process.isAlive()) {
+            process.toHandle().destroy();
+            awaitStop(grace);
         }
-        process.destroy();
+    }
+
+    private void awaitStop(Duration grace) {
         try {
             if (!process.waitFor(grace.toMillis(), TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly().waitFor(SHUTDOWN_GRACE.toMillis(), TimeUnit.MILLISECONDS);
