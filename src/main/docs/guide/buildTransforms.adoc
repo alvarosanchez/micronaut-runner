@@ -49,8 +49,9 @@ taken is a warning.
 The generated configurator hands the configuration to Joran when:
 
 * `-Dlogback.configurationFile` is set;
-* Micronaut refreshes logging (any `logger.*` property does) and `-Dlogger.config` or `LOGGER_CONFIG` names a
-location: that file is configured, as without Micronaut Runner;
+* Micronaut refreshes logging (any `logger.*` property does) and `-Dlogger.config`, `LOGGER_CONFIG`, or an
+environment variable named `logger.config` or `logback.configurationFile`, names a location: that file is
+configured, as without Micronaut Runner;
 * `-Dlogback.debug` or `-Dlogback.statusListenerClass` asks for Logback's status output;
 * `-Dmicronaut.runner.logback.precompiled=false` is set.
 

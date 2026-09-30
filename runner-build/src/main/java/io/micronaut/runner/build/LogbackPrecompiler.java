@@ -67,9 +67,10 @@ import java.util.regex.Pattern;
  * {@code logback.xml} stays in the archive for the fallbacks. At runtime the configurator, on every call:</p>
  * <ol>
  *     <li>hands over to Logback's own default lookup when {@code -Dlogback.configurationFile} is set;</li>
- *     <li>on a second or later call (Micronaut's {@code LoggingSystem.refresh()}), configures from the
- *     {@code logger.config} system property, else the {@code LOGGER_CONFIG} environment variable, when one is
- *     set, as Micronaut does without a configurator;</li>
+ *     <li>on a second or later call (Micronaut's {@code LoggingSystem.refresh()}), configures from the first of
+ *     these that is set, as Micronaut does without a configurator: an environment variable named
+ *     {@code logback.configurationFile}, the {@code logger.config} system property, the {@code LOGGER_CONFIG}
+ *     environment variable, an environment variable named {@code logger.config};</li>
  *     <li>hands over to Logback's default lookup when {@code logback.debug} or {@code logback.statusListenerClass}
  *     asks for Logback's status output, or {@code micronaut.runner.logback.precompiled} is {@code false};</li>
  *     <li>otherwise applies the configuration literally, in Joran's order, and returns
@@ -658,13 +659,19 @@ final class LogbackPrecompiler {
                 defaultLookup(code);
                 code.labelBinding(afterProperty);
 
-                // Rule 2: again, and a location is visible. Not LOGBACK_CONFIGURATIONFILE: Micronaut resolves
-                // logback.configurationFile case-sensitively, so no environment variable ever sets it, and a
-                // configurator that applied one would configure a file Micronaut itself ignores.
+                // Rule 2: again, and a location is visible, in the order Micronaut resolves one:
+                // logback.configurationFile before logger.config, a system property before the environment.
+                // Rule 1 took the system property logback.configurationFile. Micronaut looks that name up as it
+                // is written, so the only environment variable that sets it is one of exactly that name, which
+                // a container can declare; LOGBACK_CONFIGURATIONFILE does not, and is deliberately not read.
                 code.iload(AGAIN_SLOT).ifeq(notAgain);
+                environment(code, "logback.configurationFile").astore(LOCATION_SLOT)
+                        .aload(LOCATION_SLOT).ifnonnull(useLocation);
                 systemProperty(code, "logger.config").astore(LOCATION_SLOT)
                         .aload(LOCATION_SLOT).ifnonnull(useLocation);
                 environment(code, "LOGGER_CONFIG").astore(LOCATION_SLOT)
+                        .aload(LOCATION_SLOT).ifnonnull(useLocation);
+                environment(code, "logger.config").astore(LOCATION_SLOT)
                         .aload(LOCATION_SLOT).ifnull(notAgain);
                 code.labelBinding(useLocation);
                 code.aload(CONTEXT_SLOT).aload(LOCATION_SLOT)

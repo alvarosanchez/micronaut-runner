@@ -216,6 +216,15 @@ class HelloNettySampleTest {
                 new Scenario("LOGBACK_CONFIGURATIONFILE on a refresh",
                         Map.of("LOGBACK_CONFIGURATIONFILE", configurationFile.toString()),
                         List.of("-Dlogger.levels.com.example=DEBUG"), "Setting log level 'DEBUG'"),
+                // It does read variables named like the properties themselves, which a container can declare.
+                new Scenario("an environment variable named logback.configurationFile on a refresh",
+                        Map.of("logback.configurationFile", configurationFile.toString()),
+                        List.of("-Dlogger.levels.com.example=DEBUG"), "CONFIGURATION-FILE INFO"),
+                new Scenario("an environment variable named logger.config",
+                        Map.of("logger.config", loggerConfig.toString()), List.of(), "LOGGER-CONFIG INFO"),
+                new Scenario("logback.configurationFile in the environment outranks -Dlogger.config",
+                        Map.of("logback.configurationFile", configurationFile.toString()),
+                        List.of("-Dlogger.config=" + loggerConfig), "CONFIGURATION-FILE INFO"),
                 new Scenario("the opt-out with -Dlogger.config", Map.of(),
                         List.of("-Dmicronaut.runner.logback.precompiled=false", "-Dlogger.config=" + loggerConfig),
                         "LOGGER-CONFIG INFO"));
