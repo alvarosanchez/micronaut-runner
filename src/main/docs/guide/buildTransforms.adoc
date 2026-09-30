@@ -152,12 +152,17 @@ On `test-suite/samples/benchmark-large`, stripping rewrites 7,102 of the 8,428 d
 |Readiness with the JDK AOT cache
 |−2.1 ms, 95% CI [−5.1, +1.1]: no measurable gain
 
-|RSS at readiness with the JDK AOT cache
-|−14.0 MiB (174.5 MB against 189.2 MB, median); the AOT cache is 1.7 MB smaller
+|Maximum RSS with the JDK AOT cache
+|−4.6 MB paired median, 95% CI [−4.9, −3.6] (181.9 MB against 186.3 MB); the AOT cache is 1.7 MB smaller
 
 |Archive size
 |32,726,207 against 37,590,842 bytes raw (−12.9%), 8,344,903 against 9,686,906 bytes gzip -6 (−13.9%)
 |===
+
+The memory row comes from a separate run, because the RSS of a cached start moves by several MB from one trained
+cache to the next, which is more than stripping saves. It is the paired median over 40 pairs of AOT caches, each
+pair trained afresh from the two archives and each archive then started three times; in 5 of the 40 pairs the
+stripped archive used more, by 2.0 MB at most.
 
 Packaging does the extra work on the staging threads. With 8 of them, the sample's `micronautRunnerJar` task took
 0.24 s instead of 0.08 s (medians of ten warm-daemon rounds), against 0.73 s for its `shadowJar`.
