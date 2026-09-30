@@ -54,6 +54,7 @@ loadScripts(document, 'script');</script>
 <li><a href="io/micronaut/runner/package-tree.html">io.micronaut.runner</a>, </li>
 <li><a href="io/micronaut/runner/benchmarks/package-tree.html">io.micronaut.runner.benchmarks</a>, </li>
 <li><a href="io/micronaut/runner/build/package-tree.html">io.micronaut.runner.build</a>, </li>
+<li><a href="io/micronaut/runner/build/aotcache/package-tree.html">io.micronaut.runner.build.aotcache</a>, </li>
 <li><a href="io/micronaut/runner/build/training/package-tree.html">io.micronaut.runner.build.training</a>, </li>
 <li><a href="io/micronaut/runner/gradle/package-tree.html">io.micronaut.runner.gradle</a>, </li>
 <li><a href="io/micronaut/runner/maven/package-tree.html">io.micronaut.runner.maven</a>, </li>
@@ -67,6 +68,8 @@ loadScripts(document, 'script');</script>
 <ul>
 <li class="circle">org.apache.maven.plugin.AbstractMojo (implements org.apache.maven.plugin.ContextEnabled, org.apache.maven.plugin.Mojo)
 <ul>
+<li class="circle">io.micronaut.runner.maven.<a href="io/micronaut/runner/maven/JdkAotCacheMojo.html" class="type-name-link" title="class in io.micronaut.runner.maven">JdkAotCacheMojo</a></li>
+<li class="circle">io.micronaut.runner.maven.<a href="io/micronaut/runner/maven/LayoutMojo.html" class="type-name-link" title="class in io.micronaut.runner.maven">LayoutMojo</a></li>
 <li class="circle">io.micronaut.runner.maven.<a href="io/micronaut/runner/maven/PackageMojo.html" class="type-name-link" title="class in io.micronaut.runner.maven">PackageMojo</a></li>
 <li class="circle">io.micronaut.runner.maven.<a href="io/micronaut/runner/maven/RecordStartupProfileMojo.html" class="type-name-link" title="class in io.micronaut.runner.maven">RecordStartupProfileMojo</a></li>
 </ul>
@@ -76,12 +79,20 @@ loadScripts(document, 'script');</script>
 <li class="circle">org.gradle.api.DefaultTask (implements org.gradle.api.Task)
 <ul>
 <li class="circle">io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" class="type-name-link" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></li>
+<li class="circle">io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJdkAotCache.html" class="type-name-link" title="class in io.micronaut.runner.gradle">MicronautRunnerJdkAotCache</a></li>
+<li class="circle">io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerLayout.html" class="type-name-link" title="class in io.micronaut.runner.gradle">MicronautRunnerLayout</a></li>
 <li class="circle">io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/RecordStartupProfile.html" class="type-name-link" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a></li>
 <li class="circle">io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" class="type-name-link" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></li>
 </ul>
 </li>
 </ul>
 </li>
+<li class="circle">io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheBuilder</a></li>
+<li class="circle">io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheGate.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheGate</a></li>
+<li class="circle">io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheOutput.html" class="type-name-link" title="class in io.micronaut.runner.build">AotCacheOutput</a></li>
+<li class="circle">io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></li>
+<li class="circle">io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotLaunchOptions</a></li>
+<li class="circle">io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotLayout.html" class="type-name-link" title="class in io.micronaut.runner.build">AotLayout</a></li>
 <li class="circle">io.micronaut.runner.build.<a href="io/micronaut/runner/build/ApplicationManifest.html" class="type-name-link" title="class in io.micronaut.runner.build">ApplicationManifest</a></li>
 <li class="circle">io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" class="type-name-link" title="class in io.micronaut.runner">ArchiveSource</a> (implements java.lang.<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/AutoCloseable.html" title="class or interface in java.lang" class="external-link">AutoCloseable</a>)</li>
 <li class="circle">java.lang.<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html" class="type-name-link external-link" title="class or interface in java.lang">ClassLoader</a>
@@ -96,6 +107,7 @@ loadScripts(document, 'script');</script>
 <li class="circle">io.micronaut.runner.<a href="io/micronaut/runner/Index.html" class="type-name-link" title="class in io.micronaut.runner">Index</a></li>
 <li class="circle">io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" class="type-name-link" title="class in io.micronaut.runner">IndexFormat</a></li>
 <li class="circle">io.micronaut.runner.tools.<a href="io/micronaut/runner/tools/Inspect.html" class="type-name-link" title="class in io.micronaut.runner.tools">Inspect</a></li>
+<li class="circle">io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/JdkAotCacheSpec.html" class="type-name-link" title="class in io.micronaut.runner.gradle">JdkAotCacheSpec</a></li>
 <li class="circle">io.micronaut.runner.<a href="io/micronaut/runner/Launcher.html" class="type-name-link" title="class in io.micronaut.runner">Launcher</a></li>
 <li class="circle">io.micronaut.runner.tools.<a href="io/micronaut/runner/tools/ListEntries.html" class="type-name-link" title="class in io.micronaut.runner.tools">ListEntries</a></li>
 <li class="circle">io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" class="type-name-link" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></li>
@@ -166,6 +178,7 @@ loadScripts(document, 'script');</script>
 <ul>
 <li class="circle">java.lang.<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Enum.html" class="type-name-link external-link" title="class or interface in java.lang">Enum</a>&lt;E&gt; (implements java.lang.<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Comparable.html" title="class or interface in java.lang" class="external-link">Comparable</a>&lt;T&gt;, java.lang.constant.<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/constant/Constable.html" title="class or interface in java.lang.constant" class="external-link">Constable</a>, java.io.<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/Serializable.html" title="class or interface in java.io" class="external-link">Serializable</a>)
 <ul>
+<li class="circle">io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotTarget.html" class="type-name-link" title="enum class in io.micronaut.runner.build">AotTarget</a></li>
 <li class="circle">io.micronaut.runner.build.<a href="io/micronaut/runner/build/ArchiveReads.html" class="type-name-link" title="enum class in io.micronaut.runner.build">ArchiveReads</a></li>
 <li class="circle">io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" class="type-name-link" title="enum class in io.micronaut.runner.build">Compression</a></li>
 <li class="circle">io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" class="type-name-link" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></li>
@@ -183,6 +196,11 @@ loadScripts(document, 'script');</script>
 <ul>
 <li class="circle">java.lang.<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html" class="type-name-link external-link" title="class or interface in java.lang">Record</a>
 <ul>
+<li class="circle">io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheGate.Coverage.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheGate.Coverage</a></li>
+<li class="circle">io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheReport.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></li>
+<li class="circle">io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></li>
+<li class="circle">io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotLayout.Result.html" class="type-name-link" title="class in io.micronaut.runner.build">AotLayout.Result</a></li>
+<li class="circle">io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/JdkProbe.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">JdkProbe</a></li>
 <li class="circle">io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" class="type-name-link" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></li>
 <li class="circle">io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" class="type-name-link" title="class in io.micronaut.runner.build.training">TrainingSettings</a></li>
 <li class="circle">io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.ArchivePair.html" class="type-name-link" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision.ArchivePair</a> (implements java.io.<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/Serializable.html" title="class or interface in java.io" class="external-link">Serializable</a>)</li>

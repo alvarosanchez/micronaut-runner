@@ -59,6 +59,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#field-detail" tabindex="0">Field Details</a>
 <ol class="toc-list">
 <li><a href="#URL_VARIABLE" tabindex="0">URL_VARIABLE</a></li>
+<li><a href="#AMBIENT_JVM_OPTIONS" tabindex="0">AMBIENT_JVM_OPTIONS</a></li>
 </ol>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
@@ -133,9 +134,14 @@ tell the JVM to finish a recording.</div>
 <div class="table-header col-first">Modifier and Type</div>
 <div class="table-header col-second">Field</div>
 <div class="table-header col-last">Description</div>
-<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#URL_VARIABLE" class="member-name-link">URL_VARIABLE</a></code></div>
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second even-row-color"><code><a href="#AMBIENT_JVM_OPTIONS" class="member-name-link">AMBIENT_JVM_OPTIONS</a></code></div>
 <div class="col-last even-row-color">
+<div class="block">The environment variables through which a JVM takes options nobody passed it.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#URL_VARIABLE" class="member-name-link">URL_VARIABLE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">The environment variable that tells a <a href="TrainingSettings.html#workloadCommand()">workload command</a>
 where the application listens: <code>http://127.0.0.1:&lt;port&gt;</code>.</div>
 </div>
@@ -200,6 +206,18 @@ where the application listens: <code>http://127.0.0.1:&lt;port&gt;</code>.</div>
 </div>
 </section>
 </li>
+<li>
+<section class="detail" id="AMBIENT_JVM_OPTIONS">
+<h3>AMBIENT_JVM_OPTIONS</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">AMBIENT_JVM_OPTIONS</span></div>
+<div class="block">The environment variables through which a JVM takes options nobody passed it. They are removed from the
+application's environment, so that a class cache or an agent named by the machine the build runs on
+does not take part in the run. A caller that starts other JVMs of the same run, such as a JDK tool
+aimed at the application, removes them too.</div>
+</div>
+</section>
+</li>
 </ul>
 </section>
 </li>
@@ -227,7 +245,7 @@ where the application listens: <code>http://127.0.0.1:&lt;port&gt;</code>.</div>
 <p>The command is <code>&lt;java&gt; &lt;settings.jvmArgs&gt; &lt;jvmArguments&gt; -jar &lt;jar&gt;</code>, so the caller's
 arguments win over the user's. The application runs in <code>workingDirectory</code> with its standard input
 closed and its output appended to <code>logFile</code>. Its environment is the build's, without the
-ambient JVM option variables, plus
+<a href="#AMBIENT_JVM_OPTIONS">ambient JVM option variables</a>, plus
 <a href="TrainingSettings.html#environment()"><code>TrainingSettings.environment()</code></a> and a free loopback port in
 <a href="TrainingSettings.html#portVariable()"><code>TrainingSettings.portVariable()</code></a>.</p>
 

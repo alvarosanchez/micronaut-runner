@@ -61,6 +61,8 @@ loadScripts(document, 'script');</script>
 <li><a href="#TASK_NAME" tabindex="0">TASK_NAME</a></li>
 <li><a href="#OPTIMIZED_TASK_NAME" tabindex="0">OPTIMIZED_TASK_NAME</a></li>
 <li><a href="#RECORD_TASK_NAME" tabindex="0">RECORD_TASK_NAME</a></li>
+<li><a href="#LAYOUT_TASK_NAME" tabindex="0">LAYOUT_TASK_NAME</a></li>
+<li><a href="#JDK_AOT_CACHE_TASK_NAME" tabindex="0">JDK_AOT_CACHE_TASK_NAME</a></li>
 <li><a href="#SHADOW_COLLISION_TASK_NAME" tabindex="0">SHADOW_COLLISION_TASK_NAME</a></li>
 <li><a href="#EXTENSION_NAME" tabindex="0">EXTENSION_NAME</a></li>
 <li><a href="#ELEMENTS_CONFIGURATION_NAME" tabindex="0">ELEMENTS_CONFIGURATION_NAME</a></li>
@@ -126,7 +128,12 @@ Runner task and the Shadow task that writes the same archive name by default dep
 
 <p>It also registers <a href="#RECORD_TASK_NAME">"recordStartupProfile"</a>, which launches the archive and records the classes it loads
 at startup to <a href="../build/StartupProfileRecorder.html#PROFILE_LOCATION">"src/main/micronaut-runner/startup-classes.txt"</a>. The task runs only
-when it is asked for. Once the file exists, the archive embeds it, and the launcher preloads its classes.</p></div>
+when it is asked for. Once the file exists, the archive embeds it, and the launcher preloads its classes.</p>
+
+<p>Experimentally, and only in this interim plugin, it registers <a href="#JDK_AOT_CACHE_TASK_NAME">"micronautRunnerJdkAotCache"</a>, which trains
+and verifies a JDK AOT cache for the archive's extracted layout (or the archive itself) with the project's
+toolchain, and <a href="#LAYOUT_TASK_NAME">"micronautRunnerLayout"</a>, which writes the layout alone. <code>assemble</code> builds the cache only
+with <code>jdkAotCache.enabled = true</code>.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -159,6 +166,16 @@ publication.</div>
 <div class="col-second even-row-color"><code><a href="#EXTENSION_NAME" class="member-name-link">EXTENSION_NAME</a></code></div>
 <div class="col-last even-row-color">
 <div class="block">The name of the extension this plugin creates on the project.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#JDK_AOT_CACHE_TASK_NAME" class="member-name-link">JDK_AOT_CACHE_TASK_NAME</a></code></div>
+<div class="col-last odd-row-color">
+<div class="block">The task that trains and verifies a JDK AOT cache.</div>
+</div>
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="#LAYOUT_TASK_NAME" class="member-name-link">LAYOUT_TASK_NAME</a></code></div>
+<div class="col-last even-row-color">
+<div class="block">The task that writes the extracted layout, for a build that trains its JDK AOT cache elsewhere.</div>
 </div>
 <div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color"><code><a href="#OPTIMIZED_CLASSIFIER" class="member-name-link">OPTIMIZED_CLASSIFIER</a></code></div>
@@ -285,6 +302,42 @@ registers the <code>optimizedJitJar</code> task whose archive this one packages.
 <dd>
 <ul class="tag-list">
 <li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.RECORD_TASK_NAME">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="LAYOUT_TASK_NAME">
+<h3>LAYOUT_TASK_NAME</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">LAYOUT_TASK_NAME</span></div>
+<div class="block">The task that writes the extracted layout, for a build that trains its JDK AOT cache elsewhere. Experimental,
+and part of this interim plugin only.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.LAYOUT_TASK_NAME">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="JDK_AOT_CACHE_TASK_NAME">
+<h3>JDK_AOT_CACHE_TASK_NAME</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">JDK_AOT_CACHE_TASK_NAME</span></div>
+<div class="block">The task that trains and verifies a JDK AOT cache. It is part of <code>assemble</code> only with
+<code>jdkAotCache.enabled = true</code>. Experimental, and part of this interim plugin only.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../../constant-values.html#io.micronaut.runner.gradle.MicronautRunnerPlugin.JDK_AOT_CACHE_TASK_NAME">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>

@@ -73,6 +73,8 @@ loadScripts(document, 'script');</script>
 <li><a href="#getStartupClasses()" tabindex="0">getStartupClasses()</a></li>
 <li><a href="#getTraining()" tabindex="0">getTraining()</a></li>
 <li><a href="#training(org.gradle.api.Action)" tabindex="0">training(Action)</a></li>
+<li><a href="#getJdkAotCache()" tabindex="0">getJdkAotCache()</a></li>
+<li><a href="#jdkAotCache(org.gradle.api.Action)" tabindex="0">jdkAotCache(Action)</a></li>
 <li><a href="#getOptions()" tabindex="0">getOptions()</a></li>
 </ol>
 </li>
@@ -176,34 +178,45 @@ typed or not, can also be set by name through <a href="#getOptions()"><code>getO
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Whether to generate the entry stub that calls the main method directly.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getManifestAttributes()" class="member-name-link">getManifestAttributes</a>()</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract <a href="JdkAotCacheSpec.html" title="class in io.micronaut.runner.gradle">JdkAotCacheSpec</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getJdkAotCache()" class="member-name-link">getJdkAotCache</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="block">The JDK AOT cache that <code>micronautRunnerJdkAotCache</code> trains and verifies, and whether <code>assemble</code>
+builds it.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getManifestAttributes()" class="member-name-link">getManifestAttributes</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Extra main manifest attributes.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getMultiRelease()" class="member-name-link">getMultiRelease</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link">Boolean</a>&gt;</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getMultiRelease()" class="member-name-link">getMultiRelease</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Whether the application layer itself is multi-release.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getOptions()" class="member-name-link">getOptions</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.MapProperty<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getOptions()" class="member-name-link">getOptions</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">Packaging options by <a href="../build/RunnerJarOption.html#optionName()">name</a>, for the options that have no typed
 property.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getStartupClasses()" class="member-name-link">getStartupClasses</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.file.RegularFileProperty</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getStartupClasses()" class="member-name-link">getStartupClasses</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">The recorded startup class list the launcher preloads on a background thread: the profile that
 <code>recordStartupProfile</code> writes, the <code>-Xlog:class+load</code> output of a run of the archive, or a
 file of binary class names.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract <a href="TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getTraining()" class="member-name-link">getTraining</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract <a href="TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getTraining()" class="member-name-link">getTraining</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">How a task that launches the application, such as <code>recordStartupProfile</code>, reaches, exercises and
 stops it.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jdkAotCache(org.gradle.api.Action)" class="member-name-link">jdkAotCache</a><wbr>(org.gradle.api.Action&lt;? super <a href="JdkAotCacheSpec.html" title="class in io.micronaut.runner.gradle">JdkAotCacheSpec</a>&gt;&nbsp;action)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Configures <a href="#getJdkAotCache()"><code>getJdkAotCache()</code></a>.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#training(org.gradle.api.Action)" class="member-name-link">training</a><wbr>(org.gradle.api.Action&lt;? super <a href="TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a>&gt;&nbsp;action)</code></div>
@@ -395,6 +408,33 @@ stops it. The API is experimental.</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">void</span>&nbsp;<span class="element-name">training</span><wbr><span class="parameters">(org.gradle.api.Action&lt;? super <a href="TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a>&gt;&nbsp;action)</span></div>
 <div class="block">Configures <a href="#getTraining()"><code>getTraining()</code></a>.</div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>action</code> - the configuration</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="getJdkAotCache()">
+<h3>getJdkAotCache</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public abstract</span>&nbsp;<span class="return-type"><a href="JdkAotCacheSpec.html" title="class in io.micronaut.runner.gradle">JdkAotCacheSpec</a></span>&nbsp;<span class="element-name">getJdkAotCache</span>()</div>
+<div class="block">The JDK AOT cache that <code>micronautRunnerJdkAotCache</code> trains and verifies, and whether <code>assemble</code>
+builds it. The API is experimental and belongs to this interim plugin only.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the cache settings</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="jdkAotCache(org.gradle.api.Action)">
+<h3>jdkAotCache</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">void</span>&nbsp;<span class="element-name">jdkAotCache</span><wbr><span class="parameters">(org.gradle.api.Action&lt;? super <a href="JdkAotCacheSpec.html" title="class in io.micronaut.runner.gradle">JdkAotCacheSpec</a>&gt;&nbsp;action)</span></div>
+<div class="block">Configures <a href="#getJdkAotCache()"><code>getJdkAotCache()</code></a>.</div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>action</code> - the configuration</dd>

@@ -759,6 +759,31 @@ loadScripts(document, 'script');</script>
 </ul>
 <ul class="block-list">
 <li>
+<div class="caption"><span>io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheOutput.html" title="class in io.micronaut.runner.build">AotCacheOutput</a></span></div>
+<div class="summary-table three-column-summary">
+<div class="table-header col-first">Modifier and Type</div>
+<div class="table-header col-second">Constant Field</div>
+<div class="table-header col-last">Value</div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.AotCacheOutput.SINGLE_JAR_WARNING">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/AotCacheOutput.html#SINGLE_JAR_WARNING">SINGLE_JAR_WARNING</a></code></div>
+<div class="col-last even-row-color"><code>"This JDK does not cache classes defined by RunnerClassLoader: JDK 27 and later archive only classes from file: code sources (JDK-8380291). Use the layout target."</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.AotCacheOutput.TARGET_LABEL">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/AotCacheOutput.html#TARGET_LABEL">TARGET_LABEL</a></code></div>
+<div class="col-last odd-row-color"><code>"target"</code></div>
+</div>
+</li>
+<li>
+<div class="caption"><span>io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotLayout.html" title="class in io.micronaut.runner.build">AotLayout</a></span></div>
+<div class="summary-table three-column-summary">
+<div class="table-header col-first">Modifier and Type</div>
+<div class="table-header col-second">Constant Field</div>
+<div class="table-header col-last">Value</div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.AotLayout.LIBRARY_DIRECTORY">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/AotLayout.html#LIBRARY_DIRECTORY">LIBRARY_DIRECTORY</a></code></div>
+<div class="col-last even-row-color"><code>"lib"</code></div>
+</div>
+</li>
+<li>
 <div class="caption"><span>io.micronaut.runner.build.<a href="io/micronaut/runner/build/StartupProfileRecorder.html" title="class in io.micronaut.runner.build">StartupProfileRecorder</a></span></div>
 <div class="summary-table three-column-summary">
 <div class="table-header col-first">Modifier and Type</div>
@@ -767,6 +792,114 @@ loadScripts(document, 'script');</script>
 <div class="col-first even-row-color"><code id="io.micronaut.runner.build.StartupProfileRecorder.PROFILE_LOCATION">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/StartupProfileRecorder.html#PROFILE_LOCATION">PROFILE_LOCATION</a></code></div>
 <div class="col-last even-row-color"><code>"src/main/micronaut-runner/startup-classes.txt"</code></div>
+</div>
+</li>
+</ul>
+<ul class="block-list">
+<li>
+<div class="caption"><span>io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheBuilder</a></span></div>
+<div class="summary-table three-column-summary">
+<div class="table-header col-first">Modifier and Type</div>
+<div class="table-header col-second">Constant Field</div>
+<div class="table-header col-last">Value</div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheBuilder.CONFIGURATION_FILE">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html#CONFIGURATION_FILE">CONFIGURATION_FILE</a></code></div>
+<div class="col-last even-row-color"><code>"app.aotconf"</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheBuilder.CREATE_LOG">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html#CREATE_LOG">CREATE_LOG</a></code></div>
+<div class="col-last odd-row-color"><code>"aot-create.log"</code></div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheBuilder.RECORD_LOG">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html#RECORD_LOG">RECORD_LOG</a></code></div>
+<div class="col-last even-row-color"><code>"aot-record.log"</code></div>
+</div>
+</li>
+<li>
+<div class="caption"><span>io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheGate.html" title="class in io.micronaut.runner.build.aotcache">AotCacheGate</a></span></div>
+<div class="summary-table three-column-summary">
+<div class="table-header col-first">Modifier and Type</div>
+<div class="table-header col-second">Constant Field</div>
+<div class="table-header col-last">Value</div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheGate.CLASS_LOAD_LOG">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheGate.html#CLASS_LOAD_LOG">CLASS_LOAD_LOG</a></code></div>
+<div class="col-last even-row-color"><code>"aot-verify-class-load.log"</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheGate.SMOKE_LOG">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheGate.html#SMOKE_LOG">SMOKE_LOG</a></code></div>
+<div class="col-last odd-row-color"><code>"aot-verify.log"</code></div>
+</div>
+</li>
+<li>
+<div class="caption"><span>io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></span></div>
+<div class="summary-table three-column-summary">
+<div class="table-header col-first">Modifier and Type</div>
+<div class="table-header col-second">Constant Field</div>
+<div class="table-header col-last">Value</div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheReport.FAILED">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#FAILED">FAILED</a></code></div>
+<div class="col-last even-row-color"><code>"failed"</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheReport.FILE">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#FILE">FILE</a></code></div>
+<div class="col-last odd-row-color"><code>"aot-report.json"</code></div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheReport.PASSED">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#PASSED">PASSED</a></code></div>
+<div class="col-last even-row-color"><code>"passed"</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheReport.STOP_DRIVER">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#STOP_DRIVER">STOP_DRIVER</a></code></div>
+<div class="col-last odd-row-color"><code>"driver"</code></div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheReport.STOP_EXIT">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#STOP_EXIT">STOP_EXIT</a></code></div>
+<div class="col-last even-row-color"><code>"exit"</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheReport.STOP_JCMD">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#STOP_JCMD">STOP_JCMD</a></code></div>
+<div class="col-last odd-row-color"><code>"jcmd"</code></div>
+</div>
+</li>
+<li>
+<div class="caption"><span>io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></span></div>
+<div class="summary-table three-column-summary">
+<div class="table-header col-first">Modifier and Type</div>
+<div class="table-header col-second">Constant Field</div>
+<div class="table-header col-last">Value</div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheSettings.DEFAULT_MIN_COVERAGE">public&nbsp;static&nbsp;final&nbsp;double</code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#DEFAULT_MIN_COVERAGE">DEFAULT_MIN_COVERAGE</a></code></div>
+<div class="col-last even-row-color"><code>0.95</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.aotcache.AotCacheSettings.DEFAULT_VERIFY_PROBES">public&nbsp;static&nbsp;final&nbsp;int</code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#DEFAULT_VERIFY_PROBES">DEFAULT_VERIFY_PROBES</a></code></div>
+<div class="col-last odd-row-color"><code>10</code></div>
+</div>
+</li>
+<li>
+<div class="caption"><span>io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html" title="class in io.micronaut.runner.build.aotcache">AotLaunchOptions</a></span></div>
+<div class="summary-table three-column-summary">
+<div class="table-header col-first">Modifier and Type</div>
+<div class="table-header col-second">Constant Field</div>
+<div class="table-header col-last">Value</div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotLaunchOptions.ARGFILE">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#ARGFILE">ARGFILE</a></code></div>
+<div class="col-last even-row-color"><code>"app.jvmopts"</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.aotcache.AotLaunchOptions.CACHE_FILE">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#CACHE_FILE">CACHE_FILE</a></code></div>
+<div class="col-last odd-row-color"><code>"app.aot"</code></div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotLaunchOptions.CREATION_FLAGS">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#CREATION_FLAGS">CREATION_FLAGS</a></code></div>
+<div class="col-last even-row-color"><code>"creationFlags"</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.aotcache.AotLaunchOptions.IDENTITY_FILE">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#IDENTITY_FILE">IDENTITY_FILE</a></code></div>
+<div class="col-last odd-row-color"><code>"app.aot.properties"</code></div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotLaunchOptions.JVM_ARGS">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#JVM_ARGS">JVM_ARGS</a></code></div>
+<div class="col-last even-row-color"><code>"jvmArgs"</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.aotcache.AotLaunchOptions.OS_ARCH">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#OS_ARCH">OS_ARCH</a></code></div>
+<div class="col-last odd-row-color"><code>"os.arch"</code></div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotLaunchOptions.OS_NAME">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#OS_NAME">OS_NAME</a></code></div>
+<div class="col-last even-row-color"><code>"os.name"</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.build.aotcache.AotLaunchOptions.RUNTIME_VERSION">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#RUNTIME_VERSION">RUNTIME_VERSION</a></code></div>
+<div class="col-last odd-row-color"><code>"java.runtime.version"</code></div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.build.aotcache.AotLaunchOptions.VM_VERSION">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#VM_VERSION">VM_VERSION</a></code></div>
+<div class="col-last even-row-color"><code>"java.vm.version"</code></div>
 </div>
 </li>
 </ul>
@@ -810,6 +943,12 @@ loadScripts(document, 'script');</script>
 <div class="col-first even-row-color"><code id="io.micronaut.runner.gradle.MicronautRunnerPlugin.EXTENSION_NAME">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second even-row-color"><code><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#EXTENSION_NAME">EXTENSION_NAME</a></code></div>
 <div class="col-last even-row-color"><code>"micronautRunner"</code></div>
+<div class="col-first odd-row-color"><code id="io.micronaut.runner.gradle.MicronautRunnerPlugin.JDK_AOT_CACHE_TASK_NAME">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#JDK_AOT_CACHE_TASK_NAME">JDK_AOT_CACHE_TASK_NAME</a></code></div>
+<div class="col-last odd-row-color"><code>"micronautRunnerJdkAotCache"</code></div>
+<div class="col-first even-row-color"><code id="io.micronaut.runner.gradle.MicronautRunnerPlugin.LAYOUT_TASK_NAME">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#LAYOUT_TASK_NAME">LAYOUT_TASK_NAME</a></code></div>
+<div class="col-last even-row-color"><code>"micronautRunnerLayout"</code></div>
 <div class="col-first odd-row-color"><code id="io.micronaut.runner.gradle.MicronautRunnerPlugin.OPTIMIZED_CLASSIFIER">public&nbsp;static&nbsp;final&nbsp;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color"><code><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#OPTIMIZED_CLASSIFIER">OPTIMIZED_CLASSIFIER</a></code></div>
 <div class="col-last odd-row-color"><code>"all-optimized"</code></div>

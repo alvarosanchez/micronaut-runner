@@ -91,6 +91,18 @@ loadScripts(document, 'script');</script>
 <div class="summary-table two-column-summary">
 <div class="table-header col-first">Class</div>
 <div class="table-header col-last">Description</div>
+<div class="col-first even-row-color class-summary class-summary-tab2"><a href="JdkAotCacheMojo.html" title="class in io.micronaut.runner.maven">JdkAotCacheMojo</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab2">
+<div class="block">Trains a JDK AOT cache for the Runner JAR that <code>mn-runner:package</code> wrote, and verifies it, in
+<code>target/micronaut-runner/jdk-aot-cache/</code>: the extracted layout (or a copy of the Runner JAR), the cache,
+the launch argfile <code>app.jvmopts</code>, the identity file, the report and the logs.</div>
+</div>
+<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="LayoutMojo.html" title="class in io.micronaut.runner.maven">LayoutMojo</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab2">
+<div class="block">Writes the extracted layout of the Runner JAR that <code>mn-runner:package</code> wrote, to
+<code>target/micronaut-runner/layout/</code>: the application JAR and <code>lib/</code>, for a build that trains its JDK
+AOT cache elsewhere, such as in a container image.</div>
+</div>
 <div class="col-first even-row-color class-summary class-summary-tab2"><a href="PackageMojo.html" title="class in io.micronaut.runner.maven">PackageMojo</a></div>
 <div class="col-last even-row-color class-summary class-summary-tab2">
 <div class="block">Packages a Micronaut application as a runner jar: one executable archive in which every dependency

@@ -74,26 +74,53 @@ loadScripts(document, 'script');</script>
 <div class="table-header col-last">Description</div>
 <div class="col-first even-row-color"><a href="../package-summary.html">io.micronaut.runner</a></div>
 <div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><a href="training/package-summary.html">io.micronaut.runner.build.training</a></div>
-<div class="col-last odd-row-color">&nbsp;</div>
-<div class="col-first even-row-color"><a href="../benchmarks/package-summary.html">io.micronaut.runner.benchmarks</a></div>
+<div class="col-first odd-row-color"><a href="aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></div>
+<div class="col-last odd-row-color">
+<div class="block">Trains, verifies and describes a JDK AOT cache (JEP 483, JEP 514) for an application launched with
+<code>java -jar</code>: a two-step recording and creation through the
+<a href="training/TrainingDriver.html" title="class in io.micronaut.runner.build.training"><code>TrainingDriver</code></a>, a verification gate, the launch argfile and the
+identity file.</div>
+</div>
+<div class="col-first even-row-color"><a href="training/package-summary.html">io.micronaut.runner.build.training</a></div>
 <div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><a href="../gradle/package-summary.html">io.micronaut.runner.gradle</a></div>
+<div class="col-first odd-row-color"><a href="../benchmarks/package-summary.html">io.micronaut.runner.benchmarks</a></div>
 <div class="col-last odd-row-color">&nbsp;</div>
-<div class="col-first even-row-color"><a href="../maven/package-summary.html">io.micronaut.runner.maven</a></div>
+<div class="col-first even-row-color"><a href="../gradle/package-summary.html">io.micronaut.runner.gradle</a></div>
 <div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><a href="../tools/package-summary.html">io.micronaut.runner.tools</a></div>
+<div class="col-first odd-row-color"><a href="../maven/package-summary.html">io.micronaut.runner.maven</a></div>
 <div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><a href="../tools/package-summary.html">io.micronaut.runner.tools</a></div>
+<div class="col-last even-row-color">&nbsp;</div>
 </div>
 </div>
 </li>
 <li>
 <div id="class-summary">
-<div class="table-tabs" role="tablist" aria-orientation="horizontal"><button id="class-summary-tab0" role="tab" aria-selected="true" aria-controls="class-summary.tabpanel" tabindex="0" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary', 2)" class="active-table-tab">All Classes and Interfaces</button><button id="class-summary-tab1" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab1', 2)" class="table-tab">Interfaces</button><button id="class-summary-tab2" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab2', 2)" class="table-tab">Classes</button><button id="class-summary-tab3" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab3', 2)" class="table-tab">Enum Classes</button></div>
+<div class="table-tabs" role="tablist" aria-orientation="horizontal"><button id="class-summary-tab0" role="tab" aria-selected="true" aria-controls="class-summary.tabpanel" tabindex="0" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary', 2)" class="active-table-tab">All Classes and Interfaces</button><button id="class-summary-tab1" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab1', 2)" class="table-tab">Interfaces</button><button id="class-summary-tab2" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab2', 2)" class="table-tab">Classes</button><button id="class-summary-tab3" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab3', 2)" class="table-tab">Enum Classes</button><button id="class-summary-tab4" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab4', 2)" class="table-tab">Record Classes</button></div>
 <div id="class-summary.tabpanel" role="tabpanel" aria-labelledby="class-summary-tab0">
 <div class="summary-table two-column-summary">
 <div class="table-header col-first">Class</div>
 <div class="table-header col-last">Description</div>
+<div class="col-first even-row-color class-summary class-summary-tab2"><a href="AotCacheOutput.html" title="class in io.micronaut.runner.build">AotCacheOutput</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab2">
+<div class="block">Builds the self-contained directory of a cached deployment from a Runner JAR: the program, a verified JDK AOT
+cache trained in place, the launch argfile, the identity file, the report and the logs.</div>
+</div>
+<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="AotLayout.html" title="class in io.micronaut.runner.build">AotLayout</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab2">
+<div class="block">Writes the extracted layout of a Runner JAR, the deployment a JDK AOT cache serves in full: an application
+JAR whose manifest <code>Class-Path</code> lists <code>lib/*.jar</code> in class-path order, and the dependencies under
+<code>lib/</code>, byte for byte the JARs the Runner JAR nests.</div>
+</div>
+<div class="col-first even-row-color class-summary class-summary-tab4"><a href="AotLayout.Result.html" title="class in io.micronaut.runner.build">AotLayout.Result</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab4">
+<div class="block">An extracted layout.</div>
+</div>
+<div class="col-first odd-row-color class-summary class-summary-tab3"><a href="AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab3">
+<div class="block">What a JDK AOT cache is trained for: the extracted layout, which every JDK caches in full, or a copy of the
+single Runner JAR, whose nested classes JDK 27 and later do not cache.</div>
+</div>
 <div class="col-first even-row-color class-summary class-summary-tab2"><a href="ApplicationManifest.html" title="class in io.micronaut.runner.build">ApplicationManifest</a></div>
 <div class="col-last even-row-color class-summary class-summary-tab2">
 <div class="block">The part of an application's manifest the packaging library reads, for a build tool that describes that
