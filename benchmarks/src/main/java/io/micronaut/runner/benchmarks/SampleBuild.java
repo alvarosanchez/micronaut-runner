@@ -23,6 +23,8 @@ import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
 import io.micronaut.runner.build.RunnerJarReader;
 import io.micronaut.runner.build.RunnerJarSpec;
+import io.micronaut.runner.build.StartupProfileRecorder;
+import io.micronaut.runner.build.training.TrainingSettings;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -139,16 +141,17 @@ final class SampleBuild implements SampleSteps {
     private static final String GENERATED_LOGBACK_CONFIGURATOR =
             "io.micronaut.runner.generated.logback.LogbackConfigurator";
 
-    /** The class-load log the preload row records in every run, in the artifacts directory. */
-    private static final String STARTUP_CLASSES_LOG = "startup-classes.log";
+    /** The startup profile the preload row records in every run, in the artifacts directory. */
+    private static final String STARTUP_PROFILE = "startup-classes.txt";
 
-    /**
-     * What the recording launch adds to the class-load log option. With a common pool of parallelism zero,
-     * Micronaut's parallel service loading runs on the main thread, so two recordings list the classes in
-     * nearly the same order.
-     */
-    private static final List<String> RECORDING_JVM_ARGUMENTS =
-            List.of("-Djava.util.concurrent.ForkJoinPool.common.parallelism=0");
+    /** The working directory of that recording, in the artifacts directory. */
+    private static final String STARTUP_PROFILE_WORK = "record-startup-profile";
+
+    /** What records the profile again, for its header: the harness records a fresh one in every run. */
+    private static final String STARTUP_PROFILE_RERECORD = "./gradlew :benchmarks:startupBenchmark";
+
+    /** The request the recording is ready at and its workload, as for the trained caches. */
+    private static final String HELLO = "/hello";
 
     /** The task the init script registers on the sample's build. */
     private static final String METADATA_TASK = "runnerBenchmarkMetadata";
@@ -586,14 +589,20 @@ final class SampleBuild implements SampleSteps {
     }
 
     /**
-     * Records the startup class list from the list-free {@code runner-stored} jar and packages the same inputs
+     * Records the startup profile from the list-free {@code runner-stored} jar and packages the same inputs
      * again with it.
      *
-     * <p>The recording is one launch without a cache through the AOT training lifecycle: readiness, the
-     * workload, SIGTERM. It is taken afresh in every run, because the log is a measurement input and not a
-     * cache. Classes that ForkJoin workers load can land in a slightly different order each time, so the jar,
-     * and with it the identity of its AOT cache, may differ between runs; that costs only a retraining. Under
-     * a CPU limit the recording launch runs under the limit's command prefix, as training does.</p>
+     * <p>The recording is the one the build plugins make: {@link StartupProfileRecorder} launches the archive
+     * once without a cache through the {@code TrainingDriver}, waits for {@code /hello}, sends it once and reads
+     * the class-load log before the stop. So this row measures the profile a project would commit. It is taken
+     * afresh in every run, because the profile is a measurement input and not a cache. Classes that ForkJoin
+     * workers load can land in a slightly different order each time, so the jar, and with it the identity of
+     * its AOT cache, may differ between runs; that costs only a retraining.</p>
+     *
+     * <p>Under a CPU limit the recording launch does not run under the limit's command prefix, because the driver
+     * launches {@code java} itself: it runs on the harness's own CPUs. The list hardly depends on the number of
+     * CPUs, since the recording pins the common pool to parallelism 0, and the row is timed under the limit like
+     * every other.</p>
      *
      * @param stored the list-free STORED runner jar
      * @return the preloading variant
@@ -606,21 +615,21 @@ final class SampleBuild implements SampleSteps {
             throw new IOException("there is no runner jar to record the startup classes from: "
                     + stored.unavailableReason());
         }
-        Path log = artifacts.resolve(STARTUP_CLASSES_LOG);
-        Files.deleteIfExists(log);
-        List<String> arguments = new ArrayList<>();
-        arguments.add("-Xlog:class+load=info:file=" + log.toAbsolutePath().normalize());
-        arguments.addAll(RECORDING_JVM_ARGUMENTS);
+        Path profile = artifacts.resolve(STARTUP_PROFILE);
+        Files.deleteIfExists(profile);
+        TrainingSettings settings = TrainingSettings.builder()
+                .readinessPath(HELLO)
+                .workloadPaths(List.of(HELLO))
+                .readinessTimeout(java.time.Duration.ofSeconds(CACHE_TIMEOUT_SECONDS))
+                .build();
         try {
-            AotCache.runOnce(stored, arguments, aotRequest(artifacts, mainClass, cpuLimit, this.log));
+            StartupProfileRecorder.record(javaExecutable(), stored.artifact(), settings,
+                    artifacts.resolve(STARTUP_PROFILE_WORK), profile, STARTUP_PROFILE_RERECORD, new HarnessLogger(log));
         } catch (IOException e) {
             throw new IOException("recording the startup classes failed: " + e.getMessage(), e);
         }
-        if (!Files.isRegularFile(log) || Files.size(log) == 0) {
-            throw new IOException("the recording launch wrote no class-load log at " + log);
-        }
         return runnerJar(RUNNER_STORED_PRELOAD, Compression.STORED, EntryMode.STUB,
-                RunnerJarOptions.DEFAULTS.withStartupClasses(log));
+                RunnerJarOptions.DEFAULTS.withStartupClasses(profile));
     }
 
     @Override
@@ -1220,6 +1229,26 @@ final class SampleBuild implements SampleSteps {
             }
             return new Metadata(projectName, projectVersion, mainClass, existing,
                     List.copyOf(dependencies), shadowJar, shadowStoredJar);
+        }
+    }
+
+    /** Prints what the packaging library reports to the harness's log. */
+    private static final class HarnessLogger implements BuildLogger {
+
+        private final PrintStream log;
+
+        private HarnessLogger(PrintStream log) {
+            this.log = log;
+        }
+
+        @Override
+        public void info(String message) {
+            log.println("[startup-benchmark] " + message);
+        }
+
+        @Override
+        public void warn(String message) {
+            log.println("[startup-benchmark] WARNING " + message);
         }
     }
 }

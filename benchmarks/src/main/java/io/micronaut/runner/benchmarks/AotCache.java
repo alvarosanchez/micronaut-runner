@@ -392,24 +392,6 @@ final class AotCache {
     }
 
     /**
-     * Runs a variant once through the training lifecycle, with extra JVM arguments and no cache: readiness,
-     * the workload, then SIGTERM, accepting exit status 0 or 143. The startup-class recording uses it, so that
-     * a recorded list covers exactly what a trained cache covers. Like training and verification, the launch
-     * runs under the request's command prefix.
-     *
-     * @param source       the variant to launch
-     * @param jvmArguments the arguments to insert right after the {@code java} executable
-     * @param request      the readiness path, workload and timeout
-     * @throws IOException          if the launch does not reach readiness, fails its workload or does not
-     *                              shut down cleanly
-     * @throws InterruptedException if the wait is interrupted
-     */
-    static void runOnce(Variant source, List<String> jvmArguments, Request request)
-            throws IOException, InterruptedException {
-        runLifecycle(source, withJvmArguments(source.command(), jvmArguments), request, null);
-    }
-
-    /**
      * The training command, without the request's prefix: the creation flags and {@code -XX:AOTCacheOutput} go
      * directly after the variant's {@code java}.
      *
@@ -438,7 +420,7 @@ final class AotCache {
     }
 
     /**
-     * What a training, verification or recording lifecycle spawns: the request's prefix, then the command unchanged, whose
+     * What a training or verification lifecycle spawns: the request's prefix, then the command unchanged, whose
      * JVM arguments already follow its {@code java}. Training and verification thereby run under the same CPU
      * limit as the measured launches, so the cache is trained under the VM configuration it is measured with.
      *

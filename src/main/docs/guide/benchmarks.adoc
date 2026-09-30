@@ -76,8 +76,8 @@ control
 plugin-default entry stub against reflective entry
 
 |`runner-stored-preload`
-|Opt-in, non-gating: the same stored Runner JAR inputs packaged with the startup class list that this run records
-from `runner-stored`; compared with `runner-stored` and `shadow`
+|Opt-in, non-gating: the same stored Runner JAR inputs packaged with the startup profile that this run records
+from `runner-stored`, with the recorder that `recordStartupProfile` uses; compared with `runner-stored` and `shadow`
 
 |`runner-stored-preload-aot`
 |Opt-in, non-gating: the identical preloading Runner JAR with a trained, application-class-verified JDK AOT cache;

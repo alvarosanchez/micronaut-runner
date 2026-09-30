@@ -70,7 +70,8 @@ micronaut {
         manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
 
         // A recorded startup class list, which the launcher preloads on a background thread (see "Preloading the
-        // startup classes" in the runtime chapter). There is no default.
+        // startup classes" in the runtime chapter). Defaults to src/main/micronaut-runner/startup-classes.txt,
+        // which recordStartupProfile writes, when that file exists.
         // startupClasses = file('startup-classes.log')
 
         // Options without a typed property, by name (see the table below):
@@ -113,7 +114,7 @@ tool resolve the path against the project and, in Gradle, rebuild the archive wh
 |`archiveReads` |`MAPPED` or `POSITIONAL` |`MAPPED` |passthrough |1.0
 |`precompileLogback` |boolean |`true` |passthrough |1.0
 |`stripLocalVariables` |boolean |`true` |passthrough |1.0
-|`startupClasses` |file |none |typed |1.0
+|`startupClasses` |file |`src/main/micronaut-runner/startup-classes.txt` if it exists |typed |1.0
 |===
 
 A typed option has a property of its own, in Gradle and in Maven. A passthrough option is set only by name,

@@ -37,8 +37,8 @@ cost from framework cost.
 |`micronaut.runner.preload`
 |`true`
 |Set to `false` so that the launcher does not start the thread that
-<<preload,preloads the recorded startup classes>>. It only has an effect on an archive packaged with
-`startupClasses`.
+<<preload,preloads the recorded startup classes>>. It only has an effect on an archive packaged with a startup
+profile or `startupClasses`.
 
 |`micronaut.runner.mmap`
 |from the archive (`archiveReads`)
@@ -138,59 +138,90 @@ more classes were loaded at readiness. On macOS that was 5.4 MiB more private me
 MiB, 60 pairs; 4 to 6.5 MiB across sessions), while in the container private memory did not change. To combine the
 two, build the JAR with the list first and train the cache on that JAR (<<cdsAndAot>>).
 
-*Record the list.* Run the training script (<<trainingSnippet>>) on the runner JAR with two substitutions and
-nothing else changed: `CACHE=startup-classes.log`, and in place of `-XX:AOTCacheOutput="$CACHE"`
+*Record the profile.* The build records the list from the runner JAR it produces:
 
 [source,bash]
 ----
--Dmicronaut.runner.preload=false -Djava.util.concurrent.ForkJoinPool.common.parallelism=0 -Xlog:class+load=info:file="$CACHE"
+./gradlew recordStartupProfile
+mvn package mn-runner:record-startup-profile
 ----
 
-The result is the JVM's own class-load log, in load order. `micronaut.runner.preload=false` keeps a JAR that already
-carries a list from replaying it into the new recording. The common-pool flag makes Micronaut load its services on
-the main thread, so two recordings list the classes in nearly the same order; it belongs to the recording run only.
-Three rules keep the recording useful:
+It writes `src/main/micronaut-runner/startup-classes.txt`, the startup profile: the classes the runner class loader
+defined up to the end of the workload, in load order, then as `jrt:` lines the JDK classes the run loaded from the
+runtime image rather than from the JDK's default CDS archive, which the launcher loads after them. Commit it. From
+then on `micronautRunnerJar` and `mn-runner:package` embed it with no configuration, and
+`java -Dmicronaut.runner.mode=inspect -jar my-app-0.1-all.jar` prints `Preload classes N`, where N is the file's
+`classes:` line. Recording launches the application, so it is never part of `assemble`, `build`, `check` or
+`package`: it runs only when you ask for it.
 
-* Record without a CDS or AOT cache. A class served from a cache is logged as `shared objects file`, not as a class
-of the archive, and the build then warns that the list holds nothing to preload.
-* End the run with SIGTERM, as the script does. `jcmd AOT.end_recording` ends an AOT recording, which this run does
-not have.
-* Record from a JAR built with the packaging options that production uses, because they decide which classes load.
+The recording launch runs the production JAR with the JDK of the project's toolchain (Gradle) or of the
+`maven-toolchains-plugin` (Maven), or else the one that runs the build. It passes a free port in
+`MICRONAUT_SERVER_PORT` and removes `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_AOT_VM_OPTIONS`
+from the environment, so no class cache takes part. Preloading is off, so an older profile is not replayed into the
+new one, and `-Djava.util.concurrent.ForkJoinPool.common.parallelism=0` makes two recordings list the classes in nearly
+the same order. The launch waits until the port accepts a connection, and then for the readiness path if one is set,
+sends the workload, and reads the class-load log before it stops the application, so classes that only the shutdown
+loads stay out. Every process it started is ended, whatever happens.
 
-*Embed it.* Pass the file to the packager. It keeps the classes that the run loaded from the archive, and the JDK
-classes that the run loaded from the runtime image rather than from the JDK's default CDS archive, which the launcher
-loads after the archive's. A file with one binary class name per line works too; blank lines and lines starting with
-`#` are ignored, and `jrt:<name>` marks a JDK class.
+[[trainingSettings]]
+*Training settings.* The workload decides a few hundred of the classes, so point it at the application's hot paths.
+Without one, the launch sends a single `GET /` and the build warns.
 
 [source,groovy]
 ----
-micronaut {
+micronaut {            // micronautRunner { } in a build without a Micronaut plugin
     runner {
-        startupClasses = file('startup-classes.log')
+        training {
+            readinessPath = '/health'
+            workloadPaths = ['/hello', '/orders']
+        }
     }
 }
 ----
 
-`micronautRunner { }` is the same block in a build without a Micronaut plugin, and a value set on a task,
-`micronautRunnerJar { startupClasses = file('startup-classes.log') }`, wins for that task. In Maven, pass
-`-Dmicronaut.runner.startupClasses=startup-classes.log` or set `<startupClasses>` in the plugin's configuration.
-These are the only ways to set it: by name, through `options` or `<runnerOptions>`, the build fails, because the path
-would not be resolved against the project and Gradle would not rebuild the archive when the list changes.
-`java -Dmicronaut.runner.mode=inspect -jar my-app-0.1-all.jar` prints how many classes the archive carries as
-`Preload classes` and `Preload JDK classes`.
+In Maven each setting is the property `micronaut.runner.training.<name>`, with `-D` or in `<properties>`: lists are
+comma-separated, timeouts are in seconds, and `environment` takes `NAME=value` entries.
 
-*When it does not run.* `-Dmicronaut.runner.preload=false` switches preloading off. The launcher also leaves the
-thread out when the JVM sees fewer than two processors, which in a container means a CPU limit of one: there is no
-spare core for it to use. It applies only when the single JAR runs: the extracted layout (<<aotLayout>>) has no
-launcher and ignores the list.
+[cols="22,18,60",options="header"]
+|===
+|Setting |Default |Meaning
 
-*A stale list is safe, and worth refreshing.* The list does not depend on the JAR's bytes, so it can be committed.
-The build drops the names the archive no longer holds and says how many in one warning. A class that is still in
-the archive but that the application no longer uses is loaded for nothing: the launcher loads a listed class and
-never initialises it, so nothing of the application runs early and its behaviour does not change, but the
-background work is wasted. Record the list again after upgrading Micronaut or Netty, or after changing packaging
-options, even when the build drops nothing. A listed JDK class that the runtime does not have, in a `jlink` image
-for example, is skipped.
+|`readinessPath` |none |Once the port accepts a connection, `GET` it until it answers 2xx.
+|`workloadPaths` |none |`GET` each path in order; each must answer 2xx.
+|`workloadRepeat` |1 |How many times the paths are requested.
+|`workloadCommand` |none |A command run after the paths, with `MICRONAUT_RUNNER_TRAINING_URL=http://127.0.0.1:<port>`.
+It must exit 0.
+|`runToExit` |`false` |For an application that exits by itself, such as one that is not a server: no readiness, workload
+or stop, and it must exit 0. Then the list also holds what the shutdown loads.
+|`stopPath` |none |`POST` it instead of ending the process, for example Micronaut's `/stop` endpoint with
+`ENDPOINTS_STOP_ENABLED=true` and `ENDPOINTS_STOP_SENSITIVE=false` in `environment`.
+|`jvmArgs` |none |JVM arguments of the recording launch. Name no class cache in them.
+|`environment` |none |Environment variables added to the launch.
+|`portVariable` |`MICRONAUT_SERVER_PORT` |The variable that receives the port.
+|`readinessTimeout`, `workloadTimeout`, `stopTimeout` |60 s, 60 s, 30 s |In Gradle a `java.time.Duration`.
+|===
+
+*Record it again* after upgrading Micronaut, Netty or any other dependency, or changing the JDK or the packaging
+options, even when the build does not warn: a class that the application no longer loads stays listed and is loaded
+for nothing. The build drops the names the archive no longer holds and says how many in one warning, and when more
+than a tenth were dropped, that the profile looks stale.
+
+*Another list.* An explicit `startupClasses` wins over the profile: the JVM's own class-load log, or a file with one
+binary class name per line, where blank lines and lines starting with `#` are ignored and `jrt:<name>` marks a JDK
+class. Set it on the extension (`micronaut { runner { startupClasses = file('startup-classes.log') } }`), on
+`micronautRunnerJar`, or in Maven with `-Dmicronaut.runner.startupClasses=...` or `<startupClasses>`; by name, through
+`options` or `<runnerOptions>`, the build fails. `null` falls back to the profile, so to build without it, delete the
+file.
+
+*When it does not run.* `-Dmicronaut.runner.preload=false` switches preloading off at run time. The launcher also
+leaves the thread out when the JVM sees fewer than two processors, which in a container means a CPU limit of one:
+there is no spare core for it to use. It applies only when the single JAR runs: the extracted layout (<<aotLayout>>)
+has no launcher and ignores the list.
+
+*A stale list is safe.* The list does not depend on the JAR's bytes. A class that is still in the archive but that
+the application no longer uses is loaded for nothing: the launcher loads a listed class and never initialises it, so
+nothing of the application runs early and its behaviour does not change, but the background work is wasted. A listed
+JDK class that the runtime does not have, in a `jlink` image for example, is skipped.
 
 *Agents.* An agent attached to the running JVM sees the preloaded classes as already loaded, so it has to
 retransform them to instrument them. An agent started with `-javaagent` is unaffected: it transforms each class as

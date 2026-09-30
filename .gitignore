@@ -53,6 +53,8 @@ src/main/docs/resources/img/micronaut-logo-white.svg
 test-suite/samples/**/build/
 test-suite/samples/**/.gradle/
 test-suite/samples/**/target/
+# Startup profiles recorded while trying the samples out: the samples always measure fresh recordings.
+test-suite/samples/*/src/main/micronaut-runner/
 
 # CDS archives and AOT caches produced by benchmarks and manual runs
 *.jsa
