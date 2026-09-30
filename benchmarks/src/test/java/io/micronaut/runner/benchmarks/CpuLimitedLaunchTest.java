@@ -65,10 +65,11 @@ class CpuLimitedLaunchTest {
         Path classLog = directory.resolve("verification.log");
         AotCache.Request limited = request(directory, CpuLimit.validate(1, "Linux", "0-3", true));
 
-        List<String> training = AotCache.lifecycleCommand(limited,
-                AotCache.trainingCommand(source, temporary, List.of("-XX:+UnlockDiagnosticVMOptions")));
+        List<String> training = AotCache.lifecycleCommand(limited, AotCache.trainingCommand(source, temporary,
+                List.of("-XX:+UnlockDiagnosticVMOptions"), AotCache.RUNNER_SINGLE_JAR_TRAINING));
         assertEquals(List.of("taskset", "-c", "0", "/jdk/bin/java", "-XX:+UnlockDiagnosticVMOptions",
-                "-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize(), "-jar", jar.toString()), training);
+                "-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize(),
+                "-Dmicronaut.runner.aot.training=true", "-jar", jar.toString()), training);
 
         List<String> verification = AotCache.lifecycleCommand(limited,
                 AotCache.verificationCommand(source, cache, classLog));
@@ -77,8 +78,8 @@ class CpuLimitedLaunchTest {
                 "-XX:AOTCache=" + cache.toAbsolutePath().normalize(), "-jar", jar.toString()), verification);
 
         AotCache.Request unlimited = request(directory, null);
-        assertEquals(AotCache.trainingCommand(source, temporary, List.of()),
-                AotCache.lifecycleCommand(unlimited, AotCache.trainingCommand(source, temporary, List.of())));
+        assertEquals(AotCache.trainingCommand(source, temporary, List.of(), List.of()),
+                AotCache.lifecycleCommand(unlimited, AotCache.trainingCommand(source, temporary, List.of(), List.of())));
         // The measured command itself never carries the prefix.
         assertEquals("/jdk/bin/java", AotCache.launchCommand(source, cache).get(0));
     }
@@ -94,15 +95,16 @@ class CpuLimitedLaunchTest {
         AotCache.Request unlimitedRequest = request(directory, null);
         AotCache.Request oneCpu = request(directory, CpuLimit.validate(1, "Linux", "0-3", true));
         AotCache.Request twoCpus = request(directory, CpuLimit.validate(2, "Linux", "0-3", true));
-        String unlimited = AotCache.identity(source, unlimitedRequest, creationFlags);
+        List<String> none = AotCache.NO_TRAINING_ARGUMENTS;
+        String unlimited = AotCache.identity(source, unlimitedRequest, creationFlags, none);
 
         assertEquals(List.of(), unlimitedRequest.relevantJvmFlags());
         assertEquals(List.of(), unlimitedRequest.commandPrefix());
         assertEquals(List.of("cpus=1"), oneCpu.relevantJvmFlags());
         assertEquals(TASKSET, oneCpu.commandPrefix());
-        assertNotEquals(unlimited, AotCache.identity(source, oneCpu, creationFlags));
-        assertNotEquals(AotCache.identity(source, oneCpu, creationFlags),
-                AotCache.identity(source, twoCpus, creationFlags));
+        assertNotEquals(unlimited, AotCache.identity(source, oneCpu, creationFlags, none));
+        assertNotEquals(AotCache.identity(source, oneCpu, creationFlags, none),
+                AotCache.identity(source, twoCpus, creationFlags, none));
 
         // What the identity hashed before CPU limits existed: the cache flags, the creation flags, no relevant
         // flags, the command's arguments after java, the readiness path and the workload.

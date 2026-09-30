@@ -2993,8 +2993,8 @@ class RunnerJarBuilderTest {
         }
         List<String> warnings = logger.warnings.stream().filter(line -> line.contains("startup class")).toList();
         assertEquals(1, warnings.size(), () -> logger.warnings.toString());
-        assertTrue(warnings.get(0).contains("CDS or AOT cache") && warnings.get(0).contains("'file:' code source"),
-                warnings.get(0));
+        assertTrue(warnings.get(0).contains("CDS or AOT cache") && warnings.get(0).contains("'file:' code source")
+                        && warnings.get(0).contains("-Dmicronaut.runner.aot.training=true"), warnings.get(0));
         assertTrue(result.warnings().contains(warnings.get(0)));
         assertArrayEquals(Files.readAllBytes(plain), Files.readAllBytes(output),
                 "a list that embeds nothing leaves the archive byte for byte what it is without one");

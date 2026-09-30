@@ -36,12 +36,14 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
 
@@ -146,6 +148,68 @@ class AotCacheBuilderTest {
         assertTrue(Files.isRegularFile(singleJar.resolve(AotLaunchOptions.CACHE_FILE)));
     }
 
+    /**
+     * The recording alone runs in the launcher's AOT training mode, so the fixture's classes report the archive's
+     * {@code file:} URL there, which JDK 27 and later require to cache them, and their {@code jar:} URLs in the
+     * smoke launch, which is a production launch; both come from the cache there.
+     */
+    @Test
+    void theSingleJarIsRecordedWithFileCodeSourcesAndServedWithJarOnes() throws IOException {
+        String jarName = runnerJar.getFileName().toString();
+        String recordLog = Files.readString(singleJar.resolve(AotCacheBuilder.RECORD_LOG), StandardCharsets.ISO_8859_1);
+        String smokeLog = Files.readString(singleJar.resolve(AotCacheGate.SMOKE_LOG), StandardCharsets.ISO_8859_1);
+        String recorded = codeSource(recordLog);
+        String served = codeSource(smokeLog);
+
+        assertTrue(recorded.startsWith("file:") && recorded.endsWith("/" + jarName), recordLog);
+        assertTrue(recordLog.contains("micronaut-runner: AOT training mode (micronaut.runner.aot.training=true)"),
+                recordLog);
+        assertTrue(served.startsWith("jar:file:") && served.endsWith("/" + jarName + "!/MICRONAUT-INF/lib/"
+                + LIBRARY_JAR + "!/"), smokeLog);
+        assertFalse(smokeLog.contains("AOT training mode"), "the smoke launch is a production launch: " + smokeLog);
+
+        String classLoads = Files.readString(singleJar.resolve(AotCacheGate.CLASS_LOAD_LOG),
+                StandardCharsets.ISO_8859_1);
+        for (Class<?> type : List.of(AotCacheFixture.class, AotCacheFixtureLibrary.class)) {
+            assertTrue(classLoads.contains(type.getName() + " source: shared objects file"),
+                    () -> type.getName() + " did not come from the cache on " + singleJarReport.jdk());
+        }
+        assertFalse(Files.readString(singleJar.resolve(AotLaunchOptions.ARGFILE)).contains("micronaut.runner.aot.training"));
+        assertFalse(Files.readString(singleJar.resolve(AotLaunchOptions.IDENTITY_FILE))
+                .contains("micronaut.runner.aot.training"));
+        assertFalse(singleJarReport.warnings().contains(AotCacheOutput.SINGLE_JAR_WARNING), singleJarReport::toJson);
+        assertFalse(WARNINGS.contains(AotCacheOutput.SINGLE_JAR_WARNING), WARNINGS::toString);
+    }
+
+    /**
+     * Proves that the test above would see the JDK rule: the same JAR recorded without the training mode, as before
+     * it existed. On a JDK that skips the dependency's class for its {@code jar:} code source, a launch of that cache
+     * must not serve it; on one that does not, there is nothing to prove.
+     */
+    @Test
+    void withoutTheTrainingModeAJdkWithTheFileRuleLeavesTheDependencyOut() throws Exception {
+        Path control = temp.resolve("single-jar-control");
+        Files.createDirectories(control);
+        String jarName = runnerJar.getFileName().toString();
+        Files.copy(runnerJar, control.resolve(jarName), StandardCopyOption.COPY_ATTRIBUTES);
+        AotCacheReport report = AotCacheBuilder.build(AotCacheSettings.builder().verifyProbes(1).enforceCoverage(false)
+                        .build(), java, control, jarName, training().build(), List.of(),
+                Map.of(AotCacheOutput.TARGET_LABEL, "singleJar-control"), new RecordingLog());
+        assertTrue(report.passed(), report::toJson);
+        String recordLog = Files.readString(control.resolve(AotCacheBuilder.RECORD_LOG), StandardCharsets.ISO_8859_1);
+        assertFalse(recordLog.contains("AOT training mode"), recordLog);
+        String library = AotCacheFixtureLibrary.class.getName();
+        boolean skipped = recordLog.lines().anyMatch(line -> line.contains("Skipping " + library.replace('.', '/') + ":")
+                && line.contains("Not loaded from \"file:\" code source"));
+        Assumptions.assumeTrue(skipped, () -> "JDK " + report.jdk() + " caches classes of a custom loader whatever"
+                + " their code source, so the rule this test controls for is not there to detect");
+
+        String classLoads = Files.readString(control.resolve(AotCacheGate.CLASS_LOAD_LOG), StandardCharsets.ISO_8859_1);
+        assertTrue(classLoads.contains(library + " source: "), classLoads);
+        assertFalse(classLoads.contains(library + " source: shared objects file"),
+                "a class the recording skipped cannot come from the cache");
+    }
+
     @Test
     void withoutJcmdTheTrainingStopEndsTheRecording() throws Exception {
         Path out = temp.resolve("driver-stop");
@@ -201,6 +265,15 @@ class AotCacheBuilderTest {
         } catch (IllegalArgumentException e) {
             return path;
         }
+    }
+
+    /** The code-source location the fixture printed in a launch's output. */
+    private static String codeSource(String output) {
+        return output.lines()
+                .filter(line -> line.startsWith(AotCacheFixture.CODE_SOURCE))
+                .map(line -> line.substring(AotCacheFixture.CODE_SOURCE.length()).trim())
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("the fixture printed no code source: " + output));
     }
 
     private static boolean jcmdEndsRecordings(String vmVersion) {

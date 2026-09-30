@@ -17,6 +17,8 @@ package io.micronaut.runner.benchmarks;
 
 import io.micronaut.runner.build.Compression;
 
+import java.util.List;
+
 /**
  * The build steps {@link SampleBuild}'s row table is made of. {@link SampleBuild} performs them on the sample; a
  * unit test fakes them to check which rows a selection builds.
@@ -118,12 +120,15 @@ interface SampleSteps {
     /**
      * Trains, or reuses, and verifies a JDK AOT cache for another row.
      *
-     * @param source the row the cache is trained on
-     * @param name   the cached row
+     * @param source          the row the cache is trained on
+     * @param name            the cached row
+     * @param trainingJvmArgs what only the training command adds: {@link AotCache#RUNNER_SINGLE_JAR_TRAINING} when
+     *                        the source is a Runner single JAR, else {@link AotCache#NO_TRAINING_ARGUMENTS}. The row
+     *                        table decides, since it knows the source
      * @return the variant
      * @throws Exception if it cannot be built
      */
-    Variant aotCache(Variant source, String name) throws Exception;
+    Variant aotCache(Variant source, String name, List<String> trainingJvmArgs) throws Exception;
 
     /**
      * Extracts a Runner jar.

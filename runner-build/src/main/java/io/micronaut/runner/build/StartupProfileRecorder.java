@@ -16,6 +16,7 @@
 package io.micronaut.runner.build;
 
 import io.micronaut.core.annotation.Experimental;
+import io.micronaut.runner.RunnerClassLoader;
 import io.micronaut.runner.build.training.TrainingDriver;
 import io.micronaut.runner.build.training.TrainingSettings;
 
@@ -214,7 +215,9 @@ public final class StartupProfileRecorder {
             throw new IOException("The recording holds no class that RunnerClassLoader defined, so there is"
                     + " nothing to preload. The likely cause is a class cache: a class served from a CDS or AOT"
                     + " cache is not logged as a class of the archive. Remove the cache flags, such as"
-                    + " -XX:AOTCache and -XX:SharedArchiveFile, from the training jvmArgs.");
+                    + " -XX:AOTCache and -XX:SharedArchiveFile, from the training jvmArgs. The other cause is the"
+                    + " AOT-cache training property -D" + RunnerClassLoader.AOT_TRAINING_PROPERTY + "=true, which"
+                    + " makes every class report the archive's file: URL instead; remove it too.");
         }
         StringBuilder content = new StringBuilder(64 * (recorded.classes().size() + recorded.jdkClasses().size()));
         content.append("# Micronaut Runner startup profile: the classes RunnerClassLoader defined before the"
