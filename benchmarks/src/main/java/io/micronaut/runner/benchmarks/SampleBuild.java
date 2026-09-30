@@ -65,6 +65,14 @@ import java.util.zip.ZipEntry;
  * that are identical to every other variant's. The two Shadow jars come from the sample's own
  * {@code shadowJar} and {@code shadowJarStored} tasks, which differ only in entry compression.</p>
  *
+ * <h2>Micronaut AOT rows</h2>
+ * <p>A sample that applies {@code io.micronaut.aot} also builds {@code optimizedJitJar}, the AOT-optimized
+ * application, and {@code optimizedJitJarAll}, its Shadow jar. The {@code maot} rows measure them:
+ * {@code shadow-maot} is {@code optimizedJitJarAll} unmodified, and {@code runner-maot} is {@code runner-stored}
+ * with {@code optimizedJitJar} as its application layer, which is what the Gradle plugin's
+ * {@code optimizedMicronautRunnerJar} packages. In these names {@code maot} stands for Micronaut AOT, and the
+ * {@code -aot} suffix stays the JDK AOT cache.</p>
+ *
  * <h2>Core and opt-in rows, and selection</h2>
  * <p>Core rows are built by default and are the run's required variants. Opt-in rows, such as the reflection
  * ablation, are built only on request and never gate the exit code; see {@link #variantNames()}. A run builds
@@ -114,6 +122,20 @@ final class SampleBuild implements SampleSteps {
     private static final String RUNNER_PRESERVE = "runner-preserve";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
     private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
+    // "maot" marks a Micronaut AOT row. The -aot suffix stays reserved for the JDK AOT cache.
+    private static final String SHADOW_MAOT = "shadow-maot";
+    private static final String SHADOW_MAOT_AOT = "shadow-maot-aot";
+    private static final String RUNNER_MAOT = "runner-maot";
+    private static final String RUNNER_MAOT_AOT = "runner-maot-aot";
+
+    private static final String SHADOW_MAOT_DESCRIPTION =
+            "Micronaut AOT's optimizedJitJarAll: the AOT-optimized application flattened by Shadow";
+    private static final String SHADOW_MAOT_AOT_DESCRIPTION =
+            "The same optimizedJitJarAll with a verified JDK AOT cache";
+    private static final String RUNNER_MAOT_DESCRIPTION =
+            "Runner jar of the Micronaut AOT-optimized application (optimizedJitJar); plugin-default entry stub";
+    private static final String RUNNER_MAOT_AOT_DESCRIPTION =
+            "The same Micronaut AOT Runner jar with a verified JDK AOT cache";
 
     private static final String SHADOW_DESCRIPTION = "Everything flattened into one jar by the Shadow plugin";
     private static final String SHADOW_STORED_DESCRIPTION =
@@ -193,6 +215,8 @@ final class SampleBuild implements SampleSteps {
     private final List<Path> dependencies;
     private final Path shadowJar;
     private final Path shadowStoredJar;
+    private final Path optimizedJitJar;
+    private final Path optimizedJitJarAll;
     private final CpuLimit cpuLimit;
 
     private SampleBuild(Path sample,
@@ -210,6 +234,8 @@ final class SampleBuild implements SampleSteps {
         this.dependencies = metadata.dependencies();
         this.shadowJar = metadata.shadowJar();
         this.shadowStoredJar = metadata.shadowStoredJar();
+        this.optimizedJitJar = metadata.optimizedJitJar();
+        this.optimizedJitJarAll = metadata.optimizedJitJarAll();
     }
 
     /**
@@ -372,7 +398,17 @@ final class SampleBuild implements SampleSteps {
                     "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
                     (steps, rows) -> steps.extracted(rows.get(RUNNER_STORED))),
             core(RUNNER_EXTRACTED_AOT, "The same extracted layout with a verified JDK AOT cache",
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_EXTRACTED), RUNNER_EXTRACTED_AOT)));
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_EXTRACTED), RUNNER_EXTRACTED_AOT)),
+            // The Micronaut AOT rows. The two cached ones are opt-in: training two more caches is what they cost.
+            core(SHADOW_MAOT, SHADOW_MAOT_DESCRIPTION, (steps, rows) -> steps.shadowMaot()),
+            optIn(SHADOW_MAOT_AOT, SHADOW_MAOT_AOT_DESCRIPTION,
+                    (steps, rows) -> steps.aotCache(rows.get(SHADOW_MAOT), SHADOW_MAOT_AOT)
+                            .describedAs(SHADOW_MAOT_AOT_DESCRIPTION)),
+            core(RUNNER_MAOT, RUNNER_MAOT_DESCRIPTION, (steps, rows) -> steps.runnerMaot()),
+            optIn(RUNNER_MAOT_AOT, RUNNER_MAOT_AOT_DESCRIPTION,
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_MAOT), RUNNER_MAOT_AOT)
+                            .describedAs(RUNNER_MAOT_AOT_DESCRIPTION
+                                    + staticServicesNote(rows.get(RUNNER_MAOT).description()))));
 
     /**
      * Names every core variant in report order without building their artifacts. These are the rows a run
@@ -456,7 +492,16 @@ final class SampleBuild implements SampleSteps {
                         "Startup class preload vs none"),
                 new ComparisonSpec(RUNNER_STORED_PRELOAD, SHADOW, "Runner + startup class preload vs Shadow"),
                 new ComparisonSpec(RUNNER_STORED_PRELOAD_AOT, RUNNER_STORED_AOT,
-                        "Startup class preload + AOT cache vs AOT cache alone"));
+                        "Startup class preload + AOT cache vs AOT cache alone"),
+                // Micronaut AOT: the like-for-like pair first, then what a project keeps without Runner's
+                // optimized archive, then what Micronaut AOT adds on each side.
+                new ComparisonSpec(RUNNER_MAOT, SHADOW_MAOT, "Runner vs Micronaut AOT Shadow"),
+                new ComparisonSpec(RUNNER_STORED, SHADOW_MAOT,
+                        "Runner without Micronaut AOT vs Micronaut AOT Shadow"),
+                new ComparisonSpec(RUNNER_MAOT, RUNNER_STORED, "Micronaut AOT's gain on Runner"),
+                new ComparisonSpec(SHADOW_MAOT, SHADOW, "Micronaut AOT's gain on Shadow"),
+                new ComparisonSpec(RUNNER_MAOT_AOT, SHADOW_MAOT_AOT,
+                        "Runner vs Micronaut AOT Shadow, both with a JDK AOT cache"));
     }
 
     /**
@@ -548,6 +593,49 @@ final class SampleBuild implements SampleSteps {
     @Override
     public Variant shadowStored() throws IOException {
         return shadowJar(SHADOW_STORED, SHADOW_STORED_DESCRIPTION, "shadowJarStored", shadowStoredJar);
+    }
+
+    @Override
+    public Variant shadowMaot() throws IOException {
+        return shadowJar(SHADOW_MAOT, SHADOW_MAOT_DESCRIPTION, "optimizedJitJarAll", optimizedJitJarAll);
+    }
+
+    @Override
+    public Variant runnerMaot() throws IOException {
+        return optimizedRunnerJar(artifacts, RUNNER_MAOT, mainClass, optimizedJitJar, dependencies);
+    }
+
+    /**
+     * The Runner jar of the Micronaut AOT-optimized application: built exactly as {@code runner-stored} is, with
+     * the same ordered dependencies and the packaging library's defaults, but with a copy of the sample's
+     * {@code optimizedJitJar} archive as the application output. The application layer is then the only
+     * difference between the two rows, and whatever Runner's packaging defaults are apply to both.
+     *
+     * @param artifacts       where the variants' artifacts are written
+     * @param name            the variant
+     * @param mainClass       the application's main class
+     * @param optimizedJitJar the archive the metadata names, or {@code null} when the sample has no such task
+     * @param dependencies    the dependency jars, in class path order
+     * @return the variant
+     * @throws IOException if the sample declares no such task, it produced no jar, or packaging fails
+     */
+    static Variant optimizedRunnerJar(Path artifacts, String name, String mainClass, Path optimizedJitJar,
+                                      List<Path> dependencies) throws IOException {
+        if (optimizedJitJar == null) {
+            throw new IOException("The sample's build declares no optimizedJitJar task (it does not apply"
+                    + " io.micronaut.aot)");
+        }
+        if (!Files.isRegularFile(optimizedJitJar)) {
+            throw new IOException("Micronaut AOT produced no " + optimizedJitJar);
+        }
+        // Copied like every sample output a row uses, so that nothing measured is read from the sample's build.
+        Path directory = recreate(artifacts.resolve(name + "-application"));
+        Path copy = LaunchInputs.copy(optimizedJitJar, directory.resolve(optimizedJitJar.getFileName().toString()));
+        Variant variant = runnerJar(artifacts, name, mainClass, List.of(copy), dependencies, Compression.STORED,
+                EntryMode.STUB);
+        // The fixed text keeps whether the static service table applied: it composes with Micronaut AOT 3's output
+        // and stands down by itself for an AOT version that optimizes service loading.
+        return variant.describedAs(RUNNER_MAOT_DESCRIPTION + staticServicesNote(variant.description()));
     }
 
     @Override
@@ -1309,7 +1397,9 @@ final class SampleBuild implements SampleSteps {
                             List<Path> applicationOutput,
                             List<Path> dependencies,
                             Path shadowJar,
-                            Path shadowStoredJar) {
+                            Path shadowStoredJar,
+                            Path optimizedJitJar,
+                            Path optimizedJitJarAll) {
 
         static Metadata read(Path file) throws IOException {
             String projectName = "application";
@@ -1319,6 +1409,8 @@ final class SampleBuild implements SampleSteps {
             List<Path> dependencies = new ArrayList<>();
             Path shadowJar = null;
             Path shadowStoredJar = null;
+            Path optimizedJitJar = null;
+            Path optimizedJitJarAll = null;
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 int separator = line.indexOf('=');
                 if (separator < 0) {
@@ -1334,6 +1426,8 @@ final class SampleBuild implements SampleSteps {
                     case "dependency" -> dependencies.add(Path.of(value));
                     case "shadowJar" -> shadowJar = Path.of(value);
                     case "shadowStoredJar" -> shadowStoredJar = Path.of(value);
+                    case "optimizedJitJar" -> optimizedJitJar = Path.of(value);
+                    case "optimizedJitJarAll" -> optimizedJitJarAll = Path.of(value);
                     default -> {
                     }
                 }
@@ -1349,7 +1443,7 @@ final class SampleBuild implements SampleSteps {
                 throw new IOException(file + " names no dependencies");
             }
             return new Metadata(projectName, projectVersion, mainClass, existing,
-                    List.copyOf(dependencies), shadowJar, shadowStoredJar);
+                    List.copyOf(dependencies), shadowJar, shadowStoredJar, optimizedJitJar, optimizedJitJarAll);
         }
     }
 

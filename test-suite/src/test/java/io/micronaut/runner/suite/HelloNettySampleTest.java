@@ -60,6 +60,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>The same launch logs its class loads, and the test pins which launcher classes load before the entry
  * stub, so that a class that drifts onto the pre-{@code main} path fails here rather than going unnoticed.</p>
  *
+ * <p>The sample also applies {@code io.micronaut.aot}, as a Micronaut Launch project does. Once that launch
+ * has closed, the same test builds {@code optimizedMicronautRunnerJar} with the real Micronaut AOT plugin and
+ * serves the same request from the optimized archive.</p>
+ *
  * <p>The sample is built in place rather than in a temporary directory because its {@code settings.gradle}
  * reads the version catalog by a relative path. Its outputs are declared as build outputs of the sample,
  * not of this test.</p>
@@ -72,6 +76,12 @@ class HelloNettySampleTest {
 
     /** Where that task writes, with the classifier the plugin defaults to. */
     private static final String ARCHIVE = "build/libs/hello-netty-0.1-all.jar";
+
+    /** The task the Gradle plugin also registers in a project that applies {@code io.micronaut.aot}. */
+    private static final String OPTIMIZED_TASK = ":optimizedMicronautRunnerJar";
+
+    /** Where that task writes: the archive of Micronaut AOT's {@code optimizedJitJar}, packaged by Runner. */
+    private static final String OPTIMIZED_ARCHIVE = "build/libs/hello-netty-0.1-all-optimized.jar";
 
     /** How long the server is given to come up. Generous: a cold JIT on a loaded CI agent is slow. */
     private static final Duration STARTUP_TIMEOUT = Duration.ofMinutes(2);
@@ -179,6 +189,28 @@ class HelloNettySampleTest {
             application.close();
         }
         assertPreMainClasses(classLoadLog);
+
+        // The sample applies io.micronaut.aot, yet the plain archive above ran none of Micronaut AOT's tasks.
+        for (String task : List.of(":prepareJitOptimizations", ":optimizedJitJar", ":jar")) {
+            assertNull(result.task(task), () -> TASK + " ran " + task + ":\n" + result.getOutput());
+        }
+        assertTrue(hasEntry(archive, CLASSES + "logback.xml"), () -> archive + " is not the plain application");
+
+        // The optimized archive, built directly: no clean and no init script, so that it differs from the
+        // archive above in one thing, its application layer.
+        Path optimized = sample.resolve(OPTIMIZED_ARCHIVE);
+        BuildResult optimizedResult = gradle(sample, OPTIMIZED_TASK);
+        assertEquals(TaskOutcome.SUCCESS, optimizedResult.task(OPTIMIZED_TASK).getOutcome(),
+                () -> "the optimized packaging task did not run:\n" + optimizedResult.getOutput());
+        assertTrue(hasEntry(optimized, CLASSES + "com/example/AOTApplicationContextConfigurer.class"),
+                () -> optimized + " does not hold Micronaut AOT's generated classes");
+        assertFalse(hasEntry(optimized, CLASSES + "logback.xml"),
+                () -> optimized + " holds the logback.xml that Micronaut AOT replaces");
+        // Micronaut AOT registers its own Logback configurator, so runner-build generates none.
+        assertFalse(hasEntry(optimized, CLASSES + LOGBACK_CONFIGURATOR),
+                () -> optimized + " holds a Runner-generated Logback configurator beside Micronaut AOT's");
+        assertStartsTheApplication(optimized);
+        assertEquals("hello from RunnerClassLoader", run(optimized, sample, Map.of(), List.of()).body());
     }
 
     /**

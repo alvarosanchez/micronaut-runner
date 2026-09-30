@@ -560,8 +560,9 @@ final class Reports {
                 .append(context.completenessPolicy().externalName()).append("`\n");
         out.append("- **JVM process**: fresh for every sample\n");
         appendPageCache(out, conditions);
-        out.append("- **Application cache**: per variant. `shadow-aot`, `runner-stored-aot` and")
-                .append(" `runner-extracted-aot` use verified JDK AOT caches launched with `-XX:AOTMode=on`;")
+        out.append("- **Application cache**: per variant. Every row whose name ends in `-aot`, such as `shadow-aot`,")
+                .append(" `runner-stored-aot` and `runner-extracted-aot`, uses a verified JDK AOT cache launched with")
+                .append(" `-XX:AOTMode=on`; `maot` in a name is Micronaut AOT, not a cache;")
                 .append(" classes defined by Runner's loader are cached but not AOT-linked. Their paired rows")
                 .append(" select no application cache. Default JDK class sharing may still be active\n");
         out.append("- **Readiness**: first HTTP 200 from `").append(context.readinessPath())

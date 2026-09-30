@@ -18,6 +18,8 @@ package io.micronaut.runner.benchmarks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -493,16 +495,46 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
     }
 
     /**
-     * Picks a port nothing is listening on by binding it and letting it go again.
+     * Picks a port nothing is listening on, on any address, by binding it and letting it go again.
+     *
+     * <p>The readiness probe connects to {@code 127.0.0.1}. A listener bound to the loopback address alone, such as
+     * a local VM's SSH port forward, does not stop a wildcard bind that reuses addresses on macOS: the port looked
+     * free, the application bound it too and logged that it was running, and the probe reached the other listener
+     * until the run timed out. The port is therefore chosen without address reuse, and kept only if the loopback
+     * address can be bound as well.</p>
      *
      * @return a port that was free a moment ago
      */
     static int freePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            socket.setReuseAddress(true);
-            return socket.getLocalPort();
+        for (int attempt = 0; attempt < 20; attempt++) {
+            int port;
+            try (ServerSocket socket = new ServerSocket()) {
+                socket.setReuseAddress(false);
+                socket.bind(new InetSocketAddress(0));
+                port = socket.getLocalPort();
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not find a free port", e);
+            }
+            if (freeOnLoopback(port)) {
+                return port;
+            }
+        }
+        throw new UncheckedIOException(new IOException("Could not find a port that is free on the loopback address"));
+    }
+
+    /**
+     * Whether nothing listens on a port of the loopback address, which is where the readiness probe connects.
+     *
+     * @param port the port
+     * @return whether the loopback address could be bound on it without address reuse
+     */
+    static boolean freeOnLoopback(int port) {
+        try (ServerSocket socket = new ServerSocket()) {
+            socket.setReuseAddress(false);
+            socket.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
+            return true;
         } catch (IOException e) {
-            throw new UncheckedIOException("Could not find a free port", e);
+            return false;
         }
     }
 

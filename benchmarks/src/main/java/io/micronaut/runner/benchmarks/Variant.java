@@ -58,6 +58,18 @@ record Variant(String name,
     }
 
     /**
+     * This variant under another description, for a row whose report line is fixed rather than derived from how
+     * it was built.
+     *
+     * @param newDescription the one-line explanation
+     * @return the same variant with that description
+     */
+    Variant describedAs(String newDescription) {
+        return new Variant(name, newDescription, command, workingDirectory, artifact, deploymentSize,
+                requestedEntryMode, effectiveEntryMode, available, unavailableReason, launchInputs, cache);
+    }
+
+    /**
      * A variant that was built and can be measured.
      *
      * @param name             the identifier

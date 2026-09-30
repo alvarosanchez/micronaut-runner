@@ -45,6 +45,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StartupHarnessTest {
 
+    /**
+     * A port with a listener on the loopback address alone is not free, because the readiness probe would reach that
+     * listener rather than the application; a port nobody listens on is.
+     */
+    @Test
+    void aPortTakenOnTheLoopbackAddressAloneIsNotFree() throws Exception {
+        try (java.net.ServerSocket foreign = new java.net.ServerSocket()) {
+            foreign.bind(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0));
+            assertFalse(StartupHarness.freeOnLoopback(foreign.getLocalPort()));
+        }
+        int port = StartupHarness.freePort();
+        assertTrue(StartupHarness.freeOnLoopback(port), "freePort returned a port that the loopback address holds");
+    }
+
     @Test
     void successUsesHttpReadinessAndCleansUpTheChild(@TempDir Path directory) throws Exception {
         Path lifecycle = directory.resolve("success.pid");

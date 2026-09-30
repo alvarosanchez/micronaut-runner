@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ShadowCollisionFunctionalTest extends AbstractFunctionalTest {
 
     /** A stub of a shading plugin: the runner plugin only ever looks for this task. */
-    private static final String SHADOW_STUB = """
+    static final String SHADOW_STUB = """
             plugins {
                 id 'java'
             }

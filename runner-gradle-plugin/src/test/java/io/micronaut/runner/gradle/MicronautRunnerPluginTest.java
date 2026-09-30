@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.gradle;
 
+import org.gradle.api.GradleException;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
@@ -22,6 +23,7 @@ import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.attributes.Usage;
 import org.gradle.api.plugins.BasePluginExtension;
 import org.gradle.api.plugins.ExtensionAware;
+import org.gradle.api.tasks.bundling.Jar;
 import org.gradle.testfixtures.ProjectBuilder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -29,17 +31,19 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * What the plugin sets up while it is applied: the extension and its {@code micronaut.runner} alias, the
- * archive's naming conventions and the configuration that carries the archive. The builds that exercise them
- * are in the functional tests.
+ * archives' naming conventions, the configuration that carries the archive and the input of the optimized
+ * task. The builds that exercise them are in the functional tests.
  */
 class MicronautRunnerPluginTest {
 
@@ -114,6 +118,43 @@ class MicronautRunnerPluginTest {
                 "resolving the configuration does not build the archive");
     }
 
+    @Test
+    void theOptimizedTaskPackagesTheOptimizedJitJarAndNeverThePlainApplication(@TempDir Path directory) {
+        Project project = ProjectBuilder.builder().withProjectDir(directory.toFile()).withName("demo").build();
+        project.getPluginManager().apply("java");
+        project.getPluginManager().apply(MicronautRunnerPlugin.class);
+        project.getPluginManager().apply("io.micronaut.aot");
+        assertFalse(project.getTasks().getNames().contains(MicronautRunnerPlugin.OPTIMIZED_TASK_NAME),
+                "Micronaut AOT registers optimizedJitJar only once a Micronaut component plugin is applied");
+        project.getPluginManager().apply("io.micronaut.component");
+
+        MicronautRunnerJar task = project.getTasks()
+                .named(MicronautRunnerPlugin.OPTIMIZED_TASK_NAME, MicronautRunnerJar.class).get();
+        File libs = project.getLayout().getBuildDirectory().dir("libs").get().getAsFile();
+        assertEquals(new File(libs, "demo-all-optimized.jar"), task.getArchiveFile().get().getAsFile());
+        assertTrue(project.getTasks().getByName("assemble").getTaskDependencies().getDependencies(null)
+                .contains(task), "assemble does not build the optimized archive");
+
+        // Nothing registered optimizedJitJar: the task fails rather than package the main source set's output.
+        GradleException failure = assertThrows(GradleException.class,
+                () -> task.getApplicationOutput().getFiles());
+        assertTrue(failure.getMessage().contains("optimizedJitJar")
+                && failure.getMessage().contains("io.micronaut.aot"), failure.getMessage());
+
+        // Registered after the plugin's callback ran, as Micronaut AOT may: the lookup is by name, when read.
+        Jar optimizedJitJar = project.getTasks().register("optimizedJitJar", Jar.class,
+                jar -> jar.getArchiveClassifier().set("jit")).get();
+        assertEquals(Set.of(new File(libs, "demo-jit.jar")), task.getApplicationOutput().getFiles());
+        assertTrue(task.getApplicationOutput().getBuildDependencies().getDependencies(null)
+                .contains(optimizedJitJar), "the optimized task does not build optimizedJitJar");
+
+        MicronautRunnerJar plain = project.getTasks()
+                .named(MicronautRunnerPlugin.TASK_NAME, MicronautRunnerJar.class).get();
+        assertFalse(plain.getApplicationOutput().getBuildDependencies().getDependencies(null)
+                .contains(optimizedJitJar), "micronautRunnerJar builds optimizedJitJar");
+        assertEquals(new File(libs, "demo-all.jar"), plain.getArchiveFile().get().getAsFile());
+    }
+
     private static MicronautRunnerExtension extension(Project project) {
         return project.getExtensions().getByType(MicronautRunnerExtension.class);
     }
@@ -128,6 +169,23 @@ class MicronautRunnerPluginTest {
         @Override
         public void apply(Project project) {
             project.getExtensions().create("micronaut", MicronautStub.class);
+        }
+    }
+
+    /**
+     * Stands in for {@code io.micronaut.aot}, whose id {@code META-INF/gradle-plugins} in this module's test
+     * resources gives it. It registers nothing: a test registers {@code optimizedJitJar} itself.
+     */
+    public static class AotStubPlugin implements Plugin<Project> {
+        @Override
+        public void apply(Project project) {
+        }
+    }
+
+    /** Stands in for {@code io.micronaut.component}, which the Micronaut application and library plugins apply. */
+    public static class ComponentStubPlugin implements Plugin<Project> {
+        @Override
+        public void apply(Project project) {
         }
     }
 

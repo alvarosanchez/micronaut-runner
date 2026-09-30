@@ -77,7 +77,8 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
 
     /**
      * The plugin registers the task, describes it, and puts it in the build group — the three things a user
-     * sees before ever running it. Without a Shadow plugin, it registers no collision check.
+     * sees before ever running it. Without a Shadow plugin, it registers no collision check, and without
+     * {@code io.micronaut.aot}, no optimized task.
      *
      * @param directory a fresh project directory
      * @throws IOException if the fixture cannot be written
@@ -98,6 +99,8 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
         assertTrue(output.contains("build"), () -> "the task is not in the build group:\n" + output);
         assertFalse(output.contains("validateMicronautRunnerShadowOutputs"),
                 () -> "the Shadow collision check was registered without a Shadow plugin:\n" + output);
+        assertFalse(output.contains("optimizedMicronautRunnerJar"),
+                () -> "the optimized task was registered without io.micronaut.aot:\n" + output);
     }
 
     /**

@@ -2,6 +2,9 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
     alias(libs.plugins.micronaut.application)
+    // As Micronaut Launch applies it to every new application: the startup harness measures its optimized
+    // archives, and optimizedMicronautRunnerJar exists because of it.
+    alias(libs.plugins.micronaut.aot)
     id 'io.micronaut.runner.standalone'
     alias(libs.plugins.shadow)
 }
@@ -22,6 +25,15 @@ micronaut {
         training {
             workloadPaths = ['/hello']
         }
+    }
+    // The block Micronaut Launch 5.2.0 generates, without convertYamlToJava: the sample has no YAML.
+    aot {
+        precomputeOperations = false
+        cacheEnvironment = false
+        optimizeClassLoading = true
+        deduceEnvironment = false
+        optimizeNetty = true
+        replaceLogbackXml = true
     }
 }
 
@@ -84,6 +96,12 @@ tasks.named('processResources') {
 
 tasks.named('shadowJar') {
     archiveClassifier = 'shadow'
+}
+
+// Like shadowJar, the optimized shaded jar moves aside: optimizedMicronautRunnerJar keeps -all-optimized.jar.
+// Micronaut AOT registers optimizedJitJarAll in afterEvaluate, so a lazy name filter reaches it.
+tasks.named { it == 'optimizedJitJarAll' }.configureEach {
+    archiveClassifier = 'shadow-optimized'
 }
 
 // Benchmark control only: the shadowJar archive with uncompressed entries, so the startup harness can separate

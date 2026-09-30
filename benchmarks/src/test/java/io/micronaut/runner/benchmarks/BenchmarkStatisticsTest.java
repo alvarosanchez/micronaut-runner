@@ -383,7 +383,7 @@ class BenchmarkStatisticsTest {
                 .filter(spec -> SampleBuild.variantNames().contains(spec.candidate())
                         && SampleBuild.variantNames().contains(spec.baseline()))
                 .toList();
-        assertEquals(7, applicable.size());
+        assertEquals(11, applicable.size());
         assertEquals(applicable.size(), occurrences(comparisons, "\"candidateVariant\""));
         assertFalse(comparisons.contains("\"baselineVariant\": \"runner-stored-reflection\""));
         assertTrue(comparisons.length() < json.length() / 10,
@@ -401,13 +401,15 @@ class BenchmarkStatisticsTest {
                 .map(spec -> spec.candidate() + " - " + spec.baseline())
                 .toList(), order);
         assertEquals("runner-stored - shadow", order.getFirst());
-        // The one Shadow candidate is the Shadow-only compression control, and its label says so in both reports.
+        // Two candidates are Shadow rows: the Shadow-only compression control, whose label says so in both
+        // reports, and Micronaut AOT's gain on Shadow.
         List<SampleBuild.ComparisonSpec> shadowCandidates = applicable.stream()
                 .filter(spec -> spec.candidate().startsWith("shadow"))
                 .toList();
-        assertEquals(1, shadowCandidates.size(), shadowCandidates.toString());
+        assertEquals(List.of("shadow-stored - shadow", "shadow-maot - shadow"), shadowCandidates.stream()
+                .map(spec -> spec.candidate() + " - " + spec.baseline()).toList());
+        assertEquals("Micronaut AOT's gain on Shadow", shadowCandidates.getLast().label());
         SampleBuild.ComparisonSpec control = shadowCandidates.getFirst();
-        assertEquals("shadow-stored - shadow", control.candidate() + " - " + control.baseline());
         assertTrue(control.label().startsWith("Shadow-only control"), control.label());
         assertTrue(comparisons.contains("{\"label\": \"" + control.label()
                 + "\", \"candidateVariant\": \"shadow-stored\", \"baselineVariant\": \"shadow\""), comparisons);

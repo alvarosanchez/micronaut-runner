@@ -35,6 +35,10 @@ gradle.rootProject { rootProject ->
         if (rootProject.tasks.names.contains('shadowJarStored')) {
             task.dependsOn('shadowJarStored')
         }
+        // Micronaut AOT's two archives, for the maot rows. They are not on the command line either, and
+        // optimizedJitJarAll is registered in afterEvaluate: the name filter is resolved when the task graph is
+        // built, realizes no other task, and is empty in a sample that does not apply io.micronaut.aot.
+        task.dependsOn(rootProject.tasks.named { it in ['optimizedJitJar', 'optimizedJitJarAll'] })
         // The harness always wants the current answer; there is nothing to be gained from skipping it.
         task.outputs.upToDateWhen { false }
         task.doLast {
@@ -59,6 +63,16 @@ gradle.rootProject { rootProject ->
             def shadowStoredJar = rootProject.tasks.findByName('shadowJarStored')
             if (shadowStoredJar != null) {
                 lines << "shadowStoredJar=${shadowStoredJar.archiveFile.get().asFile.absolutePath}"
+            }
+            // Looked up when this action runs: optimizedJitJar exists only once a Micronaut component plugin is applied, and
+            // optimizedJitJarAll only after afterEvaluate.
+            def optimizedJitJar = rootProject.tasks.findByName('optimizedJitJar')
+            if (optimizedJitJar != null) {
+                lines << "optimizedJitJar=${optimizedJitJar.archiveFile.get().asFile.absolutePath}"
+            }
+            def optimizedJitJarAll = rootProject.tasks.findByName('optimizedJitJarAll')
+            if (optimizedJitJarAll != null) {
+                lines << "optimizedJitJarAll=${optimizedJitJarAll.archiveFile.get().asFile.absolutePath}"
             }
             def output = rootProject.layout.buildDirectory
                     .file('runner-benchmark-metadata.txt').get().asFile

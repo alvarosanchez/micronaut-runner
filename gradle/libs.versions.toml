@@ -66,4 +66,5 @@ plugin-jmh = { module = "me.champeau.jmh:me.champeau.jmh.gradle.plugin", version
 [plugins]
 # Used by the standalone sample builds under test-suite/samples (they import this catalog by path)
 micronaut-application = { id = "io.micronaut.application", version.ref = "micronaut-gradle-plugin" }
+micronaut-aot = { id = "io.micronaut.aot", version.ref = "micronaut-gradle-plugin" }
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
