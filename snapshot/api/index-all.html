@@ -2451,6 +2451,31 @@ file of binary class names.</div>
 <div class="block">Records the startup profile of an application: the classes a run of its runner jar loaded, in load order,
 written to a file that is meant to be committed and that the packager embeds for the launcher to preload.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#STATIC_SERVICES" class="member-name-link">STATIC_SERVICES</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">Whether to generate the static service table that answers Micronaut's service lookups from names
+computed at packaging time.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#staticServices()" class="member-name-link">staticServices()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
+<dd>
+<div class="block">Whether the static service table was requested: generated classes that answer Micronaut's service
+lookups from names computed at packaging time, so that the application does not scan its class path for
+them when it starts.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#staticServices(boolean)" class="member-name-link">staticServices(boolean)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
+<dd>
+<div class="block">Requests the static service table.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#staticServicesCoreVersion()" class="member-name-link">staticServicesCoreVersion()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dd>
+<div class="block">The micronaut-core version the static service table was generated for, as that JAR's manifest states
+it.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#staticServiceSlots()" class="member-name-link">staticServiceSlots()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dd>
+<div class="block">The number of implementation names the static service table lists, which
+<a href="io/micronaut/runner/build/RunnerJarSpec.html#staticServices()"><code>RunnerJarSpec.staticServices()</code></a> requests.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#step()" class="member-name-link">step()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>
 <div class="block">The transform's name, which is the name of the <a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> that enables it, such as

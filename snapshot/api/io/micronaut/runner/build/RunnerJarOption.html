@@ -74,6 +74,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#PRECOMPILE_LOGBACK" tabindex="0">PRECOMPILE_LOGBACK</a></li>
 <li><a href="#STRIP_LOCAL_VARIABLES" tabindex="0">STRIP_LOCAL_VARIABLES</a></li>
 <li><a href="#STARTUP_CLASSES" tabindex="0">STARTUP_CLASSES</a></li>
+<li><a href="#STATIC_SERVICES" tabindex="0">STATIC_SERVICES</a></li>
 </ol>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
@@ -223,8 +224,13 @@ packaged.</div>
 <div class="block">The recorded startup class list the launcher preloads on a background thread: the
 <code>-Xlog:class+load</code> output of a run of the runner jar, or a file of binary class names.</div>
 </div>
-<div class="col-first even-row-color"><code><a href="#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a></code></div>
+<div class="col-first even-row-color"><code><a href="#STATIC_SERVICES" class="member-name-link">STATIC_SERVICES</a></code></div>
 <div class="col-last even-row-color">
+<div class="block">Whether to generate the static service table that answers Micronaut's service lookups from names
+computed at packaging time.</div>
+</div>
+<div class="col-first odd-row-color"><code><a href="#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed.</div>
 </div>
 </div>
@@ -419,6 +425,16 @@ packaged. See <a href="RunnerJarSpec.Builder.html#precompileLogback(boolean)"><c
 <div class="block">The recorded startup class list the launcher preloads on a background thread: the
 <code>-Xlog:class+load</code> output of a run of the runner jar, or a file of binary class names. See
 <a href="RunnerJarSpec.Builder.html#startupClasses(java.nio.file.Path)"><code>RunnerJarSpec.Builder.startupClasses(Path)</code></a>.</div>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="STATIC_SERVICES">
+<h3>STATIC_SERVICES</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">STATIC_SERVICES</span></div>
+<div class="block">Whether to generate the static service table that answers Micronaut's service lookups from names
+computed at packaging time. See <a href="RunnerJarSpec.Builder.html#staticServices(boolean)"><code>RunnerJarSpec.Builder.staticServices(boolean)</code></a>.</div>
 </div>
 </section>
 </li>

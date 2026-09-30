@@ -75,6 +75,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#precompileLogback()" tabindex="0">precompileLogback()</a></li>
 <li><a href="#stripLocalVariables()" tabindex="0">stripLocalVariables()</a></li>
 <li><a href="#startupClasses()" tabindex="0">startupClasses()</a></li>
+<li><a href="#staticServices()" tabindex="0">staticServices()</a></li>
 <li><a href="#timestamp()" tabindex="0">timestamp()</a></li>
 <li><a href="#effectiveOptions()" tabindex="0">effectiveOptions()</a></li>
 </ol>
@@ -247,13 +248,20 @@ packaged, so that the application does not parse XML and run Joran on its main t
 file of binary class names.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stripLocalVariables()" class="member-name-link">stripLocalVariables</a>()</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#staticServices()" class="member-name-link">staticServices</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Whether the static service table was requested: generated classes that answer Micronaut's service
+lookups from names computed at packaging time, so that the application does not scan its class path for
+them when it starts.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stripLocalVariables()" class="member-name-link">stripLocalVariables</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Whether the local-variable tables of dependency classes are dropped when they are re-packed.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp()" class="member-name-link">timestamp</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp()" class="member-name-link">timestamp</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The instant every entry of the archive is dated with, converted to MS-DOS time in UTC.</div>
 </div>
 </div>
@@ -574,6 +582,34 @@ the application no longer uses costs background work and changes no behaviour.</
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the list file, if one was configured</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="staticServices()">
+<h3>staticServices</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">staticServices</span>()</div>
+<div class="block">Whether the static service table was requested: generated classes that answer Micronaut's service
+lookups from names computed at packaging time, so that the application does not scan its class path for
+them when it starts.
+
+<p>A request does not guarantee a table. The packager generates one only for an application whose
+micronaut-core is in the range <code>[5.1.10, 5.2)</code> and has the hook the table plugs into. It generates
+none for a micronaut-core that carries its own service index, when another
+<code>StaticOptimizations$Loader</code> of the application already supplies service loaders, or when a
+generated class name is taken; it reports why, and Micronaut then scans as it does without a table.
+Within a table, a service type is left to the scan when the packager cannot prove the table equal to
+it, for example when a listed class or one of its supertypes is in no JAR of the application.</p>
+
+<p>The table describes the class path the application was packaged with. At run time it therefore
+ignores the class loader a lookup names, and does not see a provider added after packaging; it stands
+down when the application starts with <code>-Dmicronaut.runner.static-services=false</code> or with
+<code>-Dmicronaut.runner.parent=system</code>.</p></div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>whether a static service table was requested</dd>
 </dl>
 </div>
 </section>

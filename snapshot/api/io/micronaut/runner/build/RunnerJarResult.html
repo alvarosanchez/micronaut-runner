@@ -67,6 +67,8 @@ loadScripts(document, 'script');</script>
 <li><a href="#effectiveOptions()" tabindex="0">effectiveOptions()</a></li>
 <li><a href="#logbackPrecompiled()" tabindex="0">logbackPrecompiled()</a></li>
 <li><a href="#transforms()" tabindex="0">transforms()</a></li>
+<li><a href="#staticServiceSlots()" tabindex="0">staticServiceSlots()</a></li>
+<li><a href="#staticServicesCoreVersion()" tabindex="0">staticServicesCoreVersion()</a></li>
 <li><a href="#summary()" tabindex="0">summary()</a></li>
 <li><a href="#toString()" tabindex="0">toString()</a></li>
 </ol>
@@ -163,6 +165,18 @@ archive root.</div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#output()" class="member-name-link">output</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The archive that was written.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html" title="class or interface in java.util" class="external-link">Optional</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#staticServicesCoreVersion()" class="member-name-link">staticServicesCoreVersion</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">The micronaut-core version the static service table was generated for, as that JAR's manifest states
+it.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#staticServiceSlots()" class="member-name-link">staticServiceSlots</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">The number of implementation names the static service table lists, which
+<a href="RunnerJarSpec.html#staticServices()"><code>RunnerJarSpec.staticServices()</code></a> requests.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#summary()" class="member-name-link">summary</a>()</code></div>
@@ -352,6 +366,35 @@ class path needs what it would remove.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the reports, unmodifiable</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="staticServiceSlots()">
+<h3>staticServiceSlots</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">staticServiceSlots</span>()</div>
+<div class="block">The number of implementation names the static service table lists, which
+<a href="RunnerJarSpec.html#staticServices()"><code>RunnerJarSpec.staticServices()</code></a> requests. It is <code>0</code> when no table was generated; the build
+log names the reason.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the slot count of the static service table</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="staticServicesCoreVersion()">
+<h3>staticServicesCoreVersion</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html" title="class or interface in java.util" class="external-link">Optional</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">staticServicesCoreVersion</span>()</div>
+<div class="block">The micronaut-core version the static service table was generated for, as that JAR's manifest states
+it.</div>
+<dl class="notes">
+<dt>Returns:</dt>
+<dd>the version, or empty when no table was generated</dd>
 </dl>
 </div>
 </section>
