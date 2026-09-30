@@ -2957,10 +2957,6 @@ class RunnerJarBuilderTest {
         }
     }
 
-    /**
-     * Records, at every warning, the thread that emitted it and the daemon staging threads alive then. The
-     * pool is only shut down after every stage has been joined, so its threads are all still alive.
-     */
     // ------------------------------------------------------------------------ static service table
 
     private static final String GENERATED_SERVICES = "io/micronaut/runner/generated/services/";
@@ -3107,6 +3103,36 @@ class RunnerJarBuilderTest {
         }
     }
 
+    /**
+     * A dependency with a class file the ClassFile API cannot read, which the JVM would refuse to load as
+     * well: the archive is packaged as it is without a table, and the service type that names the class is
+     * left to Micronaut's scan.
+     */
+    @ParameterizedTest
+    @EnumSource(Compression.class)
+    void aClassFileThatCannotBeReadLeavesItsTypeToTheScanAndDoesNotFailTheBuild(Compression compression)
+            throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("META-INF/services/com.example.Spi",
+                "com.example.broken.Provider\n".getBytes(StandardCharsets.UTF_8));
+        entries.put("com/example/broken/Provider.class", StaticServiceTableGeneratorTest.withSuperclassOutOfRange(
+                StaticServiceTableGeneratorTest.classFile("com.example.broken.Provider", "java.lang.Object")));
+        Path broken = fixtures.resolve("libs/broken-provider-" + compression + ".jar");
+        writeJar(broken, manifest(attributes -> { }), entries);
+        List<String> info = new ArrayList<>();
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output).compression(compression)
+                .dependencies(List.of(Dependency.of(StaticServiceTableGeneratorTest.micronautCore51().get(0)),
+                        Dependency.of(plainDependency, "com.example:dep-lib:2.0.1"), Dependency.of(broken)))
+                .build(), recording(info));
+
+        assertEquals(4, result.staticServiceSlots(), "the other types are served as they are without the jar");
+        assertTrue(info.stream().anyMatch(line -> line.startsWith("Generated a static Micronaut service table: "
+                + "3 types, 4 slots (1 left to Micronaut's scan: com.example.Spi) for micronaut-core ")),
+                info::toString);
+    }
+
     @Test
     void theStaticServiceTableIsReproducible() throws IOException {
         Path first = output();
@@ -3142,6 +3168,10 @@ class RunnerJarBuilderTest {
         };
     }
 
+    /**
+     * Records, at every warning, the thread that emitted it and the daemon staging threads alive then. The
+     * pool is only shut down after every stage has been joined, so its threads are all still alive.
+     */
     private static final class StagingLogger implements BuildLogger {
 
         private final Set<Thread> warningThreads = ConcurrentHashMap.newKeySet();

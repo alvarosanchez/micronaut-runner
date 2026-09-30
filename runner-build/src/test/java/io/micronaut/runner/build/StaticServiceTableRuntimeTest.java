@@ -33,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarOutputStream;
@@ -44,6 +45,7 @@ import javax.tools.ToolProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -57,6 +59,10 @@ import static org.junit.jupiter.api.Assertions.fail;
  * were both wrong would not pass. The fixture is packaged with the micronaut-core 5.2.x of the test class path
  * as well, which gets no table; adding {@code "5.2"} to {@link #servedCores()} runs every test on it, and is how
  * a wider range is confirmed.</p>
+ *
+ * <p>The verify switch is what the other checks of a table rest on, so it is run both ways: on the class path
+ * the table describes, as the single jar and as the layout extracted from it, and on that layout with a jar
+ * added, which it has to refuse.</p>
  */
 class StaticServiceTableRuntimeTest {
 
@@ -69,6 +75,14 @@ class StaticServiceTableRuntimeTest {
     private static final String VERIFY = "-Dmicronaut.runner.static-services.verify=true";
     private static final String TRACE = "-Dmicronaut.runner.static-services.trace=true";
     private static final String TRACE_LINE = "[micronaut-runner] static services: get ";
+    private static final String NO_MISMATCH = " entries, 0 mismatches";
+    private static final String SINGLE_JAR_ORDER = " types list the same names in the single jar's order, which"
+            + " the scan of this extracted layout does not use";
+    private static final String MISMATCH = "java.lang.IllegalStateException: [micronaut-runner] static services do"
+            + " not match Micronaut's scan: ";
+
+    /** Makes the fixture application fail with what a lookup throws, as an application does, not print it. */
+    private static final String RETHROW = "-Dfixture.rethrow=true";
 
     /** How many plain classes each layer lists as bean definitions, which is what the fan-out is observed on. */
     private static final int PLAIN_CLASSES = 8;
@@ -291,11 +305,69 @@ class StaticServiceTableRuntimeTest {
         Launch verified = launch(orderJar, List.of(VERIFY), ORDER_PROBES);
 
         assertTrue(verified.err().contains("[micronaut-runner] static services verified: "), verified.err());
-        assertTrue(verified.err().contains(" entries, 0 mismatches"), verified.err());
+        assertTrue(verified.err().contains(NO_MISMATCH), verified.err());
+        assertFalse(verified.err().contains(SINGLE_JAR_ORDER), "the single jar is compared in order: "
+                + verified.err());
         assertEquals(launch(orderJar, List.of(), ORDER_PROBES).out(), verified.out());
 
         Launch parity = launch(parityJar, List.of(VERIFY), List.of("iterator:" + GREETER));
-        assertTrue(parity.err().contains(" entries, 0 mismatches"), parity.err());
+        assertTrue(parity.err().contains(NO_MISMATCH), parity.err());
+    }
+
+    @ParameterizedTest
+    @MethodSource("servedCores")
+    void verifyAcceptsTheSingleJarOrderInTheExtractedLayout(String core) throws Exception {
+        Path applicationJar = extracted(core);
+        Launch verified = launch(applicationJar, List.of(VERIFY), ORDER_PROBES);
+        Launch scan = launch(applicationJar, List.of(KILL_SWITCH), ORDER_PROBES);
+
+        assertTrue(verified.err().contains(NO_MISMATCH), verified.err());
+        // The scan of this layout reads META-INF/micronaut jar by jar, not from one merged copy.
+        assertTrue(verified.err().contains(SINGLE_JAR_ORDER), verified.err());
+        assertNotEquals(scan.out(), verified.out(), "the scan of the extracted layout finds another order");
+        assertEquals(launch(FIXTURES.get(core).orderJar(), List.of(), ORDER_PROBES).out(), verified.out(),
+                "an extracted application is answered in the order of the jar it was extracted from");
+    }
+
+    @ParameterizedTest
+    @MethodSource("servedCores")
+    void verifyStopsAnApplicationWhoseClassPathTheTableDoesNotDescribe(String core) throws Exception {
+        // A jar added after packaging: one more line for a type the table lists, and a provider of a type the
+        // table answers "nothing" for. Verify instantiates nothing, so the names need no class of their own.
+        Map<String, byte[]> added = new LinkedHashMap<>();
+        added.put("META-INF/services/" + GREETER, bytes("com.example.app.AppMetaGreeter\n"));
+        added.put("META-INF/micronaut/com.example.spi.Unprovided/com.example.app.AppMarker", new byte[0]);
+        Path addedJar = writeJar(work.resolve("libs/added-" + core + ".jar"), added);
+        List<String> application = List.of("-cp", extracted(core) + File.pathSeparator + addedJar,
+                "com.example.app.Main", "collectAll:" + GREETER, "iterator:" + MARKER);
+
+        Launch stopped = java(concat(List.of(VERIFY, RETHROW), application));
+
+        assertNotEquals(0, stopped.exit(), "the application does not start: " + stopped.out() + stopped.err());
+        assertTrue(stopped.err().contains(MISMATCH), stopped.err());
+        assertTrue(stopped.err().contains(" entries, 2 mismatches. Start with"
+                + " -Dmicronaut.runner.static-services=false, and report this."), stopped.err());
+        assertTrue(stopped.err().contains("\n  " + GREETER + ": the table lists [com.example.app.AppGreeter"),
+                stopped.err());
+        assertTrue(stopped.err().contains(", com.example.app.AppMetaGreeter], the scan finds [com.example.app"),
+                stopped.err());
+        assertTrue(stopped.err().contains("\n  com.example.spi.Unprovided: the table lists nothing, the scan finds"
+                + " [com.example.app.AppMarker]"), stopped.err());
+        assertFalse(stopped.err().contains(NO_MISMATCH), stopped.err());
+        assertEquals("", stopped.out(), "no lookup was answered");
+
+        // Not only the lookup that ran the comparison: every later one fails with the same message.
+        Launch caught = java(concat(List.of(VERIFY), application));
+        assertEquals(0, caught.exit(), caught.out() + caught.err());
+        Map<String, String> answers = answers(caught);
+        assertTrue(answers.get("collectAll " + GREETER).startsWith("! " + MISMATCH), caught.out());
+        assertTrue(answers.get("iterator " + MARKER).startsWith("! " + MISMATCH), caught.out());
+
+        // What the message says to do: without the table the application starts, and sees the added jar.
+        Launch scan = java(concat(List.of(VERIFY, RETHROW, KILL_SWITCH), application));
+        assertEquals(0, scan.exit(), scan.out() + scan.err());
+        assertFalse(scan.err().contains("static services"), scan.err());
+        assertEquals(12, answers(scan).get("collectAll " + GREETER).split(",").length, scan.out());
     }
 
     @ParameterizedTest
@@ -396,7 +468,7 @@ class StaticServiceTableRuntimeTest {
                 import java.util.List;
 
                 public final class Main {
-                    public static void main(String[] args) {
+                    public static void main(String[] args) throws Throwable {
                         ClassLoader loader = Main.class.getClassLoader();
                         for (String probe : args) {
                             int colon = probe.indexOf(':');
@@ -417,6 +489,9 @@ class StaticServiceTableRuntimeTest {
                                     default -> throw new IllegalArgumentException(api);
                                 };
                             } catch (Throwable e) {
+                                if (Boolean.getBoolean("fixture.rethrow")) {
+                                    throw e;
+                                }
                                 Throwable root = e;
                                 while (root.getCause() != null) {
                                     root = root.getCause();
@@ -600,12 +675,26 @@ class StaticServiceTableRuntimeTest {
         return text.getBytes(StandardCharsets.UTF_8);
     }
 
+    /**
+     * Writes a jar as build tools do, with an entry for every directory: on a plain class path, which the
+     * extracted layout is, Micronaut finds {@code META-INF/micronaut/} only in a jar that stores the directory.
+     */
     private static Path writeJar(Path file, Map<String, byte[]> entries) throws IOException {
         Files.createDirectories(file.getParent());
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().putValue("Manifest-Version", "1.0");
         try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(file), manifest)) {
+            // The stream wrote META-INF/ itself, in front of the manifest.
+            Set<String> directories = new HashSet<>(List.of("META-INF/"));
             for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+                String name = entry.getKey();
+                for (int slash = name.indexOf('/'); slash >= 0; slash = name.indexOf('/', slash + 1)) {
+                    String directory = name.substring(0, slash + 1);
+                    if (directories.add(directory)) {
+                        out.putNextEntry(new ZipEntry(directory));
+                        out.closeEntry();
+                    }
+                }
                 out.putNextEntry(new ZipEntry(entry.getKey()));
                 out.write(entry.getValue());
                 out.closeEntry();
@@ -633,7 +722,16 @@ class StaticServiceTableRuntimeTest {
                 .replace("io.micronaut.runner.generated.services.RunnerServiceSupplier", "<caller>");
     }
 
+    /** Runs a fixture jar with {@code java -jar}, which has to succeed. */
     private static Launch launch(Path jar, List<String> jvmArguments, List<String> probes) throws Exception {
+        Launch launch = java(concat(jvmArguments, concat(List.of("-jar", jar.toString()), probes)));
+        assertEquals(0, launch.exit(),
+                jar + " " + jvmArguments + " " + probes + "\n" + launch.out() + launch.err());
+        return launch;
+    }
+
+    /** Runs {@code java} with the given arguments and waits for it, whatever it exits with. */
+    private static Launch java(List<String> arguments) throws Exception {
         String home = System.getProperty("runner.test.javaHome", System.getProperty("java.home"));
         Path java = Path.of(home, "bin", "java");
         if (!Files.isExecutable(java)) {
@@ -642,10 +740,7 @@ class StaticServiceTableRuntimeTest {
         Assumptions.assumeTrue(Files.isExecutable(java), "the JDK has no java executable");
         List<String> command = new ArrayList<>();
         command.add(java.toString());
-        command.addAll(jvmArguments);
-        command.add("-jar");
-        command.add(jar.toString());
-        command.addAll(probes);
+        command.addAll(arguments);
         Path out = Files.createTempFile(work, "launch", ".out");
         Path err = Files.createTempFile(work, "launch", ".err");
         Process process = new ProcessBuilder(command)
@@ -656,13 +751,34 @@ class StaticServiceTableRuntimeTest {
             process.destroyForcibly();
             fail("the fixture application did not finish: " + command);
         }
-        Launch launch = new Launch(Files.readString(out), Files.readString(err));
-        assertEquals(0, process.exitValue(), command + "\n" + launch.out() + launch.err());
-        return launch;
+        return new Launch(Files.readString(out), Files.readString(err), process.exitValue());
     }
 
-    /** What one run of the fixture printed. */
-    private record Launch(String out, String err) {
+    /**
+     * The layout extracted from the order fixture of one micronaut-core line: its application jar, which names
+     * the jars under {@code lib/} in its manifest. Extracted on first use.
+     */
+    private static synchronized Path extracted(String core) throws Exception {
+        Path orderJar = FIXTURES.get(core).orderJar();
+        Path destination = work.resolve("extracted-" + core);
+        Path applicationJar = destination.resolve(orderJar.getFileName());
+        if (!Files.isRegularFile(applicationJar)) {
+            Launch extract = java(List.of("-Dmicronaut.runner.mode=extract", "-jar", orderJar.toString(),
+                    "--destination", destination.toString()));
+            assertEquals(0, extract.exit(), extract.out() + extract.err());
+            assertTrue(Files.isRegularFile(applicationJar), extract.out() + extract.err());
+        }
+        return applicationJar;
+    }
+
+    private static List<String> concat(List<String> first, List<String> second) {
+        List<String> all = new ArrayList<>(first);
+        all.addAll(second);
+        return all;
+    }
+
+    /** What one run of the fixture printed, and what it exited with. */
+    private record Launch(String out, String err, int exit) {
     }
 
     /** The fixture application packaged with one micronaut-core: once as it is, once with the fragile providers. */

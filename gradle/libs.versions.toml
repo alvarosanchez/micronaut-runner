@@ -8,7 +8,11 @@ micronaut = "5.2.2"                 # core; read by micronaut-build for the mn c
 micronaut-docs = "3.0.0"
 micronaut-test = "5.1.1"
 micronaut-logging = "2.1.0"
-micronaut-platform = "5.1.5"        # sample applications only
+# Sample applications only. Its micronaut-core has to be one the static service table serves
+# (StaticServiceTableGenerator.SUPPORTED_RANGE): HelloNettySampleTest requires a table, and the benchmarks'
+# runner-stored vs runner-stored-dynamic-services comparisons compare two identical archives without one.
+# Move it to a platform on another micronaut-core line only together with that range.
+micronaut-platform = "5.1.5"
 # The micronaut-core 5.1.x that runner-build's static service table is compiled against and that its tests
 # package, next to the 5.2.x above. The samples resolve the same version from the platform BOM.
 micronaut-core51 = "5.1.15"

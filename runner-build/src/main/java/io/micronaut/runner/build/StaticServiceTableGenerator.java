@@ -85,7 +85,8 @@ import java.util.zip.ZipInputStream;
  * {@code StaticOptimizations$Loader} already supplies service loaders, or when a generated name is taken. A
  * single type is left to the scan ("dynamic") when the table cannot be proven equal to it: a name that is not
  * a class the archive or the JDK has, together with its supertypes; a {@code META-INF/micronaut} entry that
- * has content, which a names-only table would drop; two copies of a service file in one jar.</p>
+ * has content, which a names-only table would drop; two copies of a service file in one jar. A class file
+ * that cannot be read counts as a class that is not there: it never fails the build.</p>
  *
  * <h2>Registration</h2>
  * <p>The table is registered by one line in the application layer's
@@ -357,36 +358,98 @@ final class StaticServiceTableGenerator {
             {STATIC_DEFINITION, "load", "()Ljava/lang/Object;"},
             {OPTIMIZATIONS_LOADER, "load", "()Ljava/lang/Object;"},
         };
-        Map<String, ClassModel> models = new HashMap<>();
+        Map<String, Set<String>> methods = new HashMap<>();
         for (String[] member : members) {
             String owner = member[0];
-            if (!models.containsKey(owner)) {
+            if (!methods.containsKey(owner)) {
                 int position = core.position(owner + CLASS_SUFFIX);
-                models.put(owner, position < 0 ? null : parse(core.layer.read(position)));
-            }
-            ClassModel model = models.get(owner);
-            if (model == null) {
-                return owner.replace('/', '.');
-            }
-            boolean found = false;
-            for (MethodModel method : model.methods()) {
-                if (member[1].equals(method.methodName().stringValue())
-                        && member[2].equals(method.methodType().stringValue())
-                        && method.flags().has(AccessFlag.PUBLIC)) {
-                    found = true;
-                    break;
+                if (position < 0) {
+                    return owner.replace('/', '.');
                 }
+                methods.put(owner, publicMethods(core.layer.read(position)));
             }
-            if (!found) {
+            Set<String> declared = methods.get(owner);
+            if (declared == null) {
+                return "readable " + owner.replace('/', '.');
+            }
+            if (!declared.contains(member[1] + member[2])) {
                 return "public " + owner.replace('/', '.') + "." + member[1] + member[2];
             }
         }
         return null;
     }
 
-    private static ClassModel parse(byte[] classFile) {
+    /*
+     * The three readers below are the only places that look into a class file. The ClassFile API checks a class
+     * file as it is read, not when it is parsed: a constant pool index that points nowhere throws from the
+     * accessor that follows it. So each reader parses and reads inside one try, and answers "cannot be read",
+     * which its caller resolves to the scan.
+     */
+
+    /**
+     * The public methods a class declares, as name and descriptor joined.
+     *
+     * @param classFile the class file
+     * @return the methods, or {@code null} when the class file cannot be read
+     */
+    private static Set<String> publicMethods(byte[] classFile) {
         try {
-            return ClassFile.of().parse(classFile);
+            Set<String> methods = new HashSet<>();
+            for (MethodModel method : ClassFile.of().parse(classFile).methods()) {
+                // Every method is read, public or not: one that cannot be makes the class unreadable.
+                String signature = method.methodName().stringValue() + method.methodType().stringValue();
+                if (method.flags().has(AccessFlag.PUBLIC)) {
+                    methods.add(signature);
+                }
+            }
+            return methods;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether a class names another anywhere in its constant pool.
+     *
+     * @param classFile    the class file
+     * @param internalName the name looked for, with slashes
+     * @return whether it is there, or {@code null} when the class file cannot be read
+     */
+    private static Boolean mentions(byte[] classFile, String internalName) {
+        try {
+            for (PoolEntry entry : ClassFile.of().parse(classFile).constantPool()) {
+                if (entry instanceof Utf8Entry utf8 && utf8.stringValue().contains(internalName)) {
+                    return Boolean.TRUE;
+                }
+            }
+            return Boolean.FALSE;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The class and the interfaces a class file extends and implements.
+     *
+     * @param internalName the class the file must be of, with slashes
+     * @param classFile    the class file
+     * @return the internal names of its supertypes, or {@code null} when the class file is of another class
+     *         or cannot be read
+     */
+    private static List<String> supertypes(String internalName, byte[] classFile) {
+        try {
+            ClassModel model = ClassFile.of().parse(classFile);
+            if (!internalName.equals(model.thisClass().asInternalName())) {
+                return null;
+            }
+            List<String> supertypes = new ArrayList<>();
+            if (model.superclass().isPresent()) {
+                supertypes.add(model.superclass().get().asInternalName());
+            }
+            for (ClassEntry implemented : model.interfaces()) {
+                supertypes.add(implemented.asInternalName());
+            }
+            return supertypes;
         } catch (IllegalArgumentException e) {
             return null;
         }
@@ -409,28 +472,24 @@ final class StaticServiceTableGenerator {
             }
             for (String name : serviceLoaderNames(layer.layer.read(position))) {
                 String resource = name.replace('.', '/') + CLASS_SUFFIX;
-                ClassModel model = null;
-                boolean ambiguous = false;
+                Boolean supplies = null;
                 for (LayerIndex candidate : layers) {
                     int found = candidate.classPosition(resource);
                     if (found == LayerIndex.AMBIGUOUS) {
-                        ambiguous = true;
                         break;
                     }
                     if (found >= 0) {
-                        model = parse(candidate.layer.read(found));
+                        supplies = mentions(candidate.layer.read(found), OPTIMIZATIONS);
                         break;
                     }
                 }
-                if (ambiguous || model == null) {
+                if (supplies == null) {
                     return "the class of the registered StaticOptimizations loader " + name
                             + " is missing or cannot be read";
                 }
-                for (PoolEntry entry : model.constantPool()) {
-                    if (entry instanceof Utf8Entry utf8 && utf8.stringValue().contains(OPTIMIZATIONS)) {
-                        return "the registered StaticOptimizations loader " + name
-                                + " already supplies Micronaut's service loaders";
-                    }
+                if (supplies) {
+                    return "the registered StaticOptimizations loader " + name
+                            + " already supplies Micronaut's service loaders";
                 }
             }
         }
@@ -674,15 +733,12 @@ final class StaticServiceTableGenerator {
         if (classFile == null) {
             return ClassLoader.getPlatformClassLoader().getResource(resource) != null;
         }
-        ClassModel model = parse(classFile);
-        if (model == null || !internalName.equals(model.thisClass().asInternalName())) {
+        List<String> supertypes = supertypes(internalName, classFile);
+        if (supertypes == null) {
             return false;
         }
-        if (model.superclass().isPresent() && !present(model.superclass().get().asInternalName())) {
-            return false;
-        }
-        for (ClassEntry implemented : model.interfaces()) {
-            if (!present(implemented.asInternalName())) {
+        for (String supertype : supertypes) {
+            if (!present(supertype)) {
                 return false;
             }
         }

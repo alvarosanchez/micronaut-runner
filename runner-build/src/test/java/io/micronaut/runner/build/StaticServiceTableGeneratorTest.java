@@ -32,6 +32,7 @@ import java.lang.classfile.constantpool.ClassEntry;
 import java.lang.classfile.constantpool.PoolEntry;
 import java.lang.classfile.instruction.InvokeDynamicInstruction;
 import java.lang.constant.ClassDesc;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -354,6 +355,37 @@ class StaticServiceTableGeneratorTest {
     }
 
     @Test
+    void aClassFileThatCannotBeReadMakesItsTypeDynamic() throws IOException {
+        MapLayer application = new MapLayer("application")
+                .put(SERVICES + SPI, lines(List.of("com.example.NoSuperclass")))
+                .put(SERVICES + "com.example.Other", lines(List.of("com.example.Child")))
+                .put(SERVICES + "com.example.Third", lines(List.of("com.example.Truncated")));
+        byte[] whole = classFile("com.example.Truncated", "java.lang.Object", "com.example.Third");
+        // The first two parse: it is reading a supertype out of them that fails.
+        MapLayer classes = new MapLayer("classes").type(SPI).type("com.example.Other").type("com.example.Third")
+                .put("com/example/NoSuperclass.class",
+                        withSuperclassOutOfRange(classFile("com.example.NoSuperclass", "java.lang.Object", SPI)))
+                .put("com/example/NoInterface.class",
+                        withFirstInterfaceOutOfRange(classFile("com.example.NoInterface", "java.lang.Object", SPI)))
+                .put("com/example/Child.class",
+                        classFile("com.example.Child", "com.example.NoInterface", "com.example.Other"))
+                .put("com/example/Truncated.class", Arrays.copyOf(whole, whole.length / 2));
+        Map<String, Long> merged = merged(
+                MICRONAUT + BEAN_DEFINITION_REFERENCE + "/com.example.NoSuperclass", 0L);
+
+        StaticServiceTableGenerator.Result result =
+                generate(List.of(application, core("5.1.15"), classes), merged);
+        Table table = Table.of(result);
+
+        assertTrue(table.dynamic(SPI), "a class whose superclass cannot be read");
+        assertTrue(table.dynamic("com.example.Other"), "a superclass whose interfaces cannot be read");
+        assertTrue(table.dynamic("com.example.Third"), "a class file that does not parse");
+        assertEquals(List.of("com.example.Other", SPI, "com.example.Third"), result.dynamicTypes());
+        assertEquals(List.of("com.example.NoSuperclass"), table.names(BEAN_DEFINITION_REFERENCE),
+                "Micronaut ignores a bean definition it cannot load, and so does the table");
+    }
+
+    @Test
     void omitsATypeWithoutNamesAndReadsNothingItDoesNotNeed() throws IOException {
         MapLayer application = new MapLayer("application")
                 .put(SERVICES + SPI, "# nothing here\n".getBytes(StandardCharsets.UTF_8));
@@ -454,6 +486,21 @@ class StaticServiceTableGeneratorTest {
         assertNoTable(result, "micronaut-core 5.1.15 has no io.micronaut.core.io.service.SoftServiceLoader$StaticDefinition");
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void generatesNoTableWhenAHookClassCannotBeRead(boolean parses) throws IOException {
+        MapLayer core = core("5.1.15");
+        String entry = "io/micronaut/core/io/service/SoftServiceLoader$StaticDefinition.class";
+        byte[] whole = core.entries.get(entry);
+        // Either the class file parses and its first method has a name that cannot be read, or it does not parse.
+        core.put(entry, parses ? withFirstMethodNameOutOfRange(whole) : Arrays.copyOf(whole, whole.length / 2));
+
+        StaticServiceTableGenerator.Result result = generate(List.of(new MapLayer("application"), core), Map.of());
+
+        assertNoTable(result, "micronaut-core 5.1.15 has no readable"
+                + " io.micronaut.core.io.service.SoftServiceLoader$StaticDefinition");
+    }
+
     // ----------------------------------------------------------------------------------------- stand-down
 
     @Test
@@ -484,6 +531,22 @@ class StaticServiceTableGeneratorTest {
         StaticServiceTableGenerator.Result result = generate(List.of(application, core("5.1.15")), Map.of());
 
         assertNoTable(result, "the class of the registered StaticOptimizations loader com.example.GoneLoader is"
+                + " missing or cannot be read");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void standsDownForALoaderWhoseClassCannotBeRead(boolean parses) throws IOException {
+        byte[] whole = classFile("com.example.BrokenLoader", "java.lang.Object", OPTIMIZATIONS_LOADER);
+        // The constant pool is what is searched: either one of its entries points nowhere, or it is cut short.
+        MapLayer application = new MapLayer("application")
+                .put(SERVICES + OPTIMIZATIONS_LOADER, lines(List.of("com.example.BrokenLoader")))
+                .put("com/example/BrokenLoader.class",
+                        parses ? withFirstClassEntryOutOfRange(whole) : Arrays.copyOf(whole, whole.length / 2));
+
+        StaticServiceTableGenerator.Result result = generate(List.of(application, core("5.1.15")), Map.of());
+
+        assertNoTable(result, "the class of the registered StaticOptimizations loader com.example.BrokenLoader is"
                 + " missing or cannot be read");
     }
 
@@ -750,6 +813,85 @@ class StaticServiceTableGeneratorTest {
             builder.withVersion(69, 0).withFlags(ClassFile.ACC_PUBLIC).withSuperclass(ClassDesc.of(superclass));
             builder.withInterfaceSymbols(Arrays.stream(interfaces).map(ClassDesc::of).toList());
         });
+    }
+
+    /*
+     * Class files that parse and then cannot be read. The ClassFile API follows a constant pool index when the
+     * accessor that needs it is called, so each of these is accepted by ClassFile.parse and throws later.
+     */
+
+    /** Points the {@code super_class} of a class file at a constant pool entry it does not have. */
+    static byte[] withSuperclassOutOfRange(byte[] classFile) {
+        return withIndexOutOfRange(classFile, constantPoolOffset(classFile, 0) + 4);
+    }
+
+    /** Points the first of a class file's {@code interfaces} at a constant pool entry it does not have. */
+    private static byte[] withFirstInterfaceOutOfRange(byte[] classFile) {
+        int interfaces = constantPoolOffset(classFile, 0) + 6;
+        assertNotEquals(0, ByteBuffer.wrap(classFile).getShort(interfaces), "the class implements nothing");
+        return withIndexOutOfRange(classFile, interfaces + 2);
+    }
+
+    /** Points the name of the first {@code CONSTANT_Class} of a class file outside its constant pool. */
+    private static byte[] withFirstClassEntryOutOfRange(byte[] classFile) {
+        return withIndexOutOfRange(classFile, constantPoolOffset(classFile, 7) + 1);
+    }
+
+    /** Points the name of the first method of a class file at a constant pool entry it does not have. */
+    private static byte[] withFirstMethodNameOutOfRange(byte[] classFile) {
+        ByteBuffer buffer = ByteBuffer.wrap(classFile);
+        int offset = constantPoolOffset(classFile, 0) + 6;
+        offset += 2 + 2 * buffer.getShort(offset);
+        int fields = buffer.getShort(offset);
+        offset += 2;
+        for (int field = 0; field < fields; field++) {
+            int attributes = buffer.getShort(offset + 6);
+            offset += 8;
+            for (int attribute = 0; attribute < attributes; attribute++) {
+                offset += 6 + buffer.getInt(offset + 2);
+            }
+        }
+        assertNotEquals(0, buffer.getShort(offset), "the class declares no method");
+        // methods_count, then the first method's access_flags and name_index.
+        return withIndexOutOfRange(classFile, offset + 4);
+    }
+
+    private static byte[] withIndexOutOfRange(byte[] classFile, int offset) {
+        byte[] broken = classFile.clone();
+        ByteBuffer.wrap(broken).putShort(offset, (short) 0xFFFF);
+        return broken;
+    }
+
+    /**
+     * Walks the constant pool of a class file.
+     *
+     * @param classFile the class file
+     * @param tag       a constant pool tag to stop at, or {@code 0} to walk the whole pool
+     * @return where the first entry with that tag starts, or where {@code access_flags} starts
+     */
+    private static int constantPoolOffset(byte[] classFile, int tag) {
+        ByteBuffer buffer = ByteBuffer.wrap(classFile);
+        int count = buffer.getShort(8) & 0xFFFF;
+        int offset = 10;
+        for (int index = 1; index < count; index++) {
+            int found = classFile[offset];
+            if (found == tag) {
+                return offset;
+            }
+            switch (found) {
+                case 1 -> offset += 3 + (buffer.getShort(offset + 1) & 0xFFFF);
+                case 3, 4, 9, 10, 11, 12, 17, 18 -> offset += 5;
+                case 5, 6 -> {
+                    offset += 9;
+                    index++;
+                }
+                case 7, 8, 16, 19, 20 -> offset += 3;
+                case 15 -> offset += 4;
+                default -> throw new AssertionError("constant pool tag " + found);
+            }
+        }
+        assertEquals(0, tag, "the class file has no constant with that tag");
+        return offset;
     }
 
     /** An in-memory layer that records what is read from it. */

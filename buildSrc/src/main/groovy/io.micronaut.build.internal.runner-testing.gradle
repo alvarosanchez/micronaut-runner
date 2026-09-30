@@ -147,6 +147,7 @@ tasks.withType(Test).configureEach {
     systemProperty 'runner.test.gradleVersions', providers.gradleProperty('runner.testkit.gradleVersions').getOrElse('')
     systemProperty 'runner.test.micronautVersion', libs.versions.micronaut.asProvider().get()
     systemProperty 'runner.test.micronautPlatformVersion', libs.versions.micronaut.platform.get()
+    systemProperty 'runner.test.micronautCore51Version', libs.versions.micronaut.core51.get()
     testLogging.events('passed', 'skipped', 'failed')
     // Sample builds and `java -jar` servers: keep them sequential
     maxParallelForks = 1

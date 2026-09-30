@@ -82,10 +82,11 @@ class VariantSelectionTest {
         assertTrue(all.containsAll(SampleBuild.variantNames()));
         assertEquals(List.of("runner-stored-reflection", "runner-stored-preload", "runner-stored-preload-aot",
                         "runner-stored-positional", "runner-stored-positional-aot", "runner-stored-joran",
-                        "runner-stored-joran-aot", "runner-stored-keepdebug", "runner-stored-keepdebug-aot"),
+                        "runner-stored-joran-aot", "runner-stored-keepdebug", "runner-stored-keepdebug-aot",
+                        "runner-stored-dynamic-services", "runner-stored-dynamic-services-aot"),
                 all.stream().filter(name -> !SampleBuild.variantNames().contains(name)).toList());
         assertEquals(all.indexOf("runner-stored-aot") + 1, all.indexOf("runner-stored-reflection"));
-        assertEquals(all.indexOf("runner-stored-keepdebug-aot") + 1, all.indexOf("runner-preserve"));
+        assertEquals(all.indexOf("runner-stored-dynamic-services-aot") + 1, all.indexOf("runner-preserve"));
     }
 
     @Test
