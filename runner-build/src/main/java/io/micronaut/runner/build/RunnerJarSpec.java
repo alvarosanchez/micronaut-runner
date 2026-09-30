@@ -952,8 +952,8 @@ public final class RunnerJarSpec {
          * all.</p>
          *
          * <p>Defaults to {@code false}. On the benchmark sample the prefetch shortens a start without a JDK AOT
-         * cache, and one with a cache by less, often not measurably; the user guide's section on the bean
-         * definition prefetch has the measurements.</p>
+         * cache, a start with one by a few milliseconds at most, and a start with three processors not at all;
+         * the user guide's section on the bean definition prefetch has the measurements.</p>
          *
          * @param value whether to package the bean definition prefetch
          * @return this builder

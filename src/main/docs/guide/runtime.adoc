@@ -156,15 +156,15 @@ built through an `ApplicationContextBuilder` (`Micronaut.run`, `ApplicationConte
 Micronaut skips and which ones stop the application does not change.
 
 The option is off by default, because what the prefetch gains depends on the machine and is small next to a JDK AOT
-cache. On `benchmark-large` with JDK 25, measured with paired, interleaved starts:
+cache. On `benchmark-large` with JDK 25 and its static service table, measured with paired, interleaved starts:
 
-* without an AOT cache, it made the start 23 to 27 ms shorter on a 12-processor Mac, and about 6, 14 to 15 and 17 to
-25 ms shorter in a Linux container limited to four, five and six processors;
-* with an AOT cache, it did not make the start measurably shorter, and on the Mac the resident set at readiness was
-5 to 9 MiB larger;
-* with three processors it made the start about 50 ms longer, because Micronaut then loads the definitions on one
-thread fewer. So the prefetch starts only when the common pool has at least three threads, which takes four
-processors.
+* without an AOT cache, it made the start 26 to 33 ms shorter on a 12-processor Mac, and about 10, 19 and 22 ms
+shorter in a Linux container limited to four, five and six processors;
+* with an AOT cache, it made the start 1 to 7 ms shorter on the Mac and 6 to 8 ms shorter in those containers, and
+the resident set at readiness was not larger;
+* with three processors, in a measurement before the static service table, it made the start about 50 ms longer,
+because Micronaut then loads the definitions on one thread fewer. So the prefetch starts only when the common pool
+has at least three threads, which takes four processors.
 
 It is packaged when the archive has an entry stub, micronaut-inject 5.0 or later and at least one bean definition,
 and it runs from the single JAR only. `-Dmicronaut.runner.prefetch=false` turns a packaged prefetch off for one
