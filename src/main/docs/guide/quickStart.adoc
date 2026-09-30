@@ -40,6 +40,10 @@ Dockerfiles and CI scripts that reference `build/libs/*-all.jar` keep working.
 WARNING: Do not apply the Shadow plugin and configure it to write the same file. The two produce different
 archives under one name. The plugin fails the build if it detects that.
 
+A project that also applies `io.micronaut.aot` gets a second task, `optimizedMicronautRunnerJar`, which packages the
+Micronaut AOT-optimized application into `build/libs/my-app-0.1-all-optimized.jar`; `micronautRunnerJar` and its
+`-all.jar` stay the plain application. See <<micronautAot>>.
+
 === Configuration
 
 In a build that applies a Micronaut plugin, the packaging options go in `micronaut { runner { } }`:

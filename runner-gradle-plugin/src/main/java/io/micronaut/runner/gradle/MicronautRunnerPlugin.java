@@ -66,8 +66,17 @@ import java.util.Set;
  * {@value #ELEMENTS_CONFIGURATION_NAME} configuration. It needs no configuration in a project that already
  * applies the {@code application} plugin: the main class comes from the {@code application} block, the
  * application classes and resources from the main source set's output, and the dependencies from the
- * runtime classpath in resolution order. Only a project that applies a Shadow plugin also gets
- * {@value #SHADOW_COLLISION_TASK_NAME}, which both archive tasks depend on.</p>
+ * runtime classpath in resolution order.</p>
+ *
+ * <p>A project that applies {@code io.micronaut.aot} together with a Micronaut application or library plugin
+ * also gets {@value #OPTIMIZED_TASK_NAME}, in {@code assemble} too. It packages the archive of Micronaut AOT's
+ * {@code optimizedJitJar} task as the application layer, with the same dependencies and options, into
+ * {@code -all-optimized.jar}, as Shadow users get {@code optimizedJitJarAll} beside {@code shadowJar}.
+ * {@value #TASK_NAME} never packages Micronaut AOT output, and this plugin never applies or runs Micronaut AOT
+ * on its own.</p>
+ *
+ * <p>Only a project that applies a Shadow plugin also gets {@value #SHADOW_COLLISION_TASK_NAME}, which each
+ * Runner task and the Shadow task that writes the same archive name by default depend on.</p>
  *
  * <p>It also registers {@value #RECORD_TASK_NAME}, which launches the archive and records the classes it loads
  * at startup to {@value io.micronaut.runner.build.StartupProfileRecorder#PROFILE_LOCATION}. The task runs only
@@ -77,8 +86,15 @@ import java.util.Set;
  */
 public class MicronautRunnerPlugin implements Plugin<Project> {
 
-    /** The name of the task this plugin registers. */
+    /** The name of the task this plugin registers in every project. */
     public static final String TASK_NAME = "micronautRunnerJar";
+
+    /**
+     * The task that packages the Micronaut AOT-optimized application. It exists only in a project that applies
+     * {@code io.micronaut.aot} and a Micronaut application or library plugin, which is when Micronaut AOT
+     * registers the {@code optimizedJitJar} task whose archive this one packages.
+     */
+    public static final String OPTIMIZED_TASK_NAME = "optimizedMicronautRunnerJar";
 
     /**
      * The task that records the startup profile. It launches the application, so it is never part of
@@ -113,6 +129,12 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
      */
     public static final String DEFAULT_CLASSIFIER = "all";
 
+    /**
+     * The default archive classifier of {@value #OPTIMIZED_TASK_NAME}. It matches the one Micronaut AOT gives
+     * {@code optimizedJitJarAll}, its Shadow JAR of the optimized application.
+     */
+    public static final String OPTIMIZED_CLASSIFIER = "all-optimized";
+
     /** The Micronaut Gradle plugin's Runner plugin, which replaces this one. */
     private static final String UPSTREAM_PLUGIN_ID = "io.micronaut.runner";
 
@@ -129,6 +151,24 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
 
     private static final String SHADOW_PLUGIN = "com.gradleup.shadow";
     private static final String LEGACY_SHADOW_PLUGIN = "com.github.johnrengelman.shadow";
+
+    /** The Shadow plugins' own task. */
+    private static final String SHADOW_JAR = "shadowJar";
+
+    /** micronaut-gradle-plugin's Micronaut AOT plugin. No type of it is used: every lookup is by name. */
+    private static final String AOT_PLUGIN = "io.micronaut.aot";
+
+    /**
+     * The plugin that micronaut-gradle-plugin's application and library plugins apply. Micronaut AOT registers
+     * its tasks only once it is applied.
+     */
+    private static final String COMPONENT_PLUGIN = "io.micronaut.component";
+
+    /** Micronaut AOT's jar of the optimized application, which {@value #OPTIMIZED_TASK_NAME} packages. */
+    private static final String OPTIMIZED_JIT_JAR = "optimizedJitJar";
+
+    /** Micronaut AOT's Shadow JAR of the optimized application, registered when a Shadow plugin is applied. */
+    private static final String OPTIMIZED_SHADOW_JAR = "optimizedJitJarAll";
 
     @Override
     public void apply(Project project) {
@@ -182,45 +222,19 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
     private void configure(Project project, MicronautRunnerExtension extension) {
         SourceSet main = project.getExtensions().getByType(SourceSetContainer.class)
                 .getByName(SourceSet.MAIN_SOURCE_SET_NAME);
-        Configuration runtimeClasspath = project.getConfigurations()
-                .getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME);
-        BasePluginExtension base = project.getExtensions().getByType(BasePluginExtension.class);
 
-        TaskProvider<MicronautRunnerJar> runnerJar = project.getTasks()
-                .register(TASK_NAME, MicronautRunnerJar.class, task -> {
-                    task.setGroup(LifecycleBasePlugin.BUILD_GROUP);
-                    task.setDescription("Packages the application and its dependencies as a runner jar");
+        TaskProvider<MicronautRunnerJar> runnerJar = register(project, extension, TASK_NAME,
+                "Packages the application and its dependencies as a runner jar", DEFAULT_CLASSIFIER,
+                main.getOutput());
 
-                    task.getApplicationOutput().from(main.getOutput());
-                    // Dependencies only: the application's own output is a separate layer of the archive.
-                    task.getClasspath().from(runtimeClasspath);
-                    task.getCoordinates().set(coordinatesOf(runtimeClasspath));
-                    task.getProjectModules().set(projectModulesOf(runtimeClasspath));
-
-                    configureOptions(task, extension);
-
-                    // An archive task's naming conventions, in the directory a jar is written to.
-                    task.getArchiveBaseName().convention(base.getArchivesName());
-                    task.getArchiveVersion().convention(project.provider(() -> versionOf(project)));
-                    task.getArchiveClassifier().convention(DEFAULT_CLASSIFIER);
-                    task.getDestinationDirectory().convention(base.getLibsDirectory());
-
-                    // The application's own manifest attributes, such as Implementation-Version, which a
-                    // directory input cannot carry, come from the jar task's manifest configuration, as Shadow
-                    // takes them. The task holds the manifest object and reads it when it executes: wiring it
-                    // to the jar task's output would run :jar, and a snapshot taken at configuration time would
-                    // go stale under the configuration cache. get() realizes the jar task only when this task
-                    // is realized.
-                    task.setInheritedManifest(
-                            project.getTasks().named(JavaPlugin.JAR_TASK_NAME, Jar.class).get().getManifest());
-
-                    JavaApplication application = project.getExtensions().findByType(JavaApplication.class);
-                    if (application != null) {
-                        task.getMainClass().convention(application.getMainClass());
-                    }
-                });
-
-        project.getTasks().named(LifecycleBasePlugin.ASSEMBLE_TASK_NAME, task -> task.dependsOn(runnerJar));
+        // The optimized application gets an archive of its own, so -all.jar is the plain application whether or
+        // not Micronaut AOT is applied. Micronaut AOT registers optimizedJitJar only once a Micronaut component
+        // plugin is applied, so this task exists exactly when its input can.
+        project.getPluginManager().withPlugin(AOT_PLUGIN, _ ->
+                project.getPluginManager().withPlugin(COMPONENT_PLUGIN, _ ->
+                        register(project, extension, OPTIMIZED_TASK_NAME,
+                                "Packages the Micronaut AOT-optimized application and its dependencies as a runner jar",
+                                OPTIMIZED_CLASSIFIER, optimizedJitJarArchive(project))));
 
         // Only on request: it launches the application.
         JavaToolchainService toolchains = project.getExtensions().getByType(JavaToolchainService.class);
@@ -257,20 +271,127 @@ public class MicronautRunnerPlugin implements Plugin<Project> {
             if (project.getTasks().getNames().contains(SHADOW_COLLISION_TASK_NAME)) {
                 return; // both Shadow plugin ids are applied
             }
-            TaskProvider<Jar> shadowJar = project.getTasks().named("shadowJar", Jar.class);
             TaskProvider<ValidateShadowArchiveCollision> collisionCheck = project.getTasks().register(
                     SHADOW_COLLISION_TASK_NAME, ValidateShadowArchiveCollision.class, task -> {
                         task.setGroup(LifecycleBasePlugin.VERIFICATION_GROUP);
                         task.setDescription("Validates that Runner and Shadow archives have distinct outputs");
-                        task.getRunnerArchive().set(runnerJar.flatMap(MicronautRunnerJar::getArchiveFile));
-                        task.getShadowArchive().set(shadowJar.flatMap(Jar::getArchiveFile));
+                        // Read when the task executes or the configuration cache stores it: every task is
+                        // registered by then, and the pairs carry where each one writes at that moment.
+                        task.getArchivePairs().set(project.provider(() -> archivePairs(project)));
                         onlyIfEnabled(task, extension);
                     });
-            runnerJar.configure(task -> task.dependsOn(collisionCheck));
-            shadowJar.configure(task -> task.dependsOn(collisionCheck));
+            // Micronaut AOT registers optimizedJitJarAll in afterEvaluate, and the optimized runner task may be
+            // registered after this callback. A name filter reaches a task whenever it is registered, and
+            // realizes no other task.
+            Set<String> guarded = Set.of(TASK_NAME, SHADOW_JAR, OPTIMIZED_TASK_NAME, OPTIMIZED_SHADOW_JAR);
+            project.getTasks().named(guarded::contains).configureEach(task -> task.dependsOn(collisionCheck));
         };
         project.getPluginManager().withPlugin(SHADOW_PLUGIN, forbidCollisionWithShadow);
         project.getPluginManager().withPlugin(LEGACY_SHADOW_PLUGIN, forbidCollisionWithShadow);
+    }
+
+    /**
+     * Registers a packaging task and wires it into {@code assemble}. Everything the plugin's two packaging tasks
+     * share is set here, so that they differ only in their application layer and their classifier.
+     *
+     * @param project           the project
+     * @param extension         the extension
+     * @param name              the task name
+     * @param description       the task description
+     * @param classifier        the archive classifier convention
+     * @param applicationOutput the application layer, as {@code ConfigurableFileCollection.from} takes it
+     * @return the task
+     */
+    private TaskProvider<MicronautRunnerJar> register(Project project, MicronautRunnerExtension extension,
+                                                      String name, String description, String classifier,
+                                                      Object applicationOutput) {
+        Configuration runtimeClasspath = project.getConfigurations()
+                .getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME);
+        BasePluginExtension base = project.getExtensions().getByType(BasePluginExtension.class);
+
+        TaskProvider<MicronautRunnerJar> runnerJar = project.getTasks()
+                .register(name, MicronautRunnerJar.class, task -> {
+                    task.setGroup(LifecycleBasePlugin.BUILD_GROUP);
+                    task.setDescription(description);
+
+                    task.getApplicationOutput().from(applicationOutput);
+                    // Dependencies only: the application's own output is a separate layer of the archive.
+                    task.getClasspath().from(runtimeClasspath);
+                    task.getCoordinates().set(coordinatesOf(runtimeClasspath));
+                    task.getProjectModules().set(projectModulesOf(runtimeClasspath));
+
+                    configureOptions(task, extension);
+
+                    // An archive task's naming conventions, in the directory a jar is written to.
+                    task.getArchiveBaseName().convention(base.getArchivesName());
+                    task.getArchiveVersion().convention(project.provider(() -> versionOf(project)));
+                    task.getArchiveClassifier().convention(classifier);
+                    task.getDestinationDirectory().convention(base.getLibsDirectory());
+
+                    // The application's own manifest attributes, such as Implementation-Version, which a
+                    // directory input cannot carry and Micronaut AOT's optimizedJitJar does not inherit, come
+                    // from the jar task's manifest configuration, as Shadow takes them. The task holds the
+                    // manifest object and reads it when it executes: wiring it to the jar task's output would
+                    // run :jar, and a snapshot taken at configuration time would go stale under the
+                    // configuration cache. get() realizes the jar task only when this task is realized.
+                    task.setInheritedManifest(
+                            project.getTasks().named(JavaPlugin.JAR_TASK_NAME, Jar.class).get().getManifest());
+
+                    JavaApplication application = project.getExtensions().findByType(JavaApplication.class);
+                    if (application != null) {
+                        task.getMainClass().convention(application.getMainClass());
+                    }
+                });
+
+        project.getTasks().named(LifecycleBasePlugin.ASSEMBLE_TASK_NAME, task -> task.dependsOn(runnerJar));
+        return runnerJar;
+    }
+
+    /**
+     * The archive of Micronaut AOT's {@code optimizedJitJar} task, looked up by name when the provider is read,
+     * which is while the task graph is built. Neither the order the plugins are applied in nor the order of
+     * their callbacks matters then, and Micronaut AOT may register the task after this plugin's callback ran.
+     *
+     * <p>It never falls back to the main source set's output, which would put the plain application into
+     * {@code -all-optimized.jar}.</p>
+     *
+     * @param project the project
+     * @return the archive, with its task as the producer
+     */
+    private static Provider<RegularFile> optimizedJitJarArchive(Project project) {
+        return project.provider(() -> {
+            if (!project.getTasks().getNames().contains(OPTIMIZED_JIT_JAR)) {
+                throw new GradleException(OPTIMIZED_TASK_NAME + " packages the archive of the " + OPTIMIZED_JIT_JAR
+                        + " task, which this project does not have although it applies " + AOT_PLUGIN + ". "
+                        + TASK_NAME + " packages the application without Micronaut AOT's optimizations.");
+            }
+            return project.getTasks().named(OPTIMIZED_JIT_JAR, Jar.class);
+        }).flatMap(jar -> jar.flatMap(Jar::getArchiveFile));
+    }
+
+    /**
+     * Each Runner task and the Shadow task that writes the same archive name by default, with where both write.
+     *
+     * @param project the project
+     * @return the plain pair, and the optimized pair when both of its tasks exist
+     */
+    private static List<ValidateShadowArchiveCollision.ArchivePair> archivePairs(Project project) {
+        List<ValidateShadowArchiveCollision.ArchivePair> pairs = new ArrayList<>();
+        pairs.add(archivePair(project, TASK_NAME, SHADOW_JAR));
+        Set<String> names = project.getTasks().getNames();
+        if (names.contains(OPTIMIZED_TASK_NAME) && names.contains(OPTIMIZED_SHADOW_JAR)) {
+            pairs.add(archivePair(project, OPTIMIZED_TASK_NAME, OPTIMIZED_SHADOW_JAR));
+        }
+        return pairs;
+    }
+
+    private static ValidateShadowArchiveCollision.ArchivePair archivePair(Project project, String runnerTask,
+                                                                         String shadowTask) {
+        File runnerArchive = project.getTasks().named(runnerTask, MicronautRunnerJar.class).get()
+                .getArchiveFile().get().getAsFile();
+        File shadowArchive = project.getTasks().named(shadowTask, Jar.class).get()
+                .getArchiveFile().get().getAsFile();
+        return new ValidateShadowArchiveCollision.ArchivePair(runnerTask, runnerArchive, shadowTask, shadowArchive);
     }
 
     /**

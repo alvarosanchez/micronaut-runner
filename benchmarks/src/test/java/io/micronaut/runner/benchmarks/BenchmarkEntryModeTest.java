@@ -59,7 +59,9 @@ class BenchmarkEntryModeTest {
             "runner-stored-aot",
             "runner-preserve",
             "runner-extracted",
-            "runner-extracted-aot");
+            "runner-extracted-aot",
+            "shadow-maot",
+            "runner-maot");
 
     /** The opt-in rows, in the order they follow {@code runner-stored-aot}. */
     private static final List<String> OPT_IN_ROWS = List.of(
@@ -95,8 +97,16 @@ class BenchmarkEntryModeTest {
 
         List<String> expected = new ArrayList<>(CORE_ROWS);
         expected.addAll(expected.indexOf("runner-stored-aot") + 1, OPT_IN_ROWS);
+        // Each cached Micronaut AOT row is opt-in and directly follows the row it caches.
+        expected.add(expected.indexOf("shadow-maot") + 1, "shadow-maot-aot");
+        expected.add(expected.indexOf("runner-maot") + 1, "runner-maot-aot");
         assertEquals(expected, withOptIn);
-        assertEquals(CORE_ROWS.size() + OPT_IN_ROWS.size(), withOptIn.size());
+        assertEquals(CORE_ROWS.size() + OPT_IN_ROWS.size() + 2, withOptIn.size());
+        assertTrue(core.stream().noneMatch(name -> name.endsWith("-maot-aot")), core.toString());
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-maot"));
+        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-maot-aot"));
+        assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-maot"));
+        assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-maot-aot"));
         assertTrue(core.stream().noneMatch(name -> name.contains("joran")), core.toString());
         assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("joran")));
         assertEquals(EntryMode.REFLECTION, EntryMode.requestedBy("runner-stored-reflection"));
@@ -120,6 +130,61 @@ class BenchmarkEntryModeTest {
     }
 
     @Test
+    void theMicronautAotRowsAreComparedLikeForLikeAndWithThePlainRows() {
+        List<SampleBuild.ComparisonSpec> specs = SampleBuild.comparisons();
+        assertEquals(List.of(
+                new SampleBuild.ComparisonSpec("runner-maot", "shadow-maot", "Runner vs Micronaut AOT Shadow"),
+                new SampleBuild.ComparisonSpec("runner-stored", "shadow-maot",
+                        "Runner without Micronaut AOT vs Micronaut AOT Shadow"),
+                new SampleBuild.ComparisonSpec("runner-maot", "runner-stored", "Micronaut AOT's gain on Runner"),
+                new SampleBuild.ComparisonSpec("shadow-maot", "shadow", "Micronaut AOT's gain on Shadow"),
+                new SampleBuild.ComparisonSpec("runner-maot-aot", "shadow-maot-aot",
+                        "Runner vs Micronaut AOT Shadow, both with a JDK AOT cache")),
+                specs.subList(specs.size() - 5, specs.size()));
+    }
+
+    @Test
+    void theMicronautAotRunnerRowPackagesACopyOfTheOptimizedJarAsItsApplicationLayer(@TempDir Path output)
+            throws Exception {
+        Path classes = compile(output.resolve("maot"), "fixture.MaotMain", """
+                package fixture;
+                public final class MaotMain {
+                    public static void main(String[] args) { }
+                }
+                """);
+        // What optimizedJitJar is to the harness: the application as one jar, with no logback.xml.
+        Path build = Files.createDirectories(output.resolve("sample/build/libs"));
+        Path optimizedJitJar = build.resolve("sample-0.1-jit.jar");
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(optimizedJitJar))) {
+            jar.putNextEntry(new ZipEntry("fixture/MaotMain.class"));
+            jar.write(Files.readAllBytes(classes.resolve("fixture/MaotMain.class")));
+            jar.closeEntry();
+        }
+        Path artifacts = Files.createDirectories(output.resolve("artifacts"));
+        Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
+
+        Variant maot = SampleBuild.optimizedRunnerJar(artifacts, "runner-maot", "fixture.MaotMain",
+                optimizedJitJar, List.of(core));
+
+        // Its fixed text, plus what every Runner row says about its static service table.
+        assertEquals("Runner jar of the Micronaut AOT-optimized application (optimizedJitJar);"
+                + " plugin-default entry stub; static services: 1 slots (core 5.1.15)", maot.description());
+        assertEquals(artifacts.resolve("runner-maot.jar"), maot.artifact());
+        assertEquals(EntryMode.STUB, maot.requestedEntryMode());
+        assertEquals(EntryMode.STUB, maot.effectiveEntryMode());
+        assertRunnerIndex(maot.artifact(), true);
+        assertTrue(entryNames(maot.artifact()).contains("MICRONAUT-INF/classes/fixture/MaotMain.class"));
+        assertEquals(LaunchInputs.PINNED_MODIFICATION_TIME, Files.getLastModifiedTime(maot.artifact()));
+        // The application layer was read from a copy inside the artifacts directory, never from the sample.
+        assertTrue(Files.isRegularFile(artifacts.resolve("runner-maot-application/sample-0.1-jit.jar")));
+
+        IOException noTask = assertThrows(IOException.class, () -> SampleBuild.optimizedRunnerJar(artifacts,
+                "runner-maot", "fixture.MaotMain", null, List.of()));
+        assertEquals("The sample's build declares no optimizedJitJar task (it does not apply io.micronaut.aot)",
+                noTask.getMessage());
+    }
+
+    @Test
     void thePositionalRowsAreComparedWithTheMappedRowsAndWithShadow() {
         List<String> pairs = SampleBuild.comparisons().stream()
                 .map(spec -> spec.candidate() + " - " + spec.baseline())
@@ -136,11 +201,14 @@ class BenchmarkEntryModeTest {
         List<String> pairs = SampleBuild.comparisons().stream()
                 .map(spec -> spec.candidate() + " - " + spec.baseline())
                 .toList();
+        // Rows added later append their own comparisons after these three.
+        int first = pairs.indexOf("runner-stored-preload - runner-stored");
+        assertTrue(first >= 0, pairs.toString());
         assertEquals(List.of(
                 "runner-stored-preload - runner-stored",
                 "runner-stored-preload - shadow",
-                "runner-stored-preload-aot - runner-stored-aot"), pairs.subList(pairs.size() - 3, pairs.size()),
-                "the three preload comparisons are appended to the list");
+                "runner-stored-preload-aot - runner-stored-aot"), pairs.subList(first, first + 3),
+                "the three preload comparisons follow each other in the list");
     }
 
     @Test

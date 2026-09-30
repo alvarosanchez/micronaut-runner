@@ -123,6 +123,21 @@ application-class-verified JDK AOT cache; compared with `runner-stored-aot`
 |`runner-extracted-aot`
 |The identical extracted layout and manifest class path with a trained, application-class-verified JDK AOT
 cache
+
+|`shadow-maot`
+|Micronaut AOT's `optimizedJitJarAll`, unmodified: the AOT-optimized application flattened by Shadow. In a row name,
+`maot` is Micronaut AOT (<<micronautAot>>), and the `-aot` suffix stays the JDK AOT cache
+
+|`shadow-maot-aot`
+|Opt-in, non-gating: the identical `optimizedJitJarAll` with a trained, application-class-verified JDK AOT cache
+
+|`runner-maot`
+|Runner JAR of the Micronaut AOT-optimized application: `runner-stored` with the sample's `optimizedJitJar` archive as
+its application layer, which is what the Gradle plugin's `optimizedMicronautRunnerJar` packages. It is built with the
+packaging library's defaults of the day, like `runner-stored`
+
+|`runner-maot-aot`
+|Opt-in, non-gating: the identical `runner-maot` JAR with a trained, application-class-verified JDK AOT cache
 |===
 
 Each sample starts a fresh JVM. This is a cold JVM process start, not a claim that storage or the OS page cache
@@ -131,8 +146,9 @@ externally, from process spawn to the first successful HTTP response, because th
 it captures class loading on the first request. The framework's own "startup completed" line is recorded
 separately rather than substituted for readiness.
 
-The cache pairs are `runner-stored`/`runner-stored-aot`, `shadow`/`shadow-aot`, and
-`runner-extracted`/`runner-extracted-aot`. Each pair shares the exact artifact bytes, ordered class path,
+The cache pairs are `runner-stored`/`runner-stored-aot`, `shadow`/`shadow-aot`,
+`runner-extracted`/`runner-extracted-aot` and, with the opt-in rows, `shadow-maot`/`shadow-maot-aot` and
+`runner-maot`/`runner-maot-aot`. Each pair shares the exact artifact bytes, ordered class path,
 working directory, measured workload and JVM options except for the one application-cache selection option.
 Default JDK class sharing remains enabled when the selected JDK enables it, but reuse of platform classes from
 the JDK's default archive is not evidence of trained application-class AOT cache reuse; default JDK class
@@ -146,6 +162,14 @@ local-variable tables. The opt-in pairs `runner-stored`/`runner-stored-keepdebug
 The compression-matched pairs are `runner-stored`/`shadow-stored`, where neither side inflates class bytes, and
 `runner-preserve`/`shadow`, where both do; they measure what Runner's layout itself buys. `runner-stored`/`shadow`
 is the default-vs-default pair, and its difference also includes the cost of inflating Shadow's DEFLATED entries.
+
+The Micronaut AOT pairs are `runner-maot`/`shadow-maot`, the like-for-like pair, in which both archives hold the same
+AOT-optimized application; `runner-stored`/`shadow-maot`, Runner's `-all.jar` against Shadow's `-all-optimized.jar`;
+and `runner-maot`/`runner-stored` and `shadow-maot`/`shadow`, which measure what Micronaut AOT adds to each packaging.
+`runner-maot` takes the same packaging defaults as `runner-stored`, so `runner-maot`/`runner-stored` is what
+`-all-optimized.jar` adds on top of them: Micronaut AOT's own Logback configurator takes the place of the
+<<precompiledLogback,precompiled one>>, which is why that gain is smaller than Micronaut AOT's gain on Shadow. With
+the opt-in rows, `runner-maot-aot`/`shadow-maot-aot` compares the two with a JDK AOT cache on each side.
 
 == Methodology
 
@@ -239,8 +263,9 @@ covers it: it is checked at one CPU by hand with `taskset -c 0`.
 
 === Trained-cache matrix
 
-All three cache pairs, `runner-stored`/`runner-stored-aot`, `shadow`/`shadow-aot` and
-`runner-extracted`/`runner-extracted-aot`, use the JDK AOT cache, so a trained Runner layout is never compared
+All the cache pairs, `runner-stored`/`runner-stored-aot`, `shadow`/`shadow-aot`,
+`runner-extracted`/`runner-extracted-aot` and the opt-in `shadow-maot`/`shadow-maot-aot` and
+`runner-maot`/`runner-maot-aot`, use the JDK AOT cache, so a trained Runner layout is never compared
 only with an untrained Shadow layout. Classes that Runner's loader defines are cached but not AOT-linked. JDK AOT
 caching is not GraalVM Native Image.
 
@@ -261,7 +286,7 @@ measurements. The cached variants require JDK 25 or later: training
 uses `-XX:AOTCacheOutput=<cache>` and measured use adds `-XX:AOTMode=on -XX:AOTCache=<cache>`, so a missing or
 unusable cache fails the launch. They launch the actual Shadow JAR, Runner JAR or extracted application JAR,
 with no helper or wrapper added to either paired class path. See <<cdsAndAot>> for the reproducible extraction
-and deployment workflow. These three rows make the trained application cache mode explicit rather than
+and deployment workflow. These rows make the trained application cache mode explicit rather than
 inferring it from default JDK class sharing.
 
 Run it locally with:
@@ -277,9 +302,9 @@ Run it locally with:
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20 -Pbenchmarks.cpus=1 -Pbenchmarks.variants=shadow,runner-stored
 ----
 
-The `optionalRows` command adds the opt-in rows, such as the entry-stub ablation and the local-variable-table
-controls. Run it with 40 iterations: at 20, the stub effect's interval still spanned zero. The last command
-measures one pair on one CPU; see <<benchmarkConditions>>.
+The `optionalRows` command adds the opt-in rows, such as the entry-stub ablation, the local-variable-table
+controls and the cached Micronaut AOT pair. Run it with 40 iterations: at 20, the stub effect's interval still
+spanned zero. The last command measures one pair on one CPU; see <<benchmarkConditions>>.
 
 The description of every Runner row says `static services: N slots (core V)` when its JAR carries a
 <<staticServices,static service table>>, and `dynamic service scan` when it does not.
@@ -348,6 +373,44 @@ separately. Build workspaces, logs, reports and neighboring variants are outside
 and are never included. STORED stays the default and no resources-only deflate mode is planned: STORED's raw
 archive is the larger one, but classes are about 94% of the benchmark sample's uncompressed content, so
 compressing only resources could not close that gap.
+
+[[micronautAotResults]]
+== Runner against Micronaut AOT's Shadow JAR
+
+Micronaut Launch applies `io.micronaut.aot` and Shadow to every new Gradle application of the default type, so the fat
+JAR that Runner has to beat is `optimizedJitJarAll` (`shadow-maot`), not `shadowJar`. On `benchmark-large` (Micronaut 5.1.15, Netty
+4.2.18, Micronaut AOT 3.0.0 with the `aot { }` block of Micronaut Launch 5.2.0), on macOS 26.6.2 with 12 Apple Silicon
+CPUs and JDK 25.0.4.1, one interleaved run of 20 pairs gave these paired median differences, candidate − baseline:
+
+[%header,cols="4,2,3,3"]
+|===
+|Comparison |Δ readiness |95% CI |Medians
+|`runner-maot` − `shadow-maot` |−77.8 ms |−85.1 to −70.2 ms |391.0 against 465.7 ms
+|`runner-stored` − `shadow-maot` |−57.8 ms |−73.6 to −48.2 ms |412.3 against 465.7 ms
+|`runner-maot` − `runner-stored` |−24.3 ms |−44.9 to −13.7 ms |391.0 against 412.3 ms
+|`shadow-maot` − `shadow` |−48.2 ms |−58.8 to −42.8 ms |465.7 against 515.3 ms
+|`runner-maot-aot` − `shadow-maot-aot` |+23.4 ms |+17.3 to +27.1 ms |245.8 against 224.7 ms
+|===
+
+A second complete session, limited to these rows with `-Pbenchmarks.variants`, gave medians of the same sign and
+intervals that overlap these: in the order of the table, −83.3 ms (−89.9 to −78.5), −66.8 ms (−74.7 to −56.4),
+−20.8 ms (−23.8 to −13.6), −53.7 ms (−62.6 to −42.9) and +22.8 ms (+21.1 to +26.6).
+
+Without a JDK cache, Runner beats Micronaut AOT's Shadow JAR: by about 78 ms when both hold the AOT-optimized
+application, and by about 58 ms when the Runner JAR is the plain `-all.jar`. With a JDK AOT cache on both sides it does
+not: the single `-all-optimized.jar` was about 23 ms behind on JDK 25 (on JDK 27 and later, see <<cdsAndAot>>). The
+Runner rows used the packaging defaults of the day: STORED, the entry stub, stripped local-variable tables, precompiled
+Logback, which stands down in `runner-maot` for Micronaut AOT's own configurator, and the static service table, which
+applies to both. That is why Micronaut AOT adds less to Runner than to Shadow, whose plain JAR still configures Logback
+with Joran.
+
+Size and memory go the other way in places. The `runner-maot` JAR is 2.22 times the `shadow-maot` JAR on disk
+(32,815,589 against 14,773,677 B) and 0.64 times gzipped (8,368,963 against 13,083,293 B); with their caches the
+deployments are 78,019,045 against 64,007,597 B raw (1.22 times) and 19,033,547 against 24,704,764 B gzipped (0.77
+times). Private memory at readiness is not a paired result: the harness reports it as the difference of the two
+per-variant medians, with no interval, and the uncached gap moved between sessions. `runner-maot` used 16.4 MiB less
+than `shadow-maot` in the run above and 43.7 MiB less in the second session; `runner-maot-aot` used 17.7 and 17.1 MiB
+more than `shadow-maot-aot`.
 
 == Publishing results
 

@@ -1,0 +1,230 @@
+https://micronaut-projects.github.io/micronaut-aot/latest/guide/[Micronaut AOT] does part of an application's
+startup work when the application is built. Micronaut Launch applies the `io.micronaut.aot` Gradle plugin to every new
+Gradle application of the default type, next to Shadow, so the fat JAR such a project deploys for a fast JIT start is `optimizedJitJarAll`,
+the Shadow JAR of the AOT-optimized application. Micronaut Runner packages the same optimized application, without
+applying or running Micronaut AOT itself: it only packages what your build already asked Micronaut AOT for.
+
+== What Micronaut AOT does
+
+Micronaut AOT starts an `ApplicationContext` in the build: it loads the application's configuration and evaluates the
+`@Requires` conditions of its beans. From what it finds, it generates classes that replace work at startup, and removes
+resources that are then no longer read. The optimizers behind the flags of the plugin's `aot { }` block are:
+
+[cols="2,2,5",options="header"]
+|===
+|Flag |Optimizer |At run time
+
+|`replaceLogbackXml`
+|`logback.xml.to.java`
+|A generated Logback `Configurator` replaces `logback.xml`, so neither the JDK's XML parser nor Joran loads
+
+|`optimizeClassLoading`
+|`known.missing.types`, `scan.reactive.types`
+|The classes that Micronaut probes for and that are absent are known, and so are the reactive types: Reactor's `Flux`
+and `Mono` are then loaded but not initialised at startup
+
+|`optimizeNetty`
+|`netty.properties`
+|Netty's machine and process IDs are set, not computed
+
+|`deduceEnvironment`
+|`deduce.environment`
+|The environments deduced in the build are the application's default environments
+
+|`precomputeOperations`
+|`precompute.environment.properties`
+|The Micronaut property names of the build machine's environment variables are computed in the build
+
+|`cacheEnvironment`
+|`cached.environment`
+|Nothing on Micronaut 5: the framework reads the setting before the generated code sets it
+|===
+
+`replaceLogbackXml` and `optimizeClassLoading` carry the whole startup gain. In paired A/B runs outside the startup
+harness, on `benchmark-large`'s `optimizedJitJarAll` with JDK 25.0.4.1, those two plus `optimizeNetty` made readiness
+47.6 ms (95% CI 42.3 to 58.3) and 57.6 ms (53.7 to 60.9) earlier than no optimizer, in two sessions of 30 pairs, and
+adding `cacheEnvironment`, `deduceEnvironment` and `precomputeOperations` changed nothing measurable (+0.7 ms, −9.3 to
++12.9, and +2.4 ms, −4.6 to +6.2). Micronaut Launch 5.2.0 and later generate those three as `false`, and so do the
+samples this guide measures.
+
+Micronaut AOT 3 does not optimize service loading. Its `optimizeServiceLoading` flag only logs a warning, so the
+application still discovers its beans and services from `META-INF/micronaut` and `META-INF/services` at startup, in a
+Shadow JAR and in a Runner JAR alike. What Micronaut Runner's index and its <<staticServices,static service table>>
+save there therefore still counts in the optimized archive (see <<micronautAotWithRunner,below>>).
+
+Micronaut AOT is not the JDK AOT cache. Micronaut AOT generates application classes in the build, and its output is a
+different application JAR. The JDK AOT cache (`-XX:AOTCache`, see <<cdsAndAot>>) is a file the JVM writes after a
+training run, which stores loaded and linked classes of an unchanged application. They are independent, and they
+combine: see <<micronautAotWithJdkCache,below>>.
+
+== Gradle: `optimizedMicronautRunnerJar`
+
+In a project that applies `io.micronaut.aot` beside a Micronaut application or library plugin, the Runner plugin
+registers a second task, `optimizedMicronautRunnerJar`. It packages the archive of Micronaut AOT's
+`optimizedJitJar` task as the application layer, with the dependencies, the manifest attributes and the options of
+`micronautRunnerJar`, into `build/libs/my-app-0.1-all-optimized.jar`. It is part of `assemble`.
+
+[source,groovy]
+----
+plugins {
+    id 'io.micronaut.application' version '5.0.2'
+    id 'io.micronaut.aot' version '5.0.2'
+    id 'io.micronaut.runner.standalone' version '{version}'
+}
+
+micronaut {
+    aot {
+        optimizeClassLoading = true
+        optimizeNetty = true
+        replaceLogbackXml = true
+    }
+}
+----
+
+[source,bash]
+----
+./gradlew optimizedMicronautRunnerJar
+java -jar build/libs/my-app-0.1-all-optimized.jar
+----
+
+* `optimizedMicronautRunnerJar` runs Micronaut AOT's tasks, `writeJitAOTConfig`, `prepareJitOptimizations`,
+`mergeServiceFilesForOptimizedJitJar` and `optimizedJitJar`, and `jar`, whose archive the service-file merge reads.
+* `micronautRunnerJar` runs none of them. `-all.jar` stays the plain application, as Shadow's `-all.jar` does, so
+choosing Runner over Shadow never changes what the application does at run time.
+* The options in `micronaut { runner { } }` apply to both tasks, and a setting on one task wins for that task. That
+includes the committed <<preload,startup profile>>: both archives embed it, and `recordStartupProfile` records it
+from `-all.jar`. A list fits the archive it was recorded from, and the optimized application loads other classes, so
+for the optimized archive record the JVM's class-load log of a run of `-all-optimized.jar`, with
+`-Dmicronaut.runner.preload=false` so the embedded profile is not replayed into it, and set it with
+`optimizedMicronautRunnerJar { startupClasses = file('...') }`. A list that does not fit is safe; its extra classes
+are loaded for nothing.
+* `micronautRunnerElements` carries `-all.jar` only (see <<quickStart>>).
+* Without `io.micronaut.aot`, or without a Micronaut application or library plugin, there is no
+`optimizedMicronautRunnerJar`.
+
+With a Shadow plugin also applied, Micronaut AOT's `optimizedJitJarAll` writes the same `-all-optimized.jar`, as
+`shadowJar` and `micronautRunnerJar` both write `-all.jar`. The plugin fails every build that requests one of those
+four tasks while a pair shares a file, before either task of the pair writes it. Remove Shadow, or give one task of
+each pair another classifier. Micronaut AOT registers `optimizedJitJarAll` after the build script has run, so a name
+filter configures it:
+
+[source,groovy]
+----
+tasks.named('shadowJar') {
+    archiveClassifier = 'shadow'
+}
+tasks.named { it == 'optimizedJitJarAll' }.configureEach {
+    archiveClassifier = 'shadow-optimized'
+}
+----
+
+== What the optimized archive changes at run time
+
+`-all-optimized.jar` is a different application from `-all.jar`, in a Runner JAR exactly as in `optimizedJitJarAll`.
+With Micronaut AOT 3.0.0, which micronaut-gradle-plugin 5.0.2 uses by default:
+
+* *Logback.* The generated configurator ignores `-Dlogback.configurationFile`, `-Dlogger.config` and `LOGGER_CONFIG`:
+the configuration compiled in the build is the one that applies
+(https://github.com/micronaut-projects/micronaut-aot/issues/512[micronaut-projects/micronaut-aot#512],
+https://github.com/micronaut-projects/micronaut-core/issues/13390[micronaut-projects/micronaut-core#13390]). `-all.jar`
+honours all three, with and without <<precompiledLogback,Runner's own precompiled configuration>>.
+* *Netty.* With `optimizeNetty`, the generated code always sets `io.netty.machineId` and `io.netty.processId`, so
+`-Dio.netty.machineId` and `-Dio.netty.processId` are overridden.
+* *Reactive types.* With `optimizeClassLoading`, the lists of reactive types are fixed-size, so
+`Publishers.registerReactiveType`, `registerReactiveSingle` and `registerReactiveCompletable` throw
+`UnsupportedOperationException`. micronaut-core 5.1 to 5.3, micronaut-reactor, micronaut-rxjava3 and micronaut-kotlin
+never call them.
+* *Environments.* With `deduceEnvironment`, the environments deduced on the build machine become the application's
+default environments, and deduction at startup is off.
+
+The Netty and reactive-type behaviour is fixed on micronaut-aot's `3.1.x` branch and not yet released
+(https://github.com/micronaut-projects/micronaut-aot/issues/513[micronaut-projects/micronaut-aot#513]). The way back
+is always the same: deploy `-all.jar`, or turn off the flag that causes the change, for Logback
+`replaceLogbackXml = false`.
+
+[[micronautAotWithRunner]]
+In `-all-optimized.jar`, Micronaut Runner's <<precompiledLogback,Logback precompilation>> stands down, because Micronaut
+AOT has removed `logback.xml` and registered its own `Configurator`. The archive therefore has Micronaut AOT's Logback
+behaviour above, not Runner's. The <<staticServices,static service table>> still applies: Micronaut AOT 3 leaves
+service discovery to the scan, so the table's loader is put in front of Micronaut AOT's own in the application's
+`META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader`. For a Micronaut AOT whose loaders supply
+Micronaut's service loaders, the table stands down by itself. The <<classTransforms,dependency class transforms>> apply
+to both archives.
+
+Until a micronaut-core release probes the reactive types without initialising them
+(https://github.com/micronaut-projects/micronaut-core/issues/13387[micronaut-projects/micronaut-core#13387], merged
+for 5.3), `optimizeClassLoading` is how a Runner JAR gets that deferral.
+
+== Maven
+
+Maven has no separate optimized archive. micronaut-maven-plugin's `aot-analysis` goal runs in `prepare-package` and
+rewrites `target/classes`: it adds the generated classes and deletes the resources they replace. Micronaut Runner's
+`package` goal runs later and packages `target/classes`, so whenever `aot-analysis` runs, the Runner JAR is the
+optimized application. Each plugin follows its own build tool's convention.
+
+In a project built on `micronaut-parent`, micronaut-maven-plugin binds `aot-analysis` itself, and
+`micronaut.aot.enabled` turns it on. A project without the parent adds the standalone plugin, as this profile does;
+it is the setup that was checked with Micronaut Runner:
+
+[source,xml]
+----
+<profile>
+    <id>micronaut-aot</id>
+    <properties>
+        <micronaut.aot.enabled>true</micronaut.aot.enabled>
+        <micronaut.aot.version>3.0.0</micronaut.aot.version>
+        <micronaut.aot.packageName>com.example.aot</micronaut.aot.packageName>
+    </properties>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>io.micronaut.maven</groupId>
+                <artifactId>micronaut-maven-aot-plugin</artifactId>
+                <version>5.0.2</version>
+                <configuration>
+                    <aotDependencies>
+                        <dependency>
+                            <groupId>ch.qos.logback</groupId>
+                            <artifactId>logback-classic</artifactId>
+                            <version>1.5.37</version>
+                        </dependency>
+                    </aotDependencies>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>aot-analysis</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</profile>
+----
+
+The optimizers are chosen in `aot.properties`, next to the POM:
+
+[source,properties]
+----
+logback.xml.to.java.enabled = true
+----
+
+`mvn package -Pmicronaut-aot` then writes a Runner JAR with `com/example/aot/AOTApplicationContextConfigurer.class` in
+its application layer and no `logback.xml`. To deploy the plain application, package without the profile.
+
+[[micronautAotWithJdkCache]]
+== With the JDK AOT cache
+
+Train the cache on the archive that production launches: run the training script of <<cdsAndAot>>
+(<<trainingSnippet>>) with `JAR` set to the `optimizedMicronautRunnerJar` archive, then launch with
+`java -XX:AOTCache=app.aot -jar my-app-0.1-all-optimized.jar`, adding `-XX:AOTMode=on` when the application must not
+start without its cache. A cache trained on `-all.jar` does not fit `-all-optimized.jar`.
+
+== Is it worth it
+
+Without a JDK cache, yes: on `benchmark-large` with JDK 25, `-all-optimized.jar` was ready about 78 ms before Micronaut
+AOT's `optimizedJitJarAll`, and even Runner's plain `-all.jar` was about 58 ms ahead of it. With a JDK AOT cache on
+both sides, no: the single `-all-optimized.jar` was about 23 ms behind `optimizedJitJarAll` on JDK 25, and on JDK 27 the
+cache stores none of a single Runner JAR's application classes (<<cdsAndAot>>). <<micronautAotResults>> has the
+numbers, the sizes and the second session.

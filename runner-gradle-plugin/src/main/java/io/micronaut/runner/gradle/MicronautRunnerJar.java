@@ -106,6 +106,10 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     /**
      * The application's own classes and resources, which become the application layer of the archive.
      *
+     * <p>Each file is a directory of classes and resources or a JAR of them. {@code micronautRunnerJar} takes the
+     * main source set's output directories, and {@code optimizedMicronautRunnerJar} the archive of Micronaut
+     * AOT's {@code optimizedJitJar} task. When two of them hold an entry of the same name, the first one wins.</p>
+     *
      * @return the application output
      */
     @InputFiles

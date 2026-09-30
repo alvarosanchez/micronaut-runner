@@ -12,6 +12,8 @@ compatibility:
   title: Compatibility and Limitations
 cdsAndAot:
   title: Class Data Sharing and the AOT Cache
+micronautAot:
+  title: Micronaut AOT
 benchmarks:
   title: Benchmarks
 troubleshooting:

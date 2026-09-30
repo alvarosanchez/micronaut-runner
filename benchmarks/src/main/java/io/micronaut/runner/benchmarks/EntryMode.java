@@ -42,7 +42,8 @@ enum EntryMode {
                 || variantName.equals("runner-preserve") || variantName.equals("runner-stored-joran")
                 || variantName.equals("runner-stored-joran-aot")
                 || variantName.equals("runner-stored-dynamic-services")
-                || variantName.equals("runner-stored-dynamic-services-aot")) {
+                || variantName.equals("runner-stored-dynamic-services-aot")
+                || variantName.equals("runner-maot") || variantName.equals("runner-maot-aot")) {
             return STUB;
         }
         return STANDARD_LOADER;

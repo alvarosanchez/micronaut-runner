@@ -83,10 +83,13 @@ class VariantSelectionTest {
         assertEquals(List.of("runner-stored-reflection", "runner-stored-preload", "runner-stored-preload-aot",
                         "runner-stored-positional", "runner-stored-positional-aot", "runner-stored-joran",
                         "runner-stored-joran-aot", "runner-stored-keepdebug", "runner-stored-keepdebug-aot",
-                        "runner-stored-dynamic-services", "runner-stored-dynamic-services-aot"),
+                        "runner-stored-dynamic-services", "runner-stored-dynamic-services-aot", "shadow-maot-aot",
+                        "runner-maot-aot"),
                 all.stream().filter(name -> !SampleBuild.variantNames().contains(name)).toList());
         assertEquals(all.indexOf("runner-stored-aot") + 1, all.indexOf("runner-stored-reflection"));
         assertEquals(all.indexOf("runner-stored-dynamic-services-aot") + 1, all.indexOf("runner-preserve"));
+        assertEquals(all.indexOf("shadow-maot") + 1, all.indexOf("shadow-maot-aot"));
+        assertEquals(all.indexOf("runner-maot") + 1, all.indexOf("runner-maot-aot"));
     }
 
     @Test
@@ -200,8 +203,32 @@ class VariantSelectionTest {
         assertTrue(steps.calls.values().stream().allMatch(count -> count == 1), steps.calls.toString());
         assertEquals(List.of("explodedClasspath", "thinJar", "shadow", "shadowStored", "aotCache:shadow->shadow-aot",
                 "runnerJar:runner-stored", "aotCache:runner-stored->runner-stored-aot", "runnerJar:runner-preserve",
-                "extracted:runner-stored", "aotCache:runner-extracted->runner-extracted-aot"),
+                "extracted:runner-stored", "aotCache:runner-extracted->runner-extracted-aot", "shadowMaot",
+                "runnerMaot"),
                 List.copyOf(steps.calls.keySet()));
+    }
+
+    @Test
+    void aCachedMicronautAotRowBuildsItsUncachedTwinWithoutReportingIt() {
+        FakeSteps steps = new FakeSteps() {
+            @Override
+            public Variant runnerMaot() {
+                return super.runnerMaot().describedAs(
+                        "Runner jar of the Micronaut AOT-optimized application (optimizedJitJar); plugin-default"
+                                + " entry stub; static services: 489 slots (core 5.1.15)");
+            }
+        };
+
+        List<Variant> variants = SampleBuild.variants(steps, List.of("shadow-maot-aot", "runner-maot-aot"), log());
+
+        assertEquals(List.of("shadow-maot-aot", "runner-maot-aot"), names(variants));
+        assertEquals(List.of("shadowMaot", "aotCache:shadow-maot->shadow-maot-aot", "runnerMaot",
+                "aotCache:runner-maot->runner-maot-aot"), List.copyOf(steps.calls.keySet()));
+        // The report line of a cached Micronaut AOT row is fixed, not derived from its source's, except that the
+        // Runner row keeps whether its jar carries a static service table.
+        assertEquals("The same optimizedJitJarAll with a verified JDK AOT cache", variants.get(0).description());
+        assertEquals("The same Micronaut AOT Runner jar with a verified JDK AOT cache; static services: 489 slots"
+                + " (core 5.1.15)", variants.get(1).description());
     }
 
     @Test
@@ -364,6 +391,18 @@ class VariantSelectionTest {
         public Variant shadowStored() {
             note("shadowStored");
             return variant("shadow-stored");
+        }
+
+        @Override
+        public Variant shadowMaot() {
+            note("shadowMaot");
+            return variant("shadow-maot");
+        }
+
+        @Override
+        public Variant runnerMaot() {
+            note("runnerMaot");
+            return variant("runner-maot");
         }
 
         @Override

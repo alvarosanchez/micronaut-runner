@@ -56,6 +56,25 @@ interface SampleSteps {
     Variant shadowStored() throws Exception;
 
     /**
+     * Copies the sample's {@code optimizedJitJarAll}: Micronaut AOT's Shadow jar of the optimized application.
+     *
+     * @return the {@code shadow-maot} variant
+     * @throws Exception if it cannot be built, for example because the sample does not apply
+     *                   {@code io.micronaut.aot}
+     */
+    Variant shadowMaot() throws Exception;
+
+    /**
+     * Builds the Runner jar of the Micronaut AOT-optimized application: {@code runner-stored} with the sample's
+     * {@code optimizedJitJar} as its application layer.
+     *
+     * @return the {@code runner-maot} variant
+     * @throws Exception if it cannot be built, for example because the sample does not apply
+     *                   {@code io.micronaut.aot}
+     */
+    Variant runnerMaot() throws Exception;
+
+    /**
      * Builds a Runner jar.
      *
      * @param name               the row
