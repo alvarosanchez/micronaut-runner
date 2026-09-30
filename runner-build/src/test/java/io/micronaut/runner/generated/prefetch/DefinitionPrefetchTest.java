@@ -41,6 +41,7 @@ import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.constantpool.InvokeDynamicEntry;
 import java.lang.classfile.constantpool.PoolEntry;
+import java.lang.reflect.Field;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -66,6 +67,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -403,11 +405,20 @@ class DefinitionPrefetchTest {
         assertEquals(1, PrefetchProbe.events(PrefetchProbe.INITIALISED, CONVERSION_SERVICE).size());
         assertTrue(first.threadName().startsWith(WORKER_PREFIX), first::toString);
         assertSame(loader, first.contextLoader());
-        // The reference initialisers Micronaut ran on the task's own thread saw that loader as well.
+        // Only this first step is certain to run on the task's thread. Micronaut forks one task per reference,
+        // and the task's thread runs a reference initialiser only when it takes that fork back while it waits for
+        // them; other pool threads run the rest under their own context class loader, as they do without the
+        // prefetch. Whatever did run on the task's thread saw the application's loader too, but a run may have
+        // none, so this checks the ConversionService step and nothing more is promised.
+        List<PrefetchProbe.Event> onTheTaskThread = new ArrayList<>();
         for (PrefetchProbe.Event event : events) {
             if (event.thread() == first.thread()) {
-                assertSame(loader, event.contextLoader(), event::toString);
+                onTheTaskThread.add(event);
             }
+        }
+        assertSame(first, onTheTaskThread.get(0));
+        for (PrefetchProbe.Event event : onTheTaskThread) {
+            assertSame(loader, event.contextLoader(), event::toString);
         }
         assertNotSame(loader, first.thread().getContextClassLoader());
         assertSame(ClassLoader.getSystemClassLoader(), first.thread().getContextClassLoader(),
@@ -495,6 +506,65 @@ class DefinitionPrefetchTest {
         assertTrue(lines.get(0).contains("(root cause: " + PrefetchProbe.thrown(RUNTIME) + ")"), lines.get(0));
         assertTrue(lines.get(0).endsWith("Start with -Dmicronaut.runner.prefetch=false to see Micronaut's own"
                 + " handling."), lines.get(0));
+    }
+
+    /**
+     * A finished task whose result the context did not take gives it up when that context reports, instead of
+     * keeping the references for the life of the JVM; a later call for its class loader goes to Micronaut's
+     * provider.
+     */
+    @Test
+    void anUnclaimedTaskGivesItsResultUpWhenTheContextReports() throws Exception {
+        URLClassLoader loader = loader(null, FIRST);
+        DefinitionPrefetch task = started(loader);
+        assertNotNull(held(task, "result"));
+        assertEquals(1, PrefetchProbe.events(PrefetchProbe.CONSTRUCTED, FIRST).size());
+
+        new DefinitionPrefetchConfigurer().configure((ApplicationContext) null);
+
+        assertNull(held(task, "result"), "the unclaimed task still keeps the references");
+        assertTrue(names(task.provide(loader)).contains(FIRST));
+        // Micronaut's provider constructed the reference again: nothing was handed over.
+        assertEquals(2, PrefetchProbe.events(PrefetchProbe.CONSTRUCTED, FIRST).size());
+        assertEquals("", err.toString(StandardCharsets.UTF_8));
+    }
+
+    /** A failed task that was reported keeps neither its result nor its failure. */
+    @Test
+    void aReportedTaskKeepsNoFailure() throws Exception {
+        URLClassLoader loader = loader(null, FIRST, RUNTIME);
+        DefinitionPrefetch task = started(loader);
+        assertNotNull(held(task, "failure"));
+
+        new DefinitionPrefetchConfigurer().configure((ApplicationContext) null);
+
+        assertNull(held(task, "failure"));
+        assertNull(held(task, "result"));
+        assertEquals(1, err.toString(StandardCharsets.UTF_8).lines().count());
+    }
+
+    /**
+     * A report never waits for the task, and it leaves one that is still running alone: a later context can
+     * still take its result.
+     */
+    @Test
+    void aReportLeavesARunningTaskForALaterContext() throws Exception {
+        URLClassLoader loader = loader("block", FIRST);
+        DefinitionPrefetchConfigurer configurer = new DefinitionPrefetchConfigurer();
+        DefinitionPrefetchConfigurer.start(loader);
+        assertTrue(PrefetchProbe.awaitEntered(), "the task never reached ConversionService");
+
+        configurer.configure((ApplicationContext) null);
+
+        PrefetchProbe.release();
+        ApplicationContextBuilder builder = ApplicationContext.builder();
+        configurer.configure(builder);
+        DefinitionPrefetch task = assertInstanceOf(DefinitionPrefetch.class, provider(builder));
+        awaitDone(task);
+        assertTrue(names(task.provide(loader)).contains(FIRST));
+        // The prefetch constructed it once, and the hand-over constructed nothing.
+        assertEquals(1, PrefetchProbe.events(PrefetchProbe.CONSTRUCTED, FIRST).size());
+        assertEquals("", err.toString(StandardCharsets.UTF_8));
     }
 
     @Test
@@ -599,6 +669,13 @@ class DefinitionPrefetchTest {
             assertTrue(System.nanoTime() < deadline, "the prefetch did not finish");
             Thread.sleep(2);
         }
+    }
+
+    /** What the task still holds in one of its private fields, read without going through its API. */
+    private static Object held(DefinitionPrefetch task, String field) throws ReflectiveOperationException {
+        Field declared = DefinitionPrefetch.class.getDeclaredField(field);
+        declared.setAccessible(true);
+        return declared.get(task);
     }
 
     private static BeanDefinitionsProvider provider(ApplicationContextBuilder builder) {

@@ -140,7 +140,8 @@ public final class DefinitionPrefetchConfigurer implements ApplicationContextCon
     }
 
     /**
-     * Reports a task that failed and whose result the context did not take.
+     * Makes a finished task whose result the context did not take give that result up, and reports the task if
+     * it failed.
      *
      * @param context the context, after it read its bean definitions
      */

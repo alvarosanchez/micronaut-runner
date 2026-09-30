@@ -60,14 +60,17 @@ public final class DefinitionPrefetch extends RecursiveAction implements BeanDef
     final ClassLoader loader;
 
     private final BeanDefinitionsProvider fallback = new DefaultBeanDefinitionsProvider();
+    /** Set by the one caller that gets the result: the first matching provide, or a report that gave it up. */
     private final AtomicBoolean claimed = new AtomicBoolean();
-    private final AtomicBoolean reported = new AtomicBoolean();
     private final AtomicBoolean traced = new AtomicBoolean();
 
-    /** What Micronaut's provider returned. Written by the task, read only once it is done. */
+    /**
+     * What Micronaut's provider returned. Written by the task, read only once it is done and only by the caller
+     * that claimed it, which clears it.
+     */
     private List<BeanDefinitionReference<?>> result;
 
-    /** What the task threw, exactly as it was thrown. Written by the task, read only once it is done. */
+    /** What the task threw, exactly as it was thrown. Written by the task, read like {@link #result}. */
     private Throwable failure;
 
     private DefinitionPrefetch(ClassLoader loader) {
@@ -111,8 +114,9 @@ public final class DefinitionPrefetch extends RecursiveAction implements BeanDef
 
     /**
      * Hands over what the task loaded, once, to the first caller that asks with the task's class loader, waiting
-     * for the task when it is still running. Every other call, such as a context refresh, a later context or
-     * another class loader, goes to Micronaut's default provider.
+     * for the task when it is still running. Every other call, such as a context refresh, a later context,
+     * another class loader, or any call after a context that did not take the result gave it up (see
+     * {@link #reportIfUnclaimed()}), goes to Micronaut's default provider.
      *
      * @param classLoader the class loader to load the references with
      * @return the bean definition references
@@ -137,28 +141,40 @@ public final class DefinitionPrefetch extends RecursiveAction implements BeanDef
     }
 
     /**
-     * Says so, once, when the context did not take the result of a task that failed: Micronaut then loaded the
-     * references itself, and a reference whose static initialiser already failed on the task's thread reaches it
-     * as a class that cannot be initialised, which it skips. Never waits for the task.
+     * Called for a context that has read its bean definitions. When that context did not take the result of the
+     * task and the task has finished, the task gives its result up: every later {@link #provide(ClassLoader)} goes
+     * to Micronaut's default provider, and the task no longer keeps the references for the life of the JVM. If
+     * the task failed, that is said once: Micronaut then loaded the references itself, and a reference whose
+     * static initialiser already failed on the task's thread reaches it as a class that cannot be initialised,
+     * which it skips. Never waits for the task; one that is still running is left for the next context.
      */
     void reportIfUnclaimed() {
         if (claimed.get()) {
             return;
         }
-        if (isDone() && failure != null && reported.compareAndSet(false, true)) {
-            // Micronaut wraps what a reference threw, and its own message does not always name it.
-            Throwable root = failure;
-            while (root.getCause() != null && root.getCause() != root) {
-                root = root.getCause();
+        if (isDone() && claimed.compareAndSet(false, true)) {
+            Throwable failed = failure;
+            result = null;
+            failure = null;
+            if (failed != null) {
+                report(failed);
             }
-            System.err.println(PREFIX + "The bean definition prefetch was not handed to the application context,"
-                    + " and it recorded a failure that Micronaut may have ignored: " + failure
-                    + (root == failure ? "" : " (root cause: " + root + ")") + ". Start with -D"
-                    + DefinitionPrefetchConfigurer.OPT_OUT_PROPERTY + "=false to see Micronaut's own handling.");
         }
         if ("true".equals(System.getProperty(TRACE_PROPERTY)) && traced.compareAndSet(false, true)) {
             System.err.println(PREFIX + "definition prefetch not handed over");
         }
+    }
+
+    private static void report(Throwable failed) {
+        // Micronaut wraps what a reference threw, and its own message does not always name it.
+        Throwable root = failed;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        System.err.println(PREFIX + "The bean definition prefetch was not handed to the application context,"
+                + " and it recorded a failure that Micronaut may have ignored: " + failed
+                + (root == failed ? "" : " (root cause: " + root + ")") + ". Start with -D"
+                + DefinitionPrefetchConfigurer.OPT_OUT_PROPERTY + "=false to see Micronaut's own handling.");
     }
 
     @SuppressWarnings("unchecked")
