@@ -134,7 +134,14 @@ public enum RunnerJarOption {
      * Whether to generate the static service table that answers Micronaut's service lookups from names
      * computed at packaging time. See {@link RunnerJarSpec.Builder#staticServices(boolean)}.
      */
-    STATIC_SERVICES("staticServices", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
+    STATIC_SERVICES("staticServices", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
+
+    /**
+     * Whether to replace lambda and method-reference call sites with classes generated when the application is
+     * packaged. It applies to {@link Compression#STORED} only. See
+     * {@link RunnerJarSpec.Builder#desugarLambdas(boolean)}.
+     */
+    DESUGAR_LAMBDAS("desugarLambdas", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
 
     private final String optionName;
     private final Class<?> valueType;

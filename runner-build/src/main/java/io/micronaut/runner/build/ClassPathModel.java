@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassHierarchyResolver;
 import java.lang.classfile.ClassModel;
@@ -44,7 +45,8 @@ import java.util.function.Predicate;
  * entry. A variant counts only in a jar whose manifest says {@code Multi-Release: true}, or in the application
  * layer when it is declared multi-release, and only under the rules {@code IndexWriter.versionOf} and
  * {@code pathOf} apply to the index. For the winning copy it records the access flags, the superclass and the
- * interfaces, and, when a step asks for them, the name, descriptor and flags of every field and method.</p>
+ * interfaces, and, when a step asks for them, its nest host and the name, descriptor and flags of every field
+ * and method.</p>
  *
  * <p>A name whose chain holds a variant for a version above {@value #RUNTIME_FEATURE}, ahead of its winner, is
  * {@linkplain #uncertain(String) uncertain}: a newer runtime would load another copy.</p>
@@ -177,6 +179,26 @@ final class ClassPathModel implements ClassHierarchyResolver {
     }
 
     /**
+     * Whether any layer holds a class of this name, in its base entries or in a versioned directory that counts,
+     * whichever copy wins and whether or not JDK {@value #RUNTIME_FEATURE} loads one at all.
+     *
+     * @param internalName the class
+     * @return whether the name is taken
+     */
+    boolean known(String internalName) {
+        return classes.containsKey(internalName);
+    }
+
+    /**
+     * Whether the scans recorded member tables and nest hosts.
+     *
+     * @return whether {@link Copy#member(String, String)} and {@link Copy#nestHost()} answer
+     */
+    boolean hasMembers() {
+        return members;
+    }
+
+    /**
      * The name of a layer, as the scan was given it.
      *
      * @param layer the layer's position
@@ -299,9 +321,10 @@ final class ClassPathModel implements ClassHierarchyResolver {
         private final String superName;
         private final List<String> interfaces;
         private final List<Member> members;
+        private final String nestHost;
 
         private Copy(String name, int layer, int version, int flags, String superName, List<String> interfaces,
-                     List<Member> members) {
+                     List<Member> members, String nestHost) {
             this.name = name;
             this.layer = layer;
             this.version = version;
@@ -309,6 +332,7 @@ final class ClassPathModel implements ClassHierarchyResolver {
             this.superName = superName;
             this.interfaces = interfaces;
             this.members = members;
+            this.nestHost = nestHost;
         }
 
         /**
@@ -374,7 +398,25 @@ final class ClassPathModel implements ClassHierarchyResolver {
             return (flags & ClassFile.ACC_INTERFACE) != 0;
         }
 
-        private Member member(String name, String descriptor) {
+        /**
+         * The class its {@code NestHost} attribute names.
+         *
+         * @return the nest host's internal name, or {@code null} when the class has no such attribute, or the
+         * model was built without member tables
+         */
+        String nestHost() {
+            return nestHost;
+        }
+
+        /**
+         * A field or method the class declares itself.
+         *
+         * @param name       the member's name
+         * @param descriptor its descriptor
+         * @return the member, or {@code null} when the class declares none, or the model was built without
+         * member tables
+         */
+        Member member(String name, String descriptor) {
             if (members == null) {
                 return null;
             }
@@ -495,7 +537,10 @@ final class ClassPathModel implements ClassHierarchyResolver {
                 interfaces.add(strings.intern(entry.asInternalName()));
             }
             List<Member> table = null;
+            String nestHost = null;
             if (members) {
+                nestHost = model.findAttribute(Attributes.nestHost())
+                        .map(attribute -> strings.intern(attribute.nestHost().asInternalName())).orElse(null);
                 table = new ArrayList<>(model.fields().size() + model.methods().size());
                 for (FieldModel field : model.fields()) {
                     table.add(new Member(strings.intern(field.fieldName().stringValue()),
@@ -511,7 +556,7 @@ final class ClassPathModel implements ClassHierarchyResolver {
                     .orElse(null);
             return new Copy(strings.intern(internalName), layer, version, model.flags().flagsMask(),
                     superName, interfaces.isEmpty() ? List.of() : Collections.unmodifiableList(interfaces),
-                    table);
+                    table, nestHost);
         }
 
         /**

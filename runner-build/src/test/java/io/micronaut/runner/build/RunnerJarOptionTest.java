@@ -74,7 +74,8 @@ class RunnerJarOptionTest {
                 .precompileLogback(false)
                 .stripLocalVariables(false)
                 .startupClasses(Path.of("profiles", "startup-classes.log"))
-                .staticServices(false));
+                .staticServices(false)
+                .desugarLambdas(false));
 
         for (RunnerJarSpec spec : List.of(defaults, configured)) {
             RunnerJarSpec.Builder replayed = RunnerJarSpec.builder();

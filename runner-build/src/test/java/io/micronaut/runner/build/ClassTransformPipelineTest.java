@@ -78,7 +78,7 @@ class ClassTransformPipelineTest {
             """;
 
     private static final ClassTransformPipeline.Layer DEPENDENCY =
-            new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fixture.jar", false, false, false);
+            new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fixture.jar", 0, false, false, false);
 
     @TempDir
     static Path temp;
@@ -385,7 +385,7 @@ class ClassTransformPipelineTest {
         ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(rewriteLdc), model);
 
         ClassTransformPipeline.JarRun run = pipeline.start(
-                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/signed.jar", false, true, false));
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/signed.jar", 0, false, true, false));
 
         assertEquals(false, run.reads(subject.length), "a signed jar's classes are never read into memory");
         run.skip();
@@ -526,7 +526,7 @@ class ClassTransformPipelineTest {
         }
 
         @Override
-        public String summary(TransformReport report, int jars) {
+        public String summary(TransformReport report, List<ClassTransformPipeline.JarReport> reports) {
             return name + ": " + report;
         }
     }

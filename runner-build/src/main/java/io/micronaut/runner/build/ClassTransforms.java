@@ -15,10 +15,14 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.runner.IndexFormat;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -40,8 +44,14 @@ final class ClassTransforms {
     /** What warnings and the class path model call the application layer. */
     private static final String APPLICATION_LAYER = "the application output";
 
+    /** What notes and {@code transforms.txt} call the application layer: its directory in the archive. */
+    private static final String APPLICATION_NAME =
+            IndexFormat.CLASSES_PREFIX.substring(0, IndexFormat.CLASSES_PREFIX.length() - 1);
+
     private final ClassTransformPipeline pipeline;
     private final List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
+    /** What the pipeline did to the application layer, which comes first on the class path; {@code null} when it did not run there. */
+    private ClassTransformPipeline.JarReport applicationReport;
 
     private ClassTransforms(ClassTransformPipeline pipeline) {
         this.pipeline = pipeline;
@@ -50,11 +60,13 @@ final class ClassTransforms {
     /**
      * Decides which class transforms run and, when any does, scans the class path they need.
      *
-     * <p>Stripping runs only in STORED: in PRESERVE every dependency is nested byte for byte, which is reported
-     * once at info. It is turned off for the whole build, with one warning, when a layer contains a library that
-     * reads local-variable tables at run time. With every transform off, or no dependency, nothing is scanned.
-     * Otherwise one scan task per dependency runs on the pool, each through a {@link ZipReader} of its own,
-     * while the calling thread scans the application layer, and the scans are merged in class-path order.</p>
+     * <p>The transforms run only in STORED: in PRESERVE every dependency is nested byte for byte, which is
+     * reported once at info for each enabled option, and the application layer is left alone too. Stripping is
+     * turned off for the whole build, with one warning, when a layer contains a library that reads local-variable
+     * tables at run time. With every transform off, or with only stripping and no dependency, nothing is
+     * scanned. Otherwise one scan task per dependency runs on the pool, each through a {@link ZipReader} of its
+     * own, while the calling thread scans the application layer, and the scans are merged in class-path order.
+     * Desugaring lambdas needs the member tables of every class, so the scans record them when it is on.</p>
      *
      * @param spec         the build's spec
      * @param dependencies the dependencies that are nested, in class-path order
@@ -69,31 +81,69 @@ final class ClassTransforms {
     static ClassTransforms prepare(RunnerJarSpec spec, List<Dependency> dependencies, ExecutorService pool,
                                    ApplicationClasses application, BuildLogger logger, Consumer<String> warn)
             throws IOException {
+        boolean desugar = spec.desugarLambdas();
+        boolean strip = spec.stripLocalVariables();
+        if (spec.compression() == Compression.PRESERVE) {
+            for (String option : new String[] {desugar ? LambdaDesugarer.NAME : null,
+                strip ? LocalVariableStripper.NAME : null}) {
+                if (option != null) {
+                    logger.info("The " + option + " option has no effect with PRESERVE compression, which nests"
+                            + " every dependency byte for byte");
+                }
+            }
+            return new ClassTransforms(null);
+        }
+        if (!desugar && (!strip || dependencies.isEmpty())) {
+            return new ClassTransforms(null);
+        }
+        // The member tables are recorded only for the step that needs them: desugaring.
+        ClassPathModel model = scan(spec, dependencies, pool, application, desugar);
+        // The order the steps run in: desugaring first, then stripping.
         List<ClassTransformPipeline.Step> steps = new ArrayList<>();
-        if (spec.stripLocalVariables()) {
-            if (spec.compression() == Compression.PRESERVE) {
-                logger.info("The stripLocalVariables option has no effect with PRESERVE compression, which nests"
-                        + " every dependency byte for byte");
+        if (desugar) {
+            steps.add(new LambdaDesugarer(model));
+        }
+        if (strip && !dependencies.isEmpty()) {
+            Optional<ClassPathModel.Watched> reader = model.watched();
+            if (reader.isPresent()) {
+                warn.accept("No local-variable table was stripped, because " + reader.get().layer() + " contains "
+                        + reader.get().entry() + ", which reads local-variable tables at run time. To silence this"
+                        + " warning, set the stripLocalVariables option to false");
             } else {
                 steps.add(new LocalVariableStripper());
             }
         }
-        if (steps.isEmpty() || dependencies.isEmpty()) {
-            return new ClassTransforms(null);
-        }
-        boolean members = false;
-        for (ClassTransformPipeline.Step step : steps) {
-            members |= step.needsMemberTables();
-        }
-        ClassPathModel model = scan(spec, dependencies, pool, application, members);
-        Optional<ClassPathModel.Watched> reader = model.watched();
-        if (reader.isPresent()) {
-            warn.accept("No local-variable table was stripped, because " + reader.get().layer() + " contains "
-                    + reader.get().entry() + ", which reads local-variable tables at run time. To silence this"
-                    + " warning, set the stripLocalVariables option to false");
-            steps.removeIf(step -> step instanceof LocalVariableStripper);
-        }
         return new ClassTransforms(steps.isEmpty() ? null : new ClassTransformPipeline(steps, model));
+    }
+
+    /**
+     * Runs the transforms that apply to the application layer, which no stage repacks: today desugaring
+     * lambdas, whose nests are planned, rewritten and gated here, on the calling thread.
+     *
+     * @param classes the application layer's classes
+     * @return what to write for each rewritten class, keyed by entry name, with the classes generated for it;
+     * empty when no transform runs over the application layer
+     * @throws IOException if an application class cannot be read
+     */
+    Map<String, ClassTransformPipeline.Planned> application(ClassTransformPipeline.JarClasses classes)
+            throws IOException {
+        if (pipeline == null || !pipeline.plansApplication()) {
+            return Map.of();
+        }
+        ClassTransformPipeline.JarRun run = pipeline.start(
+                new ClassTransformPipeline.Layer(APPLICATION_NAME, 0, true, false, false));
+        run.plan(classes);
+        Map<String, ClassTransformPipeline.Planned> rewritten = new HashMap<>();
+        for (ClassTransformPipeline.ClassEntry entry : classes.classes()) {
+            ClassTransformPipeline.Planned planned = run.planned(entry.name());
+            if (planned == null) {
+                run.pass(entry.name());
+            } else {
+                rewritten.put(entry.name(), planned);
+            }
+        }
+        applicationReport = run.report();
+        return rewritten;
     }
 
     /**
@@ -127,18 +177,17 @@ final class ClassTransforms {
         if (pipeline == null) {
             return List.of();
         }
-        for (ClassTransformPipeline.JarReport report : reports) {
+        List<ClassTransformPipeline.JarReport> all = reports();
+        for (ClassTransformPipeline.JarReport report : all) {
             for (String note : report.notes()) {
                 String[] fields = note.split("\t", 4);
                 logger.info("Kept " + fields[1] + " of " + fields[0] + " without " + fields[2] + ": " + fields[3]);
             }
         }
-        List<TransformReport> totals = pipeline.totals(reports);
-        List<ClassTransformPipeline.Step> steps = pipeline.steps();
-        for (int i = 0; i < steps.size(); i++) {
-            logger.info(steps.get(i).summary(totals.get(i), reports.size()));
+        for (String line : pipeline.summaries(all)) {
+            logger.info(line);
         }
-        return totals;
+        return pipeline.totals(all);
     }
 
     /**
@@ -148,7 +197,21 @@ final class ClassTransforms {
      * @return the content, or {@code null} when the archive carries no such entry
      */
     byte[] describe(String version) {
-        return pipeline == null ? null : pipeline.describe(version, reports);
+        return pipeline == null ? null : pipeline.describe(version, reports());
+    }
+
+    /**
+     * Every layer's report, in class-path order: the application layer, when a transform ran over it, then the
+     * dependencies.
+     */
+    private List<ClassTransformPipeline.JarReport> reports() {
+        if (applicationReport == null) {
+            return reports;
+        }
+        List<ClassTransformPipeline.JarReport> all = new ArrayList<>(reports.size() + 1);
+        all.add(applicationReport);
+        all.addAll(reports);
+        return all;
     }
 
     private static ClassPathModel scan(RunnerJarSpec spec, List<Dependency> dependencies, ExecutorService pool,

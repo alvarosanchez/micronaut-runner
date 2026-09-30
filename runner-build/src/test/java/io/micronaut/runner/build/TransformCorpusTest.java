@@ -88,25 +88,45 @@ class TransformCorpusTest {
         model.watched().ifPresent(watched -> System.out.println(classPathFile.getFileName() + ": "
                 + watched.layer() + " contains " + watched.entry()
                 + ", which reads local-variable tables; a build would not strip this class path"));
-        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LocalVariableStripper()), model);
+        // The steps a default build runs, in its order: desugaring lambdas, then stripping.
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(
+                List.of(new LambdaDesugarer(model), new LocalVariableStripper()), model);
         Function<byte[], List<String>> verifier = ClassTransformPipeline.verifierOf(model);
 
         List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
         List<String> grown = new ArrayList<>();
-        for (Path dependency : dependencies) {
+        for (int position = 0; position < dependencies.size(); position++) {
+            Path dependency = dependencies.get(position);
             try (ZipReader reader = ZipReader.open(dependency)) {
                 ClassTransformPipeline.JarRun run = pipeline.start(new ClassTransformPipeline.Layer(
-                        dependency.getFileName().toString(), false, reader.hasSignatureFiles(), false));
+                        dependency.getFileName().toString(), position + 1, false, reader.hasSignatureFiles(),
+                        false));
+                // As a repack does: the nests are planned, rewritten and gated before the entry loop.
+                run.plan(new ZipRepacker.SourceClasses(reader));
                 for (ZipEntryInfo entry : reader.entries()) {
                     if (!ClassTransformPipeline.isClass(entry)) {
                         continue;
                     }
-                    if (!run.reads(entry.uncompressedSize())) {
-                        run.skip();
+                    ClassTransformPipeline.Planned planned = run.planned(entry.name());
+                    byte[] original;
+                    byte[] output;
+                    if (planned != null) {
+                        original = reader.read(entry);
+                        output = planned.bytes();
+                        for (ClassTransformPipeline.Generated generated : planned.generated()) {
+                            // A generated class has no original: it must verify cleanly.
+                            List<String> errors = verifier.apply(generated.bytes());
+                            if (!errors.isEmpty()) {
+                                grown.add(dependency.getFileName() + " " + generated.name() + ": " + errors.get(0));
+                            }
+                        }
+                    } else if (!run.reads(entry.uncompressedSize())) {
+                        run.pass(entry.name());
                         continue;
+                    } else {
+                        original = reader.read(entry);
+                        output = run.process(entry.name(), original);
                     }
-                    byte[] original = reader.read(entry);
-                    byte[] output = run.process(entry.name(), original);
                     if (output != original) {
                         // The gate's own comparison, which ignores the bytecode offset an error names: a
                         // rebuilt pool moves the errors a class already had.
@@ -122,8 +142,8 @@ class TransformCorpusTest {
         }
 
         List<TransformReport> totals = pipeline.totals(reports);
-        for (int i = 0; i < totals.size(); i++) {
-            System.out.println(name + ": " + pipeline.steps().get(i).summary(totals.get(i), reports.size()));
+        for (String summary : pipeline.summaries(reports)) {
+            System.out.println(name + ": " + summary);
         }
         for (ClassTransformPipeline.JarReport report : reports) {
             for (String note : report.notes()) {
@@ -143,7 +163,7 @@ class TransformCorpusTest {
     private static ClassPathModel scan(List<Path> dependencies) throws IOException {
         ClassPathModel.Interner strings = new ClassPathModel.Interner();
         List<ClassPathModel.LayerScan> scans = new ArrayList<>();
-        scans.add(ClassPathModel.scan(0, "the application output", false, false,
+        scans.add(ClassPathModel.scan(0, "the application output", false, true,
                 LocalVariableStripper::isKnownReader, strings));
         int layer = 1;
         for (Path dependency : dependencies) {
@@ -152,7 +172,7 @@ class TransformCorpusTest {
                 boolean multiRelease = manifest != null
                         && "true".equalsIgnoreCase(manifest.getMainAttributes().getValue("Multi-Release"));
                 ClassPathModel.LayerScan scan = ClassPathModel.scan(layer++, "the dependency " + dependency,
-                        multiRelease, false, LocalVariableStripper::isKnownReader, strings);
+                        multiRelease, true, LocalVariableStripper::isKnownReader, strings);
                 for (ZipEntryInfo entry : reader.entries()) {
                     if (!entry.directory() && scan.wants(entry.name(), entry.uncompressedSize())) {
                         scan.accept(entry.name(), reader.read(entry));
@@ -161,6 +181,6 @@ class TransformCorpusTest {
                 scans.add(scan);
             }
         }
-        return ClassPathModel.merge(scans, false);
+        return ClassPathModel.merge(scans, true);
     }
 }

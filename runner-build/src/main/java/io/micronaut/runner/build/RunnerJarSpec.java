@@ -75,6 +75,7 @@ public final class RunnerJarSpec {
     private final boolean stripLocalVariables;
     private final Path startupClasses;
     private final boolean staticServices;
+    private final boolean desugarLambdas;
     private final Instant timestamp;
     private final Map<String, String> effectiveOptions;
 
@@ -102,6 +103,7 @@ public final class RunnerJarSpec {
         this.stripLocalVariables = builder.stripLocalVariables;
         this.startupClasses = builder.startupClasses;
         this.staticServices = builder.staticServices;
+        this.desugarLambdas = builder.desugarLambdas;
         this.timestamp = builder.timestamp;
         Map<String, String> effective = new LinkedHashMap<>();
         for (RunnerJarOption option : RunnerJarOption.values()) {
@@ -368,6 +370,21 @@ public final class RunnerJarSpec {
     }
 
     /**
+     * Whether the lambda and method-reference call sites of dependency and application classes are replaced
+     * with classes generated when the application is packaged.
+     *
+     * <p>It applies to {@link Compression#STORED} only and is on by default. To opt out, set it to
+     * {@code false}: through {@link Builder#desugarLambdas(boolean)}, or by name, as the build plugins'
+     * generic options do, with {@code option("desugarLambdas", "false")}. See
+     * {@link Builder#desugarLambdas(boolean)} for what is rewritten and what changes as a result.</p>
+     *
+     * @return whether lambdas are desugared, {@code true} unless configured otherwise
+     */
+    public boolean desugarLambdas() {
+        return desugarLambdas;
+    }
+
+    /**
      * The instant every entry of the archive is dated with, converted to MS-DOS time in UTC.
      *
      * @return the reproducible timestamp
@@ -406,6 +423,7 @@ public final class RunnerJarSpec {
             case STRIP_LOCAL_VARIABLES -> Boolean.toString(stripLocalVariables);
             case STARTUP_CLASSES -> startupClasses == null ? "" : startupClasses.toString();
             case STATIC_SERVICES -> Boolean.toString(staticServices);
+            case DESUGAR_LAMBDAS -> Boolean.toString(desugarLambdas);
         };
     }
 
@@ -451,6 +469,7 @@ public final class RunnerJarSpec {
         private boolean stripLocalVariables;
         private Path startupClasses;
         private boolean staticServices;
+        private boolean desugarLambdas;
         private Instant timestamp = ZipWriter.DEFAULT_TIMESTAMP;
 
         /**
@@ -825,6 +844,56 @@ public final class RunnerJarSpec {
         }
 
         /**
+         * Sets whether lambda and method-reference call sites are replaced with classes generated at packaging
+         * time.
+         *
+         * <p>A lambda compiles to an {@code invokedynamic} call site that spins a hidden class the first time
+         * it runs. The JDK keeps such a class in a CDS archive or an AOT cache only for callers of its built-in
+         * class loaders, which the classes of a runner jar do not have, so every lambda that runs before the
+         * application is ready is linked at every start, with or without a cache. With this option each eligible
+         * site calls a class that was generated when the application was packaged: nothing is linked at run
+         * time, and a cache holds the class like any other. The user guide's build-time transforms section has
+         * the measured effect.</p>
+         *
+         * <p>What is rewritten, in dependency classes and in the application's own: a call site whose bootstrap
+         * is {@code LambdaMetafactory.metafactory}, when the generated class provably resolves what the site
+         * resolved. Its implementation must be a member the generated class can reach: one of the host's own
+         * nest, a non-private member of the host's package, or a public member of a public class, on the class
+         * path or in an exported package of the JDK. Everything else keeps its {@code invokedynamic}: a
+         * {@code super::method} reference, a caller-sensitive JDK method, a host or an owner that another jar
+         * shadows or that has a multi-release variant, every class of a signed jar and of
+         * {@code META-INF/versions/}, and every other bootstrap, such as string concatenation, records'
+         * {@code ObjectMethods} and serializable lambdas.</p>
+         *
+         * <p>What changes observably, for the rewritten lambdas:</p>
+         * <ul>
+         *     <li>{@code Class.isHidden()} is {@code false}, and the class has a stable name,
+         *     {@code <Host>$$Lambda$R<n>}, that {@code Class.forName} finds;</li>
+         *     <li>each call of the lambda adds one visible frame to stack traces and to {@code StackWalker},
+         *     where the hidden class's frame was hidden;</li>
+         *     <li>the jars and the application layer gain one {@code .class} resource per rewritten site, next
+         *     to its host, and a rewritten host and its nest host have new bytes and a new CRC-32;</li>
+         *     <li>a host below class-file version 55, which has no nestmates, gains one package-private static
+         *     synthetic method {@code $runner$lambda$<n>} per site whose implementation is private, visible to
+         *     {@code getDeclaredMethods()};</li>
+         *     <li>the archive is reproducible byte for byte only when it is built with the same JDK build.</li>
+         * </ul>
+         *
+         * <p>The step fails closed: every class it writes or rewrites is verified against the class path, and
+         * a nest that verifies worse than before is packaged as it was. With {@link Compression#PRESERVE}, which
+         * nests every dependency byte for byte, the option has no effect.</p>
+         *
+         * <p>Defaults to {@code true}.</p>
+         *
+         * @param value whether to desugar lambdas
+         * @return this builder
+         */
+        public Builder desugarLambdas(boolean value) {
+            this.desugarLambdas = value;
+            return this;
+        }
+
+        /**
          * Sets a packaging option by its {@linkplain RunnerJarOption#optionName() name}, whether it has a
          * typed setter or not. This is how a build plugin passes the options it has no typed property for.
          *
@@ -866,6 +935,7 @@ public final class RunnerJarSpec {
                 case STRIP_LOCAL_VARIABLES -> stripLocalVariables(parseBoolean(option, value));
                 case STARTUP_CLASSES -> startupClasses(parsePath(option, value));
                 case STATIC_SERVICES -> staticServices(parseBoolean(option, value));
+                case DESUGAR_LAMBDAS -> desugarLambdas(parseBoolean(option, value));
             };
         }
 
