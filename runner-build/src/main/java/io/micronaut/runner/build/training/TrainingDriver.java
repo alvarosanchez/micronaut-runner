@@ -75,9 +75,10 @@ public final class TrainingDriver {
     /**
      * The environment variables through which a JVM takes options nobody passed it. They are removed from the
      * application's environment, so that a class cache or an agent named by the machine the build runs on
-     * does not take part in the run.
+     * does not take part in the run. A caller that starts other JVMs of the same run, such as a JDK tool
+     * aimed at the application, removes them too.
      */
-    static final List<String> AMBIENT_JVM_OPTIONS = List.of(
+    public static final List<String> AMBIENT_JVM_OPTIONS = List.of(
             "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "JDK_AOT_VM_OPTIONS");
 
     /** The exit status of a JVM ended by SIGTERM: 128 + 15. */

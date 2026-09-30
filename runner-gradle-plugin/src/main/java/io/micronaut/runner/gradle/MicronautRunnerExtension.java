@@ -148,6 +148,24 @@ public abstract class MicronautRunnerExtension {
     }
 
     /**
+     * The JDK AOT cache that {@code micronautRunnerJdkAotCache} trains and verifies, and whether {@code assemble}
+     * builds it. The API is experimental and belongs to this interim plugin only.
+     *
+     * @return the cache settings
+     */
+    @Nested
+    public abstract JdkAotCacheSpec getJdkAotCache();
+
+    /**
+     * Configures {@link #getJdkAotCache()}.
+     *
+     * @param action the configuration
+     */
+    public void jdkAotCache(Action<? super JdkAotCacheSpec> action) {
+        action.execute(getJdkAotCache());
+    }
+
+    /**
      * Packaging options by {@linkplain RunnerJarOption#optionName() name}, for the options that have no typed
      * property. Each value uses the grammar {@link RunnerJarOption} documents; the packaging library parses and
      * validates it, and an unknown name fails the task. So does a typed option that names a file, such as
