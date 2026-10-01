@@ -6,4 +6,3 @@ io.micronaut.runner.build.training
 io.micronaut.runner.gradle
 io.micronaut.runner.maven
 io.micronaut.runner.protocol.jar
-io.micronaut.runner.tools

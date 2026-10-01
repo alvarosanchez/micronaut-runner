@@ -70,9 +70,6 @@ loadScripts(document, 'script');</script>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
 <li><a href="#register(java.io.File,io.micronaut.runner.Index,io.micronaut.runner.ArchiveSource)" tabindex="0">register(File, Index, ArchiveSource)</a></li>
-<li><a href="#urlFor(int,java.lang.String)" tabindex="0">urlFor(int, String)</a></li>
-<li><a href="#outerUrlFor(java.lang.String)" tabindex="0">outerUrlFor(String)</a></li>
-<li><a href="#codeSourceUrlFor(int)" tabindex="0">codeSourceUrlFor(int)</a></li>
 <li><a href="#jarFileUrlFor(int)" tabindex="0">jarFileUrlFor(int)</a></li>
 <li><a href="#registered()" tabindex="0">registered()</a></li>
 <li><a href="#archive()" tabindex="0">archive()</a></li>
@@ -100,7 +97,8 @@ loadScripts(document, 'script');</script>
 <section class="class-description" id="class-description">
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">Handlers</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public final class </span><span class="element-name type-name-label">Handlers</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
 <div class="block">The <code>jar:</code> URL machinery of a runner jar: it owns the registration of
 <a href="protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar"><code>Handler</code></a>, the state that handler serves, and the construction of
@@ -119,7 +117,7 @@ jar:file:/abs/app.jar!/META-INF/micronaut/&lt;service&gt;/&lt;name&gt;       the
 </pre>
 <p>The last shape is the exception to "jar 0 lives under <a href="IndexFormat.html#CLASSES_PREFIX">"MICRONAUT-INF/classes/"</a>": the
 packager merges the Micronaut service metadata of every jar into the root of the outer archive, and
-those records are addressed where they really are. See <a href="#urlFor(int,java.lang.String)"><code>urlFor(int, String)</code></a>.</p>
+those records are addressed where they really are. See <code>urlFor</code>.</p>
 <p>The nested form is the classic double separator Spring Boot's loader produced for a decade, which
 micronaut-core's <code>IOUtils</code> already tolerates; inventing a protocol of our own would break service
 scanning outright. Entry names are percent-encoded per UTF-8 byte, so a name containing a space,
@@ -136,7 +134,7 @@ makes the JDK load <code>&lt;package&gt;.jar.Handler</code> by name; <a href="#r
 factory, because by the time the launcher runs the JDK has usually resolved and cached its own jar
 handler already.</p>
 
-<p>None of that is load bearing. <a href="#urlFor(int,java.lang.String)"><code>urlFor(int, String)</code></a> and <a href="#codeSourceUrlFor(int)"><code>codeSourceUrlFor(int)</code></a> build their URLs from the
+<p>None of that is load bearing. <code>urlFor</code> and <code>codeSourceUrlFor</code> build their URLs from the
 encoders' output with an explicit handler instance, so the URLs the class loader returns work whether or
 not the property took effect. The property only matters for a URL that is re-parsed from its string form
 by somebody else. The forked <code>HandlerInteroperability</code> test proves that string-parse path in a
@@ -151,7 +149,10 @@ skipping the URI, because every spec is a valid URI by construction: after <code
 emit only unreserved ASCII, <code>'/'</code>, <code>':'</code> (in the archive path only) and a <code>%XX</code> escape
 per UTF-8 byte of anything else, and the jar and entry parts are joined by <a href="#SEPARATOR">"!/"</a>.
 <code>HandlerTest</code> checks that guarantee once, together with the fields of every URL shape against its
-re-parsed string form, instead of every call paying for it.</p></div>
+re-parsed string form, instead of every call paying for it.</p>
+
+<p>The class is public because <code>io.micronaut.runner.protocol.jar</code> and the benchmarks call it; it is
+not API for applications.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -203,56 +204,44 @@ re-parsed string form, instead of every call paying for it.</p></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">The registered archive.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#codeSourceUrlFor(int)" class="member-name-link">codeSourceUrlFor</a><wbr>(int&nbsp;jarId)</code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#decode(java.lang.String)" class="member-name-link">decode</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">The URL that identifies a whole jar of the registered archive: the <code>CodeSource</code> location of
-every class defined from it, and the seal base of every package it seals.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#decode(java.lang.String)" class="member-name-link">decode</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Percent-decodes a URL component, one UTF-8 byte per escape.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="Index.html" title="class in io.micronaut.runner">Index</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#index()" class="member-name-link">index</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="Index.html" title="class in io.micronaut.runner">Index</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#index()" class="member-name-link">index</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">The index of the registered archive.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#jarFileUrlFor(int)" class="member-name-link">jarFileUrlFor</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#jarFileUrlFor(int)" class="member-name-link">jarFileUrlFor</a><wbr>(int&nbsp;jarId)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">The URL of the jar itself, as <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/JarURLConnection.html#getJarFileURL()" title="class or interface in java.net" class="external-link"><code>JarURLConnection.getJarFileURL()</code></a> reports it: the file
 URL of the outer archive for the application layer, and the <code>jar:</code> URL of the nested jar
 otherwise.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#jarIdForName(java.lang.String)" class="member-name-link">jarIdForName</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static int</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#jarIdForName(java.lang.String)" class="member-name-link">jarIdForName</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">The jar of the registered archive whose name is <code>name</code>, for example
 <code>MICRONAUT-INF/lib/dep.jar</code>.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#nestedJarFile(int)" class="member-name-link">nestedJarFile</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">The shared <a href="NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a> view of one nested jar.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLConnection.html" title="class or interface in java.net" class="external-link">URLConnection</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#openDelegate(java.net.URL)" class="member-name-link">openDelegate</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a>&nbsp;url)</code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link">JarFile</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#nestedJarFile(int)" class="member-name-link">nestedJarFile</a><wbr>(int&nbsp;jarId)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="block">The shared view of one nested jar, a package-private <code>NestedJarFile</code> served from the index.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLConnection.html" title="class or interface in java.net" class="external-link">URLConnection</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#openDelegate(java.net.URL)" class="member-name-link">openDelegate</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a>&nbsp;url)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Opens a <code>jar:</code> URL that is not ours with the JDK's own handler.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link">JarFile</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#outerJarFile()" class="member-name-link">outerJarFile</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link">JarFile</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#outerJarFile()" class="member-name-link">outerJarFile</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">The outer archive as an ordinary <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link"><code>JarFile</code></a>, for the entries that are not in the index: the
 launcher's own classes, the manifest, the index itself and the nested jars as stored bytes.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#outerUrlFor(java.lang.String)" class="member-name-link">outerUrlFor</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;outerEntryName)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">A URL for an entry of the outer archive itself, addressed by its real name rather than through a
-jar of the index.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static boolean</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#owns(java.lang.String)" class="member-name-link">owns</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;jarFileSpec)</code></div>
@@ -282,12 +271,6 @@ to serve it.</div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#unregister()" class="member-name-link">unregister</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Forgets the registered archive and closes the jar files opened for it.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#urlFor(int,java.lang.String)" class="member-name-link">urlFor</a><wbr>(int&nbsp;jarId,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;logicalName)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">A URL for one logical entry of one jar of the registered archive.</div>
 </div>
 </div>
 </div>
@@ -397,91 +380,13 @@ identity.</p></div>
 </section>
 </li>
 <li>
-<section class="detail" id="urlFor(int,java.lang.String)">
-<h3>urlFor</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></span>&nbsp;<span class="element-name">urlFor</span><wbr><span class="parameters">(int&nbsp;jarId,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;logicalName)</span></div>
-<div class="block">A URL for one logical entry of one jar of the registered archive.
-
-<p>The URL carries the handler instance, so it opens even when the handler could not be installed
-process-wide. The name is percent-encoded per UTF-8 byte.</p>
-
-<p>One family of jar <code>0</code> names is not under <a href="IndexFormat.html#CLASSES_PREFIX">"MICRONAUT-INF/classes/"</a>: the merged
-Micronaut service directory. The packager writes those entries at the <em>root</em> of the outer
-archive and records them as jar <code>0</code> records whose logical name is that literal root name, so
-their URL has to name the root too. That is not cosmetic. Whoever receives the URL is entitled to
-treat the part after <a href="#SEPARATOR">"!/"</a> as a name the archive really carries - by asking this
-connection for <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/JarURLConnection.html#getEntryName()" title="class or interface in java.net" class="external-link"><code>JarURLConnection.getEntryName()</code></a>, by looking it up in a
-<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link"><code>JarFile</code></a>, or by resolving it as a path inside a zip file system, which is what
-micronaut-core does when it cannot list the outer archive directly - and
-<a href="IndexFormat.html#CLASSES_PREFIX">"MICRONAUT-INF/classes/"</a> + the name is not in the outer central directory.</p></div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar, <code>0</code> being the application layer</dd>
-<dd><code>logicalName</code> - the entry name relative to that jar</dd>
-<dt>Returns:</dt>
-<dd>the URL, or <code>null</code> if no archive is registered, the jar does not exist, or the name
-        cannot be expressed as a URL</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="outerUrlFor(java.lang.String)">
-<h3>outerUrlFor</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></span>&nbsp;<span class="element-name">outerUrlFor</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;outerEntryName)</span></div>
-<div class="block">A URL for an entry of the outer archive itself, addressed by its real name rather than through a
-jar of the index.
-
-<p>This is the shape the merged <code>META-INF/micronaut/</code> service directory needs, because those
-entries live at the root of the outer archive rather than under the application layer's prefix, and
-it is also how a caller reaches the launcher's own classes, the manifest or a nested jar as stored
-bytes.</p></div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>outerEntryName</code> - the entry name as the outer archive stores it</dd>
-<dt>Returns:</dt>
-<dd><code>jar:file:/abs/app.jar!/&lt;name&gt;</code>, or <code>null</code> when no archive is registered or the
-        name cannot be expressed as a URL</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="codeSourceUrlFor(int)">
-<h3>codeSourceUrlFor</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></span>&nbsp;<span class="element-name">codeSourceUrlFor</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The URL that identifies a whole jar of the registered archive: the <code>CodeSource</code> location of
-every class defined from it, and the seal base of every package it seals.
-
-<p>It ends with a slash, the way <code>URLClassLoader</code> writes a directory code source, so that a
-sealed package's base URL is a prefix of every entry URL of that jar.</p>
-
-<p>Each returned URL carries its own <a href="protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar"><code>Handler</code></a>, built by <a href="protocol/jar/Handler.html#withCachedForm(java.lang.String)"><code>Handler.withCachedForm(String)</code></a>,
-which computes the URL's string form once: the JDK calls <code>toString()</code> on the code-source location
-in every <code>defineClass</code>. The URL is parsed with the same single parse as every other URL here.</p></div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar, <code>0</code> being the application layer</dd>
-<dt>Returns:</dt>
-<dd><code>jar:file:/abs/app.jar!/MICRONAUT-INF/classes/</code> for jar <code>0</code>,
-        <code>jar:file:/abs/app.jar!/MICRONAUT-INF/lib/&lt;dep&gt;.jar!/</code> for a nested jar, or
-        <code>null</code> when no archive is registered or the jar does not exist</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="jarFileUrlFor(int)">
 <h3>jarFileUrlFor</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URL.html" title="class or interface in java.net" class="external-link">URL</a></span>&nbsp;<span class="element-name">jarFileUrlFor</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
 <div class="block">The URL of the jar itself, as <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/JarURLConnection.html#getJarFileURL()" title="class or interface in java.net" class="external-link"><code>JarURLConnection.getJarFileURL()</code></a> reports it: the file
 URL of the outer archive for the application layer, and the <code>jar:</code> URL of the nested jar
-otherwise. Unlike <a href="#codeSourceUrlFor(int)"><code>codeSourceUrlFor(int)</code></a> it does not end with a separator, because it names a jar
+otherwise. Unlike <code>codeSourceUrlFor</code> it does not end with a separator, because it names a jar
 rather than the root inside it.</div>
 <dl class="notes">
 <dt>Parameters:</dt>
@@ -587,14 +492,14 @@ as a file, first by absolute and then by canonical path. Nothing here resolves a
 <section class="detail" id="nestedJarFile(int)">
 <h3>nestedJarFile</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="NestedJarFile.html" title="class in io.micronaut.runner">NestedJarFile</a></span>&nbsp;<span class="element-name">nestedJarFile</span><wbr><span class="parameters">(int&nbsp;jarId)</span>
-                                   throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">The shared <a href="NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a> view of one nested jar. Views are created once and cached, because
-they are immutable, because each one holds a handle on the outer file, and because a library that
-scans the classpath asks for the same jar over and over.
+<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/jar/JarFile.html" title="class or interface in java.util.jar" class="external-link">JarFile</a></span>&nbsp;<span class="element-name">nestedJarFile</span><wbr><span class="parameters">(int&nbsp;jarId)</span>
+                             throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
+<div class="block">The shared view of one nested jar, a package-private <code>NestedJarFile</code> served from the index. Views
+are created once and cached, because they are immutable, because each one holds a handle on the outer
+file, and because a library that scans the classpath asks for the same jar over and over.
 
 <p>The cache is allocated on first use rather than at registration, so that a normal start does not
-load <a href="NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a> before <code>main</code>. Registration is checked under <code>LOCK</code>, so a
+load <code>NestedJarFile</code> before <code>main</code>. Registration is checked under the class lock, so a
 concurrent <a href="#unregister()"><code>unregister()</code></a> yields the <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link"><code>IOException</code></a> rather than a
 <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/NullPointerException.html" title="class or interface in java.lang" class="external-link"><code>NullPointerException</code></a>.</p></div>
 <dl class="notes">
@@ -620,8 +525,9 @@ launcher's own classes, the manifest, the index itself and the nested jars as st
 
 <p>This is the one process-lifetime handle on the outer archive, opened on demand because a normal
 application start never needs it, and returned to every caller whatever its cache setting. Its
-<code>close()</code> is a no-op, like <a href="NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a>'s, so a caller that closes the jar a connection
-handed it cannot break another connection; only <a href="#unregister()"><code>unregister()</code></a> really closes it.</p></div>
+<code>close()</code> is a no-op, like that of a <a href="#nestedJarFile(int)"><code>nestedJarFile(int)</code></a> view, so a caller that closes the
+jar a connection handed it cannot break another connection; only <a href="#unregister()"><code>unregister()</code></a> really closes
+it.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the shared jar file</dd>

@@ -91,7 +91,8 @@ loadScripts(document, 'script');</script>
 <section class="class-description" id="class-description">
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">Handler</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public final class </span><span class="element-name type-name-label">Handler</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/URLStreamHandler.html" title="class or interface in java.net" class="external-link">URLStreamHandler</a></span></div>
 <div class="block">The <code>jar:</code> protocol handler of a runner application.
 
@@ -115,10 +116,12 @@ the class loading path.</p>
 
 <h2 id="what-it-opens-heading">What it opens</h2>
 <p>Installing a handler for <code>jar:</code> is process wide, so this class sees every jar URL in the JVM,
-including the ones the JDK itself opens. A URL whose jar part is the registered archive is served by
-<a href="RunnerJarURLConnection.html" title="class in io.micronaut.runner.protocol.jar"><code>RunnerJarURLConnection</code></a>; everything else, <code>jar:file:</code> of another file and <code>jar:http:</code>
-alike, is handed back to the JDK's own handler through <a href="../../Handlers.html#openDelegate(java.net.URL)"><code>Handlers.openDelegate(URL)</code></a> and behaves
-exactly as it did before the launcher started.</p></div>
+including the ones the JDK itself opens. A URL whose jar part is the registered archive is served by a
+<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/JarURLConnection.html" title="class or interface in java.net" class="external-link"><code>JarURLConnection</code></a> of this package; everything else, <code>jar:file:</code> of another file and
+<code>jar:http:</code> alike, is handed back to the JDK's own handler through <a href="../../Handlers.html#openDelegate(java.net.URL)"><code>Handlers.openDelegate(URL)</code></a>
+and behaves exactly as it did before the launcher started.</p>
+
+<p>The class is public only because the JDK instantiates it by name; it is not API for applications.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -296,8 +299,8 @@ sees <code>null</code>, which computes the same string.</p></div>
 <dt>Parameters:</dt>
 <dd><code>url</code> - the URL to open</dd>
 <dt>Returns:</dt>
-<dd>a <a href="RunnerJarURLConnection.html" title="class in io.micronaut.runner.protocol.jar"><code>RunnerJarURLConnection</code></a> when the jar part names the registered runner archive, and
-        the connection the JDK's own handler would have returned otherwise</dd>
+<dd>this package's <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/JarURLConnection.html" title="class or interface in java.net" class="external-link"><code>JarURLConnection</code></a> when the jar part names the registered runner
+        archive, and the connection the JDK's own handler would have returned otherwise</dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the URL is malformed or the JDK's handler cannot open it</dd>
 </dl>

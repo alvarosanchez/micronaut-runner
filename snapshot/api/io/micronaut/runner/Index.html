@@ -62,92 +62,45 @@ loadScripts(document, 'script');</script>
 <li><a href="#method-summary" tabindex="0">Method Summary</a></li>
 <li><a href="#field-detail" tabindex="0">Field Details</a>
 <ol class="toc-list">
-<li><a href="#REBUILD_MESSAGE" tabindex="0">REBUILD_MESSAGE</a></li>
 <li><a href="#BASE_VERSION" tabindex="0">BASE_VERSION</a></li>
 </ol>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
 <li><a href="#open(io.micronaut.runner.ArchiveSource)" tabindex="0">open(ArchiveSource)</a></li>
-<li><a href="#open(io.micronaut.runner.ArchiveSource,long,long)" tabindex="0">open(ArchiveSource, long, long)</a></li>
 <li><a href="#effectiveMultiReleaseVersion()" tabindex="0">effectiveMultiReleaseVersion()</a></li>
-<li><a href="#source()" tabindex="0">source()</a></li>
-<li><a href="#flags()" tabindex="0">flags()</a></li>
-<li><a href="#nestedStored()" tabindex="0">nestedStored()</a></li>
 <li><a href="#applicationMultiRelease()" tabindex="0">applicationMultiRelease()</a></li>
 <li><a href="#positionalReads()" tabindex="0">positionalReads()</a></li>
-<li><a href="#largestStoredClass()" tabindex="0">largestStoredClass()</a></li>
 <li><a href="#jarCount()" tabindex="0">jarCount()</a></li>
 <li><a href="#entryCount()" tabindex="0">entryCount()</a></li>
-<li><a href="#packageCount()" tabindex="0">packageCount()</a></li>
-<li><a href="#hashSlots()" tabindex="0">hashSlots()</a></li>
-<li><a href="#maxProbe()" tabindex="0">maxProbe()</a></li>
-<li><a href="#outerFileLength()" tabindex="0">outerFileLength()</a></li>
 <li><a href="#startClass()" tabindex="0">startClass()</a></li>
 <li><a href="#entryStubClass()" tabindex="0">entryStubClass()</a></li>
-<li><a href="#launcherVersion()" tabindex="0">launcherVersion()</a></li>
 <li><a href="#preloadCount()" tabindex="0">preloadCount()</a></li>
 <li><a href="#preloadRecord(int)" tabindex="0">preloadRecord(int)</a></li>
 <li><a href="#jdkPreloadCount()" tabindex="0">jdkPreloadCount()</a></li>
-<li><a href="#jdkPreloadName(int)" tabindex="0">jdkPreloadName(int)</a></li>
 <li><a href="#jarName(int)" tabindex="0">jarName(int)</a></li>
-<li><a href="#jarCoordinates(int)" tabindex="0">jarCoordinates(int)</a></li>
 <li><a href="#jarDataOffset(int)" tabindex="0">jarDataOffset(int)</a></li>
 <li><a href="#jarDataLength(int)" tabindex="0">jarDataLength(int)</a></li>
-<li><a href="#jarLocalHeaderOffset(int)" tabindex="0">jarLocalHeaderOffset(int)</a></li>
-<li><a href="#jarFlags(int)" tabindex="0">jarFlags(int)</a></li>
 <li><a href="#jarMultiRelease(int)" tabindex="0">jarMultiRelease(int)</a></li>
-<li><a href="#jarSealedByDefault(int)" tabindex="0">jarSealedByDefault(int)</a></li>
-<li><a href="#jarFirstEntry(int)" tabindex="0">jarFirstEntry(int)</a></li>
-<li><a href="#jarEntryCount(int)" tabindex="0">jarEntryCount(int)</a></li>
 <li><a href="#jarFirstPackage(int)" tabindex="0">jarFirstPackage(int)</a></li>
 <li><a href="#jarPackageCount(int)" tabindex="0">jarPackageCount(int)</a></li>
-<li><a href="#jarSpecTitle(int)" tabindex="0">jarSpecTitle(int)</a></li>
-<li><a href="#jarSpecVersion(int)" tabindex="0">jarSpecVersion(int)</a></li>
-<li><a href="#jarSpecVendor(int)" tabindex="0">jarSpecVendor(int)</a></li>
-<li><a href="#jarImplTitle(int)" tabindex="0">jarImplTitle(int)</a></li>
-<li><a href="#jarImplVersion(int)" tabindex="0">jarImplVersion(int)</a></li>
-<li><a href="#jarImplVendor(int)" tabindex="0">jarImplVendor(int)</a></li>
 <li><a href="#validateJar(int)" tabindex="0">validateJar(int)</a></li>
 <li><a href="#openEntryStream(int)" tabindex="0">openEntryStream(int)</a></li>
 <li><a href="#packageName(int)" tabindex="0">packageName(int)</a></li>
-<li><a href="#packageSpecTitle(int)" tabindex="0">packageSpecTitle(int)</a></li>
-<li><a href="#packageSpecVersion(int)" tabindex="0">packageSpecVersion(int)</a></li>
-<li><a href="#packageSpecVendor(int)" tabindex="0">packageSpecVendor(int)</a></li>
-<li><a href="#packageImplTitle(int)" tabindex="0">packageImplTitle(int)</a></li>
-<li><a href="#packageImplVersion(int)" tabindex="0">packageImplVersion(int)</a></li>
-<li><a href="#packageImplVendor(int)" tabindex="0">packageImplVendor(int)</a></li>
-<li><a href="#packageFlags(int)" tabindex="0">packageFlags(int)</a></li>
-<li><a href="#packageSealedSpecified(int)" tabindex="0">packageSealedSpecified(int)</a></li>
-<li><a href="#packageSealedValue(int)" tabindex="0">packageSealedValue(int)</a></li>
 <li><a href="#findPackage(int,java.lang.String)" tabindex="0">findPackage(int, String)</a></li>
 <li><a href="#entryName(int)" tabindex="0">entryName(int)</a></li>
-<li><a href="#entryNameHash(int)" tabindex="0">entryNameHash(int)</a></li>
-<li><a href="#entryNameLength(int)" tabindex="0">entryNameLength(int)</a></li>
-<li><a href="#entryJarId(int)" tabindex="0">entryJarId(int)</a></li>
 <li><a href="#entryDataOffset(int)" tabindex="0">entryDataOffset(int)</a></li>
 <li><a href="#entryCompressedSize(int)" tabindex="0">entryCompressedSize(int)</a></li>
 <li><a href="#entryUncompressedSize(int)" tabindex="0">entryUncompressedSize(int)</a></li>
 <li><a href="#entryCrc32(int)" tabindex="0">entryCrc32(int)</a></li>
 <li><a href="#entryDosTime(int)" tabindex="0">entryDosTime(int)</a></li>
 <li><a href="#entryMethod(int)" tabindex="0">entryMethod(int)</a></li>
-<li><a href="#entryMrVersion(int)" tabindex="0">entryMrVersion(int)</a></li>
-<li><a href="#entryFlags(int)" tabindex="0">entryFlags(int)</a></li>
-<li><a href="#entryNextSameName(int)" tabindex="0">entryNextSameName(int)</a></li>
 <li><a href="#entryPhysicalIndex(int)" tabindex="0">entryPhysicalIndex(int)</a></li>
 <li><a href="#entryDirectory(int)" tabindex="0">entryDirectory(int)</a></li>
-<li><a href="#entrySyntheticDirectory(int)" tabindex="0">entrySyntheticDirectory(int)</a></li>
-<li><a href="#entryDirectoryTwin(int)" tabindex="0">entryDirectoryTwin(int)</a></li>
-<li><a href="#entryVersionedAlias(int)" tabindex="0">entryVersionedAlias(int)</a></li>
 <li><a href="#entryPhysical(int)" tabindex="0">entryPhysical(int)</a></li>
 <li><a href="#find(java.lang.String)" tabindex="0">find(String)</a></li>
-<li><a href="#findDirectory(java.lang.String)" tabindex="0">findDirectory(String)</a></li>
 <li><a href="#findClass(java.lang.String)" tabindex="0">findClass(String)</a></li>
-<li><a href="#next(int)" tabindex="0">next(int)</a></li>
-<li><a href="#nextJar(int)" tabindex="0">nextJar(int)</a></li>
-<li><a href="#resolve(int,int)" tabindex="0">resolve(int, int)</a></li>
 <li><a href="#resolveInJar(int,int,int)" tabindex="0">resolveInJar(int, int, int)</a></li>
-<li><a href="#string(int)" tabindex="0">string(int)</a></li>
 <li><a href="#validateStringReferences()" tabindex="0">validateStringReferences()</a></li>
 </ol>
 </li>
@@ -164,7 +117,8 @@ loadScripts(document, 'script');</script>
 <section class="class-description" id="class-description">
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">Index</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public final class </span><span class="element-name type-name-label">Index</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
 <div class="block">The reader of <code>MICRONAUT-INF/index.bin</code>, the table of contents a runner jar carries so that the
 launcher never parses a nested archive at startup.
@@ -175,19 +129,22 @@ objects, because materialising one object per entry would cost more than everyth
 does; a Micronaut application indexes on the order of fifteen thousand entries.</p>
 
 <h2 id="validation-heading">Validation</h2>
-<p><a href="#open(io.micronaut.runner.ArchiveSource,long,long)"><code>open(ArchiveSource, long, long)</code></a> checks everything that can be checked in constant time or in
+<p>Opening the index checks everything that can be checked in constant time or in
 time proportional to the (small) jar table: magic, format version, section bounds, a power of two hash
 table, a sane probe limit, and that the recorded outer file length still matches the file. Anything that
 would cost time proportional to the entry table, such as verifying every string reference, is checked
 when the record is touched instead, so that opening the index faults in only the pages it needs.
-Failures throw <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalStateException.html" title="class or interface in java.lang" class="external-link"><code>IllegalStateException</code></a> carrying <a href="#REBUILD_MESSAGE"><code>REBUILD_MESSAGE</code></a>, because in practice they
-all mean the same thing: the jar was edited, truncated or rebuilt after it was packaged.</p>
+Failures throw <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalStateException.html" title="class or interface in java.lang" class="external-link"><code>IllegalStateException</code></a> with a message that asks for the jar to be rebuilt, because
+in practice they all mean the same thing: the jar was edited, truncated or rebuilt after it was packaged.</p>
 
 <h2 id="thread-safety-heading">Thread safety</h2>
 <p>Accessors use absolute <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html" title="class or interface in java.nio" class="external-link"><code>ByteBuffer</code></a> reads, which do not touch the buffer position, so an instance
 is safe for concurrent use by any number of class-loading threads. Package-name lookups lazily publish
 immutable, bounded per-jar hash tables through atomic references. <a href="#validateJar(int)"><code>validateJar(int)</code></a> writes a
-<code>boolean</code> into an array; the write is idempotent, so a race only means the check runs twice.</p></div>
+<code>boolean</code> into an array; the write is idempotent, so a race only means the check runs twice.</p>
+
+<p>The class is public because runner-build writes and checks archives with it, and
+<code>io.micronaut.runner.protocol.jar</code> and the benchmarks read them; it is not API for applications.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -209,11 +166,6 @@ immutable, bounded per-jar hash tables through atomic references. <a href="#vali
 <div class="col-second even-row-color"><code><a href="#BASE_VERSION" class="member-name-link">BASE_VERSION</a></code></div>
 <div class="col-last even-row-color">
 <div class="block">The multi-release feature version that means "base entries only".</div>
-</div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#REBUILD_MESSAGE" class="member-name-link">REBUILD_MESSAGE</a></code></div>
-<div class="col-last odd-row-color">
-<div class="block">The message every validation failure carries.</div>
 </div>
 </div>
 </section>
@@ -268,103 +220,51 @@ clamped to it, and anything below 9 means base entries only.</div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Whether an entry is a directory, that is, its logical name ends with a slash.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryDirectoryTwin(int)" class="member-name-link">entryDirectoryTwin</a><wbr>(int&nbsp;record)</code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryDosTime(int)" class="member-name-link">entryDosTime</a><wbr>(int&nbsp;record)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether the index also holds this record's logical name followed by a slash, in any jar.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryDosTime(int)" class="member-name-link">entryDosTime</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The MS-DOS date and time word of an entry, exactly as the ZIP header stores it.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryFlags(int)" class="member-name-link">entryFlags</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The flags of an entry.</div>
-</div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryJarId(int)" class="member-name-link">entryJarId</a><wbr>(int&nbsp;record)</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryMethod(int)" class="member-name-link">entryMethod</a><wbr>(int&nbsp;record)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The jar an entry belongs to.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryMethod(int)" class="member-name-link">entryMethod</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The compression method of an entry.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryMrVersion(int)" class="member-name-link">entryMrVersion</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The multi-release version of an entry.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryName(int)" class="member-name-link">entryName</a><wbr>(int&nbsp;record)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The logical name of an entry, decoded from the string table.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryNameHash(int)" class="member-name-link">entryNameHash</a><wbr>(int&nbsp;record)</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryPhysical(int)" class="member-name-link">entryPhysical</a><wbr>(int&nbsp;record)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The stored hash of an entry's logical name, as <a href="IndexFormat.html#hash(java.lang.String)"><code>IndexFormat.hash(String)</code></a> computes it.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryNameLength(int)" class="member-name-link">entryNameLength</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The length in UTF-8 bytes of an entry's logical name.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryNextSameName(int)" class="member-name-link">entryNextSameName</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The next record with the same logical name, in classpath order.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryPhysical(int)" class="member-name-link">entryPhysical</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Whether a record corresponds to an entry that physically exists in the source archive.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryPhysicalIndex(int)" class="member-name-link">entryPhysicalIndex</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryPhysicalIndex(int)" class="member-name-link">entryPhysicalIndex</a><wbr>(int&nbsp;record)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The physical record behind an entry: itself for a real entry, the versioned entry it aliases for an
 alias, and <a href="IndexFormat.html#NO_INDEX"><code>IndexFormat.NO_INDEX</code></a> for a synthetic directory.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryStubClass()" class="member-name-link">entryStubClass</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The generated <a href="Entry.html" title="interface in io.micronaut.runner"><code>Entry</code></a> implementation that starts the application without reflection.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entrySyntheticDirectory(int)" class="member-name-link">entrySyntheticDirectory</a><wbr>(int&nbsp;record)</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryStubClass()" class="member-name-link">entryStubClass</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether a directory entry was synthesised by the packager because the source archive had no entry
-for it.</div>
+<div class="block">The generated <a href="Entry.html" title="interface in io.micronaut.runner"><code>Entry</code></a> implementation that starts the application without reflection.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryUncompressedSize(int)" class="member-name-link">entryUncompressedSize</a><wbr>(int&nbsp;record)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The number of bytes an entry expands to.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryVersionedAlias(int)" class="member-name-link">entryVersionedAlias</a><wbr>(int&nbsp;record)</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#find(java.lang.String)" class="member-name-link">find</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;logicalName)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether a record is a multi-release alias of another record in the same jar.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#find(java.lang.String)" class="member-name-link">find</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;logicalName)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Looks up a logical name and returns the head of its chain.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#findClass(java.lang.String)" class="member-name-link">findClass</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;binaryName)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Looks up the resource that holds a class and returns the head of its chain.</div>
-</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#findDirectory(java.lang.String)" class="member-name-link">findDirectory</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name)</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#findClass(java.lang.String)" class="member-name-link">findClass</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;binaryName)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Looks up the directory spelling of a name, that is <code>name + "/"</code>, and returns the head of its
-chain, without building that name.</div>
+<div class="block">Looks up the resource that holds a class and returns the head of its chain.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#findPackage(int,java.lang.String)" class="member-name-link">findPackage</a><wbr>(int&nbsp;jarId,
@@ -373,75 +273,25 @@ chain, without building that name.</div>
 <div class="block">Finds the package override record of a package within one jar.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#flags()" class="member-name-link">flags</a>()</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarCount()" class="member-name-link">jarCount</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The header flags.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#hashSlots()" class="member-name-link">hashSlots</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The size of the hash table, always a power of two.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarCoordinates(int)" class="member-name-link">jarCoordinates</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The Maven coordinates of a jar, such as <code>io.netty:netty-common:4.2.1</code>.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarCount()" class="member-name-link">jarCount</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The number of jars, including the application layer at index <code>0</code>.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarDataLength(int)" class="member-name-link">jarDataLength</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarDataLength(int)" class="member-name-link">jarDataLength</a><wbr>(int&nbsp;jarId)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The length of a nested jar; the outer file length for the application layer.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarDataOffset(int)" class="member-name-link">jarDataOffset</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarDataOffset(int)" class="member-name-link">jarDataOffset</a><wbr>(int&nbsp;jarId)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The absolute offset of a nested jar's first byte in the outer archive; <code>0</code> for the application
 layer, which is not a nested jar.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarEntryCount(int)" class="member-name-link">jarEntryCount</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The number of entry records belonging to a jar.</div>
-</div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarFirstEntry(int)" class="member-name-link">jarFirstEntry</a><wbr>(int&nbsp;jarId)</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarFirstPackage(int)" class="member-name-link">jarFirstPackage</a><wbr>(int&nbsp;jarId)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The index of a jar's first entry record.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarFirstPackage(int)" class="member-name-link">jarFirstPackage</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The index of a jar's first package override record.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarFlags(int)" class="member-name-link">jarFlags</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The flags of a jar.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarImplTitle(int)" class="member-name-link">jarImplTitle</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Implementation-Title</code> main attribute of a jar's manifest.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarImplVendor(int)" class="member-name-link">jarImplVendor</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Implementation-Vendor</code> main attribute of a jar's manifest.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarImplVersion(int)" class="member-name-link">jarImplVersion</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Implementation-Version</code> main attribute of a jar's manifest.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarLocalHeaderOffset(int)" class="member-name-link">jarLocalHeaderOffset</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The offset of the outer local file header that introduces a nested jar.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarMultiRelease(int)" class="member-name-link">jarMultiRelease</a><wbr>(int&nbsp;jarId)</code></div>
@@ -459,116 +309,21 @@ application layer.</div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The number of package override records belonging to a jar.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarSealedByDefault(int)" class="member-name-link">jarSealedByDefault</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether a jar's manifest main attributes declare <code>Sealed: true</code>, which makes every package
-sealed unless a package section says otherwise.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarSpecTitle(int)" class="member-name-link">jarSpecTitle</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Specification-Title</code> main attribute of a jar's manifest.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarSpecVendor(int)" class="member-name-link">jarSpecVendor</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Specification-Vendor</code> main attribute of a jar's manifest.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarSpecVersion(int)" class="member-name-link">jarSpecVersion</a><wbr>(int&nbsp;jarId)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Specification-Version</code> main attribute of a jar's manifest.</div>
-</div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jdkPreloadCount()" class="member-name-link">jdkPreloadCount</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The number of JDK classes in the recorded startup class list, which the launcher preloads through the
 platform class loader after the archive's classes.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jdkPreloadName(int)" class="member-name-link">jdkPreloadName</a><wbr>(int&nbsp;position)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">One JDK class of the recorded startup class list.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#largestStoredClass()" class="member-name-link">largestStoredClass</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The largest uncompressed size of a STORED class the packager recorded, which sizes the pooled buffers
-of positional reads.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#launcherVersion()" class="member-name-link">launcherVersion</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The version of the packaging library that wrote this archive.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#maxProbe()" class="member-name-link">maxProbe</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The longest probe sequence the packager needed, which bounds every lookup.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#nestedStored()" class="member-name-link">nestedStored</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether the nested jars were re-packed with every entry STORED, which lets the class loader define
-classes straight from the mapping.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#next(int)" class="member-name-link">next</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Follows a chain of records with the same logical name.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#nextJar(int)" class="member-name-link">nextJar</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Advances a same-name chain from the current record to the first record in the next JAR.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="Index.html" title="class in io.micronaut.runner">Index</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#open(io.micronaut.runner.ArchiveSource)" class="member-name-link">open</a><wbr>(<a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a>&nbsp;source)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">Opens the index of an already open archive, locating it with <a href="ArchiveSource.html#openIndex()"><code>ArchiveSource.openIndex()</code></a>.</div>
-</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="Index.html" title="class in io.micronaut.runner">Index</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#open(io.micronaut.runner.ArchiveSource,long,long)" class="member-name-link">open</a><wbr>(<a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a>&nbsp;source,
- long&nbsp;indexOffset,
- long&nbsp;indexLength)</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#open(io.micronaut.runner.ArchiveSource)" class="member-name-link">open</a><wbr>(<a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a>&nbsp;source)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">Opens the index stored at a known location in an archive.</div>
+<div class="block">Opens the index of an already open archive, locating its entry in the archive first.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#openEntryStream(int)" class="member-name-link">openEntryStream</a><wbr>(int&nbsp;record)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Opens one indexed entry after performing its jar's lazy staleness check.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#outerFileLength()" class="member-name-link">outerFileLength</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The length the outer archive had when it was packaged.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageCount()" class="member-name-link">packageCount</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The number of package override records.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageFlags(int)" class="member-name-link">packageFlags</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The flags of a package override record.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageImplTitle(int)" class="member-name-link">packageImplTitle</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Implementation-Title</code> of a package section.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageImplVendor(int)" class="member-name-link">packageImplVendor</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Implementation-Vendor</code> of a package section.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageImplVersion(int)" class="member-name-link">packageImplVersion</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Implementation-Version</code> of a package section.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageName(int)" class="member-name-link">packageName</a><wbr>(int&nbsp;record)</code></div>
@@ -576,54 +331,21 @@ classes straight from the mapping.</div>
 <div class="block">The package name a package override record applies to, in dotted form.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageSealedSpecified(int)" class="member-name-link">packageSealedSpecified</a><wbr>(int&nbsp;record)</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#positionalReads()" class="member-name-link">positionalReads</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether a package section carries a <code>Sealed</code> attribute at all; without one the jar's default
-applies.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageSealedValue(int)" class="member-name-link">packageSealedValue</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The value of a package section's <code>Sealed</code> attribute, meaningful only together with
-<a href="#packageSealedSpecified(int)"><code>packageSealedSpecified(int)</code></a>.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageSpecTitle(int)" class="member-name-link">packageSpecTitle</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Specification-Title</code> of a package section.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageSpecVendor(int)" class="member-name-link">packageSpecVendor</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Specification-Vendor</code> of a package section.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#packageSpecVersion(int)" class="member-name-link">packageSpecVersion</a><wbr>(int&nbsp;record)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The <code>Specification-Version</code> of a package section.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#positionalReads()" class="member-name-link">positionalReads</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Whether the packager chose positional reads, which makes a launcher left to decide map only the index
 and read classes with positional reads into pooled buffers.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#preloadCount()" class="member-name-link">preloadCount</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#preloadCount()" class="member-name-link">preloadCount</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The number of classes in the recorded startup class list the launcher preloads.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#preloadRecord(int)" class="member-name-link">preloadRecord</a><wbr>(int&nbsp;position)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#preloadRecord(int)" class="member-name-link">preloadRecord</a><wbr>(int&nbsp;position)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">One element of the recorded startup class list: the entry record that heads the chain of the class's
 <code>.class</code> name, which is the record <a href="#findClass(java.lang.String)"><code>findClass(String)</code></a> returns for it.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#resolve(int,int)" class="member-name-link">resolve</a><wbr>(int&nbsp;chainHead,
- int&nbsp;effectiveVersion)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Picks the record a chain resolves to for a given runtime.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#resolveInJar(int,int,int)" class="member-name-link">resolveInJar</a><wbr>(int&nbsp;chainHead,
@@ -633,20 +355,10 @@ and read classes with positional reads into pooled buffers.</div>
 <div class="block">Picks the record a chain resolves to within one jar, for enumerating a resource per jar the way
 <code>ClassLoader.getResources</code> does.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#source()" class="member-name-link">source</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The archive the index describes.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#startClass()" class="member-name-link">startClass</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The application main class, in binary form.</div>
-</div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#string(int)" class="member-name-link">string</a><wbr>(int&nbsp;ref)</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#startClass()" class="member-name-link">startClass</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Decodes a string from the string table.</div>
+<div class="block">The application main class, in binary form.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>void</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#validateJar(int)" class="member-name-link">validateJar</a><wbr>(int&nbsp;jarId)</code></div>
@@ -675,25 +387,6 @@ and read classes with positional reads into pooled buffers.</div>
 <section class="field-details" id="field-detail">
 <h2>Field Details</h2>
 <ul class="member-list">
-<li>
-<section class="detail" id="REBUILD_MESSAGE">
-<h3>REBUILD_MESSAGE</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">REBUILD_MESSAGE</span></div>
-<div class="block">The message every validation failure carries. Every corruption the reader can detect has the same
-cause and the same fix, so the message says what to do rather than what byte was wrong; the detail
-follows in parentheses for bug reports.</div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../constant-values.html#io.micronaut.runner.Index.REBUILD_MESSAGE">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
 <li>
 <section class="detail" id="BASE_VERSION">
 <h3>BASE_VERSION</h3>
@@ -726,7 +419,7 @@ directories start at 9, so any value below 9 selects the base entry of every cha
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="Index.html" title="class in io.micronaut.runner">Index</a></span>&nbsp;<span class="element-name">open</span><wbr><span class="parameters">(<a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a>&nbsp;source)</span>
                   throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Opens the index of an already open archive, locating it with <a href="ArchiveSource.html#openIndex()"><code>ArchiveSource.openIndex()</code></a>.</div>
+<div class="block">Opens the index of an already open archive, locating its entry in the archive first.</div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>source</code> - the open archive</dd>
@@ -734,29 +427,6 @@ directories start at 9, so any value below 9 selects the base entry of every cha
 <dd>the index reader</dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the archive carries no readable index entry</dd>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalStateException.html" title="class or interface in java.lang" class="external-link">IllegalStateException</a></code> - if the index is not valid for this launcher</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="open(io.micronaut.runner.ArchiveSource,long,long)">
-<h3>open</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="Index.html" title="class in io.micronaut.runner">Index</a></span>&nbsp;<span class="element-name">open</span><wbr><span class="parameters">(<a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a>&nbsp;source,
- long&nbsp;indexOffset,
- long&nbsp;indexLength)</span>
-                  throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Opens the index stored at a known location in an archive.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>source</code> - the open archive</dd>
-<dd><code>indexOffset</code> - absolute offset of the index bytes in the archive</dd>
-<dd><code>indexLength</code> - length of the index in bytes</dd>
-<dt>Returns:</dt>
-<dd>the index reader</dd>
-<dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the index bytes cannot be read</dd>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalStateException.html" title="class or interface in java.lang" class="external-link">IllegalStateException</a></code> - if the index is not valid for this launcher</dd>
 </dl>
 </div>
@@ -775,46 +445,6 @@ clamped to it, and anything below 9 means base entries only.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>a feature version, at least <a href="#BASE_VERSION"><code>BASE_VERSION</code></a></dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="source()">
-<h3>source</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></span>&nbsp;<span class="element-name">source</span>()</div>
-<div class="block">The archive the index describes.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>the source passed to <a href="#open(io.micronaut.runner.ArchiveSource,long,long)"><code>open(ArchiveSource, long, long)</code></a></dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="flags()">
-<h3>flags</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">flags</span>()</div>
-<div class="block">The header flags.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>a mask of <code>IndexFormat.HEADER_FLAG_*</code></dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="nestedStored()">
-<h3>nestedStored</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">nestedStored</span>()</div>
-<div class="block">Whether the nested jars were re-packed with every entry STORED, which lets the class loader define
-classes straight from the mapping.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd><code>true</code> when <code>IndexFormat.HEADER_FLAG_NESTED_STORED</code> is set</dd>
 </dl>
 </div>
 </section>
@@ -847,21 +477,6 @@ and read classes with positional reads into pooled buffers.</div>
 </section>
 </li>
 <li>
-<section class="detail" id="largestStoredClass()">
-<h3>largestStoredClass</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long</span>&nbsp;<span class="element-name">largestStoredClass</span>()</div>
-<div class="block">The largest uncompressed size of a STORED class the packager recorded, which sizes the pooled buffers
-of positional reads.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>the size in bytes, or <code>0</code> when the archive recorded none, as every archive without
-        <code>IndexFormat.HEADER_FLAG_POSITIONAL_READS</code> does</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="jarCount()">
 <h3>jarCount</h3>
 <div class="horizontal-scroll">
@@ -883,58 +498,6 @@ of positional reads.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the entry record count</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="packageCount()">
-<h3>packageCount</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">packageCount</span>()</div>
-<div class="block">The number of package override records.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>the package record count</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="hashSlots()">
-<h3>hashSlots</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">hashSlots</span>()</div>
-<div class="block">The size of the hash table, always a power of two.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>the number of slots</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="maxProbe()">
-<h3>maxProbe</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">maxProbe</span>()</div>
-<div class="block">The longest probe sequence the packager needed, which bounds every lookup.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>the probe limit recorded in the header</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="outerFileLength()">
-<h3>outerFileLength</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long</span>&nbsp;<span class="element-name">outerFileLength</span>()</div>
-<div class="block">The length the outer archive had when it was packaged.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>the recorded file length, which equals the real one or the index would not have opened</dd>
 </dl>
 </div>
 </section>
@@ -962,19 +525,6 @@ of positional reads.</div>
 <dt>Returns:</dt>
 <dd>the class name, or <code>null</code> when no stub was generated and the launcher must fall back
         to reflection</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="launcherVersion()">
-<h3>launcherVersion</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">launcherVersion</span>()</div>
-<div class="block">The version of the packaging library that wrote this archive.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>the version string, or <code>null</code> when it was not recorded</dd>
 </dl>
 </div>
 </section>
@@ -1024,22 +574,6 @@ platform class loader after the archive's classes.</div>
 </section>
 </li>
 <li>
-<section class="detail" id="jdkPreloadName(int)">
-<h3>jdkPreloadName</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">jdkPreloadName</span><wbr><span class="parameters">(int&nbsp;position)</span></div>
-<div class="block">One JDK class of the recorded startup class list. The name is not checked against any JDK: a runtime
-that lacks the class simply does not preload it.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>position</code> - the position in the list, from <code>0</code> to <a href="#jdkPreloadCount()"><code>jdkPreloadCount()</code></a> exclusive</dd>
-<dt>Returns:</dt>
-<dd>the binary class name</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="jarName(int)">
 <h3>jarName</h3>
 <div class="horizontal-scroll">
@@ -1051,21 +585,6 @@ application layer.</div>
 <dd><code>jarId</code> - the jar index</dd>
 <dt>Returns:</dt>
 <dd>the name</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="jarCoordinates(int)">
-<h3>jarCoordinates</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">jarCoordinates</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The Maven coordinates of a jar, such as <code>io.netty:netty-common:4.2.1</code>.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>the coordinates, or <code>null</code> when the build did not know them</dd>
 </dl>
 </div>
 </section>
@@ -1102,37 +621,6 @@ layer, which is not a nested jar.</div>
 </section>
 </li>
 <li>
-<section class="detail" id="jarLocalHeaderOffset(int)">
-<h3>jarLocalHeaderOffset</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long</span>&nbsp;<span class="element-name">jarLocalHeaderOffset</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The offset of the outer local file header that introduces a nested jar. <a href="#validateJar(int)"><code>validateJar(int)</code></a>
-reads its signature as a staleness check.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>the offset, or <code>0</code> for the application layer</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="jarFlags(int)">
-<h3>jarFlags</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">jarFlags</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The flags of a jar.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>a mask of <code>IndexFormat.JAR_FLAG_*</code></dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="jarMultiRelease(int)">
 <h3>jarMultiRelease</h3>
 <div class="horizontal-scroll">
@@ -1143,53 +631,6 @@ reads its signature as a staleness check.</div>
 <dd><code>jarId</code> - the jar index</dd>
 <dt>Returns:</dt>
 <dd><code>true</code> when the jar is multi-release</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="jarSealedByDefault(int)">
-<h3>jarSealedByDefault</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">jarSealedByDefault</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">Whether a jar's manifest main attributes declare <code>Sealed: true</code>, which makes every package
-sealed unless a package section says otherwise.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd><code>true</code> when the jar is sealed by default</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="jarFirstEntry(int)">
-<h3>jarFirstEntry</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">jarFirstEntry</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The index of a jar's first entry record. A jar's records are contiguous: physical entries in the
-original central directory order, then versioned aliases, then synthetic directories.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>the first record index</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="jarEntryCount(int)">
-<h3>jarEntryCount</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">jarEntryCount</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The number of entry records belonging to a jar.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>the record count</dd>
 </dl>
 </div>
 </section>
@@ -1226,96 +667,6 @@ original central directory order, then versioned aliases, then synthetic directo
 </section>
 </li>
 <li>
-<section class="detail" id="jarSpecTitle(int)">
-<h3>jarSpecTitle</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">jarSpecTitle</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The <code>Specification-Title</code> main attribute of a jar's manifest.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> when the manifest does not declare it</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="jarSpecVersion(int)">
-<h3>jarSpecVersion</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">jarSpecVersion</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The <code>Specification-Version</code> main attribute of a jar's manifest.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> when the manifest does not declare it</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="jarSpecVendor(int)">
-<h3>jarSpecVendor</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">jarSpecVendor</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The <code>Specification-Vendor</code> main attribute of a jar's manifest.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> when the manifest does not declare it</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="jarImplTitle(int)">
-<h3>jarImplTitle</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">jarImplTitle</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The <code>Implementation-Title</code> main attribute of a jar's manifest.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> when the manifest does not declare it</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="jarImplVersion(int)">
-<h3>jarImplVersion</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">jarImplVersion</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The <code>Implementation-Version</code> main attribute of a jar's manifest.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> when the manifest does not declare it</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="jarImplVendor(int)">
-<h3>jarImplVendor</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">jarImplVendor</span><wbr><span class="parameters">(int&nbsp;jarId)</span></div>
-<div class="block">The <code>Implementation-Vendor</code> main attribute of a jar's manifest.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>jarId</code> - the jar index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> when the manifest does not declare it</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="validateJar(int)">
 <h3>validateJar</h3>
 <div class="horizontal-scroll">
@@ -1347,9 +698,9 @@ nothing about the jar and is reported as the I/O failure it is.</p></div>
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></span>&nbsp;<span class="element-name">openEntryStream</span><wbr><span class="parameters">(int&nbsp;record)</span>
                             throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
 <div class="block">Opens one indexed entry after performing its jar's lazy staleness check. Every stream of an entry,
-whether for the class loader, a <a href="NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a> or a <code>jar:</code> URL, is opened here.
+whether for the class loader, a <code>NestedJarFile</code> view or a <code>jar:</code> URL, is opened here.
 
-<p>When <a href="RunnerClassLoader.html#VERIFY_PROPERTY">"micronaut.runner.verify"</a> was <code>"true"</code> as this index was opened, every
+<p>When <code>micronaut.runner.verify</code> was <code>"true"</code> as this index was opened, every
 byte returned or skipped contributes to the CRC-32, and the checksum is compared as soon as the
 recorded end of the entry is reached. Closing a partially read stream does not drain or verify it.</p></div>
 <dl class="notes">
@@ -1374,143 +725,6 @@ recorded end of the entry is reached. Closing a partially read stream does not d
 <dd><code>record</code> - the package record index</dd>
 <dt>Returns:</dt>
 <dd>the package name</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="packageSpecTitle(int)">
-<h3>packageSpecTitle</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">packageSpecTitle</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The <code>Specification-Title</code> of a package section.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the package record index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> to inherit the jar's main attribute</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="packageSpecVersion(int)">
-<h3>packageSpecVersion</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">packageSpecVersion</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The <code>Specification-Version</code> of a package section.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the package record index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> to inherit the jar's main attribute</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="packageSpecVendor(int)">
-<h3>packageSpecVendor</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">packageSpecVendor</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The <code>Specification-Vendor</code> of a package section.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the package record index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> to inherit the jar's main attribute</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="packageImplTitle(int)">
-<h3>packageImplTitle</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">packageImplTitle</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The <code>Implementation-Title</code> of a package section.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the package record index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> to inherit the jar's main attribute</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="packageImplVersion(int)">
-<h3>packageImplVersion</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">packageImplVersion</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The <code>Implementation-Version</code> of a package section.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the package record index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> to inherit the jar's main attribute</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="packageImplVendor(int)">
-<h3>packageImplVendor</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">packageImplVendor</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The <code>Implementation-Vendor</code> of a package section.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the package record index</dd>
-<dt>Returns:</dt>
-<dd>the attribute, or <code>null</code> to inherit the jar's main attribute</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="packageFlags(int)">
-<h3>packageFlags</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">packageFlags</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The flags of a package override record.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the package record index</dd>
-<dt>Returns:</dt>
-<dd>a mask of <code>IndexFormat.PACKAGE_FLAG_*</code></dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="packageSealedSpecified(int)">
-<h3>packageSealedSpecified</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">packageSealedSpecified</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">Whether a package section carries a <code>Sealed</code> attribute at all; without one the jar's default
-applies.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the package record index</dd>
-<dt>Returns:</dt>
-<dd><code>true</code> when the section specifies sealing</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="packageSealedValue(int)">
-<h3>packageSealedValue</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">packageSealedValue</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The value of a package section's <code>Sealed</code> attribute, meaningful only together with
-<a href="#packageSealedSpecified(int)"><code>packageSealedSpecified(int)</code></a>.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the package record index</dd>
-<dt>Returns:</dt>
-<dd><code>true</code> when the section declares <code>Sealed: true</code></dd>
 </dl>
 </div>
 </section>
@@ -1544,51 +758,6 @@ applies.</div>
 <dd><code>record</code> - the entry record index</dd>
 <dt>Returns:</dt>
 <dd>the name, never <code>null</code> for a well formed index</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="entryNameHash(int)">
-<h3>entryNameHash</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">entryNameHash</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The stored hash of an entry's logical name, as <a href="IndexFormat.html#hash(java.lang.String)"><code>IndexFormat.hash(String)</code></a> computes it.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the entry record index</dd>
-<dt>Returns:</dt>
-<dd>the hash</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="entryNameLength(int)">
-<h3>entryNameLength</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">entryNameLength</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The length in UTF-8 bytes of an entry's logical name.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the entry record index</dd>
-<dt>Returns:</dt>
-<dd>the length</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="entryJarId(int)">
-<h3>entryJarId</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">entryJarId</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The jar an entry belongs to.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the entry record index</dd>
-<dt>Returns:</dt>
-<dd>the jar index</dd>
 </dl>
 </div>
 </section>
@@ -1684,52 +853,6 @@ applies.</div>
 </section>
 </li>
 <li>
-<section class="detail" id="entryMrVersion(int)">
-<h3>entryMrVersion</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">entryMrVersion</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The multi-release version of an entry.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the entry record index</dd>
-<dt>Returns:</dt>
-<dd><code>0</code> for a base entry, otherwise the <code>META-INF/versions/N</code> feature version this
-        record is an alias for</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="entryFlags(int)">
-<h3>entryFlags</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">entryFlags</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The flags of an entry.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the entry record index</dd>
-<dt>Returns:</dt>
-<dd>a mask of <code>IndexFormat.ENTRY_FLAG_*</code></dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="entryNextSameName(int)">
-<h3>entryNextSameName</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">entryNextSameName</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">The next record with the same logical name, in classpath order.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the entry record index</dd>
-<dt>Returns:</dt>
-<dd>the next record, or <a href="IndexFormat.html#NO_INDEX"><code>IndexFormat.NO_INDEX</code></a> at the end of the chain</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="entryPhysicalIndex(int)">
 <h3>entryPhysicalIndex</h3>
 <div class="horizontal-scroll">
@@ -1762,55 +885,6 @@ really has in the archive, for example <code>META-INF/versions/21/a/B.class</cod
 </section>
 </li>
 <li>
-<section class="detail" id="entrySyntheticDirectory(int)">
-<h3>entrySyntheticDirectory</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">entrySyntheticDirectory</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">Whether a directory entry was synthesised by the packager because the source archive had no entry
-for it. Synthetic directories answer resource lookups but are excluded from jar enumeration.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the entry record index</dd>
-<dt>Returns:</dt>
-<dd><code>true</code> for a synthesised directory</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="entryDirectoryTwin(int)">
-<h3>entryDirectoryTwin</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">entryDirectoryTwin</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">Whether the index also holds this record's logical name followed by a slash, in any jar. Only then
-can a slashless lookup of the name be answered by a directory, so a lookup that resolves a record
-without this flag is complete after one probe.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the entry record index</dd>
-<dt>Returns:</dt>
-<dd><code>true</code> when the name has a directory twin</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="entryVersionedAlias(int)">
-<h3>entryVersionedAlias</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">entryVersionedAlias</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">Whether a record is a multi-release alias of another record in the same jar. Aliases are excluded
-from jar enumeration, which lists physical records only.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the entry record index</dd>
-<dt>Returns:</dt>
-<dd><code>true</code> for an alias</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="entryPhysical(int)">
 <h3>entryPhysical</h3>
 <div class="horizontal-scroll">
@@ -1833,7 +907,8 @@ from jar enumeration, which lists physical records only.</div>
 <div class="block">Looks up a logical name and returns the head of its chain.
 
 <p>The chain holds every record with that name across all jars, in classpath order, with a jar's
-versioned aliases before its base record; <a href="#resolve(int,int)"><code>resolve(int, int)</code></a> picks the record that applies.
+versioned aliases before its base record; the launcher picks the record that applies, and
+<a href="#resolveInJar(int,int,int)"><code>resolveInJar(int, int, int)</code></a> picks the one of a given jar.
 The candidate's name is compared against the stored UTF-8 bytes without allocating: the lengths are
 compared first, then the bytes, and only a name that actually contains a non-ASCII character is
 decoded.</p></div>
@@ -1842,27 +917,6 @@ decoded.</p></div>
 <dd><code>logicalName</code> - the entry name relative to its jar, with no leading slash</dd>
 <dt>Returns:</dt>
 <dd>the first record with that name, or <a href="IndexFormat.html#NO_INDEX"><code>IndexFormat.NO_INDEX</code></a></dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="findDirectory(java.lang.String)">
-<h3>findDirectory</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">findDirectory</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name)</span></div>
-<div class="block">Looks up the directory spelling of a name, that is <code>name + "/"</code>, and returns the head of its
-chain, without building that name.
-
-<p>The hash is derived from the cached <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html#hashCode()" title="class or interface in java.lang" class="external-link"><code>String.hashCode()</code></a> of <code>name</code>, since
-<code>hashCode(name + "/") == hashCode(name) * 31 + '/'</code>, and a candidate is verified by comparing
-the stored UTF-8 bytes against <code>name</code> followed by a final slash, decoding only a name that
-actually contains a non-ASCII character, exactly as <a href="#find(java.lang.String)"><code>find(String)</code></a> does.</p></div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>name</code> - the entry name without its trailing slash, relative to its jar, with no leading slash</dd>
-<dt>Returns:</dt>
-<dd>the first record named <code>name + "/"</code>, or <a href="IndexFormat.html#NO_INDEX"><code>IndexFormat.NO_INDEX</code></a></dd>
 </dl>
 </div>
 </section>
@@ -1890,63 +944,6 @@ No allocation happens on the hit path, the miss path or the collision path.</p><
 </section>
 </li>
 <li>
-<section class="detail" id="next(int)">
-<h3>next</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">next</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">Follows a chain of records with the same logical name.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the current record</dd>
-<dt>Returns:</dt>
-<dd>the next record, or <a href="IndexFormat.html#NO_INDEX"><code>IndexFormat.NO_INDEX</code></a> at the end of the chain</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="nextJar(int)">
-<h3>nextJar</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">nextJar</span><wbr><span class="parameters">(int&nbsp;record)</span></div>
-<div class="block">Advances a same-name chain from the current record to the first record in the next JAR.
-
-<p>Records of one JAR are contiguous in a same-name chain. Starting here, rather than at the chain
-head, lets resource enumeration consume the chain once while still selecting one effective record
-per JAR.</p></div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>record</code> - the record selected for the current JAR</dd>
-<dt>Returns:</dt>
-<dd>the first record in the next JAR, or <a href="IndexFormat.html#NO_INDEX"><code>IndexFormat.NO_INDEX</code></a> at the end of the chain</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="resolve(int,int)">
-<h3>resolve</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">resolve</span><wbr><span class="parameters">(int&nbsp;chainHead,
- int&nbsp;effectiveVersion)</span></div>
-<div class="block">Picks the record a chain resolves to for a given runtime.
-
-<p>Within one jar the chain lists versioned aliases in descending version order before the base
-record, so the first record whose version is <code>0</code> or at most <code>effectiveVersion</code> is the
-one <code>JarFile</code> would return. Names under <code>META-INF/</code> are never versioned, which the
-packager guarantees by not emitting aliases for them, so no special case is needed here.</p></div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>chainHead</code> - a record, usually the result of <a href="#find(java.lang.String)"><code>find(String)</code></a></dd>
-<dd><code>effectiveVersion</code> - the runtime feature version, or at most <a href="#BASE_VERSION"><code>BASE_VERSION</code></a> for base
-                        entries only</dd>
-<dt>Returns:</dt>
-<dd>the first applicable record, or <a href="IndexFormat.html#NO_INDEX"><code>IndexFormat.NO_INDEX</code></a></dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="resolveInJar(int,int,int)">
 <h3>resolveInJar</h3>
 <div class="horizontal-scroll">
@@ -1968,32 +965,13 @@ packager guarantees by not emitting aliases for them, so no special case is need
 </section>
 </li>
 <li>
-<section class="detail" id="string(int)">
-<h3>string</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">string</span><wbr><span class="parameters">(int&nbsp;ref)</span></div>
-<div class="block">Decodes a string from the string table.
-
-<p>Reference <code>0</code> always points at the empty string the writer puts at offset zero, and means
-"absent"; this method returns <code>null</code> for it, so that a caller can hand the result straight to
-<code>Package</code> and manifest APIs, which take <code>null</code> for a missing attribute.</p></div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>ref</code> - a string reference, that is, a byte offset into the string table</dd>
-<dt>Returns:</dt>
-<dd>the string, or <code>null</code> when the reference is <code>0</code></dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="validateStringReferences()">
 <h3>validateStringReferences</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">void</span>&nbsp;<span class="element-name">validateStringReferences</span>()</div>
 <div class="block">Walks every string reference in the index and checks that it lies inside the string table.
 
-<p><a href="#open(io.micronaut.runner.ArchiveSource,long,long)"><code>open(ArchiveSource, long, long)</code></a> deliberately does not do this: it is the one validation
+<p><a href="#open(io.micronaut.runner.ArchiveSource)"><code>open(ArchiveSource)</code></a> deliberately does not do this: it is the one validation
 whose cost grows with the number of entries, and it would fault in the whole entry and string tables
 before the application starts. References are bounds-checked when they are dereferenced instead.
 Tools that dump an index, and tests, call this to check the whole file up front.</p></div>

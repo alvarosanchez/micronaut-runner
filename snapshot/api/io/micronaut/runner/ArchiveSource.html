@@ -64,7 +64,6 @@ loadScripts(document, 'script');</script>
 <li><a href="#method-summary" tabindex="0">Method Summary</a></li>
 <li><a href="#field-detail" tabindex="0">Field Details</a>
 <ol class="toc-list">
-<li><a href="#MMAP_PROPERTY" tabindex="0">MMAP_PROPERTY</a></li>
 <li><a href="#MAX_SLICE_LENGTH" tabindex="0">MAX_SLICE_LENGTH</a></li>
 </ol>
 </li>
@@ -72,19 +71,10 @@ loadScripts(document, 'script');</script>
 <ol class="toc-list">
 <li><a href="#open(java.io.File)" tabindex="0">open(File)</a></li>
 <li><a href="#file()" tabindex="0">file()</a></li>
-<li><a href="#length()" tabindex="0">length()</a></li>
-<li><a href="#mapped()" tabindex="0">mapped()</a></li>
-<li><a href="#indexOnly()" tabindex="0">indexOnly()</a></li>
-<li><a href="#u8(long)" tabindex="0">u8(long)</a></li>
-<li><a href="#u16(long)" tabindex="0">u16(long)</a></li>
-<li><a href="#i32(long)" tabindex="0">i32(long)</a></li>
-<li><a href="#u32(long)" tabindex="0">u32(long)</a></li>
-<li><a href="#u64(long)" tabindex="0">u64(long)</a></li>
 <li><a href="#slice(long,int)" tabindex="0">slice(long, int)</a></li>
 <li><a href="#readFully(long,int)" tabindex="0">readFully(long, int)</a></li>
 <li><a href="#stream(long,long,long,int)" tabindex="0">stream(long, long, long, int)</a></li>
 <li><a href="#inflate(long,int,int)" tabindex="0">inflate(long, int, int)</a></li>
-<li><a href="#openIndex()" tabindex="0">openIndex()</a></li>
 <li><a href="#close()" tabindex="0">close()</a></li>
 </ol>
 </li>
@@ -105,7 +95,8 @@ loadScripts(document, 'script');</script>
 </dl>
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">ArchiveSource</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public final class </span><span class="element-name type-name-label">ArchiveSource</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a>
 implements <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/AutoCloseable.html" title="class or interface in java.lang" class="external-link">AutoCloseable</a></span></div>
 <div class="block">Random access to the bytes of the outer runner archive.
@@ -118,19 +109,19 @@ Every accessor takes an <em>absolute offset in the outer file</em>, which is exa
 stores, so no per-entry bookkeeping is needed.</p>
 
 <h2 id="read-modes-heading">Read modes</h2>
-<p>The system property <a href="#MMAP_PROPERTY">"micronaut.runner.mmap"</a> selects how the archive is read:</p>
+<p>The system property <code>micronaut.runner.mmap</code> selects how the archive is read:</p>
 <ul>
   <li><code>full</code> or <code>true</code>: the whole file is mapped, as described above.</li>
   <li><code>index</code>: only <code>MICRONAUT-INF/index.bin</code> is mapped. Every other read is a positional
   <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/channels/FileChannel.html#read(java.nio.ByteBuffer,long)" title="class or interface in java.nio.channels" class="external-link"><code>FileChannel.read(ByteBuffer, long)</code></a>, and a STORED class is read with one such call into a direct
-  buffer borrowed from a small pool; see <code>borrow(long, int)</code>. The pages of the class bytes then stay
+  buffer borrowed from a small pool. The pages of the class bytes then stay
   in the page cache and out of the process's resident set, at the price of a system call per class.</li>
   <li><code>false</code>: nothing is mapped, and every read is a positional read into a heap buffer, at most
   64 KiB per call so that no thread keeps a large temporary native buffer. It exists for platforms or
   containers where a mapping is unwelcome; it is behaviourally identical, only slower.</li>
   <li>Unset, or any other value: the archive decides. <a href="#open(java.io.File)"><code>open(File)</code></a> maps the whole file, exactly as
-  for <code>full</code>, and <code>indexRegion(long, int)</code> reads <code>IndexFormat.HEADER_FLAG_POSITIONAL_READS</code>
-  from the index header. When the flag is set, the source switches to the <code>index</code> mode before anything
+  for <code>full</code>, and the first read of the index takes <code>IndexFormat.HEADER_FLAG_POSITIONAL_READS</code>
+  from its header. When the flag is set, the source switches to the <code>index</code> mode before anything
   else has read through the mapping: it captures the file key, closes the whole-file mapping and maps the
   index alone. An archive whose flag is clear keeps the whole-file mapping and pays one extra read.</li>
 </ul>
@@ -158,13 +149,17 @@ mode a truncation can surface as an <a href="https://docs.oracle.com/en/java/jav
 class is being defined straight from the mapping.</p>
 
 <h2 id="thread-safety-heading">Thread safety</h2>
-<p>Everything after <a href="#open(java.io.File)"><code>open(File)</code></a> and the first <code>indexRegion(long, int)</code>, which may switch the
-mode and is called by <a href="Index.html#open(io.micronaut.runner.ArchiveSource,long,long)"><code>Index.open(ArchiveSource, long, long)</code></a> before the source is shared, is safe for
+<p>Everything after <a href="#open(java.io.File)"><code>open(File)</code></a> and the first read of the index, which may switch the mode and is
+done by <a href="Index.html#open(io.micronaut.runner.ArchiveSource)"><code>Index.open(ArchiveSource)</code></a> before the source is shared, is safe for
 concurrent use by any number of class-loading threads: the segments are read-only, positional channel reads
 do not touch the channel position, and the inflater and buffer pools are guarded by this instance's lock.
 Thread interrupts are harmless in every mode: mapped reads are not interruptible, and positional reads clear
 and restore the caller's interrupt status and reopen, under the same lock, a channel that an interrupt
-closed. Only <a href="#close()"><code>close()</code></a> must not race with readers; a read that does fails and never reopens.</p></div>
+closed. Only <a href="#close()"><code>close()</code></a> must not race with readers; a read that does fails and never reopens.</p>
+
+<p>The class is public because runner-build reads archives with it, and
+<code>io.micronaut.runner.protocol.jar</code> and the benchmarks read entries through it; it is not API for
+applications.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -186,12 +181,6 @@ closed. Only <a href="#close()"><code>close()</code></a> must not race with read
 <div class="col-second even-row-color"><code><a href="#MAX_SLICE_LENGTH" class="member-name-link">MAX_SLICE_LENGTH</a></code></div>
 <div class="col-last even-row-color">
 <div class="block">Largest slice <a href="#slice(long,int)"><code>slice(long, int)</code></a> can produce.</div>
-</div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#MMAP_PROPERTY" class="member-name-link">MMAP_PROPERTY</a></code></div>
-<div class="col-last odd-row-color">
-<div class="block">System property that selects the read mode: <code>full</code> (or <code>true</code>), <code>index</code> or
-<code>false</code>.</div>
 </div>
 </div>
 </section>
@@ -217,16 +206,6 @@ closed. Only <a href="#close()"><code>close()</code></a> must not race with read
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The archive this source reads.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#i32(long)" class="member-name-link">i32</a><wbr>(long&nbsp;offset)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Reads a little-endian 32-bit value as a signed <code>int</code>.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#indexOnly()" class="member-name-link">indexOnly</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether only the index is mapped, and every other read is positional.</div>
-</div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>byte[]</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#inflate(long,int,int)" class="member-name-link">inflate</a><wbr>(long&nbsp;dataOffset,
  int&nbsp;compressedSize,
@@ -234,66 +213,30 @@ closed. Only <a href="#close()"><code>close()</code></a> must not race with read
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Decompresses a DEFLATE entry into an array of exactly <code>uncompressedSize</code> bytes.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#length()" class="member-name-link">length</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The length of the archive when it was opened, which <a href="Index.html" title="class in io.micronaut.runner"><code>Index</code></a> compares with the length it recorded.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#mapped()" class="member-name-link">mapped</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether the whole archive is memory mapped.</div>
-</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#open(java.io.File)" class="member-name-link">open</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/File.html" title="class or interface in java.io" class="external-link">File</a>&nbsp;file)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Opens an archive for reading.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long[]</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#openIndex()" class="member-name-link">openIndex</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Locates <code>MICRONAUT-INF/index.bin</code> in the outer archive without <code>java.util.zip</code>.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>byte[]</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#readFully(long,int)" class="member-name-link">readFully</a><wbr>(long&nbsp;offset,
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>byte[]</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#readFully(long,int)" class="member-name-link">readFully</a><wbr>(long&nbsp;offset,
  int&nbsp;length)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Copies a region of the archive into a new array.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html" title="class or interface in java.nio" class="external-link">ByteBuffer</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#slice(long,int)" class="member-name-link">slice</a><wbr>(long&nbsp;offset,
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html" title="class or interface in java.nio" class="external-link">ByteBuffer</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#slice(long,int)" class="member-name-link">slice</a><wbr>(long&nbsp;offset,
  int&nbsp;length)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">A buffer over a region of the archive.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stream(long,long,long,int)" class="member-name-link">stream</a><wbr>(long&nbsp;dataOffset,
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/InputStream.html" title="class or interface in java.io" class="external-link">InputStream</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stream(long,long,long,int)" class="member-name-link">stream</a><wbr>(long&nbsp;dataOffset,
  long&nbsp;compressedSize,
  long&nbsp;uncompressedSize,
  int&nbsp;method)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Streams the content of an entry, decompressing it when needed.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#u16(long)" class="member-name-link">u16</a><wbr>(long&nbsp;offset)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Reads a little-endian unsigned 16-bit value.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#u32(long)" class="member-name-link">u32</a><wbr>(long&nbsp;offset)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Reads a little-endian unsigned 32-bit value, widened so that values above
-<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Integer.html#MAX_VALUE" title="class or interface in java.lang" class="external-link"><code>Integer.MAX_VALUE</code></a> stay positive.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#u64(long)" class="member-name-link">u64</a><wbr>(long&nbsp;offset)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Reads a little-endian 64-bit value.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#u8(long)" class="member-name-link">u8</a><wbr>(long&nbsp;offset)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Reads one unsigned byte.</div>
 </div>
 </div>
 </div>
@@ -312,25 +255,6 @@ closed. Only <a href="#close()"><code>close()</code></a> must not race with read
 <section class="field-details" id="field-detail">
 <h2>Field Details</h2>
 <ul class="member-list">
-<li>
-<section class="detail" id="MMAP_PROPERTY">
-<h3>MMAP_PROPERTY</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">MMAP_PROPERTY</span></div>
-<div class="block">System property that selects the read mode: <code>full</code> (or <code>true</code>), <code>index</code> or
-<code>false</code>. Unset, or any other value, lets the archive's header choose between <code>full</code> and
-<code>index</code>. Values are compared exactly, so <code>FALSE</code> is an unrecognised value.</div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../constant-values.html#io.micronaut.runner.ArchiveSource.MMAP_PROPERTY">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
 <li>
 <section class="detail" id="MAX_SLICE_LENGTH">
 <h3>MAX_SLICE_LENGTH</h3>
@@ -367,12 +291,12 @@ below that on most VMs, so larger entries have to be streamed by <a href="#strea
 <div class="block">Opens an archive for reading.
 
 <p>Nothing about the content is checked here: an archive that is not a runner jar, or not a ZIP file
-at all, is only diagnosed by <a href="#openIndex()"><code>openIndex()</code></a>, so that the primitives stay usable over any file.</p></div>
+at all, is only diagnosed when the index is located, so that the primitives stay usable over any file.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>file</code> - the outer archive, which must exist and be readable</dd>
 <dt>Returns:</dt>
-<dd>an open source, mapped as a whole unless <a href="#MMAP_PROPERTY">"micronaut.runner.mmap"</a> is <code>"index"</code> or
+<dd>an open source, mapped as a whole unless <code>micronaut.runner.mmap</code> is <code>"index"</code> or
         <code>"false"</code></dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the file cannot be opened or cannot be mapped</dd>
@@ -394,140 +318,6 @@ at all, is only diagnosed by <a href="#openIndex()"><code>openIndex()</code></a>
 </section>
 </li>
 <li>
-<section class="detail" id="length()">
-<h3>length</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long</span>&nbsp;<span class="element-name">length</span>()</div>
-<div class="block">The length of the archive when it was opened, which <a href="Index.html" title="class in io.micronaut.runner"><code>Index</code></a> compares with the length it recorded.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>the file length in bytes</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="mapped()">
-<h3>mapped</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">mapped</span>()</div>
-<div class="block">Whether the whole archive is memory mapped.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd><code>true</code> in the <code>full</code> mode, and in the default mode until the archive's flag selects
-        the <code>index</code> mode; <code>false</code> in the <code>index</code> and <code>false</code> modes</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="indexOnly()">
-<h3>indexOnly</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">indexOnly</span>()</div>
-<div class="block">Whether only the index is mapped, and every other read is positional.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd><code>true</code> in the <code>index</code> mode, whether <a href="#MMAP_PROPERTY">"micronaut.runner.mmap"</a> or the archive's flag
-        selected it</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="u8(long)">
-<h3>u8</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">u8</span><wbr><span class="parameters">(long&nbsp;offset)</span>
-       throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Reads one unsigned byte.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>offset</code> - absolute offset in the archive</dd>
-<dt>Returns:</dt>
-<dd>the value, in <code>0..255</code></dd>
-<dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the offset is outside the archive or the read fails</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="u16(long)">
-<h3>u16</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">u16</span><wbr><span class="parameters">(long&nbsp;offset)</span>
-        throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Reads a little-endian unsigned 16-bit value.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>offset</code> - absolute offset in the archive</dd>
-<dt>Returns:</dt>
-<dd>the value, in <code>0..65535</code></dd>
-<dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the offset is outside the archive or the read fails</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="i32(long)">
-<h3>i32</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">i32</span><wbr><span class="parameters">(long&nbsp;offset)</span>
-        throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Reads a little-endian 32-bit value as a signed <code>int</code>. Use it for values compared against a
-signature constant, where the sign is irrelevant.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>offset</code> - absolute offset in the archive</dd>
-<dt>Returns:</dt>
-<dd>the raw 32 bits</dd>
-<dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the offset is outside the archive or the read fails</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="u32(long)">
-<h3>u32</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long</span>&nbsp;<span class="element-name">u32</span><wbr><span class="parameters">(long&nbsp;offset)</span>
-         throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Reads a little-endian unsigned 32-bit value, widened so that values above
-<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Integer.html#MAX_VALUE" title="class or interface in java.lang" class="external-link"><code>Integer.MAX_VALUE</code></a> stay positive.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>offset</code> - absolute offset in the archive</dd>
-<dt>Returns:</dt>
-<dd>the value, in <code>0..4294967295</code></dd>
-<dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the offset is outside the archive or the read fails</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="u64(long)">
-<h3>u64</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long</span>&nbsp;<span class="element-name">u64</span><wbr><span class="parameters">(long&nbsp;offset)</span>
-         throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Reads a little-endian 64-bit value. ZIP64 sizes and offsets are always well below <code>2^63</code>, so
-the signed result is the value.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>offset</code> - absolute offset in the archive</dd>
-<dt>Returns:</dt>
-<dd>the value</dd>
-<dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the offset is outside the archive or the read fails</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="slice(long,int)">
 <h3>slice</h3>
 <div class="horizontal-scroll">
@@ -540,8 +330,7 @@ ever materialising a <code>byte[]</code>. In the <code>index</code> and <code>fa
 a new heap array, and the buffer wraps that array, writable and with <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html#hasArray()" title="class or interface in java.nio" class="external-link"><code>an
 accessible array</code></a>, so that <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html" title="class or interface in java.lang" class="external-link"><code>ClassLoader</code></a> defines a class straight from it instead of copying it
 again. Every call returns a fresh array that the caller owns, so writing to it changes no shared state.
-The class loader reads classes through <code>borrow(long, int)</code> instead, which pools buffers in the
-<code>index</code> mode.
+The class loader reads classes through a pooled buffer instead in the <code>index</code> mode.
 
 <p>The returned buffer's byte order is the <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html" title="class or interface in java.nio" class="external-link"><code>ByteBuffer</code></a> default, big-endian; callers reading
 little-endian structures out of it must set the order themselves.</p></div>
@@ -623,7 +412,7 @@ cover, stream correctly: the region is read in chunks.</p></div>
 <p>This is the class loading path for a compressed archive, so it allocates one array, borrows an
 inflater from the pool and, in the mapped modes, feeds the inflater a direct buffer over the mapping
 rather than copying the compressed bytes first. In the <code>index</code> mode the compressed bytes are read
-into a buffer <code>borrowed</code> from the pool, or into a heap array when they are
+into a buffer borrowed from the pool, or into a heap array when they are
 larger than a pooled buffer.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
@@ -635,31 +424,6 @@ larger than a pooled buffer.</p></div>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the deflate stream is corrupt, ends early, produces more than
                     <code>uncompressedSize</code> bytes, or does not consume all <code>compressedSize</code> bytes</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="openIndex()">
-<h3>openIndex</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long[]</span>&nbsp;<span class="element-name">openIndex</span>()
-                 throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Locates <code>MICRONAUT-INF/index.bin</code> in the outer archive without <code>java.util.zip</code>.
-
-<p>The end of central directory record is found by scanning back from the end of the file, following
-the ZIP64 locator when one sits immediately before it, falling back to the 32-bit fields when the
-entry count carries the <code>0xFFFF</code> marker but no locator does, and the central directory is
-then walked until
-the index entry is found. By construction it is the second entry, right after the manifest, so this
-reads a couple of records. The entry's true data offset comes from its <em>local</em> header, whose
-name and extra field lengths may differ from the central directory's.</p></div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>a two element array: the absolute offset of the index data and its length in bytes</dd>
-<dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the file is not a ZIP archive, carries no index, or the archive disagrees
-                    with itself</dd>
 </dl>
 </div>
 </section>

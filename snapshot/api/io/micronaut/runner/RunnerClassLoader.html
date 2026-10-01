@@ -64,9 +64,6 @@ loadScripts(document, 'script');</script>
 <li><a href="#method-summary" tabindex="0">Method Summary</a></li>
 <li><a href="#field-detail" tabindex="0">Field Details</a>
 <ol class="toc-list">
-<li><a href="#PARENT_PROPERTY" tabindex="0">PARENT_PROPERTY</a></li>
-<li><a href="#PARENT_SYSTEM" tabindex="0">PARENT_SYSTEM</a></li>
-<li><a href="#VERIFY_PROPERTY" tabindex="0">VERIFY_PROPERTY</a></li>
 <li><a href="#AOT_TRAINING_PROPERTY" tabindex="0">AOT_TRAINING_PROPERTY</a></li>
 </ol>
 </li>
@@ -101,7 +98,8 @@ loadScripts(document, 'script');</script>
 <section class="class-description" id="class-description">
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">RunnerClassLoader</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public final class </span><span class="element-name type-name-label">RunnerClassLoader</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html" title="class or interface in java.lang" class="external-link">ClassLoader</a></span></div>
 <div class="block">The class loader that serves an application straight out of its runner jar.
 
@@ -153,7 +151,10 @@ cache of the single runner jar, with <a href="#AOT_TRAINING_PROPERTY">"micronaut
 (JDK-8380291) store a class of a custom loader in the cache only when the training run reports a
 <code>file:</code> code source, so in that run every class reports the outer archive's <code>file:</code> URL instead.
 The cache is used with the <code>jar:</code> code sources of a production launch, which never sets the property:
-the JDK matches a cached class by name, size and CRC-32 and gives it the domain this loader passes.</p></div>
+the JDK matches a cached class by name, size and CRC-32 and gives it the domain this loader passes.</p>
+
+<p>The class is public because the benchmarks create loaders and runner-build reads
+<a href="#AOT_TRAINING_PROPERTY"><code>AOT_TRAINING_PROPERTY</code></a>; it is not API for applications.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -175,22 +176,6 @@ the JDK matches a cached class by name, size and CRC-32 and gives it the domain 
 <div class="col-second even-row-color"><code><a href="#AOT_TRAINING_PROPERTY" class="member-name-link">AOT_TRAINING_PROPERTY</a></code></div>
 <div class="col-last even-row-color">
 <div class="block">System property that only the run recording a JDK AOT cache of the single runner jar sets.</div>
-</div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#PARENT_PROPERTY" class="member-name-link">PARENT_PROPERTY</a></code></div>
-<div class="col-last odd-row-color">
-<div class="block">System property selecting the parent class loader.</div>
-</div>
-<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#PARENT_SYSTEM" class="member-name-link">PARENT_SYSTEM</a></code></div>
-<div class="col-last even-row-color">
-<div class="block">Value of <a href="#PARENT_PROPERTY">"micronaut.runner.parent"</a> that selects <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#getSystemClassLoader()" title="class or interface in java.lang" class="external-link"><code>ClassLoader.getSystemClassLoader()</code></a>.</div>
-</div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#VERIFY_PROPERTY" class="member-name-link">VERIFY_PROPERTY</a></code></div>
-<div class="col-last odd-row-color">
-<div class="block">System property that turns on CRC-32 verification of every class and resource read from the
-archive.</div>
 </div>
 </div>
 </section>
@@ -280,64 +265,6 @@ archive.</div>
 <h2>Field Details</h2>
 <ul class="member-list">
 <li>
-<section class="detail" id="PARENT_PROPERTY">
-<h3>PARENT_PROPERTY</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">PARENT_PROPERTY</span></div>
-<div class="block">System property selecting the parent class loader. The only recognised value is
-<a href="#PARENT_SYSTEM">"system"</a>, which is an escape hatch for applications that need to see the real
-class path; anything else, including the property being absent, means the platform class loader.</div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../constant-values.html#io.micronaut.runner.RunnerClassLoader.PARENT_PROPERTY">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="PARENT_SYSTEM">
-<h3>PARENT_SYSTEM</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">PARENT_SYSTEM</span></div>
-<div class="block">Value of <a href="#PARENT_PROPERTY">"micronaut.runner.parent"</a> that selects <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#getSystemClassLoader()" title="class or interface in java.lang" class="external-link"><code>ClassLoader.getSystemClassLoader()</code></a>.</div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../constant-values.html#io.micronaut.runner.RunnerClassLoader.PARENT_SYSTEM">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="VERIFY_PROPERTY">
-<h3>VERIFY_PROPERTY</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">VERIFY_PROPERTY</span></div>
-<div class="block">System property that turns on CRC-32 verification of every class and resource read from the
-archive. Verification is off by default: the archive is checked for staleness when it is opened and
-once per jar, and checksumming every class would add a full pass over each class file to startup.
-
-<p>The property is read once, when the archive's <a href="Index.html" title="class in io.micronaut.runner"><code>Index</code></a> is opened, and the class loader,
-<a href="NestedJarFile.html" title="class in io.micronaut.runner"><code>NestedJarFile</code></a> and <code>jar:</code> URL streams over that index all follow what it read then.</p></div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../constant-values.html#io.micronaut.runner.RunnerClassLoader.VERIFY_PROPERTY">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="AOT_TRAINING_PROPERTY">
 <h3>AOT_TRAINING_PROPERTY</h3>
 <div class="horizontal-scroll">
@@ -387,7 +314,7 @@ saying that the training mode is on.</p></div>
 <p>Everything that does not depend on the classes being loaded is computed here, once: the
 multi-release feature version, the modules of the parent-visible packages, and whether boot-module
 packages may bypass the parent. Whether classes and resources are verified is the index's setting,
-read when the index was opened; see <a href="#VERIFY_PROPERTY"><code>VERIFY_PROPERTY</code></a>. <a href="#AOT_TRAINING_PROPERTY">"micronaut.runner.aot.training"</a> is read
+read from <code>micronaut.runner.verify</code> when the index was opened. <a href="#AOT_TRAINING_PROPERTY">"micronaut.runner.aot.training"</a> is read
 here, and when it is on, the archive's <code>file:</code> URL is taken from <a href="Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> and one line
 saying so goes to standard error. The archive and the index are <em>not</em> owned by the loader and are
 never closed by it.</p></div>
@@ -417,8 +344,8 @@ never closed by it.</p></div>
 <div class="block">The parent the launcher gives a loader for an application.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#getSystemClassLoader()" title="class or interface in java.lang" class="external-link"><code>ClassLoader.getSystemClassLoader()</code></a> when <a href="#PARENT_PROPERTY">"micronaut.runner.parent"</a> is
-        <a href="#PARENT_SYSTEM">"system"</a>, otherwise <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#getPlatformClassLoader()" title="class or interface in java.lang" class="external-link"><code>ClassLoader.getPlatformClassLoader()</code></a></dd>
+<dd><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#getSystemClassLoader()" title="class or interface in java.lang" class="external-link"><code>ClassLoader.getSystemClassLoader()</code></a> when <code>micronaut.runner.parent</code> is
+        <code>system</code>, otherwise <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#getPlatformClassLoader()" title="class or interface in java.lang" class="external-link"><code>ClassLoader.getPlatformClassLoader()</code></a></dd>
 </dl>
 </div>
 </section>

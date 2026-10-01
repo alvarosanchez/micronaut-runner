@@ -57,6 +57,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#conventions-heading" tabindex="0">Conventions</a></li>
 <li><a href="#logical-names-heading" tabindex="0">Logical names</a></li>
 <li><a href="#multi-release-jars-heading" tabindex="0">Multi-release jars</a></li>
+<li><a href="#compatibility-heading" tabindex="0">Compatibility</a></li>
 </ol>
 </li>
 <li><a href="#field-summary" tabindex="0">Field Summary</a></li>
@@ -100,7 +101,6 @@ loadScripts(document, 'script');</script>
 <li><a href="#H_PRELOAD_COUNT" tabindex="0">H_PRELOAD_COUNT</a></li>
 <li><a href="#H_JDK_PRELOAD_COUNT" tabindex="0">H_JDK_PRELOAD_COUNT</a></li>
 <li><a href="#H_JDK_PRELOAD_TABLE_OFFSET" tabindex="0">H_JDK_PRELOAD_TABLE_OFFSET</a></li>
-<li><a href="#H_RESERVED" tabindex="0">H_RESERVED</a></li>
 <li><a href="#H_LARGEST_STORED_CLASS" tabindex="0">H_LARGEST_STORED_CLASS</a></li>
 <li><a href="#HEADER_FLAG_NESTED_STORED" tabindex="0">HEADER_FLAG_NESTED_STORED</a></li>
 <li><a href="#HEADER_FLAG_APP_MULTI_RELEASE" tabindex="0">HEADER_FLAG_APP_MULTI_RELEASE</a></li>
@@ -117,14 +117,12 @@ loadScripts(document, 'script');</script>
 <li><a href="#J_FIRST_PACKAGE" tabindex="0">J_FIRST_PACKAGE</a></li>
 <li><a href="#J_PACKAGE_COUNT" tabindex="0">J_PACKAGE_COUNT</a></li>
 <li><a href="#J_FLAGS" tabindex="0">J_FLAGS</a></li>
-<li><a href="#J_RESERVED_1" tabindex="0">J_RESERVED_1</a></li>
 <li><a href="#J_SPEC_TITLE" tabindex="0">J_SPEC_TITLE</a></li>
 <li><a href="#J_SPEC_VERSION" tabindex="0">J_SPEC_VERSION</a></li>
 <li><a href="#J_SPEC_VENDOR" tabindex="0">J_SPEC_VENDOR</a></li>
 <li><a href="#J_IMPL_TITLE" tabindex="0">J_IMPL_TITLE</a></li>
 <li><a href="#J_IMPL_VERSION" tabindex="0">J_IMPL_VERSION</a></li>
 <li><a href="#J_IMPL_VENDOR" tabindex="0">J_IMPL_VENDOR</a></li>
-<li><a href="#J_RESERVED_2" tabindex="0">J_RESERVED_2</a></li>
 <li><a href="#JAR_FLAG_MULTI_RELEASE" tabindex="0">JAR_FLAG_MULTI_RELEASE</a></li>
 <li><a href="#JAR_FLAG_SIGNED_ORIGINAL" tabindex="0">JAR_FLAG_SIGNED_ORIGINAL</a></li>
 <li><a href="#JAR_FLAG_HAS_MANIFEST" tabindex="0">JAR_FLAG_HAS_MANIFEST</a></li>
@@ -139,7 +137,6 @@ loadScripts(document, 'script');</script>
 <li><a href="#P_IMPL_VERSION" tabindex="0">P_IMPL_VERSION</a></li>
 <li><a href="#P_IMPL_VENDOR" tabindex="0">P_IMPL_VENDOR</a></li>
 <li><a href="#P_FLAGS" tabindex="0">P_FLAGS</a></li>
-<li><a href="#P_RESERVED" tabindex="0">P_RESERVED</a></li>
 <li><a href="#PACKAGE_FLAG_SEALED_SPECIFIED" tabindex="0">PACKAGE_FLAG_SEALED_SPECIFIED</a></li>
 <li><a href="#PACKAGE_FLAG_SEALED_VALUE" tabindex="0">PACKAGE_FLAG_SEALED_VALUE</a></li>
 <li><a href="#ENTRY_RECORD_SIZE" tabindex="0">ENTRY_RECORD_SIZE</a></li>
@@ -156,7 +153,6 @@ loadScripts(document, 'script');</script>
 <li><a href="#E_METHOD" tabindex="0">E_METHOD</a></li>
 <li><a href="#E_MR_VERSION" tabindex="0">E_MR_VERSION</a></li>
 <li><a href="#E_FLAGS" tabindex="0">E_FLAGS</a></li>
-<li><a href="#E_RESERVED" tabindex="0">E_RESERVED</a></li>
 <li><a href="#E_PHYSICAL_INDEX" tabindex="0">E_PHYSICAL_INDEX</a></li>
 <li><a href="#ENTRY_FLAG_DIRECTORY" tabindex="0">ENTRY_FLAG_DIRECTORY</a></li>
 <li><a href="#ENTRY_FLAG_SYNTHETIC_DIR" tabindex="0">ENTRY_FLAG_SYNTHETIC_DIR</a></li>
@@ -181,7 +177,6 @@ loadScripts(document, 'script');</script>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
 <li><a href="#hash(java.lang.String)" tabindex="0">hash(String)</a></li>
-<li><a href="#spread(int)" tabindex="0">spread(int)</a></li>
 </ol>
 </li>
 </ol>
@@ -197,7 +192,8 @@ loadScripts(document, 'script');</script>
 <section class="class-description" id="class-description">
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">IndexFormat</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public final class </span><span class="element-name type-name-label">IndexFormat</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
 <div class="block">The on-disk layout of <code>MICRONAUT-INF/index.bin</code>, the index a runner jar carries so that the
 launcher never has to parse a nested archive's central directory at startup.
@@ -232,7 +228,13 @@ whose <code>&lt;path&gt;</code> does <em>not</em> itself start with <code>META-I
 under the logical name <code>&lt;path&gt;</code> as an <em>alias</em> record carrying
 <a href="#ENTRY_FLAG_VERSIONED_ALIAS"><code>ENTRY_FLAG_VERSIONED_ALIAS</code></a> and <code>mrVersion = N</code>. Within one jar, alias records precede
 the base record in descending version order, so a lookup walks the chain and takes the first record
-whose <code>mrVersion</code> is <code>0</code> or at most the effective runtime feature version.</p></div>
+whose <code>mrVersion</code> is <code>0</code> or at most the effective runtime feature version.</p>
+
+<h2 id="compatibility-heading">Compatibility</h2>
+<p>The constants change with <a href="#FORMAT_VERSION"><code>FORMAT_VERSION</code></a>, not with the version of this artifact: the class is
+public because runner-build writes the format with it and <code>io.micronaut.runner.protocol.jar</code> reads it,
+and it is not API for applications. Fields that nothing outside this class reads, such as the reserved
+ones, stay in the layout below and are not public.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -343,137 +345,131 @@ whose <code>mrVersion</code> is <code>0</code> or at most the effective runtime 
 <code>META-INF/versions/N/...</code> path.</div>
 </div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#E_RESERVED" class="member-name-link">E_RESERVED</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#E_UNCOMPRESSED_SIZE" class="member-name-link">E_UNCOMPRESSED_SIZE</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#E_UNCOMPRESSED_SIZE" class="member-name-link">E_UNCOMPRESSED_SIZE</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">END_OF_CENTRAL_DIRECTORY_SIGNATURE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-second even-row-color"><code><a href="#END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">END_OF_CENTRAL_DIRECTORY_SIGNATURE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">End of central directory signature, <code>PK\5\6</code>.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#END_OF_CENTRAL_DIRECTORY_SIZE" class="member-name-link">END_OF_CENTRAL_DIRECTORY_SIZE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#END_OF_CENTRAL_DIRECTORY_SIZE" class="member-name-link">END_OF_CENTRAL_DIRECTORY_SIZE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Size of an end of central directory record without a comment.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ENTRY_FLAG_DIRECTORY" class="member-name-link">ENTRY_FLAG_DIRECTORY</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ENTRY_FLAG_DIRECTORY" class="member-name-link">ENTRY_FLAG_DIRECTORY</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The entry is a directory; its logical name ends with <code>'/'</code>.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ENTRY_FLAG_DIRECTORY_TWIN" class="member-name-link">ENTRY_FLAG_DIRECTORY_TWIN</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ENTRY_FLAG_DIRECTORY_TWIN" class="member-name-link">ENTRY_FLAG_DIRECTORY_TWIN</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Set on every record (physical or versioned alias) whose logical name does not end with '/' when the
 index also holds that name followed by '/' in any jar, as an explicit, versioned-alias or synthesised
 directory.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ENTRY_FLAG_PHYSICAL" class="member-name-link">ENTRY_FLAG_PHYSICAL</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ENTRY_FLAG_PHYSICAL" class="member-name-link">ENTRY_FLAG_PHYSICAL</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The record corresponds to an entry that physically exists in the source archive.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ENTRY_FLAG_SYNTHETIC_DIR" class="member-name-link">ENTRY_FLAG_SYNTHETIC_DIR</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ENTRY_FLAG_SYNTHETIC_DIR" class="member-name-link">ENTRY_FLAG_SYNTHETIC_DIR</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">The directory has no entry of its own in the source archive and was synthesised by the packager.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ENTRY_FLAG_VERSIONED_ALIAS" class="member-name-link">ENTRY_FLAG_VERSIONED_ALIAS</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ENTRY_FLAG_VERSIONED_ALIAS" class="member-name-link">ENTRY_FLAG_VERSIONED_ALIAS</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The record is a multi-release alias of another record in the same jar.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ENTRY_RECORD_SIZE" class="member-name-link">ENTRY_RECORD_SIZE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ENTRY_RECORD_SIZE" class="member-name-link">ENTRY_RECORD_SIZE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Size of one entry record, in bytes.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#FORMAT_VERSION" class="member-name-link">FORMAT_VERSION</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#FORMAT_VERSION" class="member-name-link">FORMAT_VERSION</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The only format version this release reads or writes.</div>
 </div>
-<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#GENERATED_PACKAGE" class="member-name-link">GENERATED_PACKAGE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#GENERATED_PACKAGE" class="member-name-link">GENERATED_PACKAGE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Package into which the packager generates classes; it is part of the application layer.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_ENTRY_COUNT" class="member-name-link">H_ENTRY_COUNT</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_ENTRY_STUB_CLASS" class="member-name-link">H_ENTRY_STUB_CLASS</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_ENTRY_COUNT" class="member-name-link">H_ENTRY_COUNT</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_ENTRY_TABLE_OFFSET" class="member-name-link">H_ENTRY_TABLE_OFFSET</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_ENTRY_STUB_CLASS" class="member-name-link">H_ENTRY_STUB_CLASS</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_FLAGS" class="member-name-link">H_FLAGS</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_ENTRY_TABLE_OFFSET" class="member-name-link">H_ENTRY_TABLE_OFFSET</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_FORMAT_VERSION" class="member-name-link">H_FORMAT_VERSION</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_FLAGS" class="member-name-link">H_FLAGS</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_HASH_SLOTS" class="member-name-link">H_HASH_SLOTS</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_FORMAT_VERSION" class="member-name-link">H_FORMAT_VERSION</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_HASH_TABLE_OFFSET" class="member-name-link">H_HASH_TABLE_OFFSET</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_HASH_SLOTS" class="member-name-link">H_HASH_SLOTS</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_JAR_COUNT" class="member-name-link">H_JAR_COUNT</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_HASH_TABLE_OFFSET" class="member-name-link">H_HASH_TABLE_OFFSET</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_JAR_TABLE_OFFSET" class="member-name-link">H_JAR_TABLE_OFFSET</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_JAR_COUNT" class="member-name-link">H_JAR_COUNT</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_JDK_PRELOAD_COUNT" class="member-name-link">H_JDK_PRELOAD_COUNT</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-second even-row-color"><code><a href="#H_JAR_TABLE_OFFSET" class="member-name-link">H_JAR_TABLE_OFFSET</a></code></div>
+<div class="col-last even-row-color">&nbsp;</div>
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#H_JDK_PRELOAD_COUNT" class="member-name-link">H_JDK_PRELOAD_COUNT</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Number of JDK preload table elements; <code>0</code> means the archive lists no JDK class.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_JDK_PRELOAD_TABLE_OFFSET" class="member-name-link">H_JDK_PRELOAD_TABLE_OFFSET</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#H_JDK_PRELOAD_TABLE_OFFSET" class="member-name-link">H_JDK_PRELOAD_TABLE_OFFSET</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Offset of the JDK preload table, a <code>u32[]</code> of string references; <code>0</code> when there is none.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_LARGEST_STORED_CLASS" class="member-name-link">H_LARGEST_STORED_CLASS</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#H_LARGEST_STORED_CLASS" class="member-name-link">H_LARGEST_STORED_CLASS</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">The largest uncompressed size of a STORED <code>.class</code> record, which sizes the launcher's pooled read
 buffers.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_LAUNCHER_VERSION" class="member-name-link">H_LAUNCHER_VERSION</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_MAGIC" class="member-name-link">H_MAGIC</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_LAUNCHER_VERSION" class="member-name-link">H_LAUNCHER_VERSION</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_MAX_PROBE" class="member-name-link">H_MAX_PROBE</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_MAGIC" class="member-name-link">H_MAGIC</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_OUTER_FILE_LENGTH" class="member-name-link">H_OUTER_FILE_LENGTH</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_MAX_PROBE" class="member-name-link">H_MAX_PROBE</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_PACKAGE_COUNT" class="member-name-link">H_PACKAGE_COUNT</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#H_OUTER_FILE_LENGTH" class="member-name-link">H_OUTER_FILE_LENGTH</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_PACKAGE_TABLE_OFFSET" class="member-name-link">H_PACKAGE_TABLE_OFFSET</a></code></div>
+<div class="col-second even-row-color"><code><a href="#H_PACKAGE_COUNT" class="member-name-link">H_PACKAGE_COUNT</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_PRELOAD_COUNT" class="member-name-link">H_PRELOAD_COUNT</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-second odd-row-color"><code><a href="#H_PACKAGE_TABLE_OFFSET" class="member-name-link">H_PACKAGE_TABLE_OFFSET</a></code></div>
+<div class="col-last odd-row-color">&nbsp;</div>
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#H_PRELOAD_COUNT" class="member-name-link">H_PRELOAD_COUNT</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Number of preload table elements; <code>0</code> means the archive carries no startup class list.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#H_PRELOAD_TABLE_OFFSET" class="member-name-link">H_PRELOAD_TABLE_OFFSET</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#H_PRELOAD_TABLE_OFFSET" class="member-name-link">H_PRELOAD_TABLE_OFFSET</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Offset of the <a href="#PRELOAD_RECORD_SIZE">preload table</a>; <code>0</code> when there is none.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#H_RESERVED" class="member-name-link">H_RESERVED</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
 <div class="col-second even-row-color"><code><a href="#H_START_CLASS" class="member-name-link">H_START_CLASS</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
@@ -557,12 +553,6 @@ reads every class with a positional read into a pooled buffer instead of mapping
 </div>
 <div class="col-first even-row-color"><code>static final int</code></div>
 <div class="col-second even-row-color"><code><a href="#J_PACKAGE_COUNT" class="member-name-link">J_PACKAGE_COUNT</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#J_RESERVED_1" class="member-name-link">J_RESERVED_1</a></code></div>
-<div class="col-last odd-row-color">&nbsp;</div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#J_RESERVED_2" class="member-name-link">J_RESERVED_2</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
 <div class="col-second odd-row-color"><code><a href="#J_SPEC_TITLE" class="member-name-link">J_SPEC_TITLE</a></code></div>
@@ -671,66 +661,63 @@ reads every class with a positional read into a pooled buffer instead of mapping
 <div class="block">The package name in dotted form, for example <code>org.example.api</code>.</div>
 </div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#P_RESERVED" class="member-name-link">P_RESERVED</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#P_SPEC_TITLE" class="member-name-link">P_SPEC_TITLE</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#P_SPEC_TITLE" class="member-name-link">P_SPEC_TITLE</a></code></div>
+<div class="col-second even-row-color"><code><a href="#P_SPEC_VENDOR" class="member-name-link">P_SPEC_VENDOR</a></code></div>
 <div class="col-last even-row-color">&nbsp;</div>
 <div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#P_SPEC_VENDOR" class="member-name-link">P_SPEC_VENDOR</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#P_SPEC_VERSION" class="member-name-link">P_SPEC_VERSION</a></code></div>
 <div class="col-last odd-row-color">&nbsp;</div>
 <div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#P_SPEC_VERSION" class="member-name-link">P_SPEC_VERSION</a></code></div>
-<div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#PACKAGE_FLAG_SEALED_SPECIFIED" class="member-name-link">PACKAGE_FLAG_SEALED_SPECIFIED</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-second even-row-color"><code><a href="#PACKAGE_FLAG_SEALED_SPECIFIED" class="member-name-link">PACKAGE_FLAG_SEALED_SPECIFIED</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The section carries a <code>Sealed</code> attribute; without this flag the jar default applies.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#PACKAGE_FLAG_SEALED_VALUE" class="member-name-link">PACKAGE_FLAG_SEALED_VALUE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#PACKAGE_FLAG_SEALED_VALUE" class="member-name-link">PACKAGE_FLAG_SEALED_VALUE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">The value of that <code>Sealed</code> attribute.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#PACKAGE_RECORD_SIZE" class="member-name-link">PACKAGE_RECORD_SIZE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#PACKAGE_RECORD_SIZE" class="member-name-link">PACKAGE_RECORD_SIZE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Size of one package record, in bytes.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#PRELOAD_RECORD_SIZE" class="member-name-link">PRELOAD_RECORD_SIZE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#PRELOAD_RECORD_SIZE" class="member-name-link">PRELOAD_RECORD_SIZE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Size of one element of either preload table.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#TRANSFORMS_ENTRY_NAME" class="member-name-link">TRANSFORMS_ENTRY_NAME</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="#TRANSFORMS_ENTRY_NAME" class="member-name-link">TRANSFORMS_ENTRY_NAME</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Outer archive entry, written right after the launcher classes, that records what the build-time class
 transforms did to the dependency classes: tab-separated lines, the first naming the Runner version.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">ZIP64 end of central directory locator signature, <code>PK\6\7</code>.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE" class="member-name-link">ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">ZIP64 end of central directory record signature, <code>PK\6\6</code>.</div>
 </div>
-<div class="col-first even-row-color"><code>static final int</code></div>
-<div class="col-second even-row-color"><code><a href="#ZIP64_EXTRA_FIELD_ID" class="member-name-link">ZIP64_EXTRA_FIELD_ID</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final int</code></div>
+<div class="col-second odd-row-color"><code><a href="#ZIP64_EXTRA_FIELD_ID" class="member-name-link">ZIP64_EXTRA_FIELD_ID</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Header id of the ZIP64 extended information extra field.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final int</code></div>
-<div class="col-second odd-row-color"><code><a href="#ZIP64_LOCATOR_SIZE" class="member-name-link">ZIP64_LOCATOR_SIZE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code>static final int</code></div>
+<div class="col-second even-row-color"><code><a href="#ZIP64_LOCATOR_SIZE" class="member-name-link">ZIP64_LOCATOR_SIZE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Size of a ZIP64 end of central directory locator.</div>
 </div>
-<div class="col-first even-row-color"><code>static final long</code></div>
-<div class="col-second even-row-color"><code><a href="#ZIP64_MARKER" class="member-name-link">ZIP64_MARKER</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code>static final long</code></div>
+<div class="col-second odd-row-color"><code><a href="#ZIP64_MARKER" class="member-name-link">ZIP64_MARKER</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Value a 32-bit ZIP field carries when the real value lives in a ZIP64 extra field.</div>
 </div>
 </div>
@@ -751,11 +738,6 @@ transforms did to the dependency classes: tab-separated lines, the first naming 
 <div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#hash(java.lang.String)" class="member-name-link">hash</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">The hash of a logical name, as stored in <a href="#E_NAME_HASH"><code>E_NAME_HASH</code></a> and used to pick a hash table slot.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#spread(int)" class="member-name-link">spread</a><wbr>(int&nbsp;hashCode)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">Mixes the high bits of a <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html#hashCode()" title="class or interface in java.lang" class="external-link"><code>String.hashCode()</code></a> into the low bits.</div>
 </div>
 </div>
 </div>
@@ -1389,22 +1371,6 @@ never reads it at run time; only the <code>inspect</code> mode prints it.</div>
 </section>
 </li>
 <li>
-<section class="detail" id="H_RESERVED">
-<h3>H_RESERVED</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">H_RESERVED</span></div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.H_RESERVED">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="H_LARGEST_STORED_CLASS">
 <h3>H_LARGEST_STORED_CLASS</h3>
 <div class="horizontal-scroll">
@@ -1675,22 +1641,6 @@ Launchers that predate the flag ignore it; <code>micronaut.runner.mmap</code> ov
 </section>
 </li>
 <li>
-<section class="detail" id="J_RESERVED_1">
-<h3>J_RESERVED_1</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">J_RESERVED_1</span></div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.J_RESERVED_1">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="J_SPEC_TITLE">
 <h3>J_SPEC_TITLE</h3>
 <div class="horizontal-scroll">
@@ -1780,22 +1730,6 @@ Launchers that predate the flag ignore it; <code>micronaut.runner.mmap</code> ov
 <dd>
 <ul class="tag-list">
 <li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.J_IMPL_VENDOR">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="J_RESERVED_2">
-<h3>J_RESERVED_2</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">J_RESERVED_2</span></div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.J_RESERVED_2">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>
@@ -2027,22 +1961,6 @@ Launchers that predate the flag ignore it; <code>micronaut.runner.mmap</code> ov
 <dd>
 <ul class="tag-list">
 <li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.P_FLAGS">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="P_RESERVED">
-<h3>P_RESERVED</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">P_RESERVED</span></div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.P_RESERVED">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>
@@ -2313,22 +2231,6 @@ Launchers that predate the flag ignore it; <code>micronaut.runner.mmap</code> ov
 <dd>
 <ul class="tag-list">
 <li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.E_FLAGS">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="E_RESERVED">
-<h3>E_RESERVED</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">E_RESERVED</span></div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../constant-values.html#io.micronaut.runner.IndexFormat.E_RESERVED">Constant Field Values</a></li>
 </ul>
 </dd>
 </dl>
@@ -2688,21 +2590,6 @@ definition is fixed here and must never change within a format version.</p></div
 <dd><code>name</code> - the logical name</dd>
 <dt>Returns:</dt>
 <dd>the hash</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="spread(int)">
-<h3>spread</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">spread</span><wbr><span class="parameters">(int&nbsp;hashCode)</span></div>
-<div class="block">Mixes the high bits of a <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html#hashCode()" title="class or interface in java.lang" class="external-link"><code>String.hashCode()</code></a> into the low bits.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>hashCode</code> - the raw hash code</dd>
-<dt>Returns:</dt>
-<dd>the spread hash</dd>
 </dl>
 </div>
 </section>
