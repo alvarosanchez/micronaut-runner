@@ -80,8 +80,7 @@ import java.util.zip.CRC32;
  * <p>Each dependency is staged on up to {@code min(availableProcessors(), 8)} daemon threads. In STORED and
  * HYBRID its stage repacks it into a nested jar in the work directory, with the startup classes of the build's
  * startup class list first, and in HYBRID with its cold classes compressed. In PRESERVE the dependency is nested
- * as it is:
- * its stage writes nothing and only checksums the file, and the archive is written from the dependency
+ * as it is: its stage writes nothing and only checksums the file, and the archive is written from the dependency
  * itself, through a read that fails the build if the file no longer matches that checksum. The threads are
  * created for each build and have stopped before {@code build} returns; with one processor, or at most one
  * dependency, staging runs on the calling thread. A staging thread holds one open {@code ZipReader}: its
@@ -95,9 +94,8 @@ import java.util.zip.CRC32;
  *
  * <h2>Class transforms</h2>
  * <p>In STORED and HYBRID, each stage also runs the {@link ClassTransforms} of the build over its dependency's
- * classes, by
- * default {@link RunnerJarSpec#desugarLambdas()} and then {@link RunnerJarSpec#stripLocalVariables()}. Before
- * staging, one scan task per dependency runs on the same threads, with its own {@code ZipReader}, into a
+ * classes, by default {@link RunnerJarSpec#desugarLambdas()} and then {@link RunnerJarSpec#stripLocalVariables()}.
+ * Before staging, one scan task per dependency runs on the same threads, with its own {@code ZipReader}, into a
  * read-only {@link ClassPathModel} that every stage shares and that is discarded when {@code build} returns. A
  * staging thread then also holds the original and the rewritten bytes of one class, at most
  * {@link ClassTransformPipeline#MAX_CLASS_SIZE} each. With {@code desugarLambdas}, a stage plans its
