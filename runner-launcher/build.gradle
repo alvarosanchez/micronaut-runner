@@ -9,6 +9,8 @@ tasks.named('compileJava', JavaCompile) {
     options.release = 25
     // No invokedynamic string concatenation on the startup path (javac hidden option).
     options.compilerArgs.addAll(['-XDstringConcat=inline'])
+    // Line numbers for stack traces, no local variable tables: every application carries these classes.
+    options.debugOptions.debugLevel = 'source,lines'
 }
 
 // Guard rail: the launcher is copied verbatim into user applications, so it must stay dependency-free.

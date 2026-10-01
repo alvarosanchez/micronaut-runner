@@ -35,7 +35,7 @@ java -jar build/libs/my-app-0.1-all.jar
 ----
 
 The archive is named with the `all` classifier, the same name the Shadow plugin uses, so existing
-Dockerfiles and CI scripts that reference `build/libs/*-all.jar` keep working.
+Dockerfiles and CI scripts that reference `+build/libs/*-all.jar+` keep working.
 
 WARNING: Do not apply the Shadow plugin and configure it to write the same file. The two produce different
 archives under one name. The plugin fails the build if it detects that.
@@ -157,7 +157,7 @@ thin JAR. If the `jar` task adds attributes in `doFirst` or `doLast`, or merges 
 set `applicationJar = tasks.named('jar').flatMap { it.archiveFile }`.
 
 `manifestAttributes` may override attributes imported from the application's manifest, but `Manifest-Version`,
-`Main-Class` and `Micronaut-Runner-*` attributes are reserved and rejected.
+`Main-Class` and `+Micronaut-Runner-*+` attributes are reserved and rejected.
 
 Dependencies that are JAR files are nested, a dependency that is a directory fails the build, and any other
 file, such as a POM, is skipped with a warning.

@@ -139,7 +139,11 @@ class RunnerJarBuilderPrefetchTest {
             assertNotEquals(IndexFormat.NO_INDEX, index.findClass(DefinitionPrefetchPackager.TASK_CLASS));
             assertNotEquals(IndexFormat.NO_INDEX, index.findClass(DefinitionPrefetchPackager.CONFIGURER_CLASS));
             for (Map.Entry<String, byte[]> item : shipped.entrySet()) {
-                assertArrayEquals(item.getValue(), reader.read(index.find(item.getKey())), item.getKey());
+                byte[] packaged = reader.read(index.find(item.getKey()));
+                assertArrayEquals(item.getValue(), packaged, item.getKey());
+                // Every application carries them: line numbers for stack traces, no local-variable tables.
+                assertTrue(ClassFixtures.assertLineNumbersWithoutLocalVariables(item.getKey(), packaged) > 0,
+                        item.getKey());
             }
             assertArrayEquals(EntryStubGenerator.generate(MAIN_CLASS, true),
                     reader.read(index.find(EntryStubGenerator.STUB_RESOURCE_NAME)));

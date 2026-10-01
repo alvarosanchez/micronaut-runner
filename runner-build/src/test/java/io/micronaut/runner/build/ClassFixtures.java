@@ -19,13 +19,17 @@ import org.junit.jupiter.api.Assumptions;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.classfile.Attribute;
 import java.lang.classfile.AttributeMapper;
 import java.lang.classfile.AttributedElement;
 import java.lang.classfile.BufWriter;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
 import java.lang.classfile.ClassReader;
 import java.lang.classfile.ClassTransform;
+import java.lang.classfile.CodeModel;
 import java.lang.classfile.CustomAttribute;
+import java.lang.classfile.MethodModel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,6 +37,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
@@ -41,6 +46,9 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Compiles and packages the class fixtures of the class transform tests: real {@code javac} output, with
@@ -138,6 +146,39 @@ final class ClassFixtures {
             }
         }
         return file;
+    }
+
+    /**
+     * Asserts that a class Runner copies verbatim into applications was compiled with {@code -g:source,lines}:
+     * it names its source file, every method with code has a {@code LineNumberTable}, and no method has a
+     * {@code LocalVariableTable} or {@code LocalVariableTypeTable}.
+     *
+     * @param name  the entry name, for the messages
+     * @param bytes the class
+     * @return the number of methods with code
+     */
+    static int assertLineNumbersWithoutLocalVariables(String name, byte[] bytes) {
+        ClassModel model = ClassFile.of().parse(bytes);
+        assertTrue(attributeNames(model.attributes()).contains("SourceFile"), () -> name + " names no source file");
+        int methods = 0;
+        for (MethodModel method : model.methods()) {
+            Optional<CodeModel> code = method.code();
+            if (code.isEmpty()) {
+                continue;
+            }
+            methods++;
+            String where = name + " " + method.methodName().stringValue() + method.methodType().stringValue();
+            List<String> attributes = attributeNames(code.get().attributes());
+            assertTrue(attributes.contains("LineNumberTable"), () -> where + " has no line numbers: " + attributes);
+            assertFalse(attributes.contains("LocalVariableTable"), () -> where + " has a LocalVariableTable");
+            assertFalse(attributes.contains("LocalVariableTypeTable"),
+                    () -> where + " has a LocalVariableTypeTable");
+        }
+        return methods;
+    }
+
+    private static List<String> attributeNames(List<Attribute<?>> attributes) {
+        return attributes.stream().map(attribute -> attribute.attributeName().stringValue()).toList();
     }
 
     /**

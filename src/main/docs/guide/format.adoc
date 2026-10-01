@@ -17,7 +17,7 @@ format version, `Micronaut-Runner-Start-Class` the application main class, for i
 |`MICRONAUT-INF/index.bin`
 |Written second, so the launcher finds it after reading only a couple of central directory records.
 
-|`io/micronaut/runner/**.class`
+|`+io/micronaut/runner/**.class+`
 |The launcher. Only class files are copied from the launcher library; its manifest and Maven metadata are
 not.
 
@@ -28,7 +28,7 @@ JAR, or for the application layer, with the lambda call sites rewritten and left
 never reads it at run time, and `extract` ignores it; `inspect` prints it. See
 <<classTransforms,Class transforms>>.
 
-|`META-INF/micronaut/**`
+|`+META-INF/micronaut/**+`
 |The Micronaut bean metadata of the application and of every dependency, merged and de-duplicated, with
 explicit directory entries. See <<serviceDiscovery>>.
 
@@ -36,7 +36,7 @@ explicit directory entries. See <<serviceDiscovery>>.
 |An explicit directory entry for the application layer, so that the `CodeSource` location of every
 application class names something the archive really carries and can be opened.
 
-|`MICRONAUT-INF/classes/**`
+|`+MICRONAUT-INF/classes/**+`
 |The application's own classes and resources, stored exploded. This is "jar 0"; an entry's _logical name_
 is its path with this prefix removed. Directories inside the layer are not stored; the index carries a
 synthetic record for each one instead.
@@ -47,7 +47,7 @@ synthetic record for each one instead.
 
 By default each dependency is re-packed so that its own entries are `STORED` too, which removes
 decompression from class loading at the cost of a larger archive. Re-packing also drops signature files
-(`META-INF/*.SF`, `*.DSA`, `*.RSA`, `*.EC`, `META-INF/SIG-*`) and `META-INF/INDEX.LIST`. Manifests are
+(`+META-INF/*.SF+`, `+*.DSA+`, `+*.RSA+`, `+*.EC+`, `+META-INF/SIG-*+`) and `META-INF/INDEX.LIST`. Manifests are
 never rewritten, so package metadata and sealing survive intact. By default, re-packing also strips
 local-variable tables from dependency classes, which then carry new CRC-32 values; see
 <<localVariableTables,Local-variable tables>>. By default it also rewrites eligible lambda call sites and adds a

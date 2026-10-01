@@ -2,13 +2,21 @@
 <!--
   A standalone Maven project, not part of the micronaut-runner Gradle build.
 
-  The end-to-end suite (test-suite/src/test/java/io/micronaut/runner/suite) drives it with
-  org.apache.maven.shared.invoker, resolving `mvn` from the PATH - there is no Maven wrapper here on
-  purpose, so that nothing has to be downloaded to check this sample in - and passing:
+  Two tests of the end-to-end suite (test-suite/src/test/java/io/micronaut/runner/suite) drive it with
+  org.apache.maven.shared.invoker: MavenBasicSampleTest, and PublicationMetadataSmokeTest, which runs only
+  as :test-suite:publicationSmokeTest. Both run the Apache Maven distribution that the Gradle build
+  downloads and verifies at the version and SHA-512 checksum pinned in gradle/maven-distribution.properties,
+  handed to them as runner.test.mavenHome. They never use `mvn` from the PATH, MAVEN_HOME or M2_HOME, so
+  this sample needs no Maven wrapper. They pass:
 
-      -Drunner.repo=<file: URI of the aggregated -DUMMY repository>
-      -Drunner.version=<the -DUMMY version of the plugin under test>
+      -Drunner.repo=<file: URI of the repository under test>
+      -Drunner.version=<the version of the plugin under test>
       -Dmicronaut.platform.version / -Dmicronaut.core.version
+
+  MavenBasicSampleTest passes the aggregated -DUMMY repository and the -DUMMY version, and passes each
+  Micronaut version only when it is set. PublicationMetadataSmokeTest passes the publication-smoke
+  repository and a release-shaped version such as 1.0.0-PUBLICATION-SMOKE, and always passes both
+  Micronaut versions.
 
   The values below are only defaults, so that `mvn -f pom.xml package -Drunner.repo=... -Drunner.version=...`
   also works by hand. A plain `mvn package` with no properties cannot work: there is nowhere to get the
