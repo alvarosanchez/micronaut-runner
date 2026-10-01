@@ -15,12 +15,12 @@
  */
 package io.micronaut.runner.maven;
 
+import io.micronaut.runner.build.AotCacheSettings;
 import io.micronaut.runner.build.AotTarget;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
 import io.micronaut.runner.build.RunnerJarSpec;
-import io.micronaut.runner.build.aotcache.AotCacheSettings;
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
 import org.apache.maven.execution.MavenSession;

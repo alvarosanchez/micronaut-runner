@@ -13,10 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.build.training;
+package io.micronaut.runner.build;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import io.micronaut.runner.build.training.TrainingSettings;
 
 import java.io.IOException;
 import java.net.InetAddress;

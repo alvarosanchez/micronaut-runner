@@ -13,12 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.build.aotcache;
+package io.micronaut.runner.build;
 
 import io.micronaut.core.annotation.Internal;
-import io.micronaut.runner.build.AotCacheOutput;
-import io.micronaut.runner.build.AotLayout;
-import io.micronaut.runner.build.AotTarget;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;

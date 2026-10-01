@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.build.aotcache;
+package io.micronaut.runner.build;
 
 import io.micronaut.core.annotation.Nullable;
-import io.micronaut.runner.build.training.TrainingDriver;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

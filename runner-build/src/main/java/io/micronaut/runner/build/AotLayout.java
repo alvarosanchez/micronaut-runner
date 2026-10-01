@@ -17,7 +17,6 @@ package io.micronaut.runner.build;
 
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.runner.Index;
-import io.micronaut.runner.build.training.TrainingDriver;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

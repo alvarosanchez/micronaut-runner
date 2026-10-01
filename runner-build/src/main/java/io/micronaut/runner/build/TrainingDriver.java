@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.build.training;
+package io.micronaut.runner.build;
 
 import io.micronaut.core.annotation.Internal;
-import io.micronaut.runner.build.BuildLogger;
+import io.micronaut.runner.build.training.TrainingSettings;
 
 import java.io.File;
 import java.io.IOException;
