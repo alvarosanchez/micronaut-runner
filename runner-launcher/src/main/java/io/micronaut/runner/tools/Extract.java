@@ -117,10 +117,12 @@ import java.util.zip.ZipEntry;
  * <h2>Safety</h2>
  * <p>Everything is written into a temporary directory beside the destination and renamed into place, so an
  * interrupted extraction leaves no half-written tree. Without {@code --force}, a destination that exists
- * and is not an empty directory, a symbolic link included, is refused and left untouched, also when it
- * appears while extraction runs. With {@code --force}, the old destination (only the link itself, when it
- * is a symbolic link) is renamed to a sibling backup until the new tree is in place, and a failed
- * publication restores it or names it in the error. A destination that contains the runner jar is always
+ * and is not an empty directory, a symbolic link or directory junction included, is refused and left
+ * untouched, also when it appears while extraction runs. With {@code --force}, the old destination (only
+ * the link itself, when it is a symbolic link or directory junction) is renamed to a sibling backup until
+ * the new tree is in place, and a failed publication restores it or names it in the error. Removing the
+ * backup never goes through a symbolic link or directory junction, so nothing outside the old destination
+ * is touched. A destination that contains the runner jar is always
  * refused, also through symbolic-link and case aliases, and every name is checked to resolve inside the
  * destination before anything is written. All timestamps are fixed, so extracting one archive twice
  * produces the same tree and an AOT training run matches the production copy.</p>
@@ -323,12 +325,13 @@ public final class Extract {
 
     /**
      * Checks, once and before anything is written, that the destination may be published to. A symbolic
-     * link is judged as a link, never by its target.
+     * link or directory junction is judged as a link, never by its target.
      *
      * @param destination the destination
      * @param force       whether the user allowed a destination that is not empty to be replaced
-     * @throws IOException if the destination is neither absent nor a directory, or is a symbolic link or a
-     *                     directory with anything in it and {@value #OPTION_FORCE} was not given
+     * @throws IOException if the destination is neither absent nor a directory, or is a symbolic link, a
+     *                     directory junction or a directory with anything in it and {@value #OPTION_FORCE}
+     *                     was not given
      */
     private static void checkDestination(Path destination, boolean force) throws IOException {
         BasicFileAttributes attributes;
@@ -338,10 +341,12 @@ public final class Extract {
         } catch (NoSuchFileException e) {
             return;
         }
-        if (attributes.isSymbolicLink()) {
+        if (attributes.isSymbolicLink() || isJunction(destination, attributes)) {
             if (!force) {
-                throw new IOException("The destination " + destination + " is a symbolic link. Pass "
-                        + OPTION_FORCE + " to replace the link (its target is not touched), or "
+                boolean symbolic = attributes.isSymbolicLink();
+                throw new IOException("The destination " + destination + " is "
+                        + (symbolic ? "a symbolic link" : "a directory junction") + ". Pass " + OPTION_FORCE
+                        + " to replace the " + (symbolic ? "link" : "junction") + " (its target is not touched), or "
                         + OPTION_DESTINATION + " to extract somewhere else.");
             }
             return;
@@ -358,6 +363,38 @@ public final class Extract {
                         + OPTION_FORCE + " to replace it, or " + OPTION_DESTINATION
                         + " to extract somewhere else.");
             }
+        }
+    }
+
+    /**
+     * Whether an entry is a Windows directory junction, which is a link to a directory that Java reports as a
+     * directory, never as a symbolic link: only its "other" attribute (a reparse point that is not a symbolic
+     * link) gives it away. Walking or listing one reaches its target, and {@code Files.delete} removes only the
+     * junction.
+     *
+     * <p>Other reparse points also report a directory as "other", such as a cloud-files placeholder, and they are
+     * ordinary directories. A junction is told apart by where it leads: its real path is not its parent's real
+     * path plus its own name, or it has none because its target is gone. Only Windows reports a directory as
+     * "other", so elsewhere this answers {@code false} from the attributes alone.</p>
+     *
+     * @param path       the entry
+     * @param attributes its attributes, read without following links
+     * @return {@code true} for a directory junction, whether or not its target exists
+     */
+    private static boolean isJunction(Path path, BasicFileAttributes attributes) {
+        if (!attributes.isDirectory() || !attributes.isOther()) {
+            return false;
+        }
+        Path parent = path.getParent();
+        if (parent == null) {
+            return false;
+        }
+        try {
+            // The entry's own name as the directory spells it, so that neither case nor a short name differs.
+            Path name = path.toRealPath(LinkOption.NOFOLLOW_LINKS).getFileName();
+            return name == null || !path.toRealPath().equals(parent.toRealPath().resolve(name));
+        } catch (IOException e) {
+            return true;
         }
     }
 
@@ -819,12 +856,13 @@ public final class Extract {
     /**
      * Renames the staged layout onto the destination, which {@code checkDestination} has already accepted.
      *
-     * <p>Without {@code force}, only an empty real directory is removed first, and both the removal and
-     * the rename refuse an occupant that appeared since the check. With {@code force}, an existing
-     * destination (a symbolic link as the link itself) is renamed to a sibling backup that is removed once
-     * the layout is in place, or moved back if it cannot be. A swap of the destination between the
-     * directory check and its removal is not defended against, and an existing empty destination directory
-     * is lost if the final rename then fails for an unrelated reason.</p>
+     * <p>Without {@code force}, only an empty real directory is removed first, and the removal and the
+     * rename refuse an occupant that appeared since the check, a symbolic link or directory junction
+     * included. With {@code force}, an existing destination (a symbolic link or directory junction as the
+     * link itself) is renamed to a sibling backup that is removed once the layout is in place, or moved back
+     * if it cannot be. A swap of the destination between the directory check and its removal is not
+     * defended against, and an existing empty destination directory is lost if the final rename then fails
+     * for an unrelated reason.</p>
      *
      * @param staged      the finished layout
      * @param destination where it belongs
@@ -833,7 +871,21 @@ public final class Extract {
      */
     static void publish(Path staged, Path destination, boolean force) throws IOException {
         if (!force) {
-            if (Files.isDirectory(destination, LinkOption.NOFOLLOW_LINKS)) {
+            BasicFileAttributes attributes;
+            try {
+                attributes = Files.readAttributes(destination, BasicFileAttributes.class,
+                        LinkOption.NOFOLLOW_LINKS);
+            } catch (IOException absentOrUnreadable) {
+                // Nothing to remove first: the rename below refuses whatever is there.
+                attributes = null;
+            }
+            if (attributes != null && isJunction(destination, attributes)) {
+                // Files.delete would remove a junction whatever its target holds, so it is refused as a
+                // symbolic link is.
+                throw occupiedDuringPublication(destination, new FileAlreadyExistsException(
+                        destination.toString(), null, "a directory junction"));
+            }
+            if (attributes != null && attributes.isDirectory()) {
                 try {
                     Files.delete(destination);
                 } catch (DirectoryNotEmptyException e) {
@@ -899,17 +951,53 @@ public final class Extract {
     }
 
     /**
-     * Deletes a directory tree, ignoring what is gone already. A symbolic link, dangling or not, is
-     * deleted as the link; its target is never touched.
+     * Deletes a directory tree, ignoring what is gone already. A symbolic link or directory junction,
+     * dangling or not, is deleted as the link, the tree itself included; its target is never touched.
      *
      * @param directory the tree
      * @throws IOException if a file cannot be deleted
      */
     private static void deleteRecursively(Path directory) throws IOException {
-        if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
+        BasicFileAttributes root;
+        try {
+            root = Files.readAttributes(directory, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        } catch (NoSuchFileException e) {
+            return;
+        }
+        // A walk descends into a junction, as into any directory, so it must never start at one.
+        if (isJunction(directory, root)) {
+            Files.delete(directory);
             return;
         }
         Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
+
+            @Override
+            public FileVisitResult preVisitDirectory(Path visited, BasicFileAttributes attributes)
+                    throws IOException {
+                if (isJunction(visited, attributes)) {
+                    Files.delete(visited);
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException {
+                // A junction whose target is gone cannot be listed, so it fails here instead of reaching
+                // preVisitDirectory.
+                BasicFileAttributes attributes;
+                try {
+                    attributes = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                } catch (IOException unreadable) {
+                    failure.addSuppressed(unreadable);
+                    throw failure;
+                }
+                if (isJunction(file, attributes)) {
+                    Files.delete(file);
+                    return FileVisitResult.CONTINUE;
+                }
+                throw failure;
+            }
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
