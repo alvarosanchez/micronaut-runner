@@ -58,7 +58,6 @@ loadScripts(document, 'script');</script>
 <li><a href="#method-summary" tabindex="0">Method Summary</a></li>
 <li><a href="#field-detail" tabindex="0">Field Details</a>
 <ol class="toc-list">
-<li><a href="#URL_VARIABLE" tabindex="0">URL_VARIABLE</a></li>
 <li><a href="#AMBIENT_JVM_OPTIONS" tabindex="0">AMBIENT_JVM_OPTIONS</a></li>
 </ol>
 </li>
@@ -80,7 +79,8 @@ loadScripts(document, 'script');</script>
 <section class="class-description" id="class-description">
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">TrainingDriver</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public final class </span><span class="element-name type-name-label">TrainingDriver</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
 <div class="block">Launches an application once for a training run and takes it down again, whatever happens in between.
 
@@ -93,7 +93,11 @@ outright runs no hook and leaves the application running: after SIGKILL, or when
 
 <p>The driver names no build tool and knows nothing about what the run is for: the caller passes the JVM
 arguments that make it a recording or a cache training, and reads the result in its
-<a href="TrainingDriver.AfterWorkload.html" title="interface in io.micronaut.runner.build.training"><code>TrainingDriver.AfterWorkload</code></a> callback.</p></div>
+<a href="TrainingDriver.AfterWorkload.html" title="interface in io.micronaut.runner.build.training"><code>TrainingDriver.AfterWorkload</code></a> callback.</p>
+
+<p>Internal to runner-build: the startup-profile recorder and the JDK AOT-cache code in other packages launch
+through it, which is why it is public. It is not part of the stable API and may change in any release; build
+plugins call <code>StartupProfileRecorder</code> with <a href="TrainingSettings.html" title="class in io.micronaut.runner.build.training"><code>TrainingSettings</code></a> instead.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -139,12 +143,6 @@ tell the JVM to finish a recording.</div>
 <div class="col-last even-row-color">
 <div class="block">The environment variables through which a JVM takes options nobody passed it.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#URL_VARIABLE" class="member-name-link">URL_VARIABLE</a></code></div>
-<div class="col-last odd-row-color">
-<div class="block">The environment variable that tells a <a href="TrainingSettings.html#workloadCommand()">workload command</a>
-where the application listens: <code>http://127.0.0.1:&lt;port&gt;</code>.</div>
-</div>
 </div>
 </section>
 </li>
@@ -188,24 +186,6 @@ where the application listens: <code>http://127.0.0.1:&lt;port&gt;</code>.</div>
 <section class="field-details" id="field-detail">
 <h2>Field Details</h2>
 <ul class="member-list">
-<li>
-<section class="detail" id="URL_VARIABLE">
-<h3>URL_VARIABLE</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">URL_VARIABLE</span></div>
-<div class="block">The environment variable that tells a <a href="TrainingSettings.html#workloadCommand()">workload command</a>
-where the application listens: <code>http://127.0.0.1:&lt;port&gt;</code>.</div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../../../constant-values.html#io.micronaut.runner.build.training.TrainingDriver.URL_VARIABLE">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
 <li>
 <section class="detail" id="AMBIENT_JVM_OPTIONS">
 <h3>AMBIENT_JVM_OPTIONS</h3>

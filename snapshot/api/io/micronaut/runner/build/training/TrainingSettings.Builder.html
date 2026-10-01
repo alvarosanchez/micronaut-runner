@@ -5,7 +5,7 @@
 <title>TrainingSettings.Builder (runner-parent 1.0.0-SNAPSHOT API)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<meta name="description" content="declaration: package: io.micronaut.runner.build.training, record: TrainingSettings, class: Builder">
+<meta name="description" content="declaration: package: io.micronaut.runner.build.training, class: TrainingSettings, class: Builder">
 <meta name="generator" content="javadoc/ClassWriter">
 <link rel="stylesheet" type="text/css" href="../../../../../resource-files/jquery-ui.min.css">
 <link rel="stylesheet" type="text/css" href="../../../../../resource-files/stylesheet.css">
@@ -91,8 +91,12 @@ loadScripts(document, 'script');</script>
 <div class="horizontal-scroll">
 <div class="type-signature"><span class="modifiers">public static final class </span><span class="element-name type-name-label">TrainingSettings.Builder</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
-<div class="block">Collects training settings, starting from the defaults. A setter that is not called leaves the default
-in place.</div>
+<div class="block">Collects training settings, starting from the <a href="TrainingSettings.html#defaults()">defaults</a>. A setter
+that is not called leaves the default in place, and a later call replaces an earlier one. The setters
+only store what they are given; <a href="#build()"><code>build()</code></a> checks it all, so a value that is not usable, such as a
+<code>null</code> where a setting takes none, fails there.
+
+<p>Stable API for all of 1.x, like the settings: a setting added in a minor release adds a setter.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -120,12 +124,12 @@ in place.</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#environment(java.util.Map)" class="member-name-link">environment</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Sets <a href="TrainingSettings.html#environment()"><code>TrainingSettings.environment()</code></a>.</div>
+<div class="block">Sets <a href="TrainingSettings.html#environment()"><code>TrainingSettings.environment()</code></a>, replacing the variables set before.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jvmArgs(java.util.List)" class="member-name-link">jvmArgs</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Sets <a href="TrainingSettings.html#jvmArgs()"><code>TrainingSettings.jvmArgs()</code></a>.</div>
+<div class="block">Sets <a href="TrainingSettings.html#jvmArgs()"><code>TrainingSettings.jvmArgs()</code></a>, replacing the arguments set before.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#portVariable(java.lang.String)" class="member-name-link">portVariable</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
@@ -160,12 +164,12 @@ in place.</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadCommand(java.util.List)" class="member-name-link">workloadCommand</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Sets <a href="TrainingSettings.html#workloadCommand()"><code>TrainingSettings.workloadCommand()</code></a>.</div>
+<div class="block">Sets <a href="TrainingSettings.html#workloadCommand()"><code>TrainingSettings.workloadCommand()</code></a>, replacing the command set before.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadPaths(java.util.List)" class="member-name-link">workloadPaths</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Sets <a href="TrainingSettings.html#workloadPaths()"><code>TrainingSettings.workloadPaths()</code></a>.</div>
+<div class="block">Sets <a href="TrainingSettings.html#workloadPaths()"><code>TrainingSettings.workloadPaths()</code></a>, replacing the paths set before.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadRepeat(int)" class="member-name-link">workloadRepeat</a><wbr>(int&nbsp;value)</code></div>
@@ -215,10 +219,10 @@ in place.</div>
 <h3>workloadPaths</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></span>&nbsp;<span class="element-name">workloadPaths</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</span></div>
-<div class="block">Sets <a href="TrainingSettings.html#workloadPaths()"><code>TrainingSettings.workloadPaths()</code></a>.</div>
+<div class="block">Sets <a href="TrainingSettings.html#workloadPaths()"><code>TrainingSettings.workloadPaths()</code></a>, replacing the paths set before.</div>
 <dl class="notes">
 <dt>Parameters:</dt>
-<dd><code>value</code> - the paths, in request order</dd>
+<dd><code>value</code> - the paths, in request order; <a href="#build()"><code>build()</code></a> copies them</dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
 </dl>
@@ -245,10 +249,10 @@ in place.</div>
 <h3>workloadCommand</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></span>&nbsp;<span class="element-name">workloadCommand</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</span></div>
-<div class="block">Sets <a href="TrainingSettings.html#workloadCommand()"><code>TrainingSettings.workloadCommand()</code></a>.</div>
+<div class="block">Sets <a href="TrainingSettings.html#workloadCommand()"><code>TrainingSettings.workloadCommand()</code></a>, replacing the command set before.</div>
 <dl class="notes">
 <dt>Parameters:</dt>
-<dd><code>value</code> - the command and its arguments, empty for none</dd>
+<dd><code>value</code> - the command and its arguments, empty for none; <a href="#build()"><code>build()</code></a> copies them</dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
 </dl>
@@ -291,10 +295,10 @@ in place.</div>
 <h3>jvmArgs</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></span>&nbsp;<span class="element-name">jvmArgs</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</span></div>
-<div class="block">Sets <a href="TrainingSettings.html#jvmArgs()"><code>TrainingSettings.jvmArgs()</code></a>.</div>
+<div class="block">Sets <a href="TrainingSettings.html#jvmArgs()"><code>TrainingSettings.jvmArgs()</code></a>, replacing the arguments set before.</div>
 <dl class="notes">
 <dt>Parameters:</dt>
-<dd><code>value</code> - the JVM arguments</dd>
+<dd><code>value</code> - the JVM arguments; <a href="#build()"><code>build()</code></a> copies them</dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
 </dl>
@@ -306,10 +310,10 @@ in place.</div>
 <h3>environment</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></span>&nbsp;<span class="element-name">environment</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</span></div>
-<div class="block">Sets <a href="TrainingSettings.html#environment()"><code>TrainingSettings.environment()</code></a>.</div>
+<div class="block">Sets <a href="TrainingSettings.html#environment()"><code>TrainingSettings.environment()</code></a>, replacing the variables set before.</div>
 <dl class="notes">
 <dt>Parameters:</dt>
-<dd><code>value</code> - the environment variables to add</dd>
+<dd><code>value</code> - the environment variables to add, in the order to set them; <a href="#build()"><code>build()</code></a> copies them</dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
 </dl>
@@ -381,12 +385,19 @@ in place.</div>
 <h3>build</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></span>&nbsp;<span class="element-name">build</span>()</div>
-<div class="block">Validates and builds the settings.</div>
+<div class="block">Validates and builds the settings. Every failure names the setting it is about.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the settings</dd>
 <dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link">IllegalArgumentException</a></code> - if a value is not usable; the message names the setting</dd>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/NullPointerException.html" title="class or interface in java.lang" class="external-link">NullPointerException</a></code> - if <code>workloadPaths</code>, <code>workloadCommand</code>, <code>jvmArgs</code>,
+                                 <code>environment</code>, <code>portVariable</code> or a timeout was set to
+                                 <code>null</code>; the message is the name of the setting</dd>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link">IllegalArgumentException</a></code> - if a value is not usable: a list that holds <code>null</code>, an
+                                 environment with a <code>null</code> name or value, a path that is not a
+                                 request path, a <code>workloadRepeat</code> below 1, a blank program or
+                                 JVM argument, a name that is not an environment variable's, a timeout
+                                 that is not positive, or a workload with <code>runToExit</code></dd>
 </dl>
 </div>
 </section>

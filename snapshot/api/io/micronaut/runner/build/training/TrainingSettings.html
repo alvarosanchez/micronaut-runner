@@ -5,7 +5,7 @@
 <title>TrainingSettings (runner-parent 1.0.0-SNAPSHOT API)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<meta name="description" content="declaration: package: io.micronaut.runner.build.training, record: TrainingSettings">
+<meta name="description" content="declaration: package: io.micronaut.runner.build.training, class: TrainingSettings">
 <meta name="generator" content="javadoc/ClassWriter">
 <link rel="stylesheet" type="text/css" href="../../../../../resource-files/jquery-ui.min.css">
 <link rel="stylesheet" type="text/css" href="../../../../../resource-files/stylesheet.css">
@@ -52,31 +52,24 @@ loadScripts(document, 'script');</script>
 <nav role="navigation" class="toc" aria-label="Table of contents">
 <div class="toc-header">Contents&nbsp;<input type="text" class="filter-input" disabled placeholder="Filter contents (type .)" aria-label="Filter table of contents" autocomplete="off" spellcheck="false"><input type="reset" class="reset-filter" disabled tabindex="-1" value="Reset"></div>
 <ol class="toc-list" tabindex="-1">
-<li><a href="#" tabindex="0">Description</a></li>
+<li><a href="#" tabindex="0">Description</a>
+<ol class="toc-list">
+<li><a href="#compatibility-heading" tabindex="0">Compatibility</a></li>
+</ol>
+</li>
 <li><a href="#nested-class-summary" tabindex="0">Nested Class Summary</a></li>
 <li><a href="#field-summary" tabindex="0">Field Summary</a></li>
-<li><a href="#constructor-summary" tabindex="0">Constructor Summary</a></li>
 <li><a href="#method-summary" tabindex="0">Method Summary</a></li>
 <li><a href="#field-detail" tabindex="0">Field Details</a>
 <ol class="toc-list">
-<li><a href="#DEFAULT_PORT_VARIABLE" tabindex="0">DEFAULT_PORT_VARIABLE</a></li>
-<li><a href="#DEFAULT_READINESS_TIMEOUT" tabindex="0">DEFAULT_READINESS_TIMEOUT</a></li>
-<li><a href="#DEFAULT_WORKLOAD_TIMEOUT" tabindex="0">DEFAULT_WORKLOAD_TIMEOUT</a></li>
-<li><a href="#DEFAULT_STOP_TIMEOUT" tabindex="0">DEFAULT_STOP_TIMEOUT</a></li>
-</ol>
-</li>
-<li><a href="#constructor-detail" tabindex="0">Constructor Details</a>
-<ol class="toc-list">
-<li><a href="#%3Cinit%3E(java.lang.String,java.util.List,int,java.util.List,boolean,java.lang.String,java.util.List,java.util.Map,java.lang.String,java.time.Duration,java.time.Duration,java.time.Duration)" tabindex="0">TrainingSettings(String, List, int, List, boolean, String, List, Map, String, Duration, Duration, Duration)</a></li>
+<li><a href="#URL_VARIABLE" tabindex="0">URL_VARIABLE</a></li>
 </ol>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
 <li><a href="#defaults()" tabindex="0">defaults()</a></li>
 <li><a href="#builder()" tabindex="0">builder()</a></li>
-<li><a href="#toString()" tabindex="0">toString()</a></li>
-<li><a href="#hashCode()" tabindex="0">hashCode()</a></li>
-<li><a href="#equals(java.lang.Object)" tabindex="0">equals(Object)</a></li>
+<li><a href="#toBuilder()" tabindex="0">toBuilder()</a></li>
 <li><a href="#readinessPath()" tabindex="0">readinessPath()</a></li>
 <li><a href="#workloadPaths()" tabindex="0">workloadPaths()</a></li>
 <li><a href="#workloadRepeat()" tabindex="0">workloadRepeat()</a></li>
@@ -89,6 +82,9 @@ loadScripts(document, 'script');</script>
 <li><a href="#readinessTimeout()" tabindex="0">readinessTimeout()</a></li>
 <li><a href="#workloadTimeout()" tabindex="0">workloadTimeout()</a></li>
 <li><a href="#stopTimeout()" tabindex="0">stopTimeout()</a></li>
+<li><a href="#equals(java.lang.Object)" tabindex="0">equals(Object)</a></li>
+<li><a href="#hashCode()" tabindex="0">hashCode()</a></li>
+<li><a href="#toString()" tabindex="0">toString()</a></li>
 </ol>
 </li>
 </ol>
@@ -96,52 +92,37 @@ loadScripts(document, 'script');</script>
 <main role="main">
 <!-- ======== START OF CLASS DATA ======== -->
 <div class="header">
-<h1 title="Record Class TrainingSettings" class="title">Record Class TrainingSettings</h1>
+<h1 title="Class TrainingSettings" class="title">Class TrainingSettings</h1>
 </div>
 <div class="inheritance" title="Inheritance Tree"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">java.lang.Object</a>
-<div class="inheritance"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html" title="class or interface in java.lang" class="external-link">java.lang.Record</a>
 <div class="inheritance">io.micronaut.runner.build.training.TrainingSettings</div>
 </div>
-</div>
 <section class="class-description" id="class-description">
-<dl class="notes">
-<dt>Record Components:</dt>
-<dd><code><span id="param-readinessPath">readinessPath</span></code> - the path to <code>GET</code> until it answers <code>2xx</code>, once the port accepts a
-                        connection; <code>null</code> when the accepted connection alone means ready</dd>
-<dd><code><span id="param-workloadPaths">workloadPaths</span></code> - the paths to <code>GET</code> in order, each of which must answer <code>2xx</code>; when
-                        this and <code>workloadCommand</code> are both empty the driver sends one <code>GET /</code>
-                        and accepts any status below 500</dd>
-<dd><code><span id="param-workloadRepeat">workloadRepeat</span></code> - how many times the whole list of <code>workloadPaths</code> is requested; at least 1</dd>
-<dd><code><span id="param-workloadCommand">workloadCommand</span></code> - a command and its arguments, run after the paths with
-                        <a href="TrainingDriver.html#URL_VARIABLE">"MICRONAUT_RUNNER_TRAINING_URL"</a> set to the application's base URL; it must
-                        exit with status 0; empty for none</dd>
-<dd><code><span id="param-runToExit">runToExit</span></code> - whether the application ends by itself, as one that is not a server does; there is
-                        then no readiness check, no workload and no stop, and the application must exit
-                        with status 0 within <code>readinessTimeout</code></dd>
-<dd><code><span id="param-stopPath">stopPath</span></code> - the path to <code>POST</code> to stop the application, where an orderly stop needs a
-                        request rather than a signal; <code>null</code> to destroy the process</dd>
-<dd><code><span id="param-jvmArgs">jvmArgs</span></code> - JVM arguments of the training launch, placed before the driver's own</dd>
-<dd><code><span id="param-environment">environment</span></code> - environment variables added to the training launch</dd>
-<dd><code><span id="param-portVariable">portVariable</span></code> - the environment variable that receives the free loopback port the application is
-                        to listen on</dd>
-<dd><code><span id="param-readinessTimeout">readinessTimeout</span></code> - how long the application may take to become ready, or to exit with
-                        <code>runToExit</code></dd>
-<dd><code><span id="param-workloadTimeout">workloadTimeout</span></code> - how long the paths and the command may take together</dd>
-<dd><code><span id="param-stopTimeout">stopTimeout</span></code> - how long the application may take to exit once asked to, before it is killed</dd>
-</dl>
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public record </span><span class="element-name type-name-label">TrainingSettings</span>(@Nullable <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;readinessPath, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;workloadPaths, int&nbsp;workloadRepeat, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;workloadCommand, boolean&nbsp;runToExit, @Nullable <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;stopPath, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;jvmArgs, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;environment, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;portVariable, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a>&nbsp;readinessTimeout, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a>&nbsp;workloadTimeout, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a>&nbsp;stopTimeout)
-<span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html" title="class or interface in java.lang" class="external-link">Record</a></span></div>
-<div class="block">How a training run exercises the application: how the <a href="TrainingDriver.html" title="class in io.micronaut.runner.build.training"><code>TrainingDriver</code></a> knows it is ready, what it
-asks of it, and how it stops it.
+<div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">TrainingSettings</span>
+<span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
+<div class="block">How a training run exercises the application: how the run knows it is ready, what it asks of it, and how it
+stops it.
 
-<p>A training run launches the application once, from the archive the build produced, to learn something
-from it: the classes it loads at startup, or a JDK cache. The settings describe the application, not the
-build tool, so both plugins map theirs onto this one record.</p>
+<p>A training run launches the application once with <code>java -jar</code>, from the archive the build produced,
+to learn something from it: the classes it loads at startup, or a JDK cache. It passes the application a free
+loopback port in <a href="#portVariable()"><code>portVariable()</code></a>, waits until it is ready, sends it the workload and stops it; every
+phase has a timeout, and every process the run started is gone when it ends. The settings describe the
+application, not the build tool, so both build plugins map theirs onto this one type.</p>
 
 <p>A path is the path of an HTTP request to the application on the loopback interface. It starts with
-<code>/</code> and may carry a query string.</p></div>
+<code>/</code> and may carry a query string.</p>
+
+<p>Settings are made with <a href="#builder()"><code>builder()</code></a>, and are immutable. Two settings are equal when every setting
+is.</p>
+
+<h2 id="compatibility-heading">Compatibility</h2>
+
+<p>This type is stable API for all of 1.x. A setting added in a minor release arrives as a new accessor and a
+new builder setter, whose default keeps the behaviour of the release before; no accessor or setter changes
+or goes away. A default value changes only in a minor release. Each setting is named like the Gradle property
+and the Maven parameter that sets it, and every rejection names the setting.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -162,7 +143,7 @@ build tool, so both plugins map theirs onto this one record.</p>
 <div class="col-first even-row-color"><code>static final class&nbsp;</code></div>
 <div class="col-second even-row-color"><code><a href="TrainingSettings.Builder.html" class="type-name-link" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></code></div>
 <div class="col-last even-row-color">
-<div class="block">Collects training settings, starting from the defaults.</div>
+<div class="block">Collects training settings, starting from the <a href="#defaults()">defaults</a>.</div>
 </div>
 </div>
 </section>
@@ -177,50 +158,10 @@ build tool, so both plugins map theirs onto this one record.</p>
 <div class="table-header col-second">Field</div>
 <div class="table-header col-last">Description</div>
 <div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#DEFAULT_PORT_VARIABLE" class="member-name-link">DEFAULT_PORT_VARIABLE</a></code></div>
+<div class="col-second even-row-color"><code><a href="#URL_VARIABLE" class="member-name-link">URL_VARIABLE</a></code></div>
 <div class="col-last even-row-color">
-<div class="block">The environment variable Micronaut reads the server port from, whatever the application configures.</div>
-</div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#DEFAULT_READINESS_TIMEOUT" class="member-name-link">DEFAULT_READINESS_TIMEOUT</a></code></div>
-<div class="col-last odd-row-color">
-<div class="block">The default of <a href="#readinessTimeout()"><code>readinessTimeout()</code></a>.</div>
-</div>
-<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></code></div>
-<div class="col-second even-row-color"><code><a href="#DEFAULT_STOP_TIMEOUT" class="member-name-link">DEFAULT_STOP_TIMEOUT</a></code></div>
-<div class="col-last even-row-color">
-<div class="block">The default of <a href="#stopTimeout()"><code>stopTimeout()</code></a>.</div>
-</div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#DEFAULT_WORKLOAD_TIMEOUT" class="member-name-link">DEFAULT_WORKLOAD_TIMEOUT</a></code></div>
-<div class="col-last odd-row-color">
-<div class="block">The default of <a href="#workloadTimeout()"><code>workloadTimeout()</code></a>.</div>
-</div>
-</div>
-</section>
-</li>
-<!-- ======== CONSTRUCTOR SUMMARY ======== -->
-<li>
-<section class="constructor-summary" id="constructor-summary">
-<h2>Constructor Summary</h2>
-<div class="caption"><span>Constructors</span></div>
-<div class="summary-table two-column-summary">
-<div class="table-header col-first">Constructor</div>
-<div class="table-header col-last">Description</div>
-<div class="col-constructor-name even-row-color"><code><a href="#%3Cinit%3E(java.lang.String,java.util.List,int,java.util.List,boolean,java.lang.String,java.util.List,java.util.Map,java.lang.String,java.time.Duration,java.time.Duration,java.time.Duration)" class="member-name-link">TrainingSettings</a><wbr>(@Nullable <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;readinessPath,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;workloadPaths,
- int&nbsp;workloadRepeat,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;workloadCommand,
- boolean&nbsp;runToExit,
- @Nullable <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;stopPath,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;jvmArgs,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;environment,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;portVariable,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a>&nbsp;readinessTimeout,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a>&nbsp;workloadTimeout,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a>&nbsp;stopTimeout)</code></div>
-<div class="col-last even-row-color">
-<div class="block">Validates the settings and copies the collections.</div>
+<div class="block">The environment variable that tells a <a href="#workloadCommand()">workload command</a> where the
+application listens: <code>http://127.0.0.1:&lt;port&gt;</code>.</div>
 </div>
 </div>
 </section>
@@ -239,89 +180,99 @@ build tool, so both plugins map theirs onto this one record.</p>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#builder()" class="member-name-link">builder</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">Starts from the defaults.</div>
+<div class="block">Starts from the <a href="#defaults()">defaults</a>.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#defaults()" class="member-name-link">defaults</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">The settings of an application about which nothing is known: a server that reads its port from
-<a href="#DEFAULT_PORT_VARIABLE">"MICRONAUT_SERVER_PORT"</a>, is ready when the port accepts a connection, and is stopped by
-destroying the process.</div>
+<code>MICRONAUT_SERVER_PORT</code>, is ready when the port accepts a connection, is sent one <code>GET /</code> and
+is stopped by destroying its process, with a readiness and a workload timeout of 60 seconds and a stop
+timeout of 30 seconds.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#environment()" class="member-name-link">environment</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-environment"><code>environment</code></a> record component.</div>
+<div class="block">Environment variables added to the training launch, in the order they are set.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>final boolean</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#equals(java.lang.Object)" class="member-name-link">equals</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a>&nbsp;o)</code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#equals(java.lang.Object)" class="member-name-link">equals</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a>&nbsp;other)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Indicates whether some other object is "equal to" this one.</div>
+<div class="block">Compares every setting.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>final int</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#hashCode()" class="member-name-link">hashCode</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns a hash code value for this object.</div>
+<div class="block">Hashes every setting.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jvmArgs()" class="member-name-link">jvmArgs</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-jvmArgs"><code>jvmArgs</code></a> record component.</div>
+<div class="block">JVM arguments of the training launch, placed before the ones the run adds for its purpose, which win.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#portVariable()" class="member-name-link">portVariable</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-portVariable"><code>portVariable</code></a> record component.</div>
+<div class="block">The environment variable that receives the free loopback port the application is to listen on:
+<code>MICRONAUT_SERVER_PORT</code> by default.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>@Nullable <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html" title="class or interface in java.util" class="external-link">Optional</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#readinessPath()" class="member-name-link">readinessPath</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-readinessPath"><code>readinessPath</code></a> record component.</div>
+<div class="block">The path to <code>GET</code> until it answers <code>2xx</code>, once the port accepts a connection.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#readinessTimeout()" class="member-name-link">readinessTimeout</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-readinessTimeout"><code>readinessTimeout</code></a> record component.</div>
+<div class="block">How long the application may take to become ready, or to exit with <a href="#runToExit()"><code>runToExit()</code></a>: 60 seconds by
+default.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#runToExit()" class="member-name-link">runToExit</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-runToExit"><code>runToExit</code></a> record component.</div>
+<div class="block">Whether the application ends by itself, as one that is not a server does.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>@Nullable <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html" title="class or interface in java.util" class="external-link">Optional</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stopPath()" class="member-name-link">stopPath</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-stopPath"><code>stopPath</code></a> record component.</div>
+<div class="block">The path to <code>POST</code> to stop the application, where an orderly stop needs a request rather than a
+signal, as on Windows.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stopTimeout()" class="member-name-link">stopTimeout</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-stopTimeout"><code>stopTimeout</code></a> record component.</div>
+<div class="block">How long the application may take to exit once asked to, before it is killed: 30 seconds by default.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#toString()" class="member-name-link">toString</a>()</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#toBuilder()" class="member-name-link">toBuilder</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns a string representation of this record class.</div>
+<div class="block">Starts from these settings, to make settings that differ in a few of them.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadCommand()" class="member-name-link">workloadCommand</a>()</code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#toString()" class="member-name-link">toString</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-workloadCommand"><code>workloadCommand</code></a> record component.</div>
+<div class="block">Describes the settings for a log.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadPaths()" class="member-name-link">workloadPaths</a>()</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadCommand()" class="member-name-link">workloadCommand</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-workloadPaths"><code>workloadPaths</code></a> record component.</div>
+<div class="block">A command and its arguments, run after the paths with <a href="#URL_VARIABLE">"MICRONAUT_RUNNER_TRAINING_URL"</a> set to the application's base
+URL.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadRepeat()" class="member-name-link">workloadRepeat</a>()</code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadPaths()" class="member-name-link">workloadPaths</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-workloadRepeat"><code>workloadRepeat</code></a> record component.</div>
+<div class="block">The paths to <code>GET</code> in order, each of which must answer <code>2xx</code>.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadTimeout()" class="member-name-link">workloadTimeout</a>()</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadRepeat()" class="member-name-link">workloadRepeat</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Returns the value of the <a href="#param-workloadTimeout"><code>workloadTimeout</code></a> record component.</div>
+<div class="block">How many times the whole list of <a href="#workloadPaths()"><code>workloadPaths()</code></a> is requested: at least 1, and 1 by default.</div>
+</div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#workloadTimeout()" class="member-name-link">workloadTimeout</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">How long the paths and the command may take together: 60 seconds by default.</div>
 </div>
 </div>
 </div>
@@ -341,80 +292,20 @@ destroying the process.</div>
 <h2>Field Details</h2>
 <ul class="member-list">
 <li>
-<section class="detail" id="DEFAULT_PORT_VARIABLE">
-<h3>DEFAULT_PORT_VARIABLE</h3>
+<section class="detail" id="URL_VARIABLE">
+<h3>URL_VARIABLE</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">DEFAULT_PORT_VARIABLE</span></div>
-<div class="block">The environment variable Micronaut reads the server port from, whatever the application configures.</div>
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">URL_VARIABLE</span></div>
+<div class="block">The environment variable that tells a <a href="#workloadCommand()">workload command</a> where the
+application listens: <code>http://127.0.0.1:&lt;port&gt;</code>. Workload commands read it, so its value is fixed for
+all of 1.x.</div>
 <dl class="notes">
 <dt>See Also:</dt>
 <dd>
 <ul class="tag-list">
-<li><a href="../../../../../constant-values.html#io.micronaut.runner.build.training.TrainingSettings.DEFAULT_PORT_VARIABLE">Constant Field Values</a></li>
+<li><a href="../../../../../constant-values.html#io.micronaut.runner.build.training.TrainingSettings.URL_VARIABLE">Constant Field Values</a></li>
 </ul>
 </dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="DEFAULT_READINESS_TIMEOUT">
-<h3>DEFAULT_READINESS_TIMEOUT</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></span>&nbsp;<span class="element-name">DEFAULT_READINESS_TIMEOUT</span></div>
-<div class="block">The default of <a href="#readinessTimeout()"><code>readinessTimeout()</code></a>.</div>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="DEFAULT_WORKLOAD_TIMEOUT">
-<h3>DEFAULT_WORKLOAD_TIMEOUT</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></span>&nbsp;<span class="element-name">DEFAULT_WORKLOAD_TIMEOUT</span></div>
-<div class="block">The default of <a href="#workloadTimeout()"><code>workloadTimeout()</code></a>.</div>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="DEFAULT_STOP_TIMEOUT">
-<h3>DEFAULT_STOP_TIMEOUT</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></span>&nbsp;<span class="element-name">DEFAULT_STOP_TIMEOUT</span></div>
-<div class="block">The default of <a href="#stopTimeout()"><code>stopTimeout()</code></a>.</div>
-</div>
-</section>
-</li>
-</ul>
-</section>
-</li>
-<!-- ========= CONSTRUCTOR DETAIL ======== -->
-<li>
-<section class="constructor-details" id="constructor-detail">
-<h2>Constructor Details</h2>
-<ul class="member-list">
-<li>
-<section class="detail" id="&lt;init&gt;(java.lang.String,java.util.List,int,java.util.List,boolean,java.lang.String,java.util.List,java.util.Map,java.lang.String,java.time.Duration,java.time.Duration,java.time.Duration)">
-<h3>TrainingSettings</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="element-name">TrainingSettings</span><wbr><span class="parameters">(@Nullable
- @Nullable <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;readinessPath,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;workloadPaths,
- int&nbsp;workloadRepeat,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;workloadCommand,
- boolean&nbsp;runToExit,
- @Nullable
- @Nullable <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;stopPath,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;jvmArgs,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;environment,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;portVariable,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a>&nbsp;readinessTimeout,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a>&nbsp;workloadTimeout,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a>&nbsp;stopTimeout)</span></div>
-<div class="block">Validates the settings and copies the collections.</div>
-<dl class="notes">
-<dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/NullPointerException.html" title="class or interface in java.lang" class="external-link">NullPointerException</a></code> - if a collection, the port variable or a timeout is <code>null</code></dd>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link">IllegalArgumentException</a></code> - if a value is not usable; the message names the setting</dd>
 </dl>
 </div>
 </section>
@@ -433,8 +324,9 @@ destroying the process.</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></span>&nbsp;<span class="element-name">defaults</span>()</div>
 <div class="block">The settings of an application about which nothing is known: a server that reads its port from
-<a href="#DEFAULT_PORT_VARIABLE">"MICRONAUT_SERVER_PORT"</a>, is ready when the port accepts a connection, and is stopped by
-destroying the process.</div>
+<code>MICRONAUT_SERVER_PORT</code>, is ready when the port accepts a connection, is sent one <code>GET /</code> and
+is stopped by destroying its process, with a readiness and a workload timeout of 60 seconds and a stop
+timeout of 30 seconds. They are the builder's starting values.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the defaults</dd>
@@ -447,7 +339,7 @@ destroying the process.</div>
 <h3>builder</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></span>&nbsp;<span class="element-name">builder</span>()</div>
-<div class="block">Starts from the defaults.</div>
+<div class="block">Starts from the <a href="#defaults()">defaults</a>.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>a new builder</dd>
@@ -456,48 +348,14 @@ destroying the process.</div>
 </section>
 </li>
 <li>
-<section class="detail" id="toString()">
-<h3>toString</h3>
+<section class="detail" id="toBuilder()">
+<h3>toBuilder</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">toString</span>()</div>
-<div class="block">Returns a string representation of this record class. The representation contains the name of the class, followed by the name and value of each of the record components.</div>
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></span>&nbsp;<span class="element-name">toBuilder</span>()</div>
+<div class="block">Starts from these settings, to make settings that differ in a few of them.</div>
 <dl class="notes">
-<dt>Specified by:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html#toString()" title="class or interface in java.lang" class="external-link">toString</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html" title="class or interface in java.lang" class="external-link">Record</a></code></dd>
 <dt>Returns:</dt>
-<dd>a string representation of this object</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="hashCode()">
-<h3>hashCode</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public final</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">hashCode</span>()</div>
-<div class="block">Returns a hash code value for this object. The value is derived from the hash code of each of the record components.</div>
-<dl class="notes">
-<dt>Specified by:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html#hashCode()" title="class or interface in java.lang" class="external-link">hashCode</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html" title="class or interface in java.lang" class="external-link">Record</a></code></dd>
-<dt>Returns:</dt>
-<dd>a hash code value for this object</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="equals(java.lang.Object)">
-<h3>equals</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public final</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">equals</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a>&nbsp;o)</span></div>
-<div class="block">Indicates whether some other object is "equal to" this one. The objects are equal if the other object is of the same class and if all the record components are equal. Reference components are compared with <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Objects.html#equals(java.lang.Object,java.lang.Object)" title="class or interface in java.util" class="external-link"><code>Objects::equals(Object,Object)</code></a>; primitive components are compared with the <code>compare</code> method from their corresponding wrapper classes.</div>
-<dl class="notes">
-<dt>Specified by:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html#equals(java.lang.Object)" title="class or interface in java.lang" class="external-link">equals</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html" title="class or interface in java.lang" class="external-link">Record</a></code></dd>
-<dt>Parameters:</dt>
-<dd><code>o</code> - the object with which to compare</dd>
-<dt>Returns:</dt>
-<dd><code>true</code> if this object is the same as the <code>o</code> argument; <code>false</code> otherwise.</dd>
+<dd>a new builder that holds every value of these settings</dd>
 </dl>
 </div>
 </section>
@@ -506,12 +364,11 @@ destroying the process.</div>
 <section class="detail" id="readinessPath()">
 <h3>readinessPath</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="annotations">@Nullable
-</span><span class="modifiers">public</span>&nbsp;<span class="return-type">@Nullable <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">readinessPath</span>()</div>
-<div class="block">Returns the value of the <a href="#param-readinessPath"><code>readinessPath</code></a> record component.</div>
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html" title="class or interface in java.util" class="external-link">Optional</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">readinessPath</span>()</div>
+<div class="block">The path to <code>GET</code> until it answers <code>2xx</code>, once the port accepts a connection.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-readinessPath"><code>readinessPath</code></a> record component</dd>
+<dd>the path, or empty when the accepted connection alone means ready, which is the default</dd>
 </dl>
 </div>
 </section>
@@ -521,10 +378,12 @@ destroying the process.</div>
 <h3>workloadPaths</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">workloadPaths</span>()</div>
-<div class="block">Returns the value of the <a href="#param-workloadPaths"><code>workloadPaths</code></a> record component.</div>
+<div class="block">The paths to <code>GET</code> in order, each of which must answer <code>2xx</code>. When this and
+<a href="#workloadCommand()"><code>workloadCommand()</code></a> are both empty, which is the default, the run sends one <code>GET /</code> and
+accepts any status below 500.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-workloadPaths"><code>workloadPaths</code></a> record component</dd>
+<dd>the paths, unmodifiable</dd>
 </dl>
 </div>
 </section>
@@ -534,10 +393,10 @@ destroying the process.</div>
 <h3>workloadRepeat</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">workloadRepeat</span>()</div>
-<div class="block">Returns the value of the <a href="#param-workloadRepeat"><code>workloadRepeat</code></a> record component.</div>
+<div class="block">How many times the whole list of <a href="#workloadPaths()"><code>workloadPaths()</code></a> is requested: at least 1, and 1 by default.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-workloadRepeat"><code>workloadRepeat</code></a> record component</dd>
+<dd>the repeat count</dd>
 </dl>
 </div>
 </section>
@@ -547,10 +406,11 @@ destroying the process.</div>
 <h3>workloadCommand</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">workloadCommand</span>()</div>
-<div class="block">Returns the value of the <a href="#param-workloadCommand"><code>workloadCommand</code></a> record component.</div>
+<div class="block">A command and its arguments, run after the paths with <a href="#URL_VARIABLE">"MICRONAUT_RUNNER_TRAINING_URL"</a> set to the application's base
+URL. It must exit with status 0 within <a href="#workloadTimeout()"><code>workloadTimeout()</code></a>.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-workloadCommand"><code>workloadCommand</code></a> record component</dd>
+<dd>the command and its arguments, unmodifiable; empty for none, which is the default</dd>
 </dl>
 </div>
 </section>
@@ -560,10 +420,12 @@ destroying the process.</div>
 <h3>runToExit</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">runToExit</span>()</div>
-<div class="block">Returns the value of the <a href="#param-runToExit"><code>runToExit</code></a> record component.</div>
+<div class="block">Whether the application ends by itself, as one that is not a server does. There is then no readiness
+check, no workload and no stop, and the application must exit with status 0 within
+<a href="#readinessTimeout()"><code>readinessTimeout()</code></a>. The default is <code>false</code>.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-runToExit"><code>runToExit</code></a> record component</dd>
+<dd>whether the application runs to its exit</dd>
 </dl>
 </div>
 </section>
@@ -572,12 +434,12 @@ destroying the process.</div>
 <section class="detail" id="stopPath()">
 <h3>stopPath</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="annotations">@Nullable
-</span><span class="modifiers">public</span>&nbsp;<span class="return-type">@Nullable <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">stopPath</span>()</div>
-<div class="block">Returns the value of the <a href="#param-stopPath"><code>stopPath</code></a> record component.</div>
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html" title="class or interface in java.util" class="external-link">Optional</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">stopPath</span>()</div>
+<div class="block">The path to <code>POST</code> to stop the application, where an orderly stop needs a request rather than a
+signal, as on Windows.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-stopPath"><code>stopPath</code></a> record component</dd>
+<dd>the path, or empty to destroy the process, which is the default</dd>
 </dl>
 </div>
 </section>
@@ -587,10 +449,10 @@ destroying the process.</div>
 <h3>jvmArgs</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">jvmArgs</span>()</div>
-<div class="block">Returns the value of the <a href="#param-jvmArgs"><code>jvmArgs</code></a> record component.</div>
+<div class="block">JVM arguments of the training launch, placed before the ones the run adds for its purpose, which win.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-jvmArgs"><code>jvmArgs</code></a> record component</dd>
+<dd>the JVM arguments, unmodifiable; empty by default</dd>
 </dl>
 </div>
 </section>
@@ -600,10 +462,10 @@ destroying the process.</div>
 <h3>environment</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">environment</span>()</div>
-<div class="block">Returns the value of the <a href="#param-environment"><code>environment</code></a> record component.</div>
+<div class="block">Environment variables added to the training launch, in the order they are set.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-environment"><code>environment</code></a> record component</dd>
+<dd>the variables, unmodifiable; empty by default</dd>
 </dl>
 </div>
 </section>
@@ -613,10 +475,11 @@ destroying the process.</div>
 <h3>portVariable</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">portVariable</span>()</div>
-<div class="block">Returns the value of the <a href="#param-portVariable"><code>portVariable</code></a> record component.</div>
+<div class="block">The environment variable that receives the free loopback port the application is to listen on:
+<code>MICRONAUT_SERVER_PORT</code> by default.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-portVariable"><code>portVariable</code></a> record component</dd>
+<dd>the name of the variable</dd>
 </dl>
 </div>
 </section>
@@ -626,10 +489,11 @@ destroying the process.</div>
 <h3>readinessTimeout</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></span>&nbsp;<span class="element-name">readinessTimeout</span>()</div>
-<div class="block">Returns the value of the <a href="#param-readinessTimeout"><code>readinessTimeout</code></a> record component.</div>
+<div class="block">How long the application may take to become ready, or to exit with <a href="#runToExit()"><code>runToExit()</code></a>: 60 seconds by
+default.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-readinessTimeout"><code>readinessTimeout</code></a> record component</dd>
+<dd>the timeout, positive</dd>
 </dl>
 </div>
 </section>
@@ -639,10 +503,10 @@ destroying the process.</div>
 <h3>workloadTimeout</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></span>&nbsp;<span class="element-name">workloadTimeout</span>()</div>
-<div class="block">Returns the value of the <a href="#param-workloadTimeout"><code>workloadTimeout</code></a> record component.</div>
+<div class="block">How long the paths and the command may take together: 60 seconds by default.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-workloadTimeout"><code>workloadTimeout</code></a> record component</dd>
+<dd>the timeout, positive</dd>
 </dl>
 </div>
 </section>
@@ -652,10 +516,58 @@ destroying the process.</div>
 <h3>stopTimeout</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Duration.html" title="class or interface in java.time" class="external-link">Duration</a></span>&nbsp;<span class="element-name">stopTimeout</span>()</div>
-<div class="block">Returns the value of the <a href="#param-stopTimeout"><code>stopTimeout</code></a> record component.</div>
+<div class="block">How long the application may take to exit once asked to, before it is killed: 30 seconds by default.</div>
 <dl class="notes">
 <dt>Returns:</dt>
-<dd>the value of the <a href="#param-stopTimeout"><code>stopTimeout</code></a> record component</dd>
+<dd>the timeout, positive</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="equals(java.lang.Object)">
+<h3>equals</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">equals</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a>&nbsp;other)</span></div>
+<div class="block">Compares every setting.</div>
+<dl class="notes">
+<dt>Overrides:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#equals(java.lang.Object)" title="class or interface in java.lang" class="external-link">equals</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></code></dd>
+<dt>Parameters:</dt>
+<dd><code>other</code> - the object to compare with</dd>
+<dt>Returns:</dt>
+<dd>whether <code>other</code> is training settings with the same value for every setting</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="hashCode()">
+<h3>hashCode</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">hashCode</span>()</div>
+<div class="block">Hashes every setting.</div>
+<dl class="notes">
+<dt>Overrides:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#hashCode()" title="class or interface in java.lang" class="external-link">hashCode</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></code></dd>
+<dt>Returns:</dt>
+<dd>the hash code</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="toString()">
+<h3>toString</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">toString</span>()</div>
+<div class="block">Describes the settings for a log. The values of the environment variables are left out, since they may be
+secrets; their names are kept.</div>
+<dl class="notes">
+<dt>Overrides:</dt>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#toString()" title="class or interface in java.lang" class="external-link">toString</a></code>&nbsp;in class&nbsp;<code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></code></dd>
+<dt>Returns:</dt>
+<dd>the description</dd>
 </dl>
 </div>
 </section>
