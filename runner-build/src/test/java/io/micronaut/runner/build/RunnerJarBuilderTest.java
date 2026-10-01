@@ -22,6 +22,9 @@ import io.micronaut.runner.build.ZipReaderTest.Payload;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -38,9 +41,11 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -106,6 +111,9 @@ class RunnerJarBuilderTest {
 
     /** A fixed MS-DOS timestamp for the fixture jars, so a rebuild of a fixture changes nothing. */
     private static final long FIXTURE_TIME = 1_000_000_000_000L;
+
+    /** How long a junction test lets a build run that is not a cycle, so that a walk caught in one fails. */
+    private static final Duration JUNCTION_TIMEOUT = Duration.ofSeconds(60);
 
     /** What an output path holds before a build that must fail without replacing it. */
     private static final byte[] PREVIOUS_OUTPUT = "the existing good output".getBytes(StandardCharsets.UTF_8);
@@ -1358,6 +1366,160 @@ class RunnerJarBuilderTest {
         }
     }
 
+    // The junction tests below mirror the symbolic-link tests above with a Windows directory junction, which
+    // Java reports as a directory rather than as a link (#225). Each one has its own temporary directory, which
+    // holds its output too, runs every build within a time limit, and removes every junction left in that
+    // directory, so that nothing, JUnit's own cleanup included, walks through one afterwards.
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void followsDirectoryJunctionsInsideApplicationDirectoriesLikeAClassPath(@TempDir Path parent) throws Throwable {
+        withJunctions(parent, () -> {
+            Path target = Files.createDirectories(parent.resolve("shared/dir/nested"));
+            Map<String, byte[]> expected = new LinkedHashMap<>();
+            expected.put("linked/inner.txt", "inside a junction".getBytes(StandardCharsets.UTF_8));
+            expected.put("linked/nested/deeper.txt", "below a junction".getBytes(StandardCharsets.UTF_8));
+            Files.write(target.resolveSibling("inner.txt"), expected.get("linked/inner.txt"));
+            Files.write(target.resolve("deeper.txt"), expected.get("linked/nested/deeper.txt"));
+            Path tree = applicationTree(parent.resolve("app"));
+            createJunction(tree.resolve("linked"), target.getParent());
+            Path output = existingOutput(parent);
+
+            buildWithin(JUNCTION_TIMEOUT, tree, output);
+
+            try (ZipReader archive = ZipReader.open(output)) {
+                for (Map.Entry<String, byte[]> entry : expected.entrySet()) {
+                    String name = IndexFormat.CLASSES_PREFIX + entry.getKey();
+                    assertArrayEquals(entry.getValue(), archive.read(archive.entry(name).orElseThrow()),
+                            name + " carries the bytes of the junction's target");
+                }
+            }
+            try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+                for (Map.Entry<String, byte[]> entry : expected.entrySet()) {
+                    int record = reader.index().find(entry.getKey());
+                    assertNotEquals(IndexFormat.NO_INDEX, record, entry.getKey() + " should resolve at runtime");
+                    assertArrayEquals(entry.getValue(), reader.read(record),
+                            "the logical runtime lookup of " + entry.getKey() + " returns the target's bytes");
+                }
+            }
+            Path again = output.resolveSibling("again.jar");
+            buildWithin(JUNCTION_TIMEOUT, tree, again);
+            assertArrayEquals(Files.readAllBytes(output), Files.readAllBytes(again),
+                    "a tree with a directory junction packages reproducibly");
+        });
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void rejectsADirectoryJunctionToItsOwnDirectory(@TempDir Path parent) throws Throwable {
+        withJunctions(parent, () -> {
+            Path tree = applicationTree(parent.resolve("app"));
+            Path directory = Files.createDirectories(tree.resolve("a"));
+            Path loop = createJunction(directory.resolve("loop"), directory);
+
+            assertJunctionCycleRejected(tree, loop, existingOutput(parent));
+        });
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void rejectsTwoSiblingJunctionsToTheirOwnDirectory(@TempDir Path parent) throws Throwable {
+        withJunctions(parent, () -> {
+            Path tree = applicationTree(parent.resolve("app"));
+            Path directory = Files.createDirectories(tree.resolve("a"));
+            Path first = createJunction(directory.resolve("l1"), directory);
+            createJunction(directory.resolve("l2"), directory);
+
+            assertJunctionCycleRejected(tree, first, existingOutput(parent));
+        });
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void rejectsADirectoryJunctionThatLeadsBackAboveTheApplicationDirectory(@TempDir Path parent)
+            throws Throwable {
+        withJunctions(parent, () -> {
+            // The junction reaches <parent>/cycle-up, whose only child is the application directory: the walk
+            // comes back to its own root, far from the directory that holds the output.
+            Path above = parent.resolve("cycle-up");
+            Path tree = applicationTree(above.resolve("app"));
+            Path up = createJunction(Files.createDirectories(tree.resolve("a")).resolve("up"), above);
+
+            assertJunctionCycleRejected(tree, up, existingOutput(parent));
+        });
+    }
+
+    @ParameterizedTest(name = "a junction to {0}")
+    @ValueSource(strings = {"the output's directory", "an ancestor of the output's directory"})
+    @EnabledOnOs(OS.WINDOWS)
+    void rejectsADirectoryJunctionToTheOutputDirectoryOrOneOfItsAncestors(String target, @TempDir Path parent)
+            throws Throwable {
+        withJunctions(parent, () -> {
+            Path output = existingOutput(parent);
+            Path tree = applicationTree(parent.resolve("app"));
+            Path junction = createJunction(tree.resolve("linked"),
+                    target.startsWith("an ancestor") ? parent : output.getParent());
+
+            IOException failure = assertThrows(IOException.class,
+                    () -> buildWithin(JUNCTION_TIMEOUT, tree, output));
+
+            assertTrue(failure.getMessage().contains(junction.toString()), failure.getMessage());
+            assertTrue(failure.getMessage().contains("would read what it is writing"), failure.getMessage());
+            assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
+                    "a junction to " + target + " must leave an existing good output intact");
+            assertNoWorkDirectory(output.getParent());
+        });
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void rejectsADirectoryJunctionWhoseTargetIsGone(@TempDir Path parent) throws Throwable {
+        withJunctions(parent, () -> {
+            Path gone = Files.createDirectories(parent.resolve("gone"));
+            Path tree = applicationTree(parent.resolve("app"));
+            Path junction = createJunction(tree.resolve("linked"), gone);
+            Files.delete(gone);
+            assertTrue(Files.exists(junction, LinkOption.NOFOLLOW_LINKS), "the junction outlives its target");
+            Path output = existingOutput(parent);
+
+            IOException failure = assertThrows(IOException.class,
+                    () -> buildWithin(JUNCTION_TIMEOUT, tree, output));
+
+            // Runner's own message, not a NotLinkException from reading the junction as a symbolic link, nor the
+            // raw exception from listing it.
+            assertEquals(IOException.class, failure.getClass(), failure::toString);
+            assertTrue(failure.getMessage().contains(junction.toString()), failure.getMessage());
+            assertTrue(failure.getMessage().contains("does not resolve"), failure.getMessage());
+            assertNotNull(failure.getCause(), "the reason it does not resolve is kept");
+            assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
+                    "a junction whose target is gone must leave an existing good output intact");
+            assertNoWorkDirectory(output.getParent());
+        });
+    }
+
+    private void assertJunctionCycleRejected(Path tree, Path junction, Path output) throws Throwable {
+        IOException failure = assertThrows(IOException.class,
+                () -> buildWithin(Duration.ofSeconds(10), tree, output));
+
+        assertTrue(failure.getMessage().contains(junction.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("cycles through directory junctions"), failure.getMessage());
+        assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
+                "a directory-junction cycle must leave an existing good output intact");
+        assertNoWorkDirectory(output.getParent());
+    }
+
+    /** A new output path below a junction test's own directory that already holds {@link #PREVIOUS_OUTPUT}. */
+    private static Path existingOutput(Path parent) throws IOException {
+        Path output = Files.createDirectories(parent.resolve("out")).resolve("runner.jar");
+        Files.write(output, PREVIOUS_OUTPUT);
+        return output;
+    }
+
+    /** Builds an application tree, failing rather than hanging past the time limit. */
+    private void buildWithin(Duration timeout, Path tree, Path output) {
+        assertTimeoutPreemptively(timeout, () -> buildApplicationTree(tree, output));
+    }
+
     @Test
     void mergesMicronautMetadataFromTwoJarsIntoTheArchiveRoot() throws IOException {
         String prefix = "META-INF/micronaut/example.Service/";
@@ -1944,6 +2106,89 @@ class RunnerJarBuilderTest {
         } catch (UnsupportedOperationException | IOException e) {
             Assumptions.assumeTrue(false, "symbolic links are not supported: " + e.getMessage());
             throw e;
+        }
+    }
+
+    /**
+     * Runs a junction test, then removes every junction still under its temporary directory, so that no walk,
+     * JUnit's cleanup included, can go through one afterwards. A failure to remove one never changes the test's
+     * result: it is added to the test's own failure rather than hiding it, and after a passing test it is only
+     * reported on the error stream.
+     */
+    private static void withJunctions(Path root, Executable test) throws Throwable {
+        try {
+            test.execute();
+        } catch (Throwable failure) {
+            try {
+                removeJunctions(root);
+            } catch (IOException | RuntimeException cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
+        try {
+            removeJunctions(root);
+        } catch (IOException | RuntimeException cleanup) {
+            // Every junction these tests make points inside their own temporary directory, so one left behind can
+            // only lead JUnit's cleanup to files it deletes anyway: report it without failing a passing test.
+            System.err.println("Could not remove every directory junction under " + root + " after the test passed:");
+            cleanup.printStackTrace();
+        }
+    }
+
+    /**
+     * Makes a directory junction with {@code mklink /J}, which needs neither administrator rights nor Developer
+     * Mode, and fails the test (never skips it) when Windows does not make one.
+     */
+    private static Path createJunction(Path junction, Path target) throws IOException, InterruptedException {
+        Process process = new ProcessBuilder("cmd", "/c", "mklink", "/J", junction.toString(),
+                target.toAbsolutePath().toString())
+                .redirectErrorStream(true)
+                .start();
+        String output;
+        try (InputStream in = process.getInputStream()) {
+            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        int status = process.waitFor();
+        assertEquals(0, status, "mklink /J " + junction + " " + target + " failed: " + output);
+        BasicFileAttributes attributes = Files.readAttributes(junction, BasicFileAttributes.class,
+                LinkOption.NOFOLLOW_LINKS);
+        // The premise of #225: Java reports a junction as a directory, and as "other", never as a link.
+        assertTrue(attributes.isDirectory() && attributes.isOther() && !attributes.isSymbolicLink(),
+                junction + " is not reported the way a junction is");
+        return junction;
+    }
+
+    /**
+     * Removes, as a junction, every directory junction under a directory. Each entry's attributes are read
+     * before it is listed, so the sweep never goes through a junction, and {@code Files.delete} never touches a
+     * junction's target.
+     */
+    private static void removeJunctions(Path directory) throws IOException {
+        List<Path> children;
+        try (Stream<Path> listed = Files.list(directory)) {
+            children = listed.toList();
+        }
+        IOException failure = null;
+        for (Path child : children) {
+            try {
+                BasicFileAttributes attributes = Files.readAttributes(child, BasicFileAttributes.class,
+                        LinkOption.NOFOLLOW_LINKS);
+                if (attributes.isDirectory() && attributes.isOther()) {
+                    Files.delete(child);
+                } else if (attributes.isDirectory()) {
+                    removeJunctions(child);
+                }
+            } catch (IOException e) {
+                if (failure == null) {
+                    failure = e;
+                } else {
+                    failure.addSuppressed(e);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
         }
     }
 
