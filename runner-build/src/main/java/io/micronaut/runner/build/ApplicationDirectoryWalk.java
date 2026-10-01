@@ -58,27 +58,32 @@ final class ApplicationDirectoryWalk {
      *
      * @param root the application directory, which entry names are relative to
      * @param real its real path
-     * @throws IOException if an entry cannot be read or added, a link does not resolve, leads into a directory
-     *                     the walk is already inside, or reaches the directory that holds the output
+     * @throws IOException if an entry cannot be read or added, a link or junction does not resolve, leads into a
+     *                     directory the walk is already inside, or reaches the directory that holds the output
      */
     void walk(Path root, Path real) throws IOException {
         Set<Path> walking = new HashSet<>();
         walking.add(real);
-        collectDirectory(root, root, real, walking);
+        collectDirectory(root, root, real, walking, false);
     }
 
     /**
-     * Adds the files below one directory of an application directory, following symbolic links as a class
-     * path does: an entry reached through a link keeps the link's own name.
+     * Adds the files below one directory of an application directory, following symbolic links and Windows
+     * directory junctions as a class path does: an entry reached through a link or a junction keeps the link's
+     * or the junction's own name.
      *
-     * @param root      the application directory, which entry names are relative to
-     * @param directory the directory to list, named through any links that led to it
-     * @param real      the real path of {@code directory}
-     * @param walking   the real paths of {@code directory} and of every directory above it up to {@code root}
-     * @throws IOException if an entry cannot be read, a link does not resolve, leads into a directory the walk
-     *                     is already inside, or reaches the directory that holds the output
+     * @param root            the application directory, which entry names are relative to
+     * @param directory       the directory to list, named through any links that led to it
+     * @param real            the real path of {@code directory}
+     * @param walking         the real paths of {@code directory} and of every directory above it up to
+     *                        {@code root}
+     * @param throughJunction whether a directory junction lies between {@code root} and {@code directory}; it
+     *                        only words the message of a cycle
+     * @throws IOException if an entry cannot be read or added, a link or junction does not resolve, leads into a
+     *                     directory the walk is already inside, or reaches the directory that holds the output
      */
-    private void collectDirectory(Path root, Path directory, Path real, Set<Path> walking) throws IOException {
+    private void collectDirectory(Path root, Path directory, Path real, Set<Path> walking, boolean throughJunction)
+            throws IOException {
         List<Path> children = new ArrayList<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
             for (Path child : stream) {
@@ -95,14 +100,23 @@ final class ApplicationDirectoryWalk {
                 attributes = followLink(root, child);
             }
             if (attributes.isDirectory()) {
+                // Java reports a Windows directory junction as a directory that is "other" (a reparse point that
+                // is not a symbolic link), never as a link, and only Windows reports a directory as "other". Any
+                // other such directory, such as a cloud-files placeholder, costs one toRealPath(), which resolves
+                // it to its own path, and passes both checks.
+                boolean junction = !link && attributes.isOther();
                 // A plain subdirectory's real path follows from its parent's without a system call.
-                Path childReal = link ? linkedDirectory(root, child) : real.resolve(child.getFileName());
+                Path childReal = link || junction
+                        ? linkedDirectory(root, child, junction)
+                        : real.resolve(child.getFileName());
+                boolean junctionBelow = throughJunction || junction;
                 if (!walking.add(childReal)) {
                     throw new IOException("The application output " + root + " reaches " + child
-                            + ", which leads back to " + childReal
-                            + "; symbolic-link cycles are not supported");
+                            + ", which leads back to " + childReal + "; " + (junctionBelow
+                            ? "cycles through directory junctions or symbolic links are not supported"
+                            : "symbolic-link cycles are not supported"));
                 }
-                collectDirectory(root, child, childReal, walking);
+                collectDirectory(root, child, childReal, walking, junctionBelow);
                 walking.remove(childReal);
             } else if (attributes.isRegularFile()) {
                 String name = root.relativize(child).toString().replace(File.separatorChar, '/');
@@ -112,17 +126,32 @@ final class ApplicationDirectoryWalk {
     }
 
     /**
-     * Resolves a symbolic link to a directory inside an application directory, refusing one that leads to
-     * the directory that holds the output or to one of its ancestors. Validation has already refused an
-     * output directory below an application directory, so every other directory the walk enters is below
-     * the root or below a link checked here.
+     * Resolves a symbolic link or a Windows directory junction to a directory inside an application directory,
+     * refusing one that leads to the directory that holds the output or to one of its ancestors. Validation has
+     * already refused an output directory below an application directory, so every other directory the walk
+     * enters is below the root or below a link or junction checked here.
      *
-     * @throws IOException if the link reaches the directory where the work directory and the output go
+     * @param root     the application directory
+     * @param link     the symbolic link or junction
+     * @param junction whether {@code link} is a directory junction, whose target nothing has read yet
+     * @throws IOException if a junction does not resolve, or the link or junction reaches the directory where
+     *                     the work directory and the output go
      */
-    private Path linkedDirectory(Path root, Path link) throws IOException {
-        Path real = link.toRealPath();
+    private Path linkedDirectory(Path root, Path link, boolean junction) throws IOException {
+        String kind = junction ? "directory junction" : "symbolic link";
+        Path real;
+        try {
+            real = link.toRealPath();
+        } catch (IOException e) {
+            if (!junction) {
+                throw e;
+            }
+            // Not through followLink: Files.readSymbolicLink refuses a junction with a NotLinkException.
+            throw new IOException("The application output " + root + " contains the " + kind + " " + link
+                    + ", which does not resolve", e);
+        }
         if (outputDirectory.startsWith(real)) {
-            throw new IOException("The application output " + root + " contains the symbolic link " + link
+            throw new IOException("The application output " + root + " contains the " + kind + " " + link
                     + " to " + real + ", which is or contains the directory of the output " + output
                     + "; packaging it would read what it is writing");
         }

@@ -137,10 +137,11 @@ import java.util.zip.CRC32;
  * and resolves a not-yet-created output through its nearest existing ancestor, before comparing them. It
  * rejects an output that aliases an application jar, dependency or manifest source, or whose directory is
  * canonically at or below an application directory. Symbolic links found inside an application directory
- * are followed, as they are on a class path, and packaged under the link's own name. Three kinds are
- * rejected: a link that does not resolve, a directory link that leads back into a directory the walk is
- * already inside (a cycle), and a directory link to the directory that holds the output and the work
- * directory, or to one of its ancestors.</p>
+ * are followed, as they are on a class path, and packaged under the link's own name. A Windows directory
+ * junction, which Java reports as a directory rather than as a link, is followed and checked as a directory
+ * link is. Three kinds of link are rejected: a link or junction that does not resolve, a directory link or
+ * junction that leads back into a directory the walk is already inside (a cycle), and a directory link or
+ * junction to the directory that holds the output and the work directory, or to one of its ancestors.</p>
  *
  * <p>These checks guard against accidental aliases, not against concurrent replacement of path
  * components.</p>
