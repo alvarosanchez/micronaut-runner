@@ -22,10 +22,11 @@ format version, `Micronaut-Runner-Start-Class` the application main class, for i
 not.
 
 |`MICRONAUT-INF/transforms.txt`
-|Present only when a build-time transform changed a dependency class or recorded a fallback: tab-separated lines,
-the first naming the Runner version, then one per nested JAR and transform with its counts. It is not indexed, the
-launcher never reads it at run time, and `extract` ignores it; `inspect` prints it. See
-<<classTransforms,Dependency class transforms>>.
+|Present only when a build-time transform changed a class or recorded a fallback: tab-separated lines, the first
+naming the Runner version, then one per nested JAR and transform with its counts, then one `lambdas` line per
+JAR, or for the application layer, with the lambda call sites rewritten and left. It is not indexed, the launcher
+never reads it at run time, and `extract` ignores it; `inspect` prints it. See
+<<classTransforms,Class transforms>>.
 
 |`META-INF/micronaut/**`
 |The Micronaut bean metadata of the application and of every dependency, merged and de-duplicated, with
@@ -49,7 +50,10 @@ decompression from class loading at the cost of a larger archive. Re-packing als
 (`META-INF/*.SF`, `*.DSA`, `*.RSA`, `*.EC`, `META-INF/SIG-*`) and `META-INF/INDEX.LIST`. Manifests are
 never rewritten, so package metadata and sealing survive intact. By default, re-packing also strips
 local-variable tables from dependency classes, which then carry new CRC-32 values; see
-<<localVariableTables,Local-variable tables>>. The `PRESERVE` option copies each dependency byte for byte instead.
+<<localVariableTables,Local-variable tables>>. By default it also rewrites eligible lambda call sites and adds a
+generated `$$Lambda$R<n>` class after each host, so those entries get new CRC-32 values too, and the application
+layer's lambdas are rewritten the same way; see <<desugaredLambdas,Desugared lambdas>>. The `PRESERVE` option
+copies each dependency byte for byte instead.
 
 Shadow can also write `STORED` entries (`entryCompression = ZipEntryCompression.STORED`), so the gain from not
 inflating is not specific to this format; <<benchmarks>> measures the two effects separately.

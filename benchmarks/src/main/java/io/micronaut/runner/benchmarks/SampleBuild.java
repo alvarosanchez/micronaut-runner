@@ -118,6 +118,9 @@ final class SampleBuild implements SampleSteps {
     private static final String RUNNER_STORED_KEEPDEBUG_AOT = "runner-stored-keepdebug-aot";
     private static final String RUNNER_STORED_DYNAMIC_SERVICES = "runner-stored-dynamic-services";
     private static final String RUNNER_STORED_DYNAMIC_SERVICES_AOT = "runner-stored-dynamic-services-aot";
+    private static final String RUNNER_STORED_LAMBDAS = "runner-stored-lambdas";
+    private static final String RUNNER_STORED_LAMBDAS_AOT = "runner-stored-lambdas-aot";
+    private static final String RUNNER_EXTRACTED_LAMBDAS_AOT = "runner-extracted-lambdas-aot";
     private static final String RUNNER_PRESERVE = "runner-preserve";
     private static final String RUNNER_EXTRACTED = "runner-extracted";
     private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
@@ -153,6 +156,19 @@ final class SampleBuild implements SampleSteps {
                     + " local-variable tables kept";
     private static final String RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION =
             "The same local-variable-table control with a verified JDK AOT cache";
+    private static final String RUNNER_STORED_LAMBDAS_DESCRIPTION =
+            "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub;"
+                    + " dependency lambdas kept";
+    private static final String RUNNER_STORED_LAMBDAS_AOT_DESCRIPTION =
+            "The same lambda control with a verified JDK AOT cache";
+    private static final String RUNNER_EXTRACTED_LAMBDAS_AOT_DESCRIPTION =
+            "The lambda control unpacked and run by the JDK's own loader, with a verified JDK AOT cache";
+
+    /** The lambda control's unpacked layout, which is trained but is not a row of its own. */
+    private static final String EXTRACTED_LAMBDAS_LAYOUT = "runner-extracted-lambdas";
+
+    /** Where that layout is unpacked, next to the default one. */
+    private static final String EXTRACTED_LAMBDAS_DIRECTORY = "extracted-lambdas";
 
     private static final String RUNNER_STORED_JORAN_DESCRIPTION =
             "The same stored Runner jar with precompileLogback=false: logback.xml read by Joran (control)";
@@ -389,6 +405,17 @@ final class SampleBuild implements SampleSteps {
             optIn(RUNNER_STORED_DYNAMIC_SERVICES_AOT, RUNNER_STORED_DYNAMIC_SERVICES_AOT_DESCRIPTION,
                     (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_DYNAMIC_SERVICES),
                             RUNNER_STORED_DYNAMIC_SERVICES_AOT)),
+            // The default desugars lambdas; these controls keep every call site an invokedynamic, with everything
+            // else at the defaults, stripping included. The third is the control's extracted layout, which the
+            // JDK's own loader runs: there the JDK archives lambdas itself, so that pair should be neutral.
+            optIn(RUNNER_STORED_LAMBDAS, RUNNER_STORED_LAMBDAS_DESCRIPTION,
+                    (steps, rows) -> steps.runnerJar(RUNNER_STORED_LAMBDAS, Compression.STORED, EntryMode.STUB,
+                            RunnerJarOptions.DEFAULTS.withDesugarLambdas(false))),
+            optIn(RUNNER_STORED_LAMBDAS_AOT, RUNNER_STORED_LAMBDAS_AOT_DESCRIPTION,
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_LAMBDAS), RUNNER_STORED_LAMBDAS_AOT)),
+            optIn(RUNNER_EXTRACTED_LAMBDAS_AOT, RUNNER_EXTRACTED_LAMBDAS_AOT_DESCRIPTION,
+                    (steps, rows) -> steps.aotCache(steps.extractedLambdas(rows.get(RUNNER_STORED_LAMBDAS)),
+                            RUNNER_EXTRACTED_LAMBDAS_AOT)),
             core(RUNNER_PRESERVE,
                     "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
                     (steps, rows) -> steps.runnerJar(RUNNER_PRESERVE, Compression.PRESERVE, EntryMode.STUB,
@@ -502,7 +529,12 @@ final class SampleBuild implements SampleSteps {
                 new ComparisonSpec(RUNNER_MAOT, RUNNER_STORED, "Micronaut AOT's gain on Runner"),
                 new ComparisonSpec(SHADOW_MAOT, SHADOW, "Micronaut AOT's gain on Shadow"),
                 new ComparisonSpec(RUNNER_MAOT_AOT, SHADOW_MAOT_AOT,
-                        "Runner vs Micronaut AOT Shadow, both with a JDK AOT cache"));
+                        "Runner vs Micronaut AOT Shadow, both with a JDK AOT cache"),
+                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_LAMBDAS, "Lambdas desugared vs kept"),
+                new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_LAMBDAS_AOT,
+                        "Lambdas desugared vs kept, with the AOT cache"),
+                new ComparisonSpec(RUNNER_EXTRACTED_AOT, RUNNER_EXTRACTED_LAMBDAS_AOT,
+                        "Extracted layout + AOT cache: lambdas desugared vs kept"));
     }
 
     /**
@@ -872,6 +904,9 @@ final class SampleBuild implements SampleSteps {
         if (options.staticServices() != null) {
             builder.staticServices(options.staticServices());
         }
+        if (options.desugarLambdas() != null) {
+            builder.desugarLambdas(options.desugarLambdas());
+        }
         RunnerJarSpec spec = builder.build();
         RunnerJarResult result = RunnerJarBuilder.build(spec, BuildLogger.noOp());
         if (Boolean.FALSE.equals(options.staticServices()) && result.staticServiceSlots() != 0) {
@@ -898,7 +933,8 @@ final class SampleBuild implements SampleSteps {
                         + staticServicesNote(result)
                         + (spec.stripLocalVariables() ? "" : "; local-variable tables kept")
                         + (options.startupClasses() == null ? ""
-                        : "; " + preloaded + " recorded startup classes preloaded"),
+                        : "; " + preloaded + " recorded startup classes preloaded")
+                        + (spec.desugarLambdas() ? "" : "; dependency lambdas kept"),
                 command, artifacts, output, deploymentSize, requestedEntryMode, effectiveEntryMode);
     }
 
@@ -982,12 +1018,14 @@ final class SampleBuild implements SampleSteps {
      * @param startupClasses      the recorded startup class list to embed, or {@code null} for none
      * @param staticServices      whether to generate the static service table, or {@code null} for the builder
      *                            default
+     * @param desugarLambdas      whether lambda call sites are replaced with generated classes, or {@code null}
+     *                            for the builder default
      */
     record RunnerJarOptions(ArchiveReads archiveReads, Boolean precompileLogback, Boolean stripLocalVariables,
-                            Path startupClasses, Boolean staticServices) {
+                            Path startupClasses, Boolean staticServices, Boolean desugarLambdas) {
 
         /** Every option at the builder default. */
-        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null, null, null);
+        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null, null, null, null);
 
         /**
          * These options with another archive read mode.
@@ -997,7 +1035,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withArchiveReads(ArchiveReads value) {
             return new RunnerJarOptions(value, precompileLogback, stripLocalVariables, startupClasses,
-                    staticServices);
+                    staticServices, desugarLambdas);
         }
 
         /**
@@ -1008,7 +1046,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withPrecompileLogback(boolean value) {
             return new RunnerJarOptions(archiveReads, value, stripLocalVariables, startupClasses,
-                    staticServices);
+                    staticServices, desugarLambdas);
         }
 
         /**
@@ -1019,7 +1057,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withStripLocalVariables(boolean value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, value, startupClasses,
-                    staticServices);
+                    staticServices, desugarLambdas);
         }
 
         /**
@@ -1030,7 +1068,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withStartupClasses(Path value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, value,
-                    staticServices);
+                    staticServices, desugarLambdas);
         }
 
         /**
@@ -1041,7 +1079,18 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withStaticServices(boolean value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
-                    value);
+                    value, desugarLambdas);
+        }
+
+        /**
+         * These options with lambda desugaring set.
+         *
+         * @param value whether lambda call sites are replaced with generated classes
+         * @return the new options
+         */
+        RunnerJarOptions withDesugarLambdas(boolean value) {
+            return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
+                    staticServices, value);
         }
     }
 
@@ -1070,12 +1119,27 @@ final class SampleBuild implements SampleSteps {
         return extractedRunner(artifacts, stored, RUNNER_EXTRACTED);
     }
 
+    @Override
+    public Variant extractedLambdas(Variant lambdas) throws IOException, InterruptedException {
+        return extractedRunner(artifacts, lambdas, EXTRACTED_LAMBDAS_LAYOUT, EXTRACTED_LAMBDAS_DIRECTORY);
+    }
+
     static Variant extractedRunner(Path artifacts, Variant stored, String name)
+            throws IOException, InterruptedException {
+        return extractedRunner(artifacts, stored, name, "extracted");
+    }
+
+    /**
+     * Unpacks a runner jar into a directory of the artifacts directory and describes that layout as a variant.
+     *
+     * @param directory the name of the directory the layout is unpacked into: one per unpacked runner jar
+     */
+    static Variant extractedRunner(Path artifacts, Variant stored, String name, String directory)
             throws IOException, InterruptedException {
         if (!stored.available()) {
             throw new IOException("there is no runner jar to extract: " + stored.unavailableReason());
         }
-        Path destination = artifacts.resolve("extracted");
+        Path destination = artifacts.resolve(directory);
         deleteRecursively(destination);
         // The plugins' layout, checks included: Class-Path in index order and the fixed modification times.
         AotLayout.Result layout = AotLayout.write(javaExecutable(), stored.artifact(), destination,

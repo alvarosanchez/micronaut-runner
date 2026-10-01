@@ -448,7 +448,7 @@ class ZipRepackerTest {
         ZipRepacker.RepackResult result;
         ZipRepacker.RepackResult plain;
         ClassTransformPipeline.JarRun run = pipeline.start(
-                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/with-classes.jar", false, false, false));
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/with-classes.jar", 0, false, false, false));
         try (ZipReader reader = ZipReader.open(source)) {
             result = ZipRepacker.repack(reader, bytes, run);
             plain = ZipRepacker.repack(reader, new ByteArrayOutputStream());
@@ -484,6 +484,76 @@ class ZipRepackerTest {
                 run.report().counts().get(0));
     }
 
+    @Test
+    void desugaredHostsAndTheirGeneratedClassesCarryTheCrcOfTheirBytesAndStayTogether() throws Exception {
+        List<LambdaFixtures.Layer> layers = LambdaFixtures.scenario(temp.resolve("desugared"), 25);
+        Map<String, byte[]> library = layers.get(1).entries();
+        // The nest host last: its members come before it, so the jar has to be planned before it is written.
+        Map<String, byte[]> ordered = new java.util.LinkedHashMap<>(library);
+        byte[] nestHost = ordered.remove("fix/Scenario.class");
+        ordered.put("fix/Scenario.class", nestHost);
+        Path source = ClassFixtures.jar(temp.resolve("desugared/fix.jar"), ordered);
+        ClassPathModel model = LambdaFixtures.model(layers);
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(
+                List.of(new LambdaDesugarer(model), new LocalVariableStripper()), model);
+
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        ZipRepacker.RepackResult result;
+        ZipRepacker.RepackResult plain;
+        ClassTransformPipeline.JarRun run = pipeline.start(
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fix.jar", 1, false, false, false));
+        try (ZipReader reader = ZipReader.open(source)) {
+            result = ZipRepacker.repack(reader, bytes, run);
+            plain = ZipRepacker.repack(reader, new ByteArrayOutputStream());
+        }
+        byte[] repacked = bytes.toByteArray();
+
+        List<String> written = result.entries().stream().map(ZipEntryInfo::name).toList();
+        assertEquals(plain.entries().stream().map(ZipEntryInfo::name).toList(),
+                written.stream().filter(name -> !name.contains(LambdaDesugarer.GENERATED_INFIX)).toList(),
+                "the entries the jar had keep their order");
+        int generated = 0;
+        for (int i = 0; i < result.entries().size(); i++) {
+            ZipEntryInfo entry = result.entries().get(i);
+            byte[] content = slice(repacked, entry);
+            java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+            crc.update(content);
+            assertEquals(crc.getValue(), entry.crc32(), entry.name() + " carries the CRC of its bytes");
+            assertEquals(content.length, entry.uncompressedSize(), entry.name());
+            int infix = entry.name().indexOf(LambdaDesugarer.GENERATED_INFIX);
+            if (infix < 0) {
+                continue;
+            }
+            generated++;
+            String host = entry.name().substring(0, infix);
+            ZipEntryInfo previous = result.entries().get(i - 1);
+            assertTrue(previous.name().equals(host + ".class")
+                            || previous.name().startsWith(host + LambdaDesugarer.GENERATED_INFIX),
+                    entry.name() + " sits right after its host, not after " + previous.name());
+            assertEquals(result.entries().get(written.indexOf(host + ".class")).dosTime(), entry.dosTime(),
+                    entry.name() + " takes its host's time");
+            assertEquals(host.replace('/', '.') + entry.name().substring(infix, entry.name().length() - 6),
+                    java.lang.classfile.ClassFile.of().parse(content).thisClass().asInternalName()
+                            .replace('/', '.'), "the entry holds the class it names");
+        }
+        ClassTransformPipeline.JarReport report = run.report();
+        assertEquals(report.desugared().generated(), generated, "every generated class is an entry");
+        assertTrue(generated > 0 && report.desugared().sites() == generated, report.desugared()::toString);
+        assertEquals(List.of(), report.notes());
+        Path nested = temp.resolve("desugared/fix-nested.jar");
+        Files.write(nested, repacked);
+        try (ZipReader reader = ZipReader.open(nested)) {
+            assertEquals(result.entries(), reader.entries(), "the reported entries describe the nested jar");
+            ZipEntryInfo rewritten = reader.entry("fix/Scenario.class").orElseThrow();
+            assertNotEquals(plain.entries().get(plain.entries().size() - 1).crc32(), rewritten.crc32(),
+                    "the nest host was rewritten where it is");
+            assertEquals(0, LambdaFixtures.sites(reader.read(rewritten), "java/lang/invoke/LambdaMetafactory"));
+        }
+        assertEquals(plain.entries().stream().filter(entry -> entry.name().endsWith(".class")).count(),
+                (long) report.counts().get(0).rewritten() + report.counts().get(0).unchanged(),
+                "desugaring counts each class the jar had once");
+    }
+
     @ParameterizedTest(name = "deflated in the dependency: {0}")
     @ValueSource(booleans = {false, true})
     void aClassAboveTheSizeLimitIsStreamedAsItIsAndCountedUnchanged(boolean deflated) throws Exception {
@@ -502,7 +572,7 @@ class ZipRepackerTest {
         ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LocalVariableStripper()),
                 ClassPathModel.merge(List.of(scan), false));
         ClassTransformPipeline.JarRun run = pipeline.start(
-                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/large-class.jar", false, false, false));
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/large-class.jar", 0, false, false, false));
         assertFalse(run.reads(large.length));
         assertTrue(run.reads(large.length - 1));
 

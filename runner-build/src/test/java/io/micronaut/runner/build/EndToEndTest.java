@@ -884,6 +884,55 @@ class EndToEndTest {
     }
 
     /**
+     * The default packaging desugars lambdas: an application whose every lambda shape was rewritten, in its own
+     * layer and in two dependencies, starts with every class verified by the JVM and by the launcher, and
+     * prints what it prints from its classes as compiled. Java 8 hosts take the bridge path, newer ones the
+     * nest path.
+     */
+    @org.junit.jupiter.params.ParameterizedTest(name = "--release {0}")
+    @org.junit.jupiter.params.provider.ValueSource(ints = {8, 25})
+    void anApplicationWithDesugaredLambdasStartsFullyVerified(int release) throws Exception {
+        Path directory = workspace.resolve("lambdas-" + release);
+        List<LambdaFixtures.Layer> layers = LambdaFixtures.scenario(directory, release);
+        List<String> expected = LambdaFixtures.run(LambdaFixtures.classPath(
+                layers.stream().map(LambdaFixtures.Layer::entries).toList()), LambdaFixtures.APPLICATION);
+        Path application = directory.resolve("application");
+        for (Map.Entry<String, byte[]> entry : layers.get(0).entries().entrySet()) {
+            Path file = application.resolve(entry.getKey());
+            Files.createDirectories(file.getParent());
+            Files.write(file, entry.getValue());
+        }
+        Path library = ClassFixtures.jar(directory.resolve("fix.jar"), layers.get(1).entries());
+        Path other = ClassFixtures.jar(directory.resolve("other.jar"), layers.get(2).entries());
+        Path archive = directory.resolve("app.jar");
+
+        RunnerJarResult result = RunnerJarBuilder.build(RunnerJarSpec.builder()
+                .mainClass(LambdaFixtures.APPLICATION)
+                .applicationOutput(List.of(application))
+                .dependencies(List.of(Dependency.of(library), Dependency.of(other)))
+                .output(archive)
+                .build(), BuildLogger.noOp());
+        Forked run = fork(archive, workspace, List.of("-Xverify:all", "-Dmicronaut.runner.verify=true"), List.of());
+
+        assertEquals(0, run.status(), run::output);
+        List<String> printed = run.output().lines().toList();
+        assertEquals(expected.stream().filter(line -> !line.startsWith("hidden=")).toList(),
+                printed.stream().filter(line -> !line.startsWith("hidden=")).toList(),
+                "the application prints what its classes print as compiled");
+        assertTrue(printed.contains("hidden=falsefalse"), run::output);
+        TransformReport desugared = result.transforms().get(0);
+        assertEquals(LambdaDesugarer.NAME, desugared.step());
+        assertEquals(0, desugared.fallbacks(), desugared::toString);
+        assertTrue(desugared.rewritten() >= 4, desugared::toString);
+        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+            assertTrue(reader.index().findClass("app.Main$$Lambda$R0") != io.micronaut.runner.IndexFormat.NO_INDEX,
+                    "the application layer's lambdas are desugared too");
+            assertTrue(reader.index().findClass("fix.Scenario$$Lambda$R0")
+                    != io.micronaut.runner.IndexFormat.NO_INDEX);
+        }
+    }
+
+    /**
      * Fails with the application's own {@code FAIL} lines when any assertion inside it did not hold.
      */
     private static void assertPassed(Forked run) {

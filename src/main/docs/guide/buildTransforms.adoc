@@ -3,10 +3,11 @@ transformation is an option of the Runner JAR, fails closed, and names in the bu
 does nothing.
 
 There are two kinds. <<precompiledLogback>> adds generated classes to the application layer, and
-<<classTransforms>> rewrites the classes of the dependencies as they are re-packed, first of all by dropping their
-<<localVariableTables,local-variable tables>>. Both are on by default, and neither touches what the other produces:
-the class transforms never rewrite the application layer, where the generated Logback classes go, and the Logback
-front end runs the application's Logback JARs as they were published, not their re-packed copies.
+<<classTransforms>> rewrites classes as the archive is assembled: it <<desugaredLambdas,desugars the lambdas>> of
+the dependencies and of the application's own classes, and drops the dependencies'
+<<localVariableTables,local-variable tables>>. All of them are on by default, and neither kind touches what the
+other produces: the generated Logback classes join the application layer after the class transforms have run, and
+the Logback front end runs the application's Logback JARs as they were published, not their re-packed copies.
 
 [[precompiledLogback]]
 == Precompiled Logback configuration
@@ -84,22 +85,25 @@ In Maven, pass `-Dmicronaut.runner.precompileLogback=false`, or add `<precompile
 `<runnerOptions>`.
 
 [[classTransforms]]
-== Dependency class transforms
+== Class transforms
 
-A runner JAR re-packs every dependency, and with the default `STORED` compression it can also rewrite the
-dependency classes on the way: whatever a class carries that the application never needs at run time is paid for
-again on every start. This section lists what Runner changes in dependency classes at build time, the default
-and the opt-out of each change, and what an application can observe as a result.
+A runner JAR re-packs every dependency, and with the default `STORED` compression it can also rewrite classes on
+the way: whatever a class carries that the application never needs at run time, or has to work out again at every
+start, is paid for on every start. This section lists what Runner changes in classes at build time, the default and
+the opt-out of each change, and what an application can observe as a result.
 
-Every change runs in one pass: each dependency class is parsed once, every enabled transform is applied to it, and
-the result is written once. Before a rewritten class is accepted it is verified, with the JDK's class-file
-verifier, against the whole runtime class path and the JDK's own classes; a transform that fails on a class, or
-makes it verify worse than the class it replaces, is dropped for that class alone, and the build log says so.
+Every change runs in one pass: each class is parsed once, every enabled transform is applied to it, and the result
+is written once. Before a rewritten class is accepted it is verified, with the JDK's class-file verifier, against
+the whole runtime class path and the JDK's own classes; a transform that fails on a class, or makes it verify
+worse than the class it replaces, is dropped for that class alone, and the build log says so. Desugaring changes
+several classes together, so there the unit is the nest: the classes of one top-level class and the ones generated
+for them.
 
-Nothing here applies to the application's own classes, the ones Runner generates into the application layer
-included, to a project dependency (another project of a Gradle build, another module of a Maven reactor), or to
-any class of a signed JAR: they are nested exactly as they were built. With `PRESERVE` compression every
-dependency is nested byte for byte, so none of these transforms run.
+Stripping never applies to the application's own classes or to a project dependency (another project of a Gradle
+build, another module of a Maven reactor): they are user code, whose locals users debug. Desugaring applies to
+both. Neither applies to the classes Runner generates into the application layer or to any class of a signed JAR,
+which are nested exactly as they were built. With `PRESERVE` compression every dependency is nested byte for
+byte, and none of these transforms run, in the application layer either.
 
 What a build changed is recorded in the archive, in `MICRONAUT-INF/transforms.txt` (see
 <<format,The Runner JAR Format>>), and printed by the `inspect` mode:
@@ -107,6 +111,104 @@ What a build changed is recorded in the archive, in `MICRONAUT-INF/transforms.tx
 [source,bash]
 ----
 java -Dmicronaut.runner.mode=inspect -jar build/libs/my-app-0.1-all.jar
+----
+
+[[desugaredLambdas]]
+=== Desugared lambdas
+
+On by default with `STORED` compression. A lambda or a method reference compiles to an `invokedynamic` call site,
+and the first time the site runs, the JDK spins a hidden class for it. A CDS archive or an AOT cache keeps such a
+class only when the calling class was defined by one of the JDK's built-in class loaders, and the classes of a
+runner JAR are defined by Runner's own. So every lambda that runs before the application is ready is linked again
+at every start, with or without a cache. Desugaring writes that class when the application is packaged instead:
+each eligible site calls a generated class, `<Host>$$Lambda$R<n>`, stored right after its host, in the same JAR or
+in the application layer. Nothing is linked at run time, and a cache holds the generated class like any other.
+
+Rewritten:: A call site of `LambdaMetafactory.metafactory` whose implementation the generated class can call as
+the site did: a member of the host's own nest, private ones included; a non-private member of the host's package;
+or a public member of a public class, in any JAR or in an exported package of the JDK. The generated class
+implements the same interface, keeps the captured values in final fields, and converts arguments and results as
+the JDK would.
+Left as `invokedynamic`:: A `super::method` reference, or any other non-virtual (`invokespecial`) reference that is
+not to a private method of the host; a caller-sensitive JDK method, such as `Class::forName`; a
+site whose host, or whose implementation's owner, an earlier JAR shadows or a multi-release variant replaces; a
+site that would need a class that is not on the class path; every class of a signed JAR and of
+`META-INF/versions/`; and every other bootstrap: string concatenation, the `ObjectMethods` of records, and
+serializable or marker-interface lambdas.
+Java 8 classes:: A class below class-file version 55 has no nestmates, so a private lambda body is reached through
+a package-private static synthetic method, `$runner$lambda$<n>`, added to the host. Two hosts cannot take one and
+keep such sites: an interface, where it would have to be public, and a serializable class that declares no
+`serialVersionUID`, whose default value it would change.
+
+What an application can observe, for the rewritten lambdas of dependency and application classes:
+
+* `Class.isHidden()` is `false`, and the class has a stable name that `Class.forName` finds. Its name still
+contains `$$Lambda`, so code that recognises lambdas by name still does.
+* Each call of the lambda adds one visible frame, `<Host>$$Lambda$R<n>.<method>`, to stack traces and to
+`StackWalker`, where the hidden class's frame was hidden. Code that finds its caller by walking the stack from a
+method used as a method reference sees the generated class.
+* The JARs and the application layer gain one `.class` resource per rewritten site, and a rewritten host and its
+nest host have new bytes and a new CRC-32. Class-level composition analysis may report them as modified.
+* A Java 8 host gains its `$runner$lambda$<n>` methods, which `getDeclaredMethods()` returns.
+* A generated class is resolved by name, by the class loader that defined its host. A class loader of your own
+that defines a copy of a host from its bytes has to be able to find the generated classes next to it as well.
+* Output bytes depend on the JDK that runs the build: the archive is byte-reproducible only when it is built with
+the same JDK build.
+
+The step fails closed. Every class it writes or rewrites is verified, and when one class of a nest verifies worse
+than before, or the step fails on it, the whole nest is packaged as it was, with one line in the build log. The
+build log's summary line and the `lambdas` lines of `transforms.txt` give the sites rewritten, the classes
+generated, the bridges added and the sites left, by reason. The sites left include those of signed JARs and of the
+`META-INF/versions/` classes the runtime loads; the copies of a class that the runtime never loads are not counted.
+
+On `test-suite/samples/benchmark-large`, desugaring rewrites 2,963 of the 2,992 lambda call sites of the
+dependencies and the application, 361 of them through bridges, with no fallback; none of the 29 it leaves runs
+before the application is ready. Measured by the startup harness (<<benchmarks,Benchmarks>>) against the
+`runner-stored-lambdas` control, 30 interleaved pairs on an Apple Silicon machine with 12 CPUs and Homebrew OpenJDK
+25.0.4.1:
+
+[cols="40,60",options="header"]
+|===
+|Measure |Desugared minus lambdas kept
+
+|Readiness without a JDK cache
+|−38.9 ms paired median, 95% CI [−47.3, −30.2] (386.9 ms against 422.9 ms)
+
+|Readiness with the JDK AOT cache
+|−38.0 ms, 95% CI [−41.6, −33.9] (220.2 ms against 259.7 ms)
+
+|Maximum RSS
+|135.7 against 170.9 MiB without a cache, 144.4 against 164.1 MiB with the AOT cache (medians of three runs)
+
+|Archive size
+|36,023,843 against 32,810,600 bytes raw (+9.8%), 8,781,234 against 8,367,796 bytes gzip -6 (+4.9%); the AOT cache
+is 0.6 MB larger
+|===
+
+Packaging does the extra work on the staging threads. With both class transforms on, the sample's
+`micronautRunnerJar` task took 0.26 s instead of 0.11 s with both off, and 0.22 s with desugaring alone off (medians
+of ten warm-daemon rounds), against 0.75 s for its `shadowJar`.
+
+To keep every lambda an `invokedynamic` call site, set the `desugarLambdas` option to `false`. In Gradle:
+
+[source,groovy]
+----
+micronaut {
+    runner {
+        options.put('desugarLambdas', 'false')
+    }
+}
+----
+
+In Maven, pass `-Dmicronaut.runner.desugarLambdas=false`, or add a `<runnerOptions>` entry:
+
+[source,xml]
+----
+<configuration>
+    <runnerOptions>
+        <desugarLambdas>false</desugarLambdas>
+    </runnerOptions>
+</configuration>
 ----
 
 [[localVariableTables]]

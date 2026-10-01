@@ -5,7 +5,8 @@ JDK 26 the AOT cache does. JDK classes, and the launcher classes that the JDK's 
 from the outer JAR, get full AOT loading and linking. Classes that Runner's own loader defines are stored as
 _unregistered_ classes: when the loader later defines a class whose name, class-file size and CRC-32 match a stored one,
 HotSpot reuses the pre-parsed and pre-verified copy instead of parsing the bytes again. Those classes are not
-AOT-linked, and the lambdas they spin at run time are not archived. The extracted layout runs entirely on the built-in
+AOT-linked, and the lambdas they spin at run time are not archived, which is why Runner writes lambda classes when it
+packages the JAR (<<lambdaGap>>). The extracted layout runs entirely on the built-in
 loader, so its application classes are AOT-linked too. JDK 27's AOT cache stores only classes from `file:` code sources
 (https://bugs.openjdk.org/browse/JDK-8380291[JDK-8380291]), so it stores none of the single JAR's application classes
 (dynamic CDS still does). The single JAR's cache, trained by hand or with `jdkAotCache.target = 'singleJar'`, is worth
@@ -205,6 +206,22 @@ the static service table (<<staticServices>>). With the table it was 25.6 to 32.
 16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <<aotLayout>>). On JDK 27 (build 27) it
 caches no application classes and, before the table, was 173.5 ms behind Shadow's (95% CI 169.7 to 179.8 ms, 20
 pairs): a single file there uses CDS.
+
+[[lambdaGap]]
+=== Closing the lambda gap on the single JAR
+
+Every lambda the single JAR's classes run would otherwise be linked at every start, cache or not, as the first section
+says. So Runner desugars lambdas when it packages (<<desugaredLambdas>>), on by default with `STORED`; set the
+`desugarLambdas` option to `false` to opt out. Train with the snippet above unchanged: the generated classes are
+ordinary classes, and the cache holds them. On `benchmark-large` with JDK 25.0.4.1 (30 pairs), desugaring made the
+single JAR 38.0 ms faster with its AOT cache (95% CI 33.9 to 41.6 ms) and 38.9 ms faster without one (95% CI 30.2 to
+47.3 ms). With its cache it was then 16.0 ms ahead of Shadow's (95% CI 11.1 to 22.7 ms), at 144.4 MiB maximum RSS
+against Shadow's 133.6 MiB. The single-JAR figures above were taken before lambdas were desugared. The cached gain
+holds for JDK 25 and 26; on JDK 27 the single JAR's cache holds no application class (see the first section), and the
+extracted layout is the cached deployment. What is left of the cached difference: the 29 sites still excluded (none on
+this sample's startup path), about 40 string concatenation sites, the per-class cost of reusing unregistered classes,
+and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT cache
+remains the parity option, with Shadow's RSS.
 
 == Zero-pipeline option: `-XX:+AutoCreateSharedArchive`
 

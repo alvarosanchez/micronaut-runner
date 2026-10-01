@@ -208,7 +208,13 @@ final class LocalVariableStripper implements ClassTransformPipeline.Step {
     }
 
     @Override
-    public String summary(TransformReport report, int jars) {
+    public String summary(TransformReport report, List<ClassTransformPipeline.JarReport> reports) {
+        int jars = 0;
+        for (ClassTransformPipeline.JarReport jar : reports) {
+            if (!jar.application()) {
+                jars++;
+            }
+        }
         return "Stripped local-variable tables from " + report.rewritten() + " of " + report.classes()
                 + " dependency classes in " + jars + " jars (" + report.bytesSaved() + " bytes saved, "
                 + report.fallbacks() + " fallbacks)";
@@ -272,7 +278,15 @@ final class LocalVariableStripper implements ClassTransformPipeline.Step {
         return false;
     }
 
-    private static boolean contains(byte[] bytes, byte[] marker) {
+    /**
+     * Whether a class's bytes hold a marker, which is how a pre-filter finds a constant pool string without
+     * parsing the class.
+     *
+     * @param bytes  the class bytes
+     * @param marker the bytes to look for, at least one
+     * @return whether {@code bytes} contains {@code marker}
+     */
+    static boolean contains(byte[] bytes, byte[] marker) {
         byte first = marker[0];
         int last = bytes.length - marker.length;
         for (int i = 0; i <= last; i++) {

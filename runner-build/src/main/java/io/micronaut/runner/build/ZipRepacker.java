@@ -25,8 +25,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Rewrites a dependency jar so that every entry is {@code STORED}, or copies it byte for byte, and reports
@@ -114,6 +118,11 @@ final class ZipRepacker {
         // name becomes a same-name chain, which is exactly what the PRESERVE mode produces for the same
         // input. Neither is worth failing a build that java.util.zip.ZipFile would read without complaint.
         ZipWriter writer = new ZipWriter(target, ZipWriter.DEFAULT_TIMESTAMP, false);
+        if (run != null && run.plans()) {
+            // A nest host may come before its members, so the nests are planned, rewritten and gated before
+            // the first entry is written.
+            run.plan(new SourceClasses(source));
+        }
         for (ZipEntryInfo entry : source.entries()) {
             String name = entry.name();
             boolean signature = ZipReader.isSignatureFile(name);
@@ -126,12 +135,22 @@ final class ZipRepacker {
             long dataOffset;
             long size;
             long crc;
+            List<ClassTransformPipeline.Generated> generated = List.of();
+            ClassTransformPipeline.Planned planned = run != null && ClassTransformPipeline.isClass(entry)
+                    ? run.planned(name) : null;
             if (entry.directory()) {
                 // A directory entry is written with no data at all, so its CRC-32 is the CRC of nothing,
                 // whatever the source recorded.
                 dataOffset = writer.writeDirectoryEntry(name, entry.dosTime());
                 size = 0;
                 crc = 0;
+            } else if (planned != null) {
+                // A class of a planned nest: its accepted bytes were kept until now.
+                byte[] output = planned.bytes();
+                crc = run.crc32(output);
+                size = output.length;
+                dataOffset = writer.writeEntry(name, output, 0, output.length, crc, entry.dosTime());
+                generated = planned.generated();
             } else if (run != null && ClassTransformPipeline.isClass(entry)
                     && run.reads(entry.uncompressedSize())) {
                 // Inflated at its exact size and checked against its CRC-32, so that CRC-32 describes the bytes
@@ -143,7 +162,7 @@ final class ZipRepacker {
                 dataOffset = writer.writeEntry(name, output, 0, output.length, crc, entry.dosTime());
             } else {
                 if (run != null && ClassTransformPipeline.isClass(entry)) {
-                    run.skip();
+                    run.pass(name);
                 }
                 dataOffset = writer.writeEntry(name, source, entry, entry.dosTime());
                 size = entry.uncompressedSize();
@@ -151,6 +170,16 @@ final class ZipRepacker {
             }
             entries.add(new ZipEntryInfo(name, IndexFormat.METHOD_STORED, size, size, crc,
                     entry.dosTime(), localHeaderOffset, dataOffset, entry.directory()));
+            for (ClassTransformPipeline.Generated added : generated) {
+                // Right after its host, with the host's time, so the two stay together on disk.
+                byte[] content = added.bytes();
+                long addedCrc = run.crc32(content);
+                long addedHeader = writer.offset();
+                long addedData = writer.writeEntry(added.name(), content, 0, content.length, addedCrc,
+                        entry.dosTime());
+                entries.add(new ZipEntryInfo(added.name(), IndexFormat.METHOD_STORED, content.length,
+                        content.length, addedCrc, entry.dosTime(), addedHeader, addedData, false));
+            }
         }
         writer.finish();
         return new RepackResult(List.copyOf(entries), writer.offset(), signed, List.copyOf(dropped));
@@ -262,6 +291,62 @@ final class ZipRepacker {
             if (length < 0) {
                 throw new IllegalArgumentException("Negative nested jar length: " + length);
             }
+        }
+    }
+
+    /**
+     * The classes of a source archive, as a planning step reads them: each through
+     * {@link ZipReader#read(ZipEntryInfo)}, inflated at its exact size and checked against its CRC-32.
+     */
+    static final class SourceClasses implements ClassTransformPipeline.JarClasses {
+
+        private final ZipReader source;
+        private final Map<String, ZipEntryInfo> first = new HashMap<>();
+        private final Set<String> repeated = new HashSet<>();
+        private final List<ClassTransformPipeline.ClassEntry> classes = new ArrayList<>();
+
+        /**
+         * The classes of an archive, less the entries a repack drops.
+         *
+         * @param source the archive
+         */
+        SourceClasses(ZipReader source) {
+            this.source = source;
+            for (ZipEntryInfo entry : source.entries()) {
+                if (ZipReader.isSignatureFile(entry.name()) || ZipReader.isIndexList(entry.name())) {
+                    continue;
+                }
+                if (first.putIfAbsent(entry.name(), entry) != null) {
+                    repeated.add(entry.name());
+                } else if (ClassTransformPipeline.isClass(entry)) {
+                    classes.add(new ClassTransformPipeline.ClassEntry(entry.name(), entry.uncompressedSize()));
+                }
+            }
+        }
+
+        @Override
+        public List<ClassTransformPipeline.ClassEntry> classes() {
+            return classes;
+        }
+
+        @Override
+        public long size(String entryName) {
+            ZipEntryInfo entry = first.get(entryName);
+            return entry == null ? -1 : entry.uncompressedSize();
+        }
+
+        @Override
+        public boolean repeated(String entryName) {
+            return repeated.contains(entryName);
+        }
+
+        @Override
+        public byte[] read(String entryName) throws IOException {
+            ZipEntryInfo entry = first.get(entryName);
+            if (entry == null) {
+                throw new IOException("No entry " + entryName + " in " + source.path());
+            }
+            return source.read(entry);
         }
     }
 }

@@ -34,7 +34,9 @@ import java.util.zip.CheckedOutputStream;
  *
  * <p>A stage may run on a worker thread, so it reads nothing but its own fields and touches no builder
  * state. It opens, uses and closes its {@link ZipReader}, streams, {@link CRC32} and buffers on the
- * thread that runs it; only the {@link Staged} result it returns reaches another thread.</p>
+ * thread that runs it; only the {@link Staged} result it returns reaches another thread. When lambdas are
+ * desugared, the repack plans the dependency's nests before it writes the first entry, and the stage holds
+ * their accepted classes until the entry loop has written them.</p>
  */
 final class DependencyStage implements Callable<DependencyStage.Staged> {
 
@@ -42,6 +44,8 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
     private static final int BUFFER_SIZE = 64 * 1024;
 
     private final Dependency dependency;
+    /** The dependency's layer in the class path model: its class-path position plus one. */
+    private final int layer;
     private final String entryName;
     /** The work file a repacked nested jar is written to; a preserved dependency leaves it unused. */
     private final Path target;
@@ -49,9 +53,10 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
     /** The class transforms a repack runs, shared and read-only; {@code null} when none runs. */
     private final ClassTransformPipeline pipeline;
 
-    DependencyStage(Dependency dependency, String entryName, Path target, Compression compression,
+    DependencyStage(Dependency dependency, int layer, String entryName, Path target, Compression compression,
                     ClassTransformPipeline pipeline) {
         this.dependency = dependency;
+        this.layer = layer;
         this.entryName = entryName;
         this.target = target;
         this.compression = compression;
@@ -81,7 +86,7 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
                 CRC32 crc = new CRC32();
                 // The run is decided before any entry is read: a signed jar keeps every class as it is.
                 ClassTransformPipeline.JarRun run = pipeline == null ? null
-                        : pipeline.start(new ClassTransformPipeline.Layer(entryName, false,
+                        : pipeline.start(new ClassTransformPipeline.Layer(entryName, layer, false,
                                 reader.hasSignatureFiles(), dependency.projectModule()));
                 try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(target), BUFFER_SIZE);
                      CheckedOutputStream checked = new CheckedOutputStream(out, crc)) {

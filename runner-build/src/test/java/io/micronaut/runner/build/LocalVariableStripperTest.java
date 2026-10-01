@@ -261,6 +261,8 @@ class LocalVariableStripperTest {
         assertEquals(List.of(), result.transforms());
         assertEquals(1, info.stream().filter(line -> line.contains("stripLocalVariables")
                 && line.contains("has no effect")).count(), info::toString);
+        assertEquals(1, info.stream().filter(line -> line.contains("desugarLambdas")
+                && line.contains("has no effect")).count(), info::toString);
         try (ZipFile zip = new ZipFile(temp.resolve("preserve/app.jar").toFile())) {
             assertEquals(null, zip.getEntry("MICRONAUT-INF/transforms.txt"));
         }
@@ -369,7 +371,7 @@ class LocalVariableStripperTest {
         classes.forEach(scan::accept);
         ClassTransformPipeline.JarRun run = new ClassTransformPipeline(List.of(new LocalVariableStripper()),
                 ClassPathModel.merge(List.of(scan), false)).start(
-                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fixture.jar", false, false, false));
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fixture.jar", 0, false, false, false));
 
         byte[] stripped = run.process(FIXTURE_ENTRY, compiled);
         assertTrue(stripped.length < compiled.length);
@@ -457,7 +459,8 @@ class LocalVariableStripperTest {
         assertArrayEquals(entries.get("bad/BadIface.class"), nested.get("bad/BadIface.class"));
         assertTrue(nested.get("bad/Good.class").length < compiled.get("bad/Good.class").length,
                 "the class next to them is stripped");
-        TransformReport report = result.transforms().get(0);
+        TransformReport report = result.transforms().stream()
+                .filter(transform -> transform.step().equals(LocalVariableStripper.NAME)).findFirst().orElseThrow();
         assertEquals(1, report.rewritten(), report::toString);
         assertEquals(2, report.fallbacks(), report::toString);
         assertEquals(3, report.classes(), report::toString);
@@ -649,6 +652,8 @@ class LocalVariableStripperTest {
                 .dependencies(dependencies)
                 .output(output)
                 .stripLocalVariables(strip)
+                // Stripping on its own: LambdaDesugarerTest covers the two steps together.
+                .desugarLambdas(false)
                 .build(), BuildLogger.noOp());
     }
 
@@ -660,6 +665,8 @@ class LocalVariableStripperTest {
                 .dependencies(logback.stream().map(Dependency::of).toList())
                 .output(output)
                 .stripLocalVariables(strip)
+                // Stripping on its own: LambdaDesugarerTest covers the two steps together.
+                .desugarLambdas(false)
                 .build(), BuildLogger.noOp());
     }
 

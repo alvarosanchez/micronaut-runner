@@ -124,4 +124,14 @@ interface SampleSteps {
      * @throws Exception if it cannot be built
      */
     Variant extracted(Variant stored) throws Exception;
+
+    /**
+     * Extracts the lambda control, {@code runner-stored-lambdas}, into a directory of its own. The layout is
+     * trained, but it is not a row.
+     *
+     * @param lambdas the {@code runner-stored-lambdas} row
+     * @return the extracted layout
+     * @throws Exception if it cannot be built
+     */
+    Variant extractedLambdas(Variant lambdas) throws Exception;
 }

@@ -62,6 +62,24 @@ class RunnerJarSpecTest {
     }
 
     @Test
+    void desugarsLambdasByDefaultAndTheOptionTurnsItOff() {
+        assertTrue(complete(RunnerJarSpec.builder()).build().desugarLambdas());
+        assertFalse(complete(RunnerJarSpec.builder().desugarLambdas(false)).build().desugarLambdas());
+        RunnerJarSpec off = complete(RunnerJarSpec.builder().option("desugarLambdas", "false")).build();
+        assertFalse(off.desugarLambdas());
+        assertEquals("false", off.effectiveOptions().get("desugarLambdas"));
+        assertEquals("true", complete(RunnerJarSpec.builder()).build().effectiveOptions().get("desugarLambdas"));
+        assertTrue(complete(RunnerJarSpec.builder().option("desugarLambdas", "false").desugarLambdas(true)).build()
+                .desugarLambdas(), "the last call wins");
+        assertEquals(RunnerJarOption.Exposure.PASSTHROUGH, RunnerJarOption.DESUGAR_LAMBDAS.exposure());
+        assertEquals(Boolean.class, RunnerJarOption.DESUGAR_LAMBDAS.valueType());
+        assertEquals("true", RunnerJarOption.DESUGAR_LAMBDAS.defaultValue().orElseThrow());
+        assertEquals(java.util.Optional.of(RunnerJarOption.DESUGAR_LAMBDAS), RunnerJarOption.named("desugarLambdas"));
+        assertTrue(complete(RunnerJarSpec.builder().compression(Compression.PRESERVE)).build().desugarLambdas(),
+                "PRESERVE accepts the option, which then has no effect");
+    }
+
+    @Test
     void acceptsMultipleManifestModulePackagePairs() {
         RunnerJarSpec.Builder builder = RunnerJarSpec.builder()
                 .addExports(List.of("java.base/sun.nio.ch", "java.base/jdk.internal.misc"))
@@ -147,7 +165,7 @@ class RunnerJarSpecTest {
     @Test
     void aBooleanOptionAcceptsOnlyTrueOrFalse() {
         for (String name : List.of("entryStub", "multiRelease", "enableNativeAccess", "precompileLogback",
-                "stripLocalVariables")) {
+                "stripLocalVariables", "desugarLambdas")) {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                     () -> RunnerJarSpec.builder().option(name, "yes"));
             assertTrue(failure.getMessage().contains(name), failure::getMessage);

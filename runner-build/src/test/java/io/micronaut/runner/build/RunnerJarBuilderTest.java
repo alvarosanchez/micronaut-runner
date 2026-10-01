@@ -555,26 +555,77 @@ class RunnerJarBuilderTest {
                                             }
                                         }
                                         """))));
+        // Lambdas across two dependencies: what is generated for the first one's call sites depends on the
+        // second one's classes, whichever of the two is staged first.
+        Map<String, byte[]> lambdas = ClassFixtures.classes(ClassFixtures.compile(directory.resolve("lambda-src"),
+                directory.resolve("lambda-classes"), List.of("-g", "--release", "25"), Map.of(
+                        "com/example/caller/Caller.java", """
+                                package com.example.caller;
+                                import com.example.callee.Callee;
+                                import java.util.function.Function;
+                                import java.util.function.Supplier;
+                                public class Caller {
+                                    public static Function<String, String> across() {
+                                        return Callee::twice;
+                                    }
+                                    public Supplier<String> own(String value) {
+                                        return () -> value + across().apply(value);
+                                    }
+                                }
+                                """,
+                        "com/example/callee/Callee.java", """
+                                package com.example.callee;
+                                import java.util.function.Supplier;
+                                public class Callee {
+                                    public static String twice(String value) {
+                                        return value + value;
+                                    }
+                                    public static Supplier<String> constant() {
+                                        return () -> "constant";
+                                    }
+                                }
+                                """)));
+        Path caller = ClassFixtures.jar(directory.resolve("caller-lib.jar"),
+                LambdaFixtures.select(lambdas, "com/example/caller/"));
+        Path callee = ClassFixtures.jar(directory.resolve("callee-lib.jar"),
+                LambdaFixtures.select(lambdas, "com/example/callee/"));
         List<Dependency> dependencies = Stream.of(classPath, plainDependency, multiReleaseDependency,
-                        signedDependency, noManifest, duplicate, sameFileName, debug, large)
+                        signedDependency, noManifest, duplicate, sameFileName, debug, caller, callee, large)
                 .map(Dependency::of)
                 .toList();
 
         for (Compression compression : Compression.values()) {
             Path sequential = output();
             Path parallel = output();
+            Path wider = output();
             StagingLogger inline = new StagingLogger();
             StagingLogger pooled = new StagingLogger();
             RunnerJarResult sequentialResult = RunnerJarBuilder.build(spec(sequential)
                     .dependencies(dependencies).compression(compression).build(), inline, 1);
             RunnerJarResult parallelResult = RunnerJarBuilder.build(spec(parallel)
                     .dependencies(dependencies).compression(compression).build(), pooled, 4);
+            RunnerJarResult widerResult = RunnerJarBuilder.build(spec(wider)
+                    .dependencies(dependencies).compression(compression).build(), BuildLogger.noOp(), 8);
 
             assertEquals(-1, Files.mismatch(sequential, parallel), compression + ": the same bytes");
+            assertEquals(-1, Files.mismatch(sequential, wider), compression + ": the same bytes on 8 threads");
             assertEquals(sequentialResult.transforms(), parallelResult.transforms(),
                     compression + ": the same transform reports");
+            assertEquals(sequentialResult.transforms(), widerResult.transforms(),
+                    compression + ": the same transform reports on 8 threads");
             if (compression == Compression.STORED) {
-                assertTrue(parallelResult.transforms().get(0).rewritten() > 0, parallelResult.transforms()::toString);
+                assertEquals(List.of(LambdaDesugarer.NAME, LocalVariableStripper.NAME),
+                        parallelResult.transforms().stream().map(TransformReport::step).toList(),
+                        "the steps in the order they run");
+                for (TransformReport report : parallelResult.transforms()) {
+                    assertTrue(report.rewritten() > 0, parallelResult.transforms()::toString);
+                }
+                try (RunnerJarReader reader = RunnerJarReader.open(parallel)) {
+                    assertTrue(reader.index().findClass("com.example.caller.Caller$$Lambda$R0")
+                            != IndexFormat.NO_INDEX, "the call site into the other dependency is desugared");
+                    assertTrue(reader.index().findClass("com.example.callee.Callee$$Lambda$R0")
+                            != IndexFormat.NO_INDEX);
+                }
             } else {
                 assertEquals(List.of(), parallelResult.transforms());
             }
@@ -595,6 +646,67 @@ class RunnerJarBuilderTest {
                 assertEquals("MICRONAUT-INF/lib/dep-lib-1.jar", reader.index().jarName(7),
                         compression + ": the second dep-lib.jar gets a unique name");
             }
+        }
+    }
+
+    @Test
+    void theDesugarReportIsThereWithTheOptionOnAndAbsentWithItOff() throws IOException {
+        Path directory = Files.createDirectories(fixtures.resolve("desugar-report"));
+        Path dependency = ClassFixtures.jar(directory.resolve("lambda-lib.jar"), ClassFixtures.classes(
+                ClassFixtures.compile(directory.resolve("src"), directory.resolve("classes"),
+                        List.of("--release", "25"), Map.of("com/example/lambda/Lambdas.java", """
+                                package com.example.lambda;
+                                import java.util.function.Supplier;
+                                public class Lambdas {
+                                    public static Supplier<String> constant() {
+                                        return () -> "constant";
+                                    }
+                                }
+                                """))));
+        List<String> info = new ArrayList<>();
+        BuildLogger logger = new BuildLogger() {
+            @Override
+            public void info(String message) {
+                info.add(message);
+            }
+
+            @Override
+            public void warn(String message) {
+            }
+        };
+        Path on = output();
+        Path off = output();
+
+        RunnerJarResult defaults = RunnerJarBuilder.build(spec(on)
+                .dependencies(List.of(Dependency.of(dependency))).build(), logger);
+        RunnerJarResult disabled = RunnerJarBuilder.build(spec(off)
+                .dependencies(List.of(Dependency.of(dependency))).option("desugarLambdas", "false").build(),
+                BuildLogger.noOp());
+
+        TransformReport report = defaults.transforms().stream()
+                .filter(transform -> transform.step().equals("desugarLambdas")).findFirst().orElseThrow();
+        assertEquals(1, report.rewritten(), report::toString);
+        assertEquals(0, report.fallbacks(), report::toString);
+        assertTrue(report.bytesSaved() < 0, "the step adds classes: " + report);
+        assertEquals("true", defaults.effectiveOptions().get("desugarLambdas"));
+        assertTrue(disabled.transforms().stream().noneMatch(transform -> transform.step().equals("desugarLambdas")),
+                disabled.transforms()::toString);
+        assertEquals("false", disabled.effectiveOptions().get("desugarLambdas"));
+        assertEquals(1, info.stream().filter(line -> line.startsWith("Desugared 1 lambda call sites into 1"
+                + " generated classes in 1 dependencies")).count(), info::toString);
+        try (ZipFile zip = new ZipFile(on.toFile())) {
+            String transforms = new String(zip.getInputStream(zip.getEntry(IndexFormat.TRANSFORMS_ENTRY_NAME))
+                    .readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(transforms.contains("MICRONAUT-INF/lib/lambda-lib.jar\tdesugarLambdas\t1\t0\t0\t"),
+                    transforms);
+            assertTrue(transforms.contains("lambdas\tMICRONAUT-INF/lib/lambda-lib.jar\trewritten=1\tgenerated=1"
+                    + "\tbridges=0\tnestFallbacks=0\tleft=0\n"), transforms);
+        }
+        try (RunnerJarReader reader = RunnerJarReader.open(on)) {
+            assertTrue(reader.index().findClass("com.example.lambda.Lambdas$$Lambda$R0") != IndexFormat.NO_INDEX);
+        }
+        try (RunnerJarReader reader = RunnerJarReader.open(off)) {
+            assertEquals(IndexFormat.NO_INDEX, reader.index().findClass("com.example.lambda.Lambdas$$Lambda$R0"));
         }
     }
 

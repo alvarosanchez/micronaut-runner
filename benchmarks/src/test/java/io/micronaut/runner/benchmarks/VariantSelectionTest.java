@@ -83,13 +83,28 @@ class VariantSelectionTest {
         assertEquals(List.of("runner-stored-reflection", "runner-stored-preload", "runner-stored-preload-aot",
                         "runner-stored-positional", "runner-stored-positional-aot", "runner-stored-joran",
                         "runner-stored-joran-aot", "runner-stored-keepdebug", "runner-stored-keepdebug-aot",
-                        "runner-stored-dynamic-services", "runner-stored-dynamic-services-aot", "shadow-maot-aot",
-                        "runner-maot-aot"),
+                        "runner-stored-dynamic-services", "runner-stored-dynamic-services-aot",
+                        "runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot",
+                        "shadow-maot-aot", "runner-maot-aot"),
                 all.stream().filter(name -> !SampleBuild.variantNames().contains(name)).toList());
         assertEquals(all.indexOf("runner-stored-aot") + 1, all.indexOf("runner-stored-reflection"));
-        assertEquals(all.indexOf("runner-stored-dynamic-services-aot") + 1, all.indexOf("runner-preserve"));
+        assertEquals(all.indexOf("runner-extracted-lambdas-aot") + 1, all.indexOf("runner-preserve"));
         assertEquals(all.indexOf("shadow-maot") + 1, all.indexOf("shadow-maot-aot"));
         assertEquals(all.indexOf("runner-maot") + 1, all.indexOf("runner-maot-aot"));
+    }
+
+    @Test
+    void theExtractedLambdaControlBuildsTheStoredControlAndItsLayoutOnce() {
+        FakeSteps steps = new FakeSteps();
+
+        List<Variant> variants = SampleBuild.variants(steps, List.of("runner-stored-lambdas-aot",
+                "runner-extracted-lambdas-aot"), log());
+
+        assertEquals(List.of("runner-stored-lambdas-aot", "runner-extracted-lambdas-aot"), names(variants));
+        assertEquals(Map.of("runnerJar:runner-stored-lambdas", 1,
+                "aotCache:runner-stored-lambdas->runner-stored-lambdas-aot", 1,
+                "extractedLambdas:runner-stored-lambdas", 1,
+                "aotCache:runner-extracted-lambdas->runner-extracted-lambdas-aot", 1), steps.calls);
     }
 
     @Test
@@ -434,6 +449,12 @@ class VariantSelectionTest {
         public Variant extracted(Variant stored) {
             note("extracted:" + stored.name());
             return variant("runner-extracted");
+        }
+
+        @Override
+        public Variant extractedLambdas(Variant lambdas) {
+            note("extractedLambdas:" + lambdas.name());
+            return variant("runner-extracted-lambdas");
         }
     }
 }

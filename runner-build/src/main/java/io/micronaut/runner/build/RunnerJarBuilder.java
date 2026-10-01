@@ -96,16 +96,25 @@ import java.util.zip.CRC32;
  *
  * <h2>Class transforms</h2>
  * <p>In STORED, each stage also runs the {@link ClassTransforms} of the build over its dependency's classes, by
- * default {@link RunnerJarSpec#stripLocalVariables()}. Before staging, one scan task per dependency runs on the
- * same threads, with its own {@code ZipReader}, into a read-only {@link ClassPathModel} that every stage shares
- * and that is discarded when {@code build} returns. A staging thread then also holds the original and the
- * rewritten bytes of one class, at most {@link ClassTransformPipeline#MAX_CLASS_SIZE} each. What the stages
- * did is logged on the calling thread in class-path order and written into {@code MICRONAUT-INF/transforms.txt}
- * right after the launcher classes; with every transform off there is no scan and no such entry.</p>
+ * default {@link RunnerJarSpec#desugarLambdas()} and then {@link RunnerJarSpec#stripLocalVariables()}. Before
+ * staging, one scan task per dependency runs on the same threads, with its own {@code ZipReader}, into a
+ * read-only {@link ClassPathModel} that every stage shares and that is discarded when {@code build} returns. A
+ * staging thread then also holds the original and the rewritten bytes of one class, at most
+ * {@link ClassTransformPipeline#MAX_CLASS_SIZE} each. With {@code desugarLambdas}, a stage plans its
+ * dependency's nests before it writes the first entry, so the thread also holds the planned nests of the jar
+ * it is staging: the original and the accepted bytes of each class with a rewritten lambda call site, of its
+ * nest host and of the classes generated for it, each released when the entry loop has written it. One jar's
+ * output then depends on other jars' classes, whose members decide what a generated class may call, but only
+ * through the model, which is complete before the first stage starts: the archive's bytes still do not depend
+ * on the thread count. The application layer's lambdas are desugared on the calling thread, while the stages
+ * run. What the transforms did is logged on the calling thread in class-path order and written into
+ * {@code MICRONAUT-INF/transforms.txt} right after the launcher classes; with every transform off there is no
+ * scan and no such entry.</p>
  *
  * <p>{@link LogbackPrecompiler} runs after the stages, because the staged dependencies decide whether it applies.
  * The two do not meet: its front end loads Logback from the dependencies' own files, not from the staged copies,
- * and the classes it generates join the application layer after the scan, where no transform rewrites them.</p>
+ * and the classes it generates join the application layer after the scan and after the application layer was
+ * transformed, so no transform rewrites them.</p>
  *
  * <h2>Application jars</h2>
  * <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
@@ -909,16 +918,22 @@ public final class RunnerJarBuilder {
             Set<String> taken = new HashSet<>();
             for (int position = 0; position < dependencies.size(); position++) {
                 Dependency dependency = dependencies.get(position);
-                stages.add(new DependencyStage(dependency,
+                stages.add(new DependencyStage(dependency, position + 1,
                         IndexFormat.LIB_PREFIX + uniqueName(taken, fileName(dependency.path())),
                         work.resolve("lib-" + position + ".jar"), spec.compression(), transforms.pipeline()));
             }
             if (pool == null) {
+                transformApplication();
                 for (DependencyStage stage : stages) {
                     join(stage.call());
                 }
             } else {
-                stageInParallel(stages, pool);
+                // The application layer is transformed on this thread while the pool stages the dependencies.
+                List<Future<DependencyStage.Staged>> futures = submitStages(stages, pool);
+                transformApplication();
+                for (Future<DependencyStage.Staged> future : futures) {
+                    join(awaitStage(future));
+                }
             }
         } catch (Throwable e) {
             failure = e;
@@ -946,20 +961,75 @@ public final class RunnerJarBuilder {
     }
 
     /**
-     * Runs the stages on the build's pool and joins them in class-path order.
+     * Runs the class transforms that apply to the application layer, on the calling thread: it replaces each
+     * rewritten class and puts the classes generated for a host right after it, in the layer's entry order.
+     * The class path model is complete before this runs, and nothing here depends on the stages.
+     *
+     * @throws IOException if an application class cannot be read
+     */
+    private void transformApplication() throws IOException {
+        Map<String, ClassTransformPipeline.Planned> rewritten = transforms.application(
+                new ClassTransformPipeline.JarClasses() {
+                    @Override
+                    public List<ClassTransformPipeline.ClassEntry> classes() {
+                        List<ClassTransformPipeline.ClassEntry> classes = new ArrayList<>();
+                        for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
+                            if (item.getKey().endsWith(".class")) {
+                                classes.add(new ClassTransformPipeline.ClassEntry(item.getKey(), item.getValue().size));
+                            }
+                        }
+                        return classes;
+                    }
+
+                    @Override
+                    public long size(String entryName) {
+                        ApplicationEntry entry = application.get(entryName);
+                        return entry == null ? -1 : entry.size;
+                    }
+
+                    @Override
+                    public boolean repeated(String entryName) {
+                        // The first application output that carries a name wins, so the layer holds it once.
+                        return false;
+                    }
+
+                    @Override
+                    public byte[] read(String entryName) throws IOException {
+                        return applicationBytes(application.get(entryName));
+                    }
+                });
+        if (rewritten.isEmpty()) {
+            return;
+        }
+        Map<String, ApplicationEntry> rebuilt = new LinkedHashMap<>();
+        for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
+            ClassTransformPipeline.Planned planned = rewritten.get(item.getKey());
+            if (planned == null) {
+                rebuilt.put(item.getKey(), item.getValue());
+                continue;
+            }
+            rebuilt.put(item.getKey(), ApplicationEntry.ofBytes(planned.bytes()));
+            for (ClassTransformPipeline.Generated generated : planned.generated()) {
+                rebuilt.put(generated.name(), ApplicationEntry.ofBytes(generated.bytes()));
+            }
+        }
+        application.clear();
+        application.putAll(rebuilt);
+    }
+
+    /**
+     * Submits the stages to the build's pool, largest dependency first.
      *
      * @param stages every stage, in class-path order
      * @param pool   the pool created for this build, which the caller stops
-     * @throws IOException if a stage failed or the calling thread was interrupted
+     * @return the submitted stages, in class-path order
      */
-    private void stageInParallel(List<DependencyStage> stages, ExecutorService pool) throws IOException {
+    private List<Future<DependencyStage.Staged>> submitStages(List<DependencyStage> stages, ExecutorService pool) {
         List<Future<DependencyStage.Staged>> futures = new ArrayList<>(Collections.nCopies(stages.size(), null));
         for (int position : largestFirst(dependencies)) {
             futures.set(position, pool.submit(stages.get(position)));
         }
-        for (Future<DependencyStage.Staged> future : futures) {
-            join(awaitStage(future));
-        }
+        return futures;
     }
 
     /**
