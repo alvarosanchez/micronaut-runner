@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner;
 
+import io.micronaut.core.annotation.Internal;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -82,29 +84,13 @@ import java.util.zip.CRC32;
  * The cache is used with the {@code jar:} code sources of a production launch, which never sets the property:
  * the JDK matches a cached class by name, size and CRC-32 and gives it the domain this loader passes.</p>
  *
+ * <p>The class is public because the benchmarks create loaders and runner-build reads
+ * {@link #AOT_TRAINING_PROPERTY}; it is not API for applications.</p>
+ *
  * @since 1.0
  */
+@Internal
 public final class RunnerClassLoader extends ClassLoader {
-
-    /**
-     * System property selecting the parent class loader. The only recognised value is
-     * {@value #PARENT_SYSTEM}, which is an escape hatch for applications that need to see the real
-     * class path; anything else, including the property being absent, means the platform class loader.
-     */
-    public static final String PARENT_PROPERTY = "micronaut.runner.parent";
-
-    /** Value of {@value #PARENT_PROPERTY} that selects {@link ClassLoader#getSystemClassLoader()}. */
-    public static final String PARENT_SYSTEM = "system";
-
-    /**
-     * System property that turns on CRC-32 verification of every class and resource read from the
-     * archive. Verification is off by default: the archive is checked for staleness when it is opened and
-     * once per jar, and checksumming every class would add a full pass over each class file to startup.
-     *
-     * <p>The property is read once, when the archive's {@link Index} is opened, and the class loader,
-     * {@link NestedJarFile} and {@code jar:} URL streams over that index all follow what it read then.</p>
-     */
-    public static final String VERIFY_PROPERTY = "micronaut.runner.verify";
 
     /**
      * System property that only the run recording a JDK AOT cache of the single runner jar sets. When it is
@@ -123,6 +109,26 @@ public final class RunnerClassLoader extends ClassLoader {
      * saying that the training mode is on.</p>
      */
     public static final String AOT_TRAINING_PROPERTY = "micronaut.runner.aot.training";
+
+    /**
+     * System property that turns on CRC-32 verification of every class and resource read from the
+     * archive. Verification is off by default: the archive is checked for staleness when it is opened and
+     * once per jar, and checksumming every class would add a full pass over each class file to startup.
+     *
+     * <p>The property is read once, when the archive's {@link Index} is opened, and the class loader,
+     * {@link NestedJarFile} and {@code jar:} URL streams over that index all follow what it read then.</p>
+     */
+    static final String VERIFY_PROPERTY = "micronaut.runner.verify";
+
+    /**
+     * System property selecting the parent class loader. The only recognised value is
+     * {@value #PARENT_SYSTEM}, which is an escape hatch for applications that need to see the real
+     * class path; anything else, including the property being absent, means the platform class loader.
+     */
+    private static final String PARENT_PROPERTY = "micronaut.runner.parent";
+
+    /** Value of {@value #PARENT_PROPERTY} that selects {@link ClassLoader#getSystemClassLoader()}. */
+    private static final String PARENT_SYSTEM = "system";
 
     /** Name reported by {@link ClassLoader#getName()}, which shows up in stack traces. */
     private static final String LOADER_NAME = "micronaut-runner";
@@ -160,7 +166,7 @@ public final class RunnerClassLoader extends ClassLoader {
      * <p>Everything that does not depend on the classes being loaded is computed here, once: the
      * multi-release feature version, the modules of the parent-visible packages, and whether boot-module
      * packages may bypass the parent. Whether classes and resources are verified is the index's setting,
-     * read when the index was opened; see {@link #VERIFY_PROPERTY}. {@value #AOT_TRAINING_PROPERTY} is read
+     * read from {@code micronaut.runner.verify} when the index was opened. {@value #AOT_TRAINING_PROPERTY} is read
      * here, and when it is on, the archive's {@code file:} URL is taken from {@link Handlers} and one line
      * saying so goes to standard error. The archive and the index are <em>not</em> owned by the loader and are
      * never closed by it.</p>
@@ -197,8 +203,8 @@ public final class RunnerClassLoader extends ClassLoader {
     /**
      * The parent the launcher gives a loader for an application.
      *
-     * @return {@link ClassLoader#getSystemClassLoader()} when {@value #PARENT_PROPERTY} is
-     *         {@value #PARENT_SYSTEM}, otherwise {@link ClassLoader#getPlatformClassLoader()}
+     * @return {@link ClassLoader#getSystemClassLoader()} when {@code micronaut.runner.parent} is
+     *         {@code system}, otherwise {@link ClassLoader#getPlatformClassLoader()}
      */
     public static ClassLoader defaultParent() {
         if (PARENT_SYSTEM.equals(System.getProperty(PARENT_PROPERTY))) {

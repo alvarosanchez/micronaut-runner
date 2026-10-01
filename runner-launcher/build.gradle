@@ -4,6 +4,15 @@ plugins {
 
 description = 'Zero-dependency launcher embedded into runner jars: Main-Class, indexed nested-jar class loader and jar: URL handler'
 
+dependencies {
+    // Only for io.micronaut.core.annotation.Internal, which japicmp's rules read from the class files. It is
+    // compileOnly, so it reaches neither the runtime class path checked below nor the published POM. Nothing
+    // reflects on the launcher's annotations, so the JVM never loads the annotation class, and an application
+    // without micronaut-core is unaffected.
+    compileOnly platform(libs.micronaut.core)
+    compileOnly 'io.micronaut:micronaut-core'
+}
+
 tasks.named('compileJava', JavaCompile) {
     // --release pins the API surface as well as the bytecode level.
     options.release = 25

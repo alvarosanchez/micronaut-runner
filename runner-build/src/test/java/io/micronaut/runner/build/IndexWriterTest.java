@@ -16,6 +16,7 @@
 package io.micronaut.runner.build;
 
 import io.micronaut.runner.IndexFormat;
+import io.micronaut.runner.RunnerBuildTestAccess;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -144,11 +145,11 @@ class IndexWriterTest {
             assertEquals(flags, index.u16(IndexFormat.H_FLAGS));
             if (positional) {
                 assertEquals(5_000L, index.u32(IndexFormat.H_LARGEST_STORED_CLASS));
-                for (int at = IndexFormat.H_RESERVED; at < IndexFormat.H_LARGEST_STORED_CLASS; at++) {
+                for (int at = RunnerBuildTestAccess.H_RESERVED; at < IndexFormat.H_LARGEST_STORED_CLASS; at++) {
                     assertEquals(0, index.u8(at), "reserved byte " + at);
                 }
             } else {
-                for (int at = IndexFormat.H_RESERVED; at < IndexFormat.HEADER_SIZE; at++) {
+                for (int at = RunnerBuildTestAccess.H_RESERVED; at < IndexFormat.HEADER_SIZE; at++) {
                     assertEquals(0, index.u8(at), "a mapped archive's header keeps byte " + at + " zero");
                 }
             }
@@ -228,7 +229,7 @@ class IndexWriterTest {
             assertEquals("java.util.zip.CRC32", index.string(index.i32(table)));
             assertEquals("java.sql.Timestamp", index.string(index.i32(table + 4)));
             assertEquals(archiveClasses.size(), index.u32(IndexFormat.H_PRELOAD_COUNT));
-            for (int at = IndexFormat.H_RESERVED; at < IndexFormat.HEADER_SIZE; at++) {
+            for (int at = RunnerBuildTestAccess.H_RESERVED; at < IndexFormat.HEADER_SIZE; at++) {
                 assertEquals(0, index.u8(at), "reserved header byte " + at);
             }
         }
@@ -733,7 +734,7 @@ class IndexWriterTest {
     /** A copy of an index with the preload fields of its header zeroed, as they are without a list. */
     private static byte[] clearPreloadHeader(byte[] index) {
         byte[] copy = index.clone();
-        Arrays.fill(copy, IndexFormat.H_PRELOAD_TABLE_OFFSET, IndexFormat.H_RESERVED, (byte) 0);
+        Arrays.fill(copy, IndexFormat.H_PRELOAD_TABLE_OFFSET, RunnerBuildTestAccess.H_RESERVED, (byte) 0);
         return copy;
     }
 

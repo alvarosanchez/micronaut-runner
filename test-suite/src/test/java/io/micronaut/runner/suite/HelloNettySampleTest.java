@@ -542,8 +542,9 @@ class HelloNettySampleTest {
 
     /**
      * Pins what the launcher loads before it enters the application: exactly
-     * {@link #PRE_MAIN_LAUNCHER_CLASSES} of its own classes, and none of the JDK classes that a pattern
-     * switch or the foreign-memory value layouts would bring in.
+     * {@link #PRE_MAIN_LAUNCHER_CLASSES} of its own classes, none of the JDK classes that a pattern
+     * switch or the foreign-memory value layouts would bring in, and none of micronaut-core's annotations: the
+     * launcher's classes carry {@code @Internal}, which only reflection would load.
      *
      * @param log the {@code -Xlog:class+load} output of a launch that has exited
      */
@@ -577,7 +578,8 @@ class HelloNettySampleTest {
             }
             if (name.startsWith("java.lang.runtime.SwitchBootstraps") || name.contains("$$TypeSwitch")
                     || name.startsWith("java.lang.foreign.ValueLayout$Of")
-                    || name.startsWith("jdk.internal.foreign.layout.ValueLayouts$Of")) {
+                    || name.startsWith("jdk.internal.foreign.layout.ValueLayouts$Of")
+                    || name.startsWith("io.micronaut.core.annotation.")) {
                 forbidden.add(name);
             }
         }

@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner;
 
+import io.micronaut.core.annotation.Internal;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -66,8 +68,12 @@ import java.util.zip.ZipEntry;
  * {@code some/package/} is a question about the jar's content and the answer "yes, that directory exists"
  * is the useful one.</p>
  *
+ * <p>The class is public because {@code io.micronaut.runner.protocol.jar} hands these views out; applications
+ * see them as {@link JarFile}s, and the type itself is not API for them.</p>
+ *
  * @since 1.0
  */
+@Internal
 public final class NestedJarFile extends JarFile {
 
     /** The manifest of a jar, which is not versioned even in a multi-release jar. */
@@ -102,7 +108,7 @@ public final class NestedJarFile extends JarFile {
      * @throws IOException              if the outer archive cannot be opened
      * @throws IllegalArgumentException if {@code jarId} is not a nested jar of the index
      */
-    public NestedJarFile(File outerFile, Index index, ArchiveSource source, int jarId) throws IOException {
+    NestedJarFile(File outerFile, Index index, ArchiveSource source, int jarId) throws IOException {
         // The jar is checked inside the super call, so that a bad argument never leaks an open file.
         super(checkJarId(outerFile, index, jarId), false, OPEN_READ, JarFile.baseVersion());
         this.index = index;
@@ -139,7 +145,7 @@ public final class NestedJarFile extends JarFile {
      *
      * @return the jar index in the archive's jar table
      */
-    public int jarId() {
+    int jarId() {
         return jarId;
     }
 

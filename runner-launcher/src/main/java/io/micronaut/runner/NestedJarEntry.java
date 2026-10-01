@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner;
 
+import io.micronaut.core.annotation.Internal;
+
 import java.io.IOException;
 import java.security.CodeSigner;
 import java.security.cert.Certificate;
@@ -36,8 +38,12 @@ import java.util.jar.Manifest;
  * and {@link #getRealName()} is the {@code META-INF/versions/<n>/...} entry that actually holds the bytes,
  * which is exactly the distinction {@code JarFile} draws for a versioned entry of an ordinary jar.</p>
  *
+ * <p>The class is public because {@code io.micronaut.runner.protocol.jar} hands these entries out;
+ * applications see them as {@link JarEntry}s, and the type itself is not API for them.</p>
+ *
  * @since 1.0
  */
+@Internal
 public final class NestedJarEntry extends JarEntry {
 
     /** Epoch milliseconds of 1980-01-01T00:00:00Z, the start of the MS-DOS timestamp range. */
@@ -126,7 +132,7 @@ public final class NestedJarEntry extends JarEntry {
      *
      * @return the owning view
      */
-    public NestedJarFile nestedJarFile() {
+    NestedJarFile nestedJarFile() {
         return owner;
     }
 
@@ -136,7 +142,7 @@ public final class NestedJarEntry extends JarEntry {
      *
      * @return the entry record index
      */
-    public int record() {
+    int record() {
         return record;
     }
 

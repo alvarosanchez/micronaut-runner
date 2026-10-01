@@ -13,11 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.tools;
-
-import io.micronaut.runner.ArchiveSource;
-import io.micronaut.runner.Index;
-import io.micronaut.runner.IndexFormat;
+package io.micronaut.runner;
 
 import java.io.File;
 import java.io.IOException;
@@ -128,21 +124,20 @@ import java.util.zip.ZipEntry;
  * produces the same tree and an AOT training run matches the production copy.</p>
  *
  * <p>This class is loaded only when the mode selects it, so it is written in ordinary Java: the rules that
- * keep {@code io.micronaut.runner} free of lambdas, streams and {@code String.format} do not apply to
- * {@code io.micronaut.runner.tools}.</p>
+ * keep the launcher's start path free of lambdas, streams and {@code String.format} do not apply to it.</p>
  *
  * @since 1.0
  */
-public final class Extract {
+final class Extract {
 
     /** Option naming the directory to extract into. */
-    public static final String OPTION_DESTINATION = "--destination";
+    static final String OPTION_DESTINATION = "--destination";
 
     /** Option allowing a destination that is not empty to be replaced. */
-    public static final String OPTION_FORCE = "--force";
+    static final String OPTION_FORCE = "--force";
 
     /** Directory, relative to the destination, the dependencies are written to. */
-    public static final String LIBRARY_DIRECTORY = "lib";
+    static final String LIBRARY_DIRECTORY = "lib";
 
     /** Prefix of a sibling directory retaining old output until forced publication commits. */
     private static final String BACKUP_PREFIX = ".micronaut-runner-backup-";
@@ -195,7 +190,7 @@ public final class Extract {
      * @throws IOException if the arguments are not understood, the destination cannot be used, the
      *                     archive disagrees with its index, or a file cannot be written
      */
-    public static void run(String[] args, File archive, Index index, ArchiveSource source)
+    static void run(String[] args, File archive, Index index, ArchiveSource source)
             throws IOException {
         Path archivePath = archive.getAbsoluteFile().toPath().normalize();
         Options options = parse(args, archivePath);

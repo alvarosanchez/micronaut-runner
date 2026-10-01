@@ -19,6 +19,7 @@ import io.micronaut.runner.ArchiveSource;
 import io.micronaut.runner.Handlers;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
+import io.micronaut.runner.LauncherTestAccess;
 import io.micronaut.runner.NestedJarFile;
 import io.micronaut.runner.TestArchiveBuilder;
 import io.micronaut.runner.TestIndexBuilder;
@@ -158,7 +159,7 @@ class HandlerTest {
      * handler of the registration it was made under, so verified reads need URLs made after this call.
      */
     private void reregisterVerifying() throws IOException {
-        System.setProperty(io.micronaut.runner.RunnerClassLoader.VERIFY_PROPERTY, "true");
+        System.setProperty("micronaut.runner.verify", "true");
         Handlers.unregister();
         source.close();
         source = ArchiveSource.open(archive);
@@ -169,7 +170,7 @@ class HandlerTest {
 
     @AfterEach
     void closeArchive() {
-        System.clearProperty(io.micronaut.runner.RunnerClassLoader.VERIFY_PROPERTY);
+        System.clearProperty("micronaut.runner.verify");
         Handlers.unregister();
         if (source != null) {
             source.close();
@@ -179,7 +180,7 @@ class HandlerTest {
 
     @Test
     void encodesAwkwardNamesAndReadsThemBackFromTheirStringForm() throws Exception {
-        URL url = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, AWKWARD);
+        URL url = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, AWKWARD);
         StringBuilder expected = new StringBuilder();
         expected.append("jar:").append(fileUrl()).append("!/").append(IndexFormat.CLASSES_PREFIX)
                 .append(ENCODED_AWKWARD);
@@ -197,7 +198,7 @@ class HandlerTest {
 
     @Test
     void encodesTheSeparatorInsideAnEntryName() throws IOException {
-        URL url = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, BANG);
+        URL url = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, BANG);
         assertTrue(url.toString().endsWith("bang%21/fake.txt"), url.toString());
         JarURLConnection connection = (JarURLConnection) URI.create(url.toString()).toURL().openConnection();
         assertEquals(IndexFormat.CLASSES_PREFIX + BANG, connection.getEntryName());
@@ -210,7 +211,7 @@ class HandlerTest {
         // inside it. Asking the outer JarFile for one answered null while getEntryName() was not null and
         // getInputStream() worked: four accessors that no longer described the same entry, and a
         // NullPointerException for the usual conn.getJarEntry().isDirectory() way of classifying a URL.
-        URL url = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "weird/");
+        URL url = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "weird/");
         JarURLConnection connection = (JarURLConnection) url.openConnection();
         connection.setUseCaches(false);
 
@@ -232,7 +233,7 @@ class HandlerTest {
     @Test
     void describesAnApplicationLayerFileFromItsIndexRecord() throws IOException {
         JarURLConnection connection =
-                (JarURLConnection) Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")
+                (JarURLConnection) LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")
                         .openConnection();
         connection.setUseCaches(false);
 
@@ -248,18 +249,18 @@ class HandlerTest {
         StringBuilder application = new StringBuilder();
         application.append("jar:").append(fileUrl()).append("!/").append(IndexFormat.CLASSES_PREFIX);
         assertEquals(application + "app.txt",
-                Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt").toString());
+                LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt").toString());
         assertEquals(application.toString(),
-                Handlers.codeSourceUrlFor(IndexFormat.APPLICATION_JAR_ID).toString());
+                LauncherTestAccess.codeSourceUrlFor(IndexFormat.APPLICATION_JAR_ID).toString());
 
         StringBuilder nested = new StringBuilder();
         nested.append("jar:").append(fileUrl()).append("!/").append(DEPENDENCY);
-        assertEquals(nested + "!/a/B.class", Handlers.urlFor(1, "a/B.class").toString());
-        assertEquals(nested + "!/", Handlers.codeSourceUrlFor(1).toString());
+        assertEquals(nested + "!/a/B.class", LauncherTestAccess.urlFor(1, "a/B.class").toString());
+        assertEquals(nested + "!/", LauncherTestAccess.codeSourceUrlFor(1).toString());
         assertEquals(nested.toString(), Handlers.jarFileUrlFor(1).toString());
         assertEquals(fileUrl(), Handlers.jarFileUrlFor(IndexFormat.APPLICATION_JAR_ID).toString());
-        assertNull(Handlers.urlFor(7, "a/B.class"));
-        assertNull(Handlers.codeSourceUrlFor(-1));
+        assertNull(LauncherTestAccess.urlFor(7, "a/B.class"));
+        assertNull(LauncherTestAccess.codeSourceUrlFor(-1));
     }
 
     /**
@@ -278,41 +279,41 @@ class HandlerTest {
         String nested = DEPENDENCY + "!/";
         int app = IndexFormat.APPLICATION_JAR_ID;
 
-        assertUrlShape(Handlers.urlFor(app, "app.txt"), classes + "app.txt");
-        assertUrlShape(Handlers.urlFor(app, "/app.txt"), classes + "app.txt");
-        assertUrlShape(Handlers.urlFor(app, awkward), classes + encodedAwkward);
-        assertUrlShape(Handlers.urlFor(app, dollar), classes + encodedDollar);
+        assertUrlShape(LauncherTestAccess.urlFor(app, "app.txt"), classes + "app.txt");
+        assertUrlShape(LauncherTestAccess.urlFor(app, "/app.txt"), classes + "app.txt");
+        assertUrlShape(LauncherTestAccess.urlFor(app, awkward), classes + encodedAwkward);
+        assertUrlShape(LauncherTestAccess.urlFor(app, dollar), classes + encodedDollar);
 
-        assertUrlShape(Handlers.urlFor(1, "a/B.class"), nested + "a/B.class");
-        assertUrlShape(Handlers.urlFor(1, "/a/B.class"), nested + "a/B.class");
-        assertUrlShape(Handlers.urlFor(1, awkward), nested + encodedAwkward);
-        assertUrlShape(Handlers.urlFor(1, dollar), nested + encodedDollar);
+        assertUrlShape(LauncherTestAccess.urlFor(1, "a/B.class"), nested + "a/B.class");
+        assertUrlShape(LauncherTestAccess.urlFor(1, "/a/B.class"), nested + "a/B.class");
+        assertUrlShape(LauncherTestAccess.urlFor(1, awkward), nested + encodedAwkward);
+        assertUrlShape(LauncherTestAccess.urlFor(1, dollar), nested + encodedDollar);
 
         // A leading slash defeats urlFor's routing of the merged service directory, so that case has to
         // go to outerUrlFor directly.
-        assertUrlShape(Handlers.urlFor(app, SERVICE), SERVICE);
-        assertUrlShape(Handlers.outerUrlFor("/" + SERVICE), SERVICE);
-        assertUrlShape(Handlers.outerUrlFor("META-INF/micronaut/" + awkward),
+        assertUrlShape(LauncherTestAccess.urlFor(app, SERVICE), SERVICE);
+        assertUrlShape(LauncherTestAccess.outerUrlFor("/" + SERVICE), SERVICE);
+        assertUrlShape(LauncherTestAccess.outerUrlFor("META-INF/micronaut/" + awkward),
                 "META-INF/micronaut/" + encodedAwkward);
 
-        assertUrlShape(Handlers.codeSourceUrlFor(app), classes);
-        assertUrlShape(Handlers.codeSourceUrlFor(1), nested);
+        assertUrlShape(LauncherTestAccess.codeSourceUrlFor(app), classes);
+        assertUrlShape(LauncherTestAccess.codeSourceUrlFor(1), nested);
     }
 
     @Test
     @SuppressWarnings("deprecation")
     void resolvesRelativeAndParentSpecs() throws IOException {
-        URL base = Handlers.urlFor(1, "a/B.class");
+        URL base = LauncherTestAccess.urlFor(1, "a/B.class");
 
         URL sibling = new URL(base, "data%20file.txt");
-        assertEquals(Handlers.urlFor(1, NESTED_TEXT_NAME).toString(), sibling.toString());
+        assertEquals(LauncherTestAccess.urlFor(1, NESTED_TEXT_NAME).toString(), sibling.toString());
         assertArrayEquals(NESTED_TEXT, read(sibling));
 
         URL parent = new URL(base, "../a/B.class");
         assertEquals(base.toString(), parent.toString());
 
         URL rooted = new URL(base, "/META-INF/MANIFEST.MF");
-        assertEquals(Handlers.urlFor(1, "META-INF/MANIFEST.MF").toString(), rooted.toString());
+        assertEquals(LauncherTestAccess.urlFor(1, "META-INF/MANIFEST.MF").toString(), rooted.toString());
         assertArrayEquals(NESTED_MANIFEST, read(rooted));
 
         URL dotted = new URL(base, "./B.class");
@@ -344,7 +345,7 @@ class HandlerTest {
 
     @Test
     void agreesOnTheIdentityOfANestedEntry() throws IOException {
-        URL url = Handlers.urlFor(1, "a/B.class");
+        URL url = LauncherTestAccess.urlFor(1, "a/B.class");
         JarURLConnection connection = (JarURLConnection) url.openConnection();
 
         StringBuilder jarUrl = new StringBuilder();
@@ -354,7 +355,7 @@ class HandlerTest {
 
         JarFile jar = connection.getJarFile();
         assertInstanceOf(NestedJarFile.class, jar);
-        assertEquals(1, ((NestedJarFile) jar).jarId());
+        assertEquals(1, LauncherTestAccess.jarId((NestedJarFile) jar));
 
         JarEntry entry = connection.getJarEntry();
         assertEquals("a/B.class", entry.getName());
@@ -370,7 +371,7 @@ class HandlerTest {
 
     @Test
     void agreesOnTheIdentityOfAnApplicationEntry() throws IOException {
-        URL url = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt");
+        URL url = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt");
         JarURLConnection connection = (JarURLConnection) url.openConnection();
 
         assertEquals(fileUrl(), connection.getJarFileURL().toString());
@@ -385,7 +386,7 @@ class HandlerTest {
 
     @Test
     void servesTheOuterArchivesOwnEntries() throws IOException {
-        URL service = Handlers.outerUrlFor(SERVICE);
+        URL service = LauncherTestAccess.outerUrlFor(SERVICE);
         StringBuilder spec = new StringBuilder();
         spec.append("jar:").append(fileUrl()).append("!/").append(SERVICE);
         assertEquals(spec.toString(), service.toString());
@@ -394,34 +395,34 @@ class HandlerTest {
 
         // The physical archive answers first, so this is the outer manifest and not the application
         // layer's entry of the same logical name.
-        assertArrayEquals(OUTER_MANIFEST, read(Handlers.outerUrlFor("META-INF/MANIFEST.MF")));
-        assertArrayEquals(OUTER_MANIFEST, read(Handlers.outerUrlFor("/META-INF/MANIFEST.MF")));
+        assertArrayEquals(OUTER_MANIFEST, read(LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF")));
+        assertArrayEquals(OUTER_MANIFEST, read(LauncherTestAccess.outerUrlFor("/META-INF/MANIFEST.MF")));
         assertArrayEquals(APPLICATION_MANIFEST,
-                read(Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "META-INF/MANIFEST.MF")));
-        assertNull(Handlers.outerUrlFor(null));
+                read(LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "META-INF/MANIFEST.MF")));
+        assertNull(LauncherTestAccess.outerUrlFor(null));
 
         // A nested jar addressed as an entry of the outer archive is its stored bytes.
-        URL dependency = Handlers.outerUrlFor(DEPENDENCY);
+        URL dependency = LauncherTestAccess.outerUrlFor(DEPENDENCY);
         assertEquals(index.jarDataLength(1), read(dependency).length);
     }
 
     @Test
     void readsStoredAndDeflatedEntriesOfBothLayers() throws IOException {
-        assertArrayEquals(APP_TEXT, read(Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")));
-        assertArrayEquals(AWKWARD_TEXT, read(Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, AWKWARD)));
-        assertArrayEquals(NESTED_MANIFEST, read(Handlers.urlFor(1, "META-INF/MANIFEST.MF")));
-        assertArrayEquals(NESTED_TEXT, read(Handlers.urlFor(1, NESTED_TEXT_NAME)));
+        assertArrayEquals(APP_TEXT, read(LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")));
+        assertArrayEquals(AWKWARD_TEXT, read(LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, AWKWARD)));
+        assertArrayEquals(NESTED_MANIFEST, read(LauncherTestAccess.urlFor(1, "META-INF/MANIFEST.MF")));
+        assertArrayEquals(NESTED_TEXT, read(LauncherTestAccess.urlFor(1, NESTED_TEXT_NAME)));
     }
 
     @Test
     void verifiesStoredAndDeflatedUrlStreamsWithAndWithoutCaching() throws IOException {
         assertArrayEquals(CORRUPT_STORED,
-                read(Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt")));
-        assertArrayEquals(CORRUPT_DEFLATED, read(Handlers.urlFor(1, "corrupt-deflated.txt")));
+                read(LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt")));
+        assertArrayEquals(CORRUPT_DEFLATED, read(LauncherTestAccess.urlFor(1, "corrupt-deflated.txt")));
 
         reregisterVerifying();
-        URL stored = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt");
-        URL deflated = Handlers.urlFor(1, "corrupt-deflated.txt");
+        URL stored = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt");
+        URL deflated = LauncherTestAccess.urlFor(1, "corrupt-deflated.txt");
         for (boolean caches : List.of(true, false)) {
             IOException storedFailure = assertThrows(IOException.class, () -> read(stored, caches));
             assertTrue(storedFailure.getMessage().contains("corrupt-stored.txt"), storedFailure.getMessage());
@@ -429,27 +430,27 @@ class HandlerTest {
             assertTrue(deflatedFailure.getMessage().contains("corrupt-deflated.txt"),
                     deflatedFailure.getMessage());
         }
-        assertArrayEquals(APP_TEXT, read(Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")),
+        assertArrayEquals(APP_TEXT, read(LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")),
                 "an intact URL still reads with verification on");
     }
 
     @Test
     void urlStreamsPerformLazyNestedHeaderValidationWithoutMetadataAccess() throws IOException {
         try (RandomAccessFile editable = new RandomAccessFile(archive, "rw")) {
-            editable.seek(index.jarLocalHeaderOffset(1));
+            editable.seek(LauncherTestAccess.jarLocalHeaderOffset(index, 1));
             editable.write(new byte[4]);
         }
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> Handlers.urlFor(1, NESTED_TEXT_NAME).openStream());
+                () -> LauncherTestAccess.urlFor(1, NESTED_TEXT_NAME).openStream());
         assertTrue(failure.getMessage().contains("no local file header"), failure.getMessage());
     }
 
     @Test
     void verificationIsIndependentAcrossConcurrentRepeatedUrlReads() throws Exception {
         reregisterVerifying();
-        URL valid = Handlers.urlFor(1, NESTED_TEXT_NAME);
-        URL corrupt = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt");
+        URL valid = LauncherTestAccess.urlFor(1, NESTED_TEXT_NAME);
+        URL corrupt = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "corrupt-stored.txt");
         ExecutorService pool = Executors.newFixedThreadPool(4);
         try {
             List<Future<Void>> reads = new ArrayList<>();
@@ -477,7 +478,7 @@ class HandlerTest {
 
     @Test
     void readsRepeatedlyWithCachesDisabled() throws IOException {
-        URLConnection connection = Handlers.urlFor(1, NESTED_TEXT_NAME).openConnection();
+        URLConnection connection = LauncherTestAccess.urlFor(1, NESTED_TEXT_NAME).openConnection();
         connection.setUseCaches(false);
         assertFalse(connection.getUseCaches());
         for (int i = 0; i < 3; i++) {
@@ -495,21 +496,21 @@ class HandlerTest {
 
     @Test
     void closingUncachedOuterJarDoesNotPoisonFreshConnection() throws IOException {
-        JarURLConnection first = (JarURLConnection) Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")
+        JarURLConnection first = (JarURLConnection) LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")
                 .openConnection();
         first.setUseCaches(false);
         try (JarFile ignored = first.getJarFile()) {
             assertEquals(archive.getPath(), ignored.getName());
         }
 
-        assertArrayEquals(OUTER_MANIFEST, read(Handlers.outerUrlFor("META-INF/MANIFEST.MF")));
+        assertArrayEquals(OUTER_MANIFEST, read(LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF")));
     }
 
     @Test
     void closingCachedOuterJarDoesNotPoisonAnotherConsumer() throws IOException {
-        JarURLConnection first = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+        JarURLConnection first = (JarURLConnection) LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF")
                 .openConnection();
-        JarURLConnection second = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+        JarURLConnection second = (JarURLConnection) LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF")
                 .openConnection();
         JarFile firstJar = first.getJarFile();
         JarFile secondJar = second.getJarFile();
@@ -518,12 +519,12 @@ class HandlerTest {
         firstJar.close();
 
         assertEquals("io.micronaut.runner.Launcher", second.getMainAttributes().getValue("Main-Class"));
-        assertArrayEquals(OUTER_MANIFEST, read(Handlers.outerUrlFor("META-INF/MANIFEST.MF")));
+        assertArrayEquals(OUTER_MANIFEST, read(LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF")));
     }
 
     @Test
     void uncachedOuterEntriesRetainManifestAttributes() throws IOException {
-        JarURLConnection connection = (JarURLConnection) Handlers.outerUrlFor("outer.txt").openConnection();
+        JarURLConnection connection = (JarURLConnection) LauncherTestAccess.outerUrlFor("outer.txt").openConnection();
         connection.setUseCaches(false);
 
         assertEquals("lifecycle-test", connection.getJarEntry().getAttributes().getValue("Purpose"));
@@ -531,7 +532,7 @@ class HandlerTest {
 
     @Test
     void manifestAccessStillValidatesTheNamedOuterEntry() throws IOException {
-        URL missing = Handlers.outerUrlFor("missing.txt");
+        URL missing = LauncherTestAccess.outerUrlFor("missing.txt");
         for (boolean caches : List.of(true, false)) {
             JarURLConnection manifest = (JarURLConnection) missing.openConnection();
             manifest.setUseCaches(caches);
@@ -544,7 +545,7 @@ class HandlerTest {
 
     @Test
     void uncachedOuterStreamsHaveIndependentLifetimesOnOneConnection() throws IOException {
-        JarURLConnection connection = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+        JarURLConnection connection = (JarURLConnection) LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF")
                 .openConnection();
         connection.setUseCaches(false);
 
@@ -563,9 +564,9 @@ class HandlerTest {
         boolean previous = URLConnection.getDefaultUseCaches("jar");
         URLConnection.setDefaultUseCaches("jar", false);
         try {
-            JarURLConnection first = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+            JarURLConnection first = (JarURLConnection) LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF")
                     .openConnection();
-            JarURLConnection second = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+            JarURLConnection second = (JarURLConnection) LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF")
                     .openConnection();
             assertFalse(first.getUseCaches());
             assertFalse(second.getUseCaches());
@@ -586,8 +587,8 @@ class HandlerTest {
      */
     @Test
     void getJarFileIsOneCloseProtectedHandleWhateverTheCacheFlag() throws IOException {
-        URL application = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt");
-        URL manifest = Handlers.outerUrlFor("META-INF/MANIFEST.MF");
+        URL application = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt");
+        URL manifest = LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF");
         JarFile shared = Handlers.outerJarFile();
         boolean previous = URLConnection.getDefaultUseCaches("jar");
         try {
@@ -628,7 +629,7 @@ class HandlerTest {
     @Test
     void nestedJarFileWorksWhileRegisteredAndFailsAfterUnregistering() throws IOException {
         NestedJarFile jar = Handlers.nestedJarFile(1);
-        assertEquals(1, jar.jarId());
+        assertEquals(1, LauncherTestAccess.jarId(jar));
         assertSame(jar, Handlers.nestedJarFile(1));
         assertNotNull(jar.getJarEntry("a/B.class"));
 
@@ -643,9 +644,9 @@ class HandlerTest {
         try {
             for (boolean caches : List.of(true, false)) {
                 for (int i = 0; i < 10; i++) {
-                    JarURLConnection first = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                    JarURLConnection first = (JarURLConnection) LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF")
                             .openConnection();
-                    JarURLConnection second = (JarURLConnection) Handlers.outerUrlFor("META-INF/MANIFEST.MF")
+                    JarURLConnection second = (JarURLConnection) LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF")
                             .openConnection();
                     first.setUseCaches(caches);
                     second.setUseCaches(caches);
@@ -678,7 +679,7 @@ class HandlerTest {
 
     @Test
     void opensAWholeNestedJarInBothItsForms() throws IOException {
-        URL withSeparator = Handlers.codeSourceUrlFor(1);
+        URL withSeparator = LauncherTestAccess.codeSourceUrlFor(1);
         JarURLConnection connection = (JarURLConnection) withSeparator.openConnection();
         assertNull(connection.getEntryName());
         assertNull(connection.getJarEntry());
@@ -693,27 +694,27 @@ class HandlerTest {
 
     @Test
     void reportsLengthTypeAndTimestamp() throws IOException {
-        URLConnection text = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt").openConnection();
+        URLConnection text = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt").openConnection();
         assertEquals(APP_TEXT.length, text.getContentLengthLong());
         assertEquals(APP_TEXT.length, text.getContentLength());
         assertEquals("text/plain", text.getContentType());
         assertEquals(DOS_TIME_MILLIS, text.getLastModified());
         assertEquals(Long.toString(APP_TEXT.length), text.getHeaderField("Content-Length"));
 
-        URLConnection deflated = Handlers.urlFor(1, NESTED_TEXT_NAME).openConnection();
+        URLConnection deflated = LauncherTestAccess.urlFor(1, NESTED_TEXT_NAME).openConnection();
         assertEquals(NESTED_TEXT.length, deflated.getContentLengthLong());
 
-        URLConnection whole = Handlers.codeSourceUrlFor(1).openConnection();
+        URLConnection whole = LauncherTestAccess.codeSourceUrlFor(1).openConnection();
         assertEquals(index.jarDataLength(1), whole.getContentLengthLong());
     }
 
     @Test
     void throwsFileNotFoundForUnknownEntries() throws IOException {
-        URL missingNested = Handlers.urlFor(1, "a/Missing.class");
+        URL missingNested = LauncherTestAccess.urlFor(1, "a/Missing.class");
         assertThrows(IOException.class, () -> missingNested.openConnection().connect());
         assertThrows(IOException.class, () -> read(missingNested));
 
-        URL missingApplication = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "missing.txt");
+        URL missingApplication = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "missing.txt");
         assertThrows(IOException.class, () -> read(missingApplication));
 
         StringBuilder spec = new StringBuilder();
@@ -724,9 +725,9 @@ class HandlerTest {
 
     @Test
     void comparesUrlsWithoutOpeningOrResolvingAnything() throws IOException {
-        URL url = Handlers.urlFor(1, "a/B.class");
+        URL url = LauncherTestAccess.urlFor(1, "a/B.class");
         URL same = URI.create(url.toString()).toURL();
-        URL other = Handlers.urlFor(1, NESTED_TEXT_NAME);
+        URL other = LauncherTestAccess.urlFor(1, NESTED_TEXT_NAME);
         assertEquals(url, same);
         assertEquals(url.hashCode(), same.hashCode());
         assertTrue(url.sameFile(same));

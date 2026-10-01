@@ -18,6 +18,7 @@ package io.micronaut.runner.build;
 import io.micronaut.runner.Entry;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
+import io.micronaut.runner.RunnerBuildTestAccess;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -473,7 +474,8 @@ class EntryStubGeneratorTest {
 
             int record = index.findClass(EntryStubGenerator.STUB_CLASS);
             assertTrue(record != IndexFormat.NO_INDEX, "the launcher has to be able to find the class");
-            assertEquals(0, index.entryJarId(record), "the stub belongs to the application layer");
+            assertEquals(0, RunnerBuildTestAccess.entryJarId(index, record),
+                    "the stub belongs to the application layer");
             assertEquals(EntryStubGenerator.STUB_RESOURCE_NAME, index.entryName(record));
 
             ClassModel stored = ClassFile.of().parse(reader.read(record));

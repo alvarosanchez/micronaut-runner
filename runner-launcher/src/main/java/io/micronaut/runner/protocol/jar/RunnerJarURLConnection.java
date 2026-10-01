@@ -73,9 +73,12 @@ import java.util.jar.Manifest;
  * {@link #getInputStream()} returns a fresh stream, because micronaut-core reads service files by
  * disabling caches and then asking for the stream.</p>
  *
+ * <p>Only {@link Handler} creates one, and every caller sees it as a {@link JarURLConnection}, so the class is
+ * package-private.</p>
+ *
  * @since 1.0
  */
-public final class RunnerJarURLConnection extends JarURLConnection {
+final class RunnerJarURLConnection extends JarURLConnection {
 
     /** What the JDK reports for a URL that names a jar rather than an entry. */
     private static final String JAR_CONTENT_TYPE = "x-java/jar";

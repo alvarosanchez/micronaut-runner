@@ -15,8 +15,8 @@
  */
 package io.micronaut.runner;
 
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.runner.protocol.jar.Handler;
-import io.micronaut.runner.protocol.jar.RunnerJarURLConnection;
 
 import java.io.File;
 import java.io.IOException;
@@ -45,7 +45,7 @@ import java.util.jar.JarFile;
  * </pre>
  * <p>The last shape is the exception to "jar 0 lives under {@value IndexFormat#CLASSES_PREFIX}": the
  * packager merges the Micronaut service metadata of every jar into the root of the outer archive, and
- * those records are addressed where they really are. See {@link #urlFor}.</p>
+ * those records are addressed where they really are. See {@code urlFor}.</p>
  * <p>The nested form is the classic double separator Spring Boot's loader produced for a decade, which
  * micronaut-core's {@code IOUtils} already tolerates; inventing a protocol of our own would break service
  * scanning outright. Entry names are percent-encoded per UTF-8 byte, so a name containing a space,
@@ -62,7 +62,7 @@ import java.util.jar.JarFile;
  * factory, because by the time the launcher runs the JDK has usually resolved and cached its own jar
  * handler already.</p>
  *
- * <p>None of that is load bearing. {@link #urlFor} and {@link #codeSourceUrlFor} build their URLs from the
+ * <p>None of that is load bearing. {@code urlFor} and {@code codeSourceUrlFor} build their URLs from the
  * encoders' output with an explicit handler instance, so the URLs the class loader returns work whether or
  * not the property took effect. The property only matters for a URL that is re-parsed from its string form
  * by somebody else. The forked {@code HandlerInteroperability} test proves that string-parse path in a
@@ -79,8 +79,12 @@ import java.util.jar.JarFile;
  * {@code HandlerTest} checks that guarantee once, together with the fields of every URL shape against its
  * re-parsed string form, instead of every call paying for it.</p>
  *
+ * <p>The class is public because {@code io.micronaut.runner.protocol.jar}, the runner-build tooling and the
+ * benchmarks call it; it is not API for applications.</p>
+ *
  * @since 1.0
  */
+@Internal
 public final class Handlers {
 
     /**
@@ -206,7 +210,7 @@ public final class Handlers {
      * @return the URL, or {@code null} if no archive is registered, the jar does not exist, or the name
      *         cannot be expressed as a URL
      */
-    public static URL urlFor(int jarId, String logicalName) {
+    static URL urlFor(int jarId, String logicalName) {
         if (logicalName == null) {
             return null;
         }
@@ -234,7 +238,7 @@ public final class Handlers {
      * @return {@code jar:file:/abs/app.jar!/<name>}, or {@code null} when no archive is registered or the
      *         name cannot be expressed as a URL
      */
-    public static URL outerUrlFor(String outerEntryName) {
+    static URL outerUrlFor(String outerEntryName) {
         if (archiveUrl == null || outerEntryName == null) {
             return null;
         }
@@ -257,7 +261,7 @@ public final class Handlers {
      *         {@code jar:file:/abs/app.jar!/MICRONAUT-INF/lib/<dep>.jar!/} for a nested jar, or
      *         {@code null} when no archive is registered or the jar does not exist
      */
-    public static URL codeSourceUrlFor(int jarId) {
+    static URL codeSourceUrlFor(int jarId) {
         String prefix = prefixFor(jarId);
         if (prefix == null) {
             return null;
@@ -272,7 +276,7 @@ public final class Handlers {
     /**
      * The URL of the jar itself, as {@link java.net.JarURLConnection#getJarFileURL()} reports it: the file
      * URL of the outer archive for the application layer, and the {@code jar:} URL of the nested jar
-     * otherwise. Unlike {@link #codeSourceUrlFor} it does not end with a separator, because it names a jar
+     * otherwise. Unlike {@code codeSourceUrlFor} it does not end with a separator, because it names a jar
      * rather than the root inside it.
      *
      * @param jarId the jar, {@code 0} being the application layer
@@ -384,7 +388,7 @@ public final class Handlers {
      * scans the classpath asks for the same jar over and over.
      *
      * <p>The cache is allocated on first use rather than at registration, so that a normal start does not
-     * load {@link NestedJarFile} before {@code main}. Registration is checked under {@link #LOCK}, so a
+     * load {@link NestedJarFile} before {@code main}. Registration is checked under the class lock, so a
      * concurrent {@link #unregister()} yields the {@link IOException} rather than a
      * {@link NullPointerException}.</p>
      *
@@ -784,11 +788,28 @@ public final class Handlers {
             return false;
         }
         try {
-            URLConnection connection = URI.create(spec).toURL().openConnection();
-            return connection instanceof RunnerJarURLConnection;
+            return servedByHandler(URI.create(spec).toURL().openConnection());
         } catch (IOException | RuntimeException e) {
             return false;
         }
+    }
+
+    /**
+     * Whether a connection is one the launcher's own {@link Handler} serves for the registered archive: its
+     * class is in {@link Handler}'s package and was defined by {@link Handler}'s class loader.
+     *
+     * <p>That is what an {@code instanceof} of the package-private connection class would check, because it is
+     * the only {@link URLConnection} in that package. Comparing the package name alone would also accept the
+     * same class defined by another class loader, which is what a handler the JDK instantiated from that loader
+     * returns. The class is not named here, so it can stay package-private.</p>
+     *
+     * @param connection the connection a URL opened
+     * @return whether it is served by this launcher's handler
+     */
+    static boolean servedByHandler(URLConnection connection) {
+        Class<?> type = connection.getClass();
+        return type.getClassLoader() == Handler.class.getClassLoader()
+                && type.getPackageName().equals(Handler.class.getPackageName());
     }
 
     private static void warn(String reason) {

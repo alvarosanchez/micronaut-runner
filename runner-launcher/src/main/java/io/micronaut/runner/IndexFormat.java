@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner;
 
+import io.micronaut.core.annotation.Internal;
+
 /**
  * The on-disk layout of {@code MICRONAUT-INF/index.bin}, the index a runner jar carries so that the
  * launcher never has to parse a nested archive's central directory at startup.
@@ -51,8 +53,17 @@ package io.micronaut.runner;
  * the base record in descending version order, so a lookup walks the chain and takes the first record
  * whose {@code mrVersion} is {@code 0} or at most the effective runtime feature version.</p>
  *
+ * <h2>Compatibility</h2>
+ * <p>The constants change with {@link #FORMAT_VERSION}, not with the version of this artifact: the class is
+ * public because runner-build writes the format with it and {@code io.micronaut.runner.protocol.jar} reads it,
+ * and it is not API for applications. Fields that nothing outside this class reads, such as the reserved
+ * ones, stay in the layout below and are not public.</p>
+ *
  * @since 1.0
  */
+@Internal
+// The constants follow the byte layout, offset by offset, so their visibility cannot decide their order.
+@SuppressWarnings("checkstyle:DeclarationOrder")
 public final class IndexFormat {
 
     // ------------------------------------------------------------------------------------------------
@@ -139,7 +150,7 @@ public final class IndexFormat {
     public static final int H_JDK_PRELOAD_COUNT = 108;   // u32
     /** Offset of the JDK preload table, a {@code u32[]} of string references; {@code 0} when there is none. */
     public static final int H_JDK_PRELOAD_TABLE_OFFSET = 112; // u64
-    public static final int H_RESERVED = 120;            // u8[4], zero
+    static final int H_RESERVED = 120;                   // u8[4], zero
     /**
      * The largest uncompressed size of a STORED {@code .class} record, which sizes the launcher's pooled read
      * buffers. Written only together with {@link #HEADER_FLAG_POSITIONAL_READS}; {@code 0} means not recorded.
@@ -184,14 +195,14 @@ public final class IndexFormat {
     public static final int J_FIRST_PACKAGE = 40;        // u32
     public static final int J_PACKAGE_COUNT = 44;        // u32
     public static final int J_FLAGS = 48;                // u16
-    public static final int J_RESERVED_1 = 50;           // u16
+    private static final int J_RESERVED_1 = 50;          // u16
     public static final int J_SPEC_TITLE = 52;           // u32 strref
     public static final int J_SPEC_VERSION = 56;         // u32 strref
     public static final int J_SPEC_VENDOR = 60;          // u32 strref
     public static final int J_IMPL_TITLE = 64;           // u32 strref
     public static final int J_IMPL_VERSION = 68;         // u32 strref
     public static final int J_IMPL_VENDOR = 72;          // u32 strref
-    public static final int J_RESERVED_2 = 76;           // u32
+    private static final int J_RESERVED_2 = 76;          // u32
 
     /** The nested jar declares {@code Multi-Release: true}. */
     public static final int JAR_FLAG_MULTI_RELEASE = 1;
@@ -220,7 +231,7 @@ public final class IndexFormat {
     public static final int P_IMPL_VERSION = 20;         // u32 strref, 0 = inherit
     public static final int P_IMPL_VENDOR = 24;          // u32 strref, 0 = inherit
     public static final int P_FLAGS = 28;                // u16
-    public static final int P_RESERVED = 30;             // u16
+    private static final int P_RESERVED = 30;            // u16
 
     /** The section carries a {@code Sealed} attribute; without this flag the jar default applies. */
     public static final int PACKAGE_FLAG_SEALED_SPECIFIED = 1;
@@ -261,7 +272,7 @@ public final class IndexFormat {
      * {@link #ENTRY_FLAG_DIRECTORY_TWIN}.
      */
     public static final int E_FLAGS = 42;                // u8
-    public static final int E_RESERVED = 43;             // u8
+    private static final int E_RESERVED = 43;            // u8
     /**
      * For an alias, the physical record it aliases, whose logical name is the real
      * {@code META-INF/versions/N/...} path. For a physical record, its own index. {@link #NO_INDEX}
@@ -354,7 +365,7 @@ public final class IndexFormat {
      * @param hashCode the raw hash code
      * @return the spread hash
      */
-    public static int spread(int hashCode) {
+    static int spread(int hashCode) {
         return hashCode ^ (hashCode >>> 16);
     }
 }

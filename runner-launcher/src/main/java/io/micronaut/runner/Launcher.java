@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner;
 
+import io.micronaut.core.annotation.Internal;
+
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
@@ -47,9 +49,8 @@ import java.security.ProtectionDomain;
  *
  * <h2>Exit codes</h2>
  * <p>{@code 0} when the application returns normally, {@code 1} when it throws - that is the JVM's own
- * behaviour for an uncaught exception - and {@value #EXIT_LAUNCHER_ERROR} for a launcher level failure
- * such as a missing, unreadable or stale archive, which is reported on standard error and never as a
- * stack trace.</p>
+ * behaviour for an uncaught exception - and {@code 2} for a launcher level failure such as a missing,
+ * unreadable or stale archive, which is reported on standard error and never as a stack trace.</p>
  *
  * @since 1.0
  */
@@ -57,35 +58,38 @@ public final class Launcher {
 
     /**
      * System property selecting what the launcher does with the archive: {@value #MODE_RUN} (the default)
-     * starts the application, the other modes hand the archive to a tool in
-     * {@code io.micronaut.runner.tools} and never load application code.
+     * starts the application, the other modes hand the archive to a tool class of this package and never
+     * load application code.
      */
-    public static final String MODE_PROPERTY = "micronaut.runner.mode";
+    static final String MODE_PROPERTY = "micronaut.runner.mode";
 
     /** Default mode: start the application. */
-    public static final String MODE_RUN = "run";
+    static final String MODE_RUN = "run";
 
     /** Mode that unpacks the archive into a directory layout the JDK launcher can run. */
-    public static final String MODE_EXTRACT = "extract";
+    static final String MODE_EXTRACT = "extract";
 
     /** Mode that prints the index: header, jars and packages. */
-    public static final String MODE_INSPECT = "inspect";
+    static final String MODE_INSPECT = "inspect";
 
     /** Mode that lists the logical names the archive holds. */
-    public static final String MODE_LIST = "list";
+    static final String MODE_LIST = "list";
 
     /**
      * System property that prints elapsed time checkpoints to standard error when set to exactly
      * {@code "true"}. The measurement is {@link System#nanoTime()} from the first statement of
      * {@link #main(String[])}, so it covers the launcher and nothing before it.
      */
-    public static final String TIMING_PROPERTY = "micronaut.runner.timing";
+    static final String TIMING_PROPERTY = "micronaut.runner.timing";
 
     /** Exit status for a launcher level failure, as opposed to an exception out of the application. */
-    public static final int EXIT_LAUNCHER_ERROR = 2;
+    static final int EXIT_LAUNCHER_ERROR = 2;
 
-    /** Package the non-run modes are implemented in; those classes are loaded only in those modes. */
-    private static final String TOOLS_PACKAGE = "io.micronaut.runner.tools.";
+    /**
+     * Prefix of the classes the non-run modes are implemented in. They are package-private classes of this
+     * package, loaded by name and only in those modes.
+     */
+    private static final String TOOLS_PREFIX = "io.micronaut.runner.";
 
     /** Name of the method the reflective fallback looks for. */
     private static final String MAIN_METHOD = "main";
@@ -207,11 +211,14 @@ public final class Launcher {
      * Registers the application entry point. The class the packager generates calls this from its static
      * initialiser, so that the launcher can enter the application through an interface call.
      *
+     * <p>Only the generated entry stub calls this; it is not API for applications.</p>
+     *
      * @param registration the entry point
      * @throws IllegalArgumentException if the entry point is {@code null}
      * @throws IllegalStateException    if an entry point is already registered; a runner jar starts once
      *                                  per JVM
      */
+    @Internal
     public static void register(Entry registration) {
         if (registration == null) {
             throw new IllegalArgumentException("Cannot register a null application entry point");
@@ -288,13 +295,13 @@ public final class Launcher {
      */
     static String toolClassName(String mode) {
         if (MODE_EXTRACT.equals(mode)) {
-            return TOOLS_PACKAGE + "Extract";
+            return TOOLS_PREFIX + "Extract";
         }
         if (MODE_INSPECT.equals(mode)) {
-            return TOOLS_PACKAGE + "Inspect";
+            return TOOLS_PREFIX + "Inspect";
         }
         if (MODE_LIST.equals(mode)) {
-            return TOOLS_PACKAGE + "ListEntries";
+            return TOOLS_PREFIX + "ListEntries";
         }
         return null;
     }
@@ -499,7 +506,9 @@ public final class Launcher {
         }
         Method run;
         try {
-            run = type.getMethod("run", String[].class, File.class, Index.class, ArchiveSource.class);
+            // The tools are package-private classes of this runtime package, so their package-private run
+            // method is accessible from here without setAccessible.
+            run = type.getDeclaredMethod("run", String[].class, File.class, Index.class, ArchiveSource.class);
         } catch (NoSuchMethodException e) {
             fail("The " + mode + " mode is not available: " + tool + " has no run method.");
             return;

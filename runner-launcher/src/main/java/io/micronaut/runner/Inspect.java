@@ -13,11 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.tools;
-
-import io.micronaut.runner.ArchiveSource;
-import io.micronaut.runner.Index;
-import io.micronaut.runner.IndexFormat;
+package io.micronaut.runner;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -41,12 +37,12 @@ import java.util.zip.ZipEntry;
  * is at which position of the class path with which flags.</p>
  *
  * <p>Nothing here is on any hot path. This class is loaded only when the mode selects it, so it is written
- * in ordinary Java: the rules that keep {@code io.micronaut.runner} free of lambdas, streams and
- * {@code String.format} do not apply to {@code io.micronaut.runner.tools}.</p>
+ * in ordinary Java: the rules that keep the launcher's start path free of lambdas, streams and
+ * {@code String.format} do not apply to it.</p>
  *
  * @since 1.0
  */
-public final class Inspect {
+final class Inspect {
 
     /** Header of the jar table, which doubles as the source of the column labels. */
     private static final String[] COLUMNS = {"#", "NAME", "COORDINATES", "ENTRIES", "RECORDS", "FLAGS"};
@@ -66,7 +62,7 @@ public final class Inspect {
      * @param source  the archive's bytes, reported on so that the reading mode is visible
      * @throws IOException if an argument is given that this mode does not understand
      */
-    public static void run(String[] args, File archive, Index index, ArchiveSource source)
+    static void run(String[] args, File archive, Index index, ArchiveSource source)
             throws IOException {
         if (args.length > 0) {
             throw new IOException("The inspect mode takes no arguments, but got '" + String.join(" ", args)

@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.protocol.jar;
 
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.runner.Handlers;
 
 import java.io.IOException;
@@ -46,13 +47,16 @@ import java.net.URLStreamHandler;
  *
  * <h2>What it opens</h2>
  * <p>Installing a handler for {@code jar:} is process wide, so this class sees every jar URL in the JVM,
- * including the ones the JDK itself opens. A URL whose jar part is the registered archive is served by
- * {@link RunnerJarURLConnection}; everything else, {@code jar:file:} of another file and {@code jar:http:}
- * alike, is handed back to the JDK's own handler through {@link Handlers#openDelegate(URL)} and behaves
- * exactly as it did before the launcher started.</p>
+ * including the ones the JDK itself opens. A URL whose jar part is the registered archive is served by a
+ * {@link java.net.JarURLConnection} of this package; everything else, {@code jar:file:} of another file and
+ * {@code jar:http:} alike, is handed back to the JDK's own handler through {@link Handlers#openDelegate(URL)}
+ * and behaves exactly as it did before the launcher started.</p>
+ *
+ * <p>The class is public only because the JDK instantiates it by name; it is not API for applications.</p>
  *
  * @since 1.0
  */
+@Internal
 public final class Handler extends URLStreamHandler {
 
     private static final String JAR_PREFIX = "jar:";
@@ -102,8 +106,8 @@ public final class Handler extends URLStreamHandler {
      * The string form of a URL, cached for the one URL {@link #withCachedForm(String)} created this
      * handler for.
      *
-     * <p>Both fields are written before that URL leaves the factory, {@link #ownerForm} first. A thread
-     * that reads them through a race reads {@link #ownerForm} first and falls back to the default when it
+     * <p>Both fields are written before that URL leaves the factory, {@code ownerForm} first. A thread
+     * that reads them through a race reads {@code ownerForm} first and falls back to the default when it
      * sees {@code null}, which computes the same string.</p>
      *
      * @param url the URL
@@ -119,8 +123,8 @@ public final class Handler extends URLStreamHandler {
      * Opens a jar URL, ours or anybody else's.
      *
      * @param url the URL to open
-     * @return a {@link RunnerJarURLConnection} when the jar part names the registered runner archive, and
-     *         the connection the JDK's own handler would have returned otherwise
+     * @return this package's {@link java.net.JarURLConnection} when the jar part names the registered runner
+     *         archive, and the connection the JDK's own handler would have returned otherwise
      * @throws IOException if the URL is malformed or the JDK's handler cannot open it
      */
     @Override

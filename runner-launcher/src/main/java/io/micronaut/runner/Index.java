@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner;
 
+import io.micronaut.core.annotation.Internal;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -33,13 +35,13 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
  * does; a Micronaut application indexes on the order of fifteen thousand entries.</p>
  *
  * <h2>Validation</h2>
- * <p>{@link #open(ArchiveSource, long, long)} checks everything that can be checked in constant time or in
+ * <p>Opening the index checks everything that can be checked in constant time or in
  * time proportional to the (small) jar table: magic, format version, section bounds, a power of two hash
  * table, a sane probe limit, and that the recorded outer file length still matches the file. Anything that
  * would cost time proportional to the entry table, such as verifying every string reference, is checked
  * when the record is touched instead, so that opening the index faults in only the pages it needs.
- * Failures throw {@link IllegalStateException} carrying {@link #REBUILD_MESSAGE}, because in practice they
- * all mean the same thing: the jar was edited, truncated or rebuilt after it was packaged.</p>
+ * Failures throw {@link IllegalStateException} with a message that asks for the jar to be rebuilt, because
+ * in practice they all mean the same thing: the jar was edited, truncated or rebuilt after it was packaged.</p>
  *
  * <h2>Thread safety</h2>
  * <p>Accessors use absolute {@link ByteBuffer} reads, which do not touch the buffer position, so an instance
@@ -47,23 +49,27 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
  * immutable, bounded per-jar hash tables through atomic references. {@link #validateJar(int)} writes a
  * {@code boolean} into an array; the write is idempotent, so a race only means the check runs twice.</p>
  *
+ * <p>The class is public because runner-build writes and checks archives with it, and
+ * {@code io.micronaut.runner.protocol.jar} and the benchmarks read them; it is not API for applications.</p>
+ *
  * @since 1.0
  */
+@Internal
 public final class Index {
-
-    /**
-     * The message every validation failure carries. Every corruption the reader can detect has the same
-     * cause and the same fix, so the message says what to do rather than what byte was wrong; the detail
-     * follows in parentheses for bug reports.
-     */
-    public static final String REBUILD_MESSAGE =
-            "This runner jar was modified after it was packaged and must be rebuilt";
 
     /**
      * The multi-release feature version that means "base entries only". {@code META-INF/versions/N}
      * directories start at 9, so any value below 9 selects the base entry of every chain.
      */
     public static final int BASE_VERSION = 8;
+
+    /**
+     * The message every validation failure carries. Every corruption the reader can detect has the same
+     * cause and the same fix, so the message says what to do rather than what byte was wrong; the detail
+     * follows in parentheses for bug reports.
+     */
+    static final String REBUILD_MESSAGE =
+            "This runner jar was modified after it was packaged and must be rebuilt";
 
     /** UTF-8 bytes of {@code .class}, compared against stored names without building the name. */
     private static final byte[] CLASS_SUFFIX = {'.', 'c', 'l', 'a', 's', 's'};
@@ -172,7 +178,7 @@ public final class Index {
     }
 
     /**
-     * Opens the index of an already open archive, locating it with {@link ArchiveSource#openIndex()}.
+     * Opens the index of an already open archive, locating its entry in the archive first.
      *
      * @param source the open archive
      * @return the index reader
@@ -194,7 +200,7 @@ public final class Index {
      * @throws IOException           if the index bytes cannot be read
      * @throws IllegalStateException if the index is not valid for this launcher
      */
-    public static Index open(ArchiveSource source, long indexOffset, long indexLength) throws IOException {
+    static Index open(ArchiveSource source, long indexOffset, long indexLength) throws IOException {
         if (indexLength < IndexFormat.HEADER_SIZE || indexLength > ArchiveSource.MAX_SLICE_LENGTH) {
             throw stale("the index entry is " + indexLength + " bytes long");
         }
@@ -233,7 +239,7 @@ public final class Index {
      *
      * @return the source passed to {@link #open(ArchiveSource, long, long)}
      */
-    public ArchiveSource source() {
+    ArchiveSource source() {
         return source;
     }
 
@@ -242,7 +248,7 @@ public final class Index {
      *
      * @return a mask of {@code IndexFormat.HEADER_FLAG_*}
      */
-    public int flags() {
+    int flags() {
         return flags;
     }
 
@@ -252,7 +258,7 @@ public final class Index {
      *
      * @return {@code true} when {@code IndexFormat.HEADER_FLAG_NESTED_STORED} is set
      */
-    public boolean nestedStored() {
+    boolean nestedStored() {
         return (flags & IndexFormat.HEADER_FLAG_NESTED_STORED) != 0;
     }
 
@@ -282,7 +288,7 @@ public final class Index {
      * @return the size in bytes, or {@code 0} when the archive recorded none, as every archive without
      *         {@code IndexFormat.HEADER_FLAG_POSITIONAL_READS} does
      */
-    public long largestStoredClass() {
+    long largestStoredClass() {
         return u32(IndexFormat.H_LARGEST_STORED_CLASS);
     }
 
@@ -309,7 +315,7 @@ public final class Index {
      *
      * @return the package record count
      */
-    public int packageCount() {
+    int packageCount() {
         return packageCount;
     }
 
@@ -318,7 +324,7 @@ public final class Index {
      *
      * @return the number of slots
      */
-    public int hashSlots() {
+    int hashSlots() {
         return hashSlots;
     }
 
@@ -327,7 +333,7 @@ public final class Index {
      *
      * @return the probe limit recorded in the header
      */
-    public int maxProbe() {
+    int maxProbe() {
         return maxProbe;
     }
 
@@ -336,7 +342,7 @@ public final class Index {
      *
      * @return the recorded file length, which equals the real one or the index would not have opened
      */
-    public long outerFileLength() {
+    long outerFileLength() {
         return outerFileLength;
     }
 
@@ -364,7 +370,7 @@ public final class Index {
      *
      * @return the version string, or {@code null} when it was not recorded
      */
-    public String launcherVersion() {
+    String launcherVersion() {
         return string(buffer.getInt(IndexFormat.H_LAUNCHER_VERSION));
     }
 
@@ -410,7 +416,7 @@ public final class Index {
      * @param position the position in the list, from {@code 0} to {@link #jdkPreloadCount()} exclusive
      * @return the binary class name
      */
-    public String jdkPreloadName(int position) {
+    String jdkPreloadName(int position) {
         if (Integer.compareUnsigned(position, jdkPreloadCount) >= 0) {
             throw stale("JDK preload position " + Integer.toUnsignedString(position)
                     + " does not exist, the list holds " + jdkPreloadCount);
@@ -435,7 +441,7 @@ public final class Index {
      * @param jarId the jar index
      * @return the coordinates, or {@code null} when the build did not know them
      */
-    public String jarCoordinates(int jarId) {
+    String jarCoordinates(int jarId) {
         return string(buffer.getInt(jarOffset(jarId) + IndexFormat.J_COORDINATES));
     }
 
@@ -467,7 +473,7 @@ public final class Index {
      * @param jarId the jar index
      * @return the offset, or {@code 0} for the application layer
      */
-    public long jarLocalHeaderOffset(int jarId) {
+    long jarLocalHeaderOffset(int jarId) {
         return u64(jarOffset(jarId) + IndexFormat.J_LOCAL_HEADER_OFFSET);
     }
 
@@ -477,7 +483,7 @@ public final class Index {
      * @param jarId the jar index
      * @return a mask of {@code IndexFormat.JAR_FLAG_*}
      */
-    public int jarFlags(int jarId) {
+    int jarFlags(int jarId) {
         return buffer.getShort(jarOffset(jarId) + IndexFormat.J_FLAGS) & 0xFFFF;
     }
 
@@ -498,7 +504,7 @@ public final class Index {
      * @param jarId the jar index
      * @return {@code true} when the jar is sealed by default
      */
-    public boolean jarSealedByDefault(int jarId) {
+    boolean jarSealedByDefault(int jarId) {
         return (jarFlags(jarId) & IndexFormat.JAR_FLAG_SEALED_BY_DEFAULT) != 0;
     }
 
@@ -509,7 +515,7 @@ public final class Index {
      * @param jarId the jar index
      * @return the first record index
      */
-    public int jarFirstEntry(int jarId) {
+    int jarFirstEntry(int jarId) {
         return buffer.getInt(jarOffset(jarId) + IndexFormat.J_FIRST_ENTRY);
     }
 
@@ -519,7 +525,7 @@ public final class Index {
      * @param jarId the jar index
      * @return the record count
      */
-    public int jarEntryCount(int jarId) {
+    int jarEntryCount(int jarId) {
         return buffer.getInt(jarOffset(jarId) + IndexFormat.J_ENTRY_COUNT);
     }
 
@@ -550,7 +556,7 @@ public final class Index {
      * @param jarId the jar index
      * @return the attribute, or {@code null} when the manifest does not declare it
      */
-    public String jarSpecTitle(int jarId) {
+    String jarSpecTitle(int jarId) {
         return string(buffer.getInt(jarOffset(jarId) + IndexFormat.J_SPEC_TITLE));
     }
 
@@ -560,7 +566,7 @@ public final class Index {
      * @param jarId the jar index
      * @return the attribute, or {@code null} when the manifest does not declare it
      */
-    public String jarSpecVersion(int jarId) {
+    String jarSpecVersion(int jarId) {
         return string(buffer.getInt(jarOffset(jarId) + IndexFormat.J_SPEC_VERSION));
     }
 
@@ -570,7 +576,7 @@ public final class Index {
      * @param jarId the jar index
      * @return the attribute, or {@code null} when the manifest does not declare it
      */
-    public String jarSpecVendor(int jarId) {
+    String jarSpecVendor(int jarId) {
         return string(buffer.getInt(jarOffset(jarId) + IndexFormat.J_SPEC_VENDOR));
     }
 
@@ -580,7 +586,7 @@ public final class Index {
      * @param jarId the jar index
      * @return the attribute, or {@code null} when the manifest does not declare it
      */
-    public String jarImplTitle(int jarId) {
+    String jarImplTitle(int jarId) {
         return string(buffer.getInt(jarOffset(jarId) + IndexFormat.J_IMPL_TITLE));
     }
 
@@ -590,7 +596,7 @@ public final class Index {
      * @param jarId the jar index
      * @return the attribute, or {@code null} when the manifest does not declare it
      */
-    public String jarImplVersion(int jarId) {
+    String jarImplVersion(int jarId) {
         return string(buffer.getInt(jarOffset(jarId) + IndexFormat.J_IMPL_VERSION));
     }
 
@@ -600,7 +606,7 @@ public final class Index {
      * @param jarId the jar index
      * @return the attribute, or {@code null} when the manifest does not declare it
      */
-    public String jarImplVendor(int jarId) {
+    String jarImplVendor(int jarId) {
         return string(buffer.getInt(jarOffset(jarId) + IndexFormat.J_IMPL_VENDOR));
     }
 
@@ -648,7 +654,7 @@ public final class Index {
      * Opens one indexed entry after performing its jar's lazy staleness check. Every stream of an entry,
      * whether for the class loader, a {@link NestedJarFile} or a {@code jar:} URL, is opened here.
      *
-     * <p>When {@value RunnerClassLoader#VERIFY_PROPERTY} was {@code "true"} as this index was opened, every
+     * <p>When {@code micronaut.runner.verify} was {@code "true"} as this index was opened, every
      * byte returned or skipped contributes to the CRC-32, and the checksum is compared as soon as the
      * recorded end of the entry is reached. Closing a partially read stream does not drain or verify it.</p>
      *
@@ -697,7 +703,7 @@ public final class Index {
      * @param record the package record index
      * @return the attribute, or {@code null} to inherit the jar's main attribute
      */
-    public String packageSpecTitle(int record) {
+    String packageSpecTitle(int record) {
         return string(buffer.getInt(packageOffset(record) + IndexFormat.P_SPEC_TITLE));
     }
 
@@ -707,7 +713,7 @@ public final class Index {
      * @param record the package record index
      * @return the attribute, or {@code null} to inherit the jar's main attribute
      */
-    public String packageSpecVersion(int record) {
+    String packageSpecVersion(int record) {
         return string(buffer.getInt(packageOffset(record) + IndexFormat.P_SPEC_VERSION));
     }
 
@@ -717,7 +723,7 @@ public final class Index {
      * @param record the package record index
      * @return the attribute, or {@code null} to inherit the jar's main attribute
      */
-    public String packageSpecVendor(int record) {
+    String packageSpecVendor(int record) {
         return string(buffer.getInt(packageOffset(record) + IndexFormat.P_SPEC_VENDOR));
     }
 
@@ -727,7 +733,7 @@ public final class Index {
      * @param record the package record index
      * @return the attribute, or {@code null} to inherit the jar's main attribute
      */
-    public String packageImplTitle(int record) {
+    String packageImplTitle(int record) {
         return string(buffer.getInt(packageOffset(record) + IndexFormat.P_IMPL_TITLE));
     }
 
@@ -737,7 +743,7 @@ public final class Index {
      * @param record the package record index
      * @return the attribute, or {@code null} to inherit the jar's main attribute
      */
-    public String packageImplVersion(int record) {
+    String packageImplVersion(int record) {
         return string(buffer.getInt(packageOffset(record) + IndexFormat.P_IMPL_VERSION));
     }
 
@@ -747,7 +753,7 @@ public final class Index {
      * @param record the package record index
      * @return the attribute, or {@code null} to inherit the jar's main attribute
      */
-    public String packageImplVendor(int record) {
+    String packageImplVendor(int record) {
         return string(buffer.getInt(packageOffset(record) + IndexFormat.P_IMPL_VENDOR));
     }
 
@@ -757,7 +763,7 @@ public final class Index {
      * @param record the package record index
      * @return a mask of {@code IndexFormat.PACKAGE_FLAG_*}
      */
-    public int packageFlags(int record) {
+    private int packageFlags(int record) {
         return buffer.getShort(packageOffset(record) + IndexFormat.P_FLAGS) & 0xFFFF;
     }
 
@@ -768,7 +774,7 @@ public final class Index {
      * @param record the package record index
      * @return {@code true} when the section specifies sealing
      */
-    public boolean packageSealedSpecified(int record) {
+    boolean packageSealedSpecified(int record) {
         return (packageFlags(record) & IndexFormat.PACKAGE_FLAG_SEALED_SPECIFIED) != 0;
     }
 
@@ -779,7 +785,7 @@ public final class Index {
      * @param record the package record index
      * @return {@code true} when the section declares {@code Sealed: true}
      */
-    public boolean packageSealedValue(int record) {
+    boolean packageSealedValue(int record) {
         return (packageFlags(record) & IndexFormat.PACKAGE_FLAG_SEALED_VALUE) != 0;
     }
 
@@ -858,7 +864,7 @@ public final class Index {
      * @param record the entry record index
      * @return the hash
      */
-    public int entryNameHash(int record) {
+    int entryNameHash(int record) {
         return buffer.getInt(entryOffset(record) + IndexFormat.E_NAME_HASH);
     }
 
@@ -868,7 +874,7 @@ public final class Index {
      * @param record the entry record index
      * @return the length
      */
-    public int entryNameLength(int record) {
+    int entryNameLength(int record) {
         return buffer.getShort(entryOffset(record) + IndexFormat.E_NAME_LENGTH) & 0xFFFF;
     }
 
@@ -878,7 +884,7 @@ public final class Index {
      * @param record the entry record index
      * @return the jar index
      */
-    public int entryJarId(int record) {
+    int entryJarId(int record) {
         return buffer.getShort(entryOffset(record) + IndexFormat.E_JAR_ID) & 0xFFFF;
     }
 
@@ -949,7 +955,7 @@ public final class Index {
      * @return {@code 0} for a base entry, otherwise the {@code META-INF/versions/N} feature version this
      *         record is an alias for
      */
-    public int entryMrVersion(int record) {
+    int entryMrVersion(int record) {
         return buffer.get(entryOffset(record) + IndexFormat.E_MR_VERSION) & 0xFF;
     }
 
@@ -959,7 +965,7 @@ public final class Index {
      * @param record the entry record index
      * @return a mask of {@code IndexFormat.ENTRY_FLAG_*}
      */
-    public int entryFlags(int record) {
+    private int entryFlags(int record) {
         return buffer.get(entryOffset(record) + IndexFormat.E_FLAGS) & 0xFF;
     }
 
@@ -969,7 +975,7 @@ public final class Index {
      * @param record the entry record index
      * @return the next record, or {@link IndexFormat#NO_INDEX} at the end of the chain
      */
-    public int entryNextSameName(int record) {
+    int entryNextSameName(int record) {
         return buffer.getInt(entryOffset(record) + IndexFormat.E_NEXT_SAME_NAME);
     }
 
@@ -1002,7 +1008,7 @@ public final class Index {
      * @param record the entry record index
      * @return {@code true} for a synthesised directory
      */
-    public boolean entrySyntheticDirectory(int record) {
+    boolean entrySyntheticDirectory(int record) {
         return (entryFlags(record) & IndexFormat.ENTRY_FLAG_SYNTHETIC_DIR) != 0;
     }
 
@@ -1014,7 +1020,7 @@ public final class Index {
      * @param record the entry record index
      * @return {@code true} when the name has a directory twin
      */
-    public boolean entryDirectoryTwin(int record) {
+    boolean entryDirectoryTwin(int record) {
         return (entryFlags(record) & IndexFormat.ENTRY_FLAG_DIRECTORY_TWIN) != 0;
     }
 
@@ -1025,7 +1031,7 @@ public final class Index {
      * @param record the entry record index
      * @return {@code true} for an alias
      */
-    public boolean entryVersionedAlias(int record) {
+    boolean entryVersionedAlias(int record) {
         return (entryFlags(record) & IndexFormat.ENTRY_FLAG_VERSIONED_ALIAS) != 0;
     }
 
@@ -1043,7 +1049,8 @@ public final class Index {
      * Looks up a logical name and returns the head of its chain.
      *
      * <p>The chain holds every record with that name across all jars, in classpath order, with a jar's
-     * versioned aliases before its base record; {@link #resolve(int, int)} picks the record that applies.
+     * versioned aliases before its base record; the launcher picks the record that applies, and
+     * {@link #resolveInJar(int, int, int)} picks the one of a given jar.
      * The candidate's name is compared against the stored UTF-8 bytes without allocating: the lengths are
      * compared first, then the bytes, and only a name that actually contains a non-ASCII character is
      * decoded.</p>
@@ -1082,7 +1089,7 @@ public final class Index {
      * @param name the entry name without its trailing slash, relative to its jar, with no leading slash
      * @return the first record named {@code name + "/"}, or {@link IndexFormat#NO_INDEX}
      */
-    public int findDirectory(String name) {
+    int findDirectory(String name) {
         int hash = IndexFormat.spread(name.hashCode() * 31 + '/');
         int slot = hash & hashMask;
         int table = hashTableOffset;
@@ -1148,7 +1155,7 @@ public final class Index {
      * @param record the current record
      * @return the next record, or {@link IndexFormat#NO_INDEX} at the end of the chain
      */
-    public int next(int record) {
+    int next(int record) {
         return buffer.getInt(entryOffset(record) + IndexFormat.E_NEXT_SAME_NAME);
     }
 
@@ -1162,7 +1169,7 @@ public final class Index {
      * @param record the record selected for the current JAR
      * @return the first record in the next JAR, or {@link IndexFormat#NO_INDEX} at the end of the chain
      */
-    public int nextJar(int record) {
+    int nextJar(int record) {
         int jarId = entryJarId(record);
         int current = next(record);
         int guard = entryCount;
@@ -1189,7 +1196,7 @@ public final class Index {
      *                         entries only
      * @return the first applicable record, or {@link IndexFormat#NO_INDEX}
      */
-    public int resolve(int chainHead, int effectiveVersion) {
+    int resolve(int chainHead, int effectiveVersion) {
         int highest = versionedCeiling(effectiveVersion);
         int record = chainHead;
         int guard = entryCount;
@@ -1265,7 +1272,7 @@ public final class Index {
      * @param ref a string reference, that is, a byte offset into the string table
      * @return the string, or {@code null} when the reference is {@code 0}
      */
-    public String string(int ref) {
+    String string(int ref) {
         if (ref == 0) {
             return null;
         }
@@ -1279,7 +1286,7 @@ public final class Index {
     /**
      * Walks every string reference in the index and checks that it lies inside the string table.
      *
-     * <p>{@link #open(ArchiveSource, long, long)} deliberately does not do this: it is the one validation
+     * <p>{@link #open(ArchiveSource)} deliberately does not do this: it is the one validation
      * whose cost grows with the number of entries, and it would fault in the whole entry and string tables
      * before the application starts. References are bounds-checked when they are dereferenced instead.
      * Tools that dump an index, and tests, call this to check the whole file up front.</p>
