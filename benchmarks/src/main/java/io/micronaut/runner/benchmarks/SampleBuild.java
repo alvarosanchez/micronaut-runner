@@ -594,7 +594,7 @@ final class SampleBuild implements SampleSteps {
 
     @Override
     public Variant runnerMaot(VariantSpec spec) throws IOException {
-        return optimizedRunnerJar(artifacts, spec, mainClass, optimizedJitJar, dependencies);
+        return optimizedRunnerJar(artifacts, spec, mainClass, optimizedJitJar, dependencies, log);
     }
 
     /**
@@ -608,11 +608,12 @@ final class SampleBuild implements SampleSteps {
      * @param mainClass       the application's main class
      * @param optimizedJitJar the archive the metadata names, or {@code null} when the sample has no such task
      * @param dependencies    the dependency jars, in class path order
+     * @param log             where the packaging library's lines go, under the row's name
      * @return the variant
      * @throws IOException if the sample declares no such task, it produced no jar, or packaging fails
      */
     static Variant optimizedRunnerJar(Path artifacts, VariantSpec spec, String mainClass, Path optimizedJitJar,
-                                      List<Path> dependencies) throws IOException {
+                                      List<Path> dependencies, PrintStream log) throws IOException {
         if (optimizedJitJar == null) {
             throw new IOException("The sample's build declares no optimizedJitJar task (it does not apply"
                     + " io.micronaut.aot)");
@@ -624,7 +625,7 @@ final class SampleBuild implements SampleSteps {
         Path directory = recreate(artifacts.resolve(spec.name() + "-application"));
         Path copy = LaunchInputs.copy(optimizedJitJar, directory.resolve(optimizedJitJar.getFileName().toString()));
         return runnerJar(artifacts, spec, mainClass, List.of(copy), dependencies, Compression.STORED,
-                RunnerJarOptions.DEFAULTS);
+                RunnerJarOptions.DEFAULTS, log);
     }
 
     @Override
@@ -772,7 +773,7 @@ final class SampleBuild implements SampleSteps {
     @Override
     public Variant runnerJar(VariantSpec spec, Compression compression, RunnerJarOptions options)
             throws IOException {
-        return runnerJar(artifacts, spec, mainClass, applicationOutput, dependencies, compression, options);
+        return runnerJar(artifacts, spec, mainClass, applicationOutput, dependencies, compression, options, log);
     }
 
     /**
@@ -855,10 +856,12 @@ final class SampleBuild implements SampleSteps {
      * The jar is checked against what the row claims: its entry mode, archive read mode, preload list and service
      * table. Its build note says whether it carries a static service table and how many startup classes it
      * preloads, so that a jar whose table silently stood down is not measured under the name of a row that has
-     * one.
+     * one. Every line the packaging library logs goes to the harness log under the row's name, so a run's log
+     * shows which build steps ran, stood down or were off for each row.
      *
      * @param spec    the row, which names the jar and its entry mode
      * @param options the packaging options a row sets on top of the builder defaults
+     * @param log     where the packaging library's info and warning lines go
      */
     static Variant runnerJar(Path artifacts,
                              VariantSpec spec,
@@ -866,7 +869,8 @@ final class SampleBuild implements SampleSteps {
                              List<Path> applicationOutput,
                              List<Path> dependencies,
                              Compression compression,
-                             RunnerJarOptions options) throws IOException {
+                             RunnerJarOptions options,
+                             PrintStream log) throws IOException {
         Path output = artifacts.resolve(spec.name() + ".jar");
         Files.deleteIfExists(output);
         RunnerJarSpec.Builder builder = RunnerJarSpec.builder()
@@ -896,7 +900,7 @@ final class SampleBuild implements SampleSteps {
             builder.definitionPrefetch(options.definitionPrefetch());
         }
         RunnerJarSpec jarSpec = builder.build();
-        RunnerJarResult result = RunnerJarBuilder.build(jarSpec, BuildLogger.noOp());
+        RunnerJarResult result = RunnerJarBuilder.build(jarSpec, new HarnessLogger(log, spec.name()));
         if (Boolean.FALSE.equals(options.staticServices()) && result.staticServiceSlots() != 0) {
             throw new IOException("staticServices false was requested, but " + output + " carries a table of "
                     + result.staticServiceSlots() + " slots");
@@ -1410,23 +1414,30 @@ final class SampleBuild implements SampleSteps {
         }
     }
 
-    /** Prints what the packaging library reports to the harness's log. */
+    /** Prints what the packaging library reports to the harness's log, under a row's name when it has one. */
     private static final class HarnessLogger implements BuildLogger {
 
         private final PrintStream log;
+        private final String prefix;
 
         private HarnessLogger(PrintStream log) {
             this.log = log;
+            this.prefix = "[startup-benchmark] ";
+        }
+
+        private HarnessLogger(PrintStream log, String row) {
+            this.log = log;
+            this.prefix = "[startup-benchmark] " + row + ": ";
         }
 
         @Override
         public void info(String message) {
-            log.println("[startup-benchmark] " + message);
+            log.println(prefix + message);
         }
 
         @Override
         public void warn(String message) {
-            log.println("[startup-benchmark] WARNING " + message);
+            log.println(prefix + "WARNING " + message);
         }
     }
 }

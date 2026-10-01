@@ -20,6 +20,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,6 +39,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LaunchInputsTest {
 
+    /** Where the packaging library's lines go when a test does not read them. */
+    private static final PrintStream QUIET = new PrintStream(OutputStream.nullOutputStream());
     private static final String JDK = "25.0.4.1+0|25.0.4.1+0";
     private static final String VM = "OpenJDK 64-Bit Server VM";
     private static final String ARCH = "aarch64";
@@ -73,12 +77,12 @@ class LaunchInputsTest {
 
         Variant first = SampleBuild.runnerJar(directory, SampleBuild.spec("runner-stored"),
                 AotCacheFixture.class.getName(), List.of(classes), List.of(), Compression.STORED,
-                SampleBuild.RunnerJarOptions.DEFAULTS);
+                SampleBuild.RunnerJarOptions.DEFAULTS, QUIET);
         byte[] firstBytes = Files.readAllBytes(first.artifact());
         LaunchInputs.JdkView firstView = LaunchInputs.jdkView(first.artifact());
         Variant second = SampleBuild.runnerJar(directory, SampleBuild.spec("runner-stored"),
                 AotCacheFixture.class.getName(), List.of(classes), List.of(), Compression.STORED,
-                SampleBuild.RunnerJarOptions.DEFAULTS);
+                SampleBuild.RunnerJarOptions.DEFAULTS, QUIET);
 
         assertArrayEquals(firstBytes, Files.readAllBytes(second.artifact()),
                 "the harness rebuilds runner-stored.jar in every run; reuse needs the same bytes");
