@@ -158,6 +158,9 @@ Micronaut skips and which ones stop the application does not change.
 The option is off by default, because what the prefetch gains depends on the machine and is small next to a JDK AOT
 cache. On `benchmark-large` with JDK 25 and its static service table, measured with paired, interleaved starts:
 
+* with lambdas desugared (<<desugaredLambdas,Desugared lambdas>>), the default, one run on a 12-processor Mac made
+the start 20 ms shorter without an AOT cache and 9 ms shorter with one; the measurements below were taken before
+lambdas were desugared;
 * without an AOT cache, it made the start 26 to 35 ms shorter on a 12-processor Mac, and in a Linux container 2 to
 10 ms shorter with four processors, 19 to 33 ms with five and 22 ms with six;
 * with an AOT cache, the start was 0 to 7 ms shorter on the Mac, where one of two runs could not tell the difference
