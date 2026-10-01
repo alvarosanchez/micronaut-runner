@@ -104,24 +104,30 @@ where the dry run said it would.</p>
 reaches the bytes. Building the same inputs twice, in different time zones, produces identical files.</p>
 
 <h2 id="dependency-staging-heading">Dependency staging</h2>
-<p>Each dependency is staged on up to <code>min(availableProcessors(), 8)</code> daemon threads. In STORED its
-stage repacks it into a nested jar in the work directory. In PRESERVE the dependency is nested as it is:
-its stage writes nothing and only checksums the file, and the archive is written from the dependency
+<p>Each dependency is staged on up to <code>min(availableProcessors(), 8)</code> daemon threads. In STORED and
+HYBRID its stage repacks it into a nested jar in the work directory, with the startup classes of the build's
+startup class list first, and in HYBRID with its cold classes compressed. In PRESERVE the dependency is nested
+as it is: its stage writes nothing and only checksums the file, and the archive is written from the dependency
 itself, through a read that fails the build if the file no longer matches that checksum. The threads are
 created for each build and have stopped before <code>build</code> returns; with one processor, or at most one
 dependency, staging runs on the calling thread. A staging thread holds one open <code>ZipReader</code>: its
 parsed central directory and manifest and, outside the heap, a read-only mapping of the dependency, which
 is released when the stage closes the reader. It also holds at most one <code>Inflater</code> at a time and at
-most three 64 KiB buffers: in STORED, the nested jar's output buffer and the reader's two transfer buffers.
+most three 64 KiB buffers: in STORED and HYBRID, the nested jar's output buffer and the reader's two transfer
+buffers. A HYBRID stage also holds one <code>Deflater</code>, created for its jar, reset for each cold class and
+ended when the jar is written, with the buffer it deflates into, which grows to one byte less than the largest
+class it deflates; and, while it writes a cold class that keeps its original DEFLATE bytes, that entry's
+compressed region and the class verified by inflating it. None of these arrays is larger than
+<code>ClassTransformPipeline.MAX_CLASS_SIZE</code>.
 In PRESERVE the reader reads the manifest at its exact size and never allocates its transfer buffers, so
 the stage holds one: the buffer it checksums the dependency through. The archive's bytes do not depend on
 the thread count: every nested jar's name and work file are fixed in class-path order before staging
 starts, warnings are emitted in that order afterwards, and the outer archive is written on one thread.</p>
 
 <h2 id="class-transforms-heading">Class transforms</h2>
-<p>In STORED, each stage also runs the <code>ClassTransforms</code> of the build over its dependency's classes, by
-default <a href="RunnerJarSpec.html#desugarLambdas()"><code>RunnerJarSpec.desugarLambdas()</code></a> and then <a href="RunnerJarSpec.html#stripLocalVariables()"><code>RunnerJarSpec.stripLocalVariables()</code></a>. Before
-staging, one scan task per dependency runs on the same threads, with its own <code>ZipReader</code>, into a
+<p>In STORED and HYBRID, each stage also runs the <code>ClassTransforms</code> of the build over its dependency's
+classes, by default <a href="RunnerJarSpec.html#desugarLambdas()"><code>RunnerJarSpec.desugarLambdas()</code></a> and then <a href="RunnerJarSpec.html#stripLocalVariables()"><code>RunnerJarSpec.stripLocalVariables()</code></a>.
+Before staging, one scan task per dependency runs on the same threads, with its own <code>ZipReader</code>, into a
 read-only <code>ClassPathModel</code> that every stage shares and that is discarded when <code>build</code> returns. A
 staging thread then also holds the original and the rewritten bytes of one class, at most
 <code>ClassTransformPipeline.MAX_CLASS_SIZE</code> each. With <code>desugarLambdas</code>, a stage plans its

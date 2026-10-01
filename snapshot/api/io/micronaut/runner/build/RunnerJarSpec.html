@@ -593,7 +593,10 @@ file of binary class names.
 <p>The packager embeds the classes of the list that the archive holds, in the order of the list, and
 the launcher defines them on one background thread while the application starts, followed by the JDK
 classes of the list. The launcher loads them and never initialises them, so a list that names a class
-the application no longer uses costs background work and changes no behaviour.</p></div>
+the application no longer uses costs background work and changes no behaviour.</p>
+
+<p>In <a href="Compression.html#STORED"><code>Compression.STORED</code></a> and <a href="Compression.html#HYBRID"><code>Compression.HYBRID</code></a> the same list puts each nested jar's startup
+classes first, and <a href="Compression.html#HYBRID"><code>Compression.HYBRID</code></a> keeps every class it does not name compressed.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the list file, if one was configured</dd>
@@ -637,8 +640,8 @@ down when the application starts with <code>-Dmicronaut.runner.static-services=f
 <div class="block">Whether the lambda and method-reference call sites of dependency and application classes are replaced
 with classes generated when the application is packaged.
 
-<p>It applies to <a href="Compression.html#STORED"><code>Compression.STORED</code></a> only and is on by default. To opt out, set it to
-<code>false</code>: through <a href="RunnerJarSpec.Builder.html#desugarLambdas(boolean)"><code>RunnerJarSpec.Builder.desugarLambdas(boolean)</code></a>, or by name, as the build plugins'
+<p>It applies to <a href="Compression.html#STORED"><code>Compression.STORED</code></a> and <a href="Compression.html#HYBRID"><code>Compression.HYBRID</code></a> and is on by default. To opt out,
+set it to <code>false</code>: through <a href="RunnerJarSpec.Builder.html#desugarLambdas(boolean)"><code>RunnerJarSpec.Builder.desugarLambdas(boolean)</code></a>, or by name, as the build plugins'
 generic options do, with <code>option("desugarLambdas", "false")</code>. See
 <a href="RunnerJarSpec.Builder.html#desugarLambdas(boolean)"><code>RunnerJarSpec.Builder.desugarLambdas(boolean)</code></a> for what is rewritten and what changes as a result.</p></div>
 <dl class="notes">

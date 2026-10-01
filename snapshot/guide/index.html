@@ -333,6 +333,7 @@ Micronaut AOT-optimized application into <code>build/libs/my-app-0.1-all-optimiz
         // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
         // PRESERVE copies each dependency byte for byte: smaller on disk only (its gzip size is about 1.55x
         // STORED's), and it loads more slowly.
+        // HYBRID stores the startupClasses and keeps other classes compressed: smaller on disk, larger gzipped.
         compression = 'STORED'
 
         // Enter main through a generated direct call instead of reflection.
@@ -368,7 +369,7 @@ Micronaut AOT-optimized application into <code>build/libs/my-app-0.1-all-optimiz
         // On by default; false builds no static service table. See "Static service table".
         // options.put('staticServices', 'false')
 
-        // On by default for STORED; 'false' keeps lambdas as invokedynamic call sites. See Build-Time Transformations.
+        // On unless PRESERVE; 'false' keeps lambdas as invokedynamic call sites. See Build-Time Transformations.
         // options.put('desugarLambdas', 'false')
 
         // Off by default. Packages the bean definition prefetch, which can shorten a start without an AOT cache.
@@ -415,7 +416,7 @@ tool resolve the path against the project and, in Gradle, rebuild the archive wh
 <tbody>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>compression</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>STORED</code> or <code>PRESERVE</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>STORED</code>, <code>PRESERVE</code> or <code>HYBRID</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>STORED</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">typed</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
@@ -795,6 +796,72 @@ layer&#8217;s lambdas are rewritten the same way; see <a href="#desugaredLambdas
 copies each dependency byte for byte instead.</p>
 </div>
 <div class="paragraph">
+<p>With a startup class list (<code>startupClasses</code>, which the recorded startup profile provides), re-packing also writes
+each nested JAR&#8217;s startup classes first, in the order they were recorded, after <code>META-INF/</code> and the manifest. The
+bytes startup reads are then contiguous instead of scattered through every dependency. Nested JARs keep their
+places in the outer archive and class path order, so lookups and duplicate precedence do not change. On
+benchmark-large, without the preloader, this left 10.7 MB less of the mapped archive resident at readiness in the CI
+run named below the table; in <a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36844059936">a CI run</a>
+of the same commit on the same kind of runner with the page cache evicted before each launch, it read 9.5 MB less
+and was ready 33 ms (95% CI 21 to 46 ms) sooner.</p>
+</div>
+<div class="paragraph">
+<p>The <code>HYBRID</code> option re-packs as <code>STORED</code> does, startup classes first, but keeps the other classes compressed. An
+unlisted class that no build-time transform changed keeps its original compressed bytes, and one a transform
+rewrote or generated is deflated afresh. Listed classes, resources, and the few classes the dependency stored or
+that do not get smaller stay stored. On benchmark-large:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 16.6666%;">
+<col style="width: 16.6666%;">
+<col style="width: 33.3335%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Compression</th>
+<th class="tableblock halign-left valign-top">Raw bytes</th>
+<th class="tableblock halign-left valign-top"><code>gzip -6</code> bytes</th>
+<th class="tableblock halign-left valign-top">Readiness minus <code>STORED</code>, median (95% CI)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>STORED</code> (default)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">36,024,820</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8,782,001</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>PRESERVE</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">17,709,783</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">13,626,769</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+223.4 ms (+209.8 to +244.4)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>HYBRID</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">26,646,740</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">11,848,014</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−3.0 ms (−14.3 to +17.5)</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>From <a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36843944300">one CI run</a> of the change that added
+<code>HYBRID</code> (commit <code>0871050</code>): GitHub <code>ubuntu-latest</code> runner (4 vCPUs, AMD EPYC 7763), Temurin JDK 25.0.4.1, 20 paired
+iterations, page cache uncontrolled. The <code>HYBRID</code> JAR packages the startup profile recorded in the same run and starts
+with the preloader off.</p>
+</div>
+<div class="paragraph">
+<p>Use <code>HYBRID</code> only where on-disk or unpacked size matters more than transfer size: DEFLATE bytes do not compress
+again, so a <code>HYBRID</code> image layer is larger after gzip than a <code>STORED</code> one. It needs the startup profile (see
+<a href="#preload">Preloading the startup classes</a>). Without one, it writes the nested JARs <code>STORED</code>, with a warning, so
+the first build of a project, before it has recorded a profile, still succeeds. An unlisted class costs about 3 µs
+of inflation when it is loaded, so record the profile again after a dependency upgrade. Because the rewritten cold
+classes are deflated afresh, a <code>HYBRID</code> archive&#8217;s bytes depend on the build JDK and the zlib it uses.</p>
+</div>
+<div class="paragraph">
 <p>Shadow can also write <code>STORED</code> entries (<code>entryCompression = ZipEntryCompression.STORED</code>), so the gain from not
 inflating is not specific to this format; <a href="#benchmarks">Benchmarks</a> measures the two effects separately.</p>
 </div>
@@ -822,7 +889,8 @@ with positional reads, and its header records the largest <code>STORED</code> cl
 <dd>
 <p>One per entry, per jar, carrying the entry&#8217;s absolute offset in the outer file, its sizes,
 CRC-32, compression method and MS-DOS timestamp. Records for one jar are contiguous, with the physical
-entries first in their original central directory order, so <code>JarFile.entries()</code> can report them faithfully.</p>
+entries first in the nested JAR&#8217;s central directory order, which puts the startup classes first when a startup
+class list is given, so <code>JarFile.entries()</code> can report them faithfully.</p>
 </dd>
 <dt class="hdlist1">Hash table</dt>
 <dd>
@@ -1057,8 +1125,8 @@ with <code>-Dlogger.config</code> or <code>LOGGER_CONFIG</code> instead, or turn
 <h2 id="classTransforms">Class transforms</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>A runner JAR re-packs every dependency, and with the default <code>STORED</code> compression it can also rewrite classes on
-the way: whatever a class carries that the application never needs at run time, or has to work out again at every
+<p>A runner JAR re-packs every dependency, and with the default <code>STORED</code> compression, or <code>HYBRID</code>, it can also rewrite
+classes on the way: whatever a class carries that the application never needs at run time, or has to work out again at every
 start, is paid for on every start. This section lists what Runner changes in classes at build time, the default and
 the opt-out of each change, and what an application can observe as a result.</p>
 </div>
@@ -1098,7 +1166,7 @@ byte, and none of these transforms run, in the application layer either.</p>
 <div class="sect2">
 <h3 id="desugaredLambdas">Desugared lambdas</h3>
 <div class="paragraph">
-<p>On by default with <code>STORED</code> compression. A lambda or a method reference compiles to an <code>invokedynamic</code> call site,
+<p>On by default with <code>STORED</code> and <code>HYBRID</code> compression. A lambda or a method reference compiles to an <code>invokedynamic</code> call site,
 and the first time the site runs, the JDK spins a hidden class for it. A CDS archive or an AOT cache keeps such a
 class only when the calling class was defined by one of the JDK&#8217;s built-in class loaders, and the classes of a
 runner JAR are defined by Runner&#8217;s own. So every lambda that runs before the application is ready is linked again
@@ -1823,7 +1891,8 @@ runtime image rather than from the JDK&#8217;s default CDS archive, which the la
 then on <code>micronautRunnerJar</code> and <code>mn-runner:package</code> embed it with no configuration, and
 <code>java -Dmicronaut.runner.mode=inspect -jar my-app-0.1-all.jar</code> prints <code>Preload classes N</code>, where N is the file&#8217;s
 <code>classes:</code> line. Recording launches the application, so it is never part of <code>assemble</code>, <code>build</code>, <code>check</code> or
-<code>package</code>: it runs only when you ask for it.</p>
+<code>package</code>: it runs only when you ask for it. The same profile also puts each nested JAR&#8217;s startup classes first and
+is what <code>HYBRID</code> compression needs (see <a href="#format">The Runner JAR Format</a>); recording from a <code>HYBRID</code> JAR is fine.</p>
 </div>
 <div class="paragraph">
 <p>The recording launch runs the production JAR with the JDK of the project&#8217;s toolchain (Gradle) or of the
@@ -2128,7 +2197,8 @@ loader from the thread context class loader, so the framework is unaffected.</p>
 </dd>
 <dt class="hdlist1">Signatures are not verified</dt>
 <dd>
-<p>The default re-packing mode removes nested signature files. <code>PRESERVE</code> keeps
+<p>The default re-packing mode removes nested signature files, and <code>HYBRID</code>, which
+re-packs too, removes them the same way. <code>PRESERVE</code> keeps
 the nested JAR bytes, including signature files, but the runner still does not verify them. Application and
 dependency <code>CodeSource</code> objects have a null <code>CodeSigner[]</code>. External authentication of the outer artifact
 does not change that, so code that requires signed-JAR semantics, such as a signed JCE provider, is not
@@ -2971,6 +3041,14 @@ the harness works is in <a href="https://github.com/micronaut-projects/micronaut
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-preload</code>*, <code>-aot</code>*</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">With the startup classes recorded from <code>runner-stored</code> in the same run</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-ordered</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The preload JAR with the preloader off: startup classes first (not in the run below)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-hybrid</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>HYBRID</code> with the same recording, preloader off (not in the run below)</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-positional</code>*, <code>-aot</code>*</p></td>

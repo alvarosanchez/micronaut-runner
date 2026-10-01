@@ -60,6 +60,7 @@ loadScripts(document, 'script');</script>
 <ol class="toc-list">
 <li><a href="#STORED" tabindex="0">STORED</a></li>
 <li><a href="#PRESERVE" tabindex="0">PRESERVE</a></li>
+<li><a href="#HYBRID" tabindex="0">HYBRID</a></li>
 </ol>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
@@ -120,12 +121,17 @@ dependency jars.</p></div>
 <div class="summary-table two-column-summary">
 <div class="table-header col-first">Enum Constant</div>
 <div class="table-header col-last">Description</div>
-<div class="col-first even-row-color"><code><a href="#PRESERVE" class="member-name-link">PRESERVE</a></code></div>
+<div class="col-first even-row-color"><code><a href="#HYBRID" class="member-name-link">HYBRID</a></code></div>
 <div class="col-last even-row-color">
+<div class="block">Re-pack every dependency as <a href="#STORED"><code>STORED</code></a> does, but keep the classes the application does not load at
+startup compressed.</div>
+</div>
+<div class="col-first odd-row-color"><code><a href="#PRESERVE" class="member-name-link">PRESERVE</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Copy every dependency byte for byte, keeping its original compression.</div>
 </div>
-<div class="col-first odd-row-color"><code><a href="#STORED" class="member-name-link">STORED</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code><a href="#STORED" class="member-name-link">STORED</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Rewrite every dependency so that all of its entries are stored uncompressed.</div>
 </div>
 </div>
@@ -146,7 +152,7 @@ dependency jars.</p></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#parse(java.lang.String)" class="member-name-link">parse</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Reads a compression mode the way a build script or a POM spells it: surrounding whitespace is ignored
-and so is case, so <code>" Preserve "</code> is <a href="#PRESERVE"><code>PRESERVE</code></a>.</div>
+and so is case, so <code>" Preserve "</code> is <a href="#PRESERVE"><code>PRESERVE</code></a> and <code>"hybrid"</code> is <a href="#HYBRID"><code>HYBRID</code></a>.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#valueOf(java.lang.String)" class="member-name-link">valueOf</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name)</code></div>
@@ -205,6 +211,38 @@ when they are loaded.</p></div>
 </div>
 </section>
 </li>
+<li>
+<section class="detail" id="HYBRID">
+<h3>HYBRID</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></span>&nbsp;<span class="element-name">HYBRID</span></div>
+<div class="block">Re-pack every dependency as <a href="#STORED"><code>STORED</code></a> does, but keep the classes the application does not load at
+startup compressed.
+
+<p>The startup classes come from the recorded startup class list (<a href="RunnerJarSpec.html#startupClasses()"><code>RunnerJarSpec.startupClasses()</code></a>).
+A listed class stays stored, so it is still defined straight from the mapped archive. An unlisted class that
+no build-time class transform changed keeps its original DEFLATE bytes when the dependency had it deflated
+and smaller than the class; an unlisted class that a transform rewrote or generated, such as a stripped or
+desugared class, is deflated afresh, because its original compressed bytes would ship the class before the
+transform. Everything else stays stored: an unlisted class the dependency stored or could not compress, one
+whose fresh deflate is not smaller, a class above the transforms' size limit, resources and directories.
+Signature files and <code>META-INF/INDEX.LIST</code> are dropped as <a href="#STORED"><code>STORED</code></a> drops them, and the
+build-time transforms run as they do for <a href="#STORED"><code>STORED</code></a>.</p>
+
+<p>The archive is smaller on disk and unpacked than a <a href="#STORED"><code>STORED</code></a> one, but larger after layer or
+transfer compression, because DEFLATE bytes do not compress again. An unlisted class costs a few
+microseconds of inflation when it is loaded.</p>
+
+<p>Without a startup class list, or with one that names no class of any dependency, there is nothing to
+keep stored: the build logs one warning and writes the nested jars exactly as <a href="#STORED"><code>STORED</code></a> would with
+the same list.</p>
+
+<p>A class deflated afresh is compressed by the zlib the build JDK's <code>java.util.zip</code> uses, so an
+archive with rewritten cold classes is byte-reproducible only with the same JDK build and the same zlib.
+<a href="#STORED"><code>STORED</code></a> output does not depend on zlib.</p></div>
+</div>
+</section>
+</li>
 </ul>
 </section>
 </li>
@@ -254,7 +292,7 @@ not permitted.)</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></span>&nbsp;<span class="element-name">parse</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</span></div>
 <div class="block">Reads a compression mode the way a build script or a POM spells it: surrounding whitespace is ignored
-and so is case, so <code>" Preserve "</code> is <a href="#PRESERVE"><code>PRESERVE</code></a>.
+and so is case, so <code>" Preserve "</code> is <a href="#PRESERVE"><code>PRESERVE</code></a> and <code>"hybrid"</code> is <a href="#HYBRID"><code>HYBRID</code></a>.
 
 <p>Both plugins, and any other caller that takes the mode as text, parse it here, so an unknown value
 fails with one message that lists every constant this release supports.</p></div>

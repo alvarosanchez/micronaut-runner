@@ -1369,6 +1369,11 @@ reads every class with a positional read into a pooled buffer instead of mapping
 </dd>
 <dt><a href="io/micronaut/runner/Handlers.html#how-the-handler-gets-installed-heading" class="search-tag-link">How the handler gets installed</a> - Section in class io.micronaut.runner.Handlers</dt>
 <dd>&nbsp;</dd>
+<dt><a href="io/micronaut/runner/build/Compression.html#HYBRID" class="member-name-link">HYBRID</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
+<dd>
+<div class="block">Re-pack every dependency as <a href="io/micronaut/runner/build/Compression.html#STORED"><code>Compression.STORED</code></a> does, but keep the classes the application does not load at
+startup compressed.</div>
+</dd>
 </dl>
 <h2 class="title" id="I:I">I</h2>
 <dl class="index">
@@ -1706,7 +1711,7 @@ AOT cache elsewhere, such as in a container image.</div>
 <dt><a href="io/micronaut/runner/benchmarks/PackagingComparison.html#main(java.lang.String%5B%5D)" class="member-name-link">main(String[])</a> - Static method in class io.micronaut.runner.benchmarks.<a href="io/micronaut/runner/benchmarks/PackagingComparison.html" title="class in io.micronaut.runner.benchmarks">PackagingComparison</a></dt>
 <dd>
 <div class="block">Entry point of the <code>packagingComparison</code> task: <code>--sample --repo --version --out --work</code>, and
-optionally <code>--iterations --seed</code>.</div>
+optionally <code>--iterations --seed --startup-classes</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/benchmarks/PackagingProfile.html#main(java.lang.String%5B%5D)" class="member-name-link">main(String[])</a> - Static method in class io.micronaut.runner.benchmarks.<a href="io/micronaut/runner/benchmarks/PackagingProfile.html" title="class in io.micronaut.runner.benchmarks">PackagingProfile</a></dt>
 <dd>
@@ -2077,7 +2082,7 @@ and so is case, so <code>" Positional "</code> is <a href="io/micronaut/runner/b
 <dt><a href="io/micronaut/runner/build/Compression.html#parse(java.lang.String)" class="member-name-link">parse(String)</a> - Static method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
 <dd>
 <div class="block">Reads a compression mode the way a build script or a POM spells it: surrounding whitespace is ignored
-and so is case, so <code>" Preserve "</code> is <a href="io/micronaut/runner/build/Compression.html#PRESERVE"><code>Compression.PRESERVE</code></a>.</div>
+and so is case, so <code>" Preserve "</code> is <a href="io/micronaut/runner/build/Compression.html#PRESERVE"><code>Compression.PRESERVE</code></a> and <code>"hybrid"</code> is <a href="io/micronaut/runner/build/Compression.html#HYBRID"><code>Compression.HYBRID</code></a>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#parseURL(java.net.URL,java.lang.String,int,int)" class="member-name-link">parseURL(URL, String, int, int)</a> - Method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>

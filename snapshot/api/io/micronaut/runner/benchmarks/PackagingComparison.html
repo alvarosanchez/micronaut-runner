@@ -77,7 +77,10 @@ loadScripts(document, 'script');</script>
 <div class="block">Times Runner and Shadow packaging of a copy of benchmark-large in one warm, dedicated Gradle daemon. Each round
 runs an untimed <code>classes</code> settle, the <code>rerun</code> block (<code>&lt;task&gt; --rerun</code>: the cold packaging path)
 and the <code>edit</code> block (a bytecode-changing edit, then <code>&lt;task&gt;</code>), each in a fresh seeded order. Task
-time comes from the init script's "PACKAGING_TASK" line, wall time spans <code>gradlew</code>; pairs match by round.</div>
+time comes from the init script's "PACKAGING_TASK" line, wall time spans <code>gradlew</code>; pairs match by round.
+
+<p>With <code>--startup-classes &lt;file&gt;</code> it also times "runner-stored-hybrid": <code>micronautRunnerJar</code> with HYBRID
+compression and that startup class list. Without it, the variants and every invocation are the four below.</p></div>
 </div>
 </section>
 <section class="summary">
@@ -97,7 +100,7 @@ time comes from the init script's "PACKAGING_TASK" line, wall time spans <code>g
 <div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#main(java.lang.String%5B%5D)" class="member-name-link">main</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>[]&nbsp;args)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Entry point of the <code>packagingComparison</code> task: <code>--sample --repo --version --out --work</code>, and
-optionally <code>--iterations --seed</code>.</div>
+optionally <code>--iterations --seed --startup-classes</code>.</div>
 </div>
 </div>
 </div>
@@ -123,7 +126,7 @@ optionally <code>--iterations --seed</code>.</div>
 <div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type">void</span>&nbsp;<span class="element-name">main</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>[]&nbsp;args)</span>
                  throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Exception.html" title="class or interface in java.lang" class="external-link">Exception</a></span></div>
 <div class="block">Entry point of the <code>packagingComparison</code> task: <code>--sample --repo --version --out --work</code>, and
-optionally <code>--iterations --seed</code>. Fails if a nested build fails or prints no marker.</div>
+optionally <code>--iterations --seed --startup-classes</code>. Fails if a nested build fails or prints no marker.</div>
 <dl class="notes">
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Exception.html" title="class or interface in java.lang" class="external-link">Exception</a></code></dd>
