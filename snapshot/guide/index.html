@@ -781,7 +781,7 @@ synthetic record for each one instead.</p></td>
 <div class="paragraph">
 <p>By default each dependency is re-packed so that its own entries are <code>STORED</code> too, which removes
 decompression from class loading at the cost of a larger archive. Re-packing also drops signature files
-(<code>META-INF/<strong>.SF</code>, <code></strong>.DSA</code>, <code><strong>.RSA</code>, <code></strong>.EC</code>, <code>META-INF/SIG-*</code>) and <code>META-INF/INDEX.LIST</code>. Manifests are
+(<code>META-INF/*.SF</code>, <code>*.DSA</code>, <code>*.RSA</code>, <code>*.EC</code>, <code>META-INF/SIG-*</code>) and <code>META-INF/INDEX.LIST</code>. Manifests are
 never rewritten, so package metadata and sealing survive intact. By default, re-packing also strips
 local-variable tables from dependency classes, which then carry new CRC-32 values; see
 <a href="#localVariableTables">Local-variable tables</a>. By default it also rewrites eligible lambda call sites and adds a
