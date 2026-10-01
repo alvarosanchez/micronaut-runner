@@ -19,6 +19,7 @@ import io.micronaut.runner.IndexFormat;
 
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
+import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -76,18 +77,33 @@ import java.util.zip.Inflater;
  * {@link Arena}. Every local file header is checked against its central directory record, and every data
  * descriptor against the sizes and CRC-32 it repeats, by reading them from that mapping, so opening costs no
  * system call and no array per entry. The central directory is copied out of the mapping once, and the
- * manifest is only read when {@link #manifest()} asks for it. {@link #read(ZipEntryInfo)} copies from the
- * mapping as well; {@link #transfer(ZipEntryInfo, OutputStream)} streams through the file channel the
- * reader also keeps open, in 64 KiB chunks.</p>
+ * manifest is only read when {@link #manifest()} asks for it. Entry data is read through the file channel the
+ * reader also keeps open, with positional reads of at most 64 KiB, by {@link #readRaw(ZipEntryInfo)},
+ * {@link #transfer(ZipEntryInfo, OutputStream)} and {@link #read(ZipEntryInfo)} of a stored entry.
+ * {@link #read(ZipEntryInfo)} of a deflated entry copies its compressed bytes out of the mapping instead, in
+ * chunks of at most 64 KiB, each of which the {@link Inflater} consumes before the next is copied.</p>
  *
  * <p>A reader is confined to the thread that opened it: only that thread may use it and close it, and it
  * must never be handed to another thread, whose reads of the mapping would fail. Every reader must be
  * closed, which unmaps the file and then closes the channel. The mapping lives outside the heap and the
  * garbage collector never releases it, and on Windows a mapped file can be neither moved nor deleted.</p>
  *
- * <p>The file must not change while it is open. A read of the mapping that a concurrent truncation left
- * without backing fails with an {@link IOException}; payloads are always copied out of the mapping before
- * they are inflated or checksummed, so a truncation never faults inside native code.</p>
+ * <p>The file must not change while it is open. A positional read stops at the end of the file, at a known
+ * point, so once {@code open} has returned, a truncation makes every later read through the channel of data
+ * that lay past the new end of the file fail with an {@link IOException} that names the file. Reads of the
+ * mapping are different. When a concurrent truncation leaves a mapped page without backing, the JVM raises the
+ * fault of reading it as an {@link InternalError}, and HotSpot throws that error later than the read: at the
+ * thread's next method return or return from native code or the VM, or, from a loop in compiled code, once the
+ * frame has been deoptimized. The reader turns it into the same {@link IOException} when it is thrown inside
+ * one of its reads of the mapping, and two remain:</p>
+ * <ul>
+ *     <li>{@link #read(ZipEntryInfo)} of a deflated entry. The {@link Inflater}'s native call that follows each
+ *     chunk it copies is such a return, inside {@code read}'s handler, so even compiled code throws the error
+ *     there. That relies on where HotSpot delivers the error, which no specification promises.</li>
+ *     <li>{@code open}'s reads of the headers. A truncation that races its last reads of the mapping can have
+ *     the error thrown after {@code open} has returned, in the caller, as an {@code InternalError}.</li>
+ * </ul>
+ * <p>No mapped memory is ever handed to native code, so a truncation never faults inside it.</p>
  *
  * @since 1.0
  */
@@ -462,9 +478,13 @@ final class ZipReader implements Closeable {
     /**
      * Reads an entry's data exactly as it is stored in the archive, without decompressing it.
      *
+     * <p>Nothing checks these bytes, so they are read through the file channel: a file that has lost them
+     * since it was opened fails here instead of leaving the array unfilled.</p>
+     *
      * @param entry an entry of this archive
      * @return {@link ZipEntryInfo#compressedSize()} bytes read from {@link ZipEntryInfo#dataOffset()}
-     * @throws IOException if the data cannot be read, or the entry is larger than the largest Java array
+     * @throws IOException if the data cannot be read, including when the file has been truncated since it was
+     *                     opened, or the entry is larger than the largest Java array
      */
     public byte[] readRaw(ZipEntryInfo entry) throws IOException {
         Objects.requireNonNull(entry, "entry");
@@ -473,20 +493,25 @@ final class ZipReader implements Closeable {
             throw new IOException("Entry '" + entry.name() + "' of " + path + " is too large to read into memory: "
                     + size + " bytes");
         }
-        return bytesAt(entry.dataOffset(), (int) size);
+        requireRange(entry.dataOffset(), size);
+        byte[] result = new byte[(int) size];
+        readFully(entry.dataOffset(), result, 0, result.length);
+        return result;
     }
 
     /**
      * Reads an entry's content, decompressing it when it is deflated and verifying its CRC-32.
      *
-     * <p>The content is copied or inflated straight into an array of its exact size. A deflated entry's
-     * compressed bytes pass through one buffer of at most 64 KiB, and only as large as they are.</p>
+     * <p>The content is read or inflated straight into an array of its exact size: a stored entry's through the
+     * file channel, a deflated entry's from compressed bytes copied out of the mapping through one buffer of at
+     * most 64 KiB, and only as large as they are.</p>
      *
      * @param entry an entry of this archive
      * @return the verified uncompressed content, of length {@link ZipEntryInfo#uncompressedSize()}
-     * @throws IOException if the data cannot be read, its CRC-32 does not match, the compression method is
-     *                     neither stored nor deflated, or the deflate stream is truncated, corrupt,
-     *                     overproduces, or does not consume its complete recorded compressed region
+     * @throws IOException if the data cannot be read, including when the file has been truncated since it was
+     *                     opened, its CRC-32 does not match, the compression method is neither stored nor
+     *                     deflated, or the deflate stream is truncated, corrupt, overproduces, or does not
+     *                     consume its complete recorded compressed region
      */
     public byte[] read(ZipEntryInfo entry) throws IOException {
         Objects.requireNonNull(entry, "entry");
@@ -495,7 +520,7 @@ final class ZipReader implements Closeable {
         byte[] result = new byte[resultSize];
         try {
             if (entry.method() == IndexFormat.METHOD_STORED) {
-                copyFromMapping(entry.dataOffset(), result, 0, resultSize);
+                readFully(entry.dataOffset(), result, 0, resultSize);
                 CRC32 crc = new CRC32();
                 crc.update(result, 0, resultSize);
                 verifyCrc(entry, crc.getValue());
@@ -505,8 +530,11 @@ final class ZipReader implements Closeable {
             inflate(entry, input, Feed.MAPPING, result, null);
             return result;
         } catch (InternalError e) {
-            // The JVM raises the fault of a truncated mapping asynchronously. Compiled code can deliver it after
-            // the copy that caused it has returned, which is outside the handler in copyFromMapping.
+            // The JVM throws the fault of a truncated mapping later than the copy that caused it, after
+            // copyFromMapping's handler. Each chunk of a deflated entry is followed by the Inflater's native call,
+            // whose return HotSpot uses to throw it, inside this handler. A stored entry is read through the
+            // channel because nothing after its copy did: compiled code could return copied zeros whose CRC-32
+            // matched and throw the error in the caller.
             throw unreadable(e);
         }
     }
@@ -581,7 +609,7 @@ final class ZipReader implements Closeable {
         long position = entry.dataOffset();
         while (remaining > 0) {
             int count = (int) Math.min(buffer.length, remaining);
-            readFully(position, buffer, count);
+            readFully(position, buffer, 0, count);
             target.write(buffer, 0, count);
             crc.update(buffer, 0, count);
             position += count;
@@ -632,7 +660,7 @@ final class ZipReader implements Closeable {
                     if (feed == Feed.MAPPING) {
                         copyFromMapping(position, input, 0, count);
                     } else {
-                        readFully(position, input, count);
+                        readFully(position, input, 0, count);
                     }
                     inflater.setInput(input, 0, count);
                     position += count;
@@ -733,20 +761,34 @@ final class ZipReader implements Closeable {
         }
     }
 
-    /** Reads through the channel, which only {@link #transfer(ZipEntryInfo, OutputStream)} does. */
-    private void readFully(long position, byte[] destination, int length) throws IOException {
-        ByteBuffer buffer = ByteBuffer.wrap(destination, 0, length);
+    /**
+     * Reads entry data through the channel, as every read of entry data does except the copies of a deflated
+     * entry's compressed bytes in {@link #read(ZipEntryInfo)}. Each positional read asks for at most
+     * {@link #TRANSFER_BUFFER_SIZE} bytes: the JDK reads a heap buffer through a temporary direct buffer of the
+     * same size, which it then keeps for the thread. Every range the reader reads was checked against the
+     * file's length when it was opened, so meeting the end of the file means the file has been truncated since.
+     */
+    private void readFully(long position, byte[] destination, int offset, int length) throws IOException {
+        ByteBuffer buffer = ByteBuffer.wrap(destination, offset, length);
+        int end = offset + length;
         long at = position;
-        while (buffer.hasRemaining()) {
+        while (buffer.position() < end) {
+            buffer.limit(chunkLimit(buffer.position(), end));
             int read = channel.read(buffer, at);
             if (read < 0) {
-                throw malformed("unexpected end of file at offset " + at);
-            }
-            if (read == 0) {
-                continue;
+                throw unreadable(new EOFException("unexpected end of file at offset " + at));
             }
             at += read;
         }
+    }
+
+    /**
+     * Where the positional read that fills an array from {@code position} towards {@code end} stops: at most
+     * {@link #TRANSFER_BUFFER_SIZE} bytes on. It adds the distance left, which is never more than the array's
+     * length, so it cannot overflow near the largest Java array as {@code position + TRANSFER_BUFFER_SIZE} would.
+     */
+    static int chunkLimit(int position, int end) {
+        return position + Math.min(end - position, TRANSFER_BUFFER_SIZE);
     }
 
     /**
@@ -867,8 +909,9 @@ final class ZipReader implements Closeable {
     }
 
     /**
-     * Turns a failed read of the mapping into the reader's own failure: an access past the end of the
-     * mapping, or the {@link InternalError} an access throws when the file was truncated while it was open.
+     * Turns a failed read into the reader's own failure: an access past the end of the mapping, the
+     * {@link InternalError} an access of the mapping throws when the file was truncated while it was open, or
+     * a positional read that met the end of a file that has shrunk since it was opened.
      */
     private IOException unreadable(Throwable cause) {
         IOException failure = malformed("a read of the file failed; it may have been truncated while it was open");
