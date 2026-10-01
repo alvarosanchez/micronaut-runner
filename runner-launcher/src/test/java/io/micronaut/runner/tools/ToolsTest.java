@@ -1334,8 +1334,9 @@ class ToolsTest {
 
     /**
      * Runs a junction test, then removes every junction still under its temporary directory, so that no walk,
-     * JUnit's cleanup included, can go through one afterwards. A failure to remove one is added to the test's own
-     * failure rather than hiding it.
+     * JUnit's cleanup included, can go through one afterwards. A failure to remove one never changes the test's
+     * result: it is added to the test's own failure rather than hiding it, and after a passing test it is only
+     * reported on the error stream.
      */
     private static void withJunctions(Path root, Executable test) throws Throwable {
         try {
@@ -1348,7 +1349,14 @@ class ToolsTest {
             }
             throw failure;
         }
-        removeJunctions(root);
+        try {
+            removeJunctions(root);
+        } catch (IOException | RuntimeException cleanup) {
+            // Every junction these tests make points inside their own temporary directory, so one left behind can
+            // only lead JUnit's cleanup to files it deletes anyway: report it without failing a passing test.
+            System.err.println("Could not remove every directory junction under " + root + " after the test passed:");
+            cleanup.printStackTrace();
+        }
     }
 
     /**
