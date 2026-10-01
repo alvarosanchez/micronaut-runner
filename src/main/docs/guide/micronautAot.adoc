@@ -40,12 +40,16 @@ and `Mono` are then loaded but not initialised at startup
 |Nothing on Micronaut 5: the framework reads the setting before the generated code sets it
 |===
 
-`replaceLogbackXml` and `optimizeClassLoading` carry the whole startup gain. In paired A/B runs outside the startup
-harness, on `benchmark-large`'s `optimizedJitJarAll` with JDK 25.0.4.1, those two plus `optimizeNetty` made readiness
-47.6 ms (95% CI 42.3 to 58.3) and 57.6 ms (53.7 to 60.9) earlier than no optimizer, in two sessions of 30 pairs, and
-adding `cacheEnvironment`, `deduceEnvironment` and `precomputeOperations` changed nothing measurable (+0.7 ms, −9.3 to
-+12.9, and +2.4 ms, −4.6 to +6.2). Micronaut Launch 5.2.0 and later generate those three as `false`, and so do the
-samples this guide measures.
+`benchmark-large` enables `replaceLogbackXml`, `optimizeClassLoading` and `optimizeNetty`. With those three, in the
+https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119[CI run] of
+<<benchmarkResults,Benchmarks>> (4 vCPUs, JDK 25.0.4.1, 20 pairs), Micronaut AOT made the sample's Shadow JAR ready
+sooner: `shadow-maot` − `shadow` -126.2 ms (-134.1 to -122.6), -9.0%. That is the nearest pair the harness has: it
+compares `optimizedJitJarAll` with the plain Shadow JAR, not with `optimizedJitJarAll` built with every flag off.
+`replaceLogbackXml` and `optimizeClassLoading` carry the whole startup gain, as paired A/B runs of `optimizedJitJarAll`
+outside the harness found, measured locally on a 12-CPU Apple Silicon Mac with Homebrew OpenJDK 25.0.4.1. There,
+adding `cacheEnvironment`, `deduceEnvironment` and `precomputeOperations` to the three changed nothing measurable
+(+0.7 ms, −9.3 to +12.9, and +2.4 ms, −4.6 to +6.2, in two sessions of 30 pairs). Micronaut Launch 5.2.0 and later
+generate those three as `false`, and so do the samples this guide measures.
 
 Micronaut AOT 3 does not optimize service loading. Its `optimizeServiceLoading` flag only logs a warning, so the
 application still discovers its beans and services from `META-INF/micronaut` and `META-INF/services` at startup, in a
@@ -224,11 +228,16 @@ start without its cache. A cache trained on `-all.jar` does not fit `-all-optimi
 
 == Is it worth it
 
-Without a JDK cache, yes: on `benchmark-large` with JDK 25, `-all-optimized.jar` was ready about 78 ms before Micronaut
-AOT's `optimizedJitJarAll`, and even Runner's plain `-all.jar` was about 58 ms ahead of it. With a JDK AOT cache on both
-sides, no: the single `-all-optimized.jar` was about 23 ms behind `optimizedJitJarAll` on JDK 25, and on JDK 27 the
-cache stores a single Runner JAR's application classes only when it is trained as the
-<<aotSingleJar,single-JAR section>> of <<cdsAndAot,Class Data Sharing and the AOT Cache>> describes. These figures
-come from a local macOS session taken before Runner desugared lambdas by default
-(<<desugaredLambdas,Desugared lambdas>>). The CI run in <<micronautAotResults,Benchmarks>>, with desugaring on, points
-the same way on all three pairs.
+Without a JDK cache, yes. In the
+https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119[CI run] of
+<<micronautAotResults,Benchmarks>> (`benchmark-large`, 4 vCPUs, JDK 25.0.4.1, 20 pairs), `-all-optimized.jar` was
+ready sooner than Micronaut AOT's `optimizedJitJarAll`, `runner-maot` − `shadow-maot` -381.3 ms (-394.6 to -373.6),
+and even Runner's plain `-all.jar` was ahead of it, `runner-stored` − `shadow-maot` -348.6 ms (-354.1 to -321.0).
+
+With a JDK AOT cache on both sides, no: the single `-all-optimized.jar` was behind `optimizedJitJarAll`,
+`runner-maot-aot` − `shadow-maot-aot` +36.4 ms (+28.1 to +43.2), and on JDK 27 the cache stores a single Runner JAR's
+application classes only when it is trained as the <<aotSingleJar,single-JAR section>> of
+<<cdsAndAot,Class Data Sharing and the AOT Cache>> describes. For a cached deployment, see
+<<aotLayout,the extracted layout with the AOT cache>>, which `micronautRunnerLayout` and `micronautRunnerJdkAotCache`
+build from the plain `-all.jar`. No run has measured an extracted `-all-optimized.jar`, so this guide claims no gain
+for one.

@@ -99,6 +99,14 @@ worse than the class it replaces, is dropped for that class alone, and the build
 several classes together, so there the unit is the nest: the classes of one top-level class and the ones generated
 for them.
 
+With both transforms on, as with every other default, packaging `benchmark-large` still takes less time than Shadow:
+in the packaging comparison of the
+https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119[CI run] of <<benchmarkResults,Benchmarks>>
+(4 vCPUs, warm Gradle daemon, `--rerun`, 10 rounds), the median `micronautRunnerJar` task action took 1167.9 ms
+against 1347.1 ms for `shadowJar`, `runner-stored` − `shadow` -187.7 ms [-226.8, -113.8]. CI has no packaging row with
+the transforms off; the on and off times under each transform below come from local sessions on another machine, and
+do not compare with these.
+
 Stripping never applies to the application's own classes or to a project dependency (another project of a Gradle
 build, another module of a Maven reactor): they are user code, whose locals users debug. Desugaring applies to
 both. Neither applies to the classes Runner generates into the application layer or to any class of a signed JAR,
@@ -163,31 +171,34 @@ generated, the bridges added and the sites left, by reason. The sites left inclu
 
 On `test-suite/samples/benchmark-large`, desugaring rewrites 2,963 of the 2,992 lambda call sites of the
 dependencies and the application, 361 of them through bridges, with no fallback; none of the 29 it leaves runs
-before the application is ready. Measured by the startup harness (<<benchmarks,Benchmarks>>) against the
-`runner-stored-lambdas` control, 30 interleaved pairs on an Apple Silicon machine with 12 CPUs and Homebrew OpenJDK
-25.0.4.1:
+before the application is ready. Measured by the startup harness against the `runner-stored-lambdas` control, in
+the https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119[CI run] of
+<<benchmarkResults,Benchmarks>> (4 vCPUs, JDK 25.0.4.1, 20 interleaved pairs; memory at readiness as medians):
 
 [cols="40,60",options="header"]
 |===
 |Measure |Desugared minus lambdas kept
 
 |Readiness without a JDK cache
-|−38.9 ms paired median, 95% CI [−47.3, −30.2] (386.9 ms against 422.9 ms)
+|-137.5 ms paired median (-147.9 to -122.3), 939.6 ms against 1079.5 ms
 
 |Readiness with the JDK AOT cache
-|−38.0 ms, 95% CI [−41.6, −33.9] (220.2 ms against 259.7 ms)
+|-127.8 ms (-135.0 to -113.9), 553.5 ms against 675.6 ms
 
-|Maximum RSS
-|135.7 against 170.9 MiB without a cache, 144.4 against 164.1 MiB with the AOT cache (medians of three runs)
+|RSS at readiness
+|138.7 against 164.2 MiB without a cache, 139.4 against 172.3 MiB with the AOT cache
+
+|Private memory (`RssAnon`) at readiness
+|83.4 against 111.2 MiB without a cache, 81.6 against 116.9 MiB with the AOT cache
 
 |Archive size
-|36,023,843 against 32,810,600 bytes raw (+9.8%), 8,781,234 against 8,367,796 bytes gzip -6 (+4.9%); the AOT cache
-is 0.6 MB larger
+|34.4 against 31.3 MiB raw (1.10×), 8.4 against 8.0 MiB gzip -6 (1.05×); the AOT cache is 45,940,736 against
+45,334,528 B
 |===
 
-Packaging does the extra work on the staging threads. With both class transforms on, the sample's
-`micronautRunnerJar` task took 0.26 s instead of 0.11 s with both off, and 0.22 s with desugaring alone off (medians
-of ten warm-daemon rounds), against 0.75 s for its `shadowJar`.
+Packaging does the extra work on the staging threads. Measured locally on a 12-CPU Apple Silicon Mac with Homebrew
+OpenJDK 25.0.4.1 (medians of ten warm-daemon rounds), the sample's `micronautRunnerJar` task took 0.26 s with both
+class transforms on, 0.11 s with both off and 0.22 s with desugaring alone off.
 
 To keep every lambda an `invokedynamic` call site, set the `desugarLambdas` option to `false`. In Gradle:
 
@@ -241,36 +252,41 @@ keeps dependency class bytes as published, and `PRESERVE` keeps whole nested JAR
 archive is byte-reproducible only when it is built with the same JDK build.
 
 On `test-suite/samples/benchmark-large`, stripping rewrites 7,102 of the 8,428 dependency classes and saves
-4,868,965 bytes, with no fallback. Measured by the startup harness (<<benchmarks,Benchmarks>>) against the
-`runner-stored-keepdebug` control, 30 interleaved pairs on an Apple M4 Pro with Homebrew OpenJDK 25.0.4.1:
+4,992,144 bytes, with no fallback, as the build log of the
+https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119[CI run] shows. Measured by the startup
+harness in that run (<<benchmarkResults,Benchmarks>>: 4 vCPUs, JDK 25.0.4.1, 20 interleaved pairs) against the
+`runner-stored-keepdebug` control, except for the memory row:
 
 [cols="40,60",options="header"]
 |===
 |Measure |Stripped minus tables kept
 
 |Readiness without a JDK cache
-|−12.6 ms paired median, 95% CI [−13.9, −8.1] (428.1 ms against 440.6 ms)
+|-19.8 ms paired median (-29.7 to -5.0), 939.6 ms against 952.5 ms
 
 |Readiness with the JDK AOT cache
-|−2.1 ms, 95% CI [−5.1, +1.1]: no measurable gain
+|-4.9 ms (-12.2 to +4.5): no measurable gain
 
-|Maximum RSS with the JDK AOT cache
-|−4.6 MB paired median, 95% CI [−4.9, −3.6] (181.9 MB against 186.3 MB); the AOT cache is 1.7 MB smaller
+|Maximum RSS with the JDK AOT cache, local study below
+|−4.6 MB paired median, 95% CI [−4.9, −3.6] (181.9 MB against 186.3 MB)
 
 |Archive size
-|32,726,207 against 37,590,842 bytes raw (−12.9%), 8,344,903 against 9,686,906 bytes gzip -6 (−13.9%)
+|34.4 against 39.4 MiB raw (0.87×), 8.4 against 9.8 MiB gzip -6 (0.86×); the AOT cache is 45,940,736 against
+47,775,744 B
 |===
 
 The memory row comes from a separate run, because the RSS of a cached start moves by several MB from one trained
 cache to the next, which is more than stripping saves. It is the paired median over 40 pairs of AOT caches, each
 pair trained afresh from the two archives and each archive then started three times; in 5 of the 40 pairs the
-stripped archive used more, by 2.0 MB at most.
+stripped archive used more, by 2.0 MB at most. It was measured locally on an Apple M4 Pro (12 CPUs) with Homebrew
+OpenJDK 25.0.4.1, before Runner precompiled `logback.xml` (<<precompiledLogback>>), generated the static service table
+or desugared lambdas: both archives of each pair configured Logback with Joran. The CI run trains one cache per row,
+so its 5.9 MiB less RSS and 2.7 MiB less private memory (`RssAnon`) at readiness are a single training's difference,
+without an interval.
 
-Packaging does the extra work on the staging threads. With 8 of them, the sample's `micronautRunnerJar` task took
-0.24 s instead of 0.08 s (medians of ten warm-daemon rounds), against 0.73 s for its `shadowJar`.
-
-These figures were taken before Runner precompiled `logback.xml` (<<precompiledLogback>>): both archives of each
-pair configured Logback with Joran, and neither carried the generated configurator.
+Packaging does the extra work on the staging threads. Measured locally on that machine, also before the Logback
+precompilation, the static service table and desugaring, with 8 staging threads, the sample's `micronautRunnerJar`
+task took 0.24 s with stripping and 0.08 s without (medians of ten warm-daemon rounds).
 
 Some libraries read local-variable tables at run time and find nothing once they are gone. When the class path
 contains one of them, the build keeps every table and warns once, naming the JAR and the class:

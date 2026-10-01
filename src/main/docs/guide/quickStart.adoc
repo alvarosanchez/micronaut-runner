@@ -56,7 +56,7 @@ micronaut {
         enabled = true
 
         // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
-        // PRESERVE copies each dependency byte for byte: smaller on disk only (its gzip size is about 1.4x
+        // PRESERVE copies each dependency byte for byte: smaller on disk only (its gzip size is about 1.55x
         // STORED's), and it loads more slowly.
         compression = 'STORED'
 
@@ -101,6 +101,10 @@ micronaut {
     }
 }
 ----
+
+The gzip ratio in the `compression` comment is from the packaging comparison of the
+https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119[CI run] in <<benchmarkResults,Benchmarks>>:
+on `benchmark-large`, 13,626,952 bytes gzip -6 for `PRESERVE` against 8,782,511 for `STORED`.
 
 `micronautRunner { }` is the same extension under another name, for a build without a Micronaut plugin. Each option is
 also a property of the `micronautRunnerJar` task, which takes the extension's value as its default: a setting on the
