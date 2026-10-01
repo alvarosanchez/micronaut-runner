@@ -84,23 +84,15 @@ loadScripts(document, 'script');</script>
 <dd>
 <div class="block">Sets the <code>Add-Opens</code> values.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.html#AMBIENT_JVM_OPTIONS" class="member-name-link">AMBIENT_JVM_OPTIONS</a> - Static variable in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.html" title="class in io.micronaut.runner.build.training">TrainingDriver</a></dt>
-<dd>
-<div class="block">The environment variables through which a JVM takes options nobody passed it.</div>
-</dd>
 <dt><a href="io/micronaut/runner/RunnerClassLoader.html#AOT_TRAINING_PROPERTY" class="member-name-link">AOT_TRAINING_PROPERTY</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/RunnerClassLoader.html" title="class in io.micronaut.runner">RunnerClassLoader</a></dt>
 <dd>
 <div class="block">System property that only the run recording a JDK AOT cache of the single runner jar sets.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheBuilder</a> - Class in <a href="io/micronaut/runner/build/aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></dt>
-<dd>
-<div class="block">Trains a JDK AOT cache for a JAR in place, and verifies it.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheGate.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheGate</a> - Class in <a href="io/micronaut/runner/build/aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheGate.html" class="type-name-link" title="class in io.micronaut.runner.build">AotCacheGate</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
 <div class="block">The verification gate of a trained cache.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheGate.Coverage.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheGate.Coverage</a> - Class in <a href="io/micronaut/runner/build/aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheGate.Coverage.html" class="type-name-link" title="class in io.micronaut.runner.build">AotCacheGate.Coverage</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
 <div class="block">What a strict launch took from the cache.</div>
 </dd>
@@ -109,22 +101,17 @@ loadScripts(document, 'script');</script>
 <div class="block">Builds the self-contained directory of a cached deployment from a Runner JAR: the program, a verified JDK AOT
 cache trained in place, the launch argfile, the identity file, the report and the logs.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a> - Class in <a href="io/micronaut/runner/build/aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheReport.html" class="type-name-link" title="class in io.micronaut.runner.build">AotCacheReport</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
 <div class="block">What the verification gate found, written as <code>aot-report.json</code> next to the cache.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a> - Class in <a href="io/micronaut/runner/build/aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.html" class="type-name-link" title="class in io.micronaut.runner.build">AotCacheSettings</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
 <div class="block">How a JDK AOT cache is built and how strictly it is verified.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a> - Class in <a href="io/micronaut/runner/build/aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.Builder.html" class="type-name-link" title="class in io.micronaut.runner.build">AotCacheSettings.Builder</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
 <div class="block">Collects cache settings, starting from the defaults.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotLaunchOptions</a> - Class in <a href="io/micronaut/runner/build/aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></dt>
-<dd>
-<div class="block">The files that go with a trained cache: the launch argfile, which carries the options production launches
-with, and the identity file, which records what the cache is tied to.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/AotLayout.html" class="type-name-link" title="class in io.micronaut.runner.build">AotLayout</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
@@ -217,10 +204,6 @@ precedence.</div>
 <dd>
 <div class="block">Random access to the bytes of the outer runner archive.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#ARGFILE" class="member-name-link">ARGFILE</a> - Static variable in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html" title="class in io.micronaut.runner.build.aotcache">AotLaunchOptions</a></dt>
-<dd>
-<div class="block">The launch argfile, relative to the output directory.</div>
-</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#ATTR_FORMAT" class="member-name-link">ATTR_FORMAT</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">Manifest attribute carrying the format version, so tooling can detect a runner jar.</div>
@@ -240,7 +223,7 @@ precedence.</div>
 <dd>
 <div class="block">The multi-release feature version that means "base entries only".</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html#build()" class="member-name-link">build()</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.Builder.html#build()" class="member-name-link">build()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build">AotCacheSettings.Builder</a></dt>
 <dd>
 <div class="block">Validates and builds the settings.</div>
 </dd>
@@ -252,15 +235,11 @@ precedence.</div>
 <dd>
 <div class="block">Validates and builds the settings.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html#build(io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.util.List,java.util.Map,io.micronaut.runner.build.BuildLogger)" class="member-name-link">build(AotCacheSettings, Path, Path, String, TrainingSettings, List, Map, BuildLogger)</a> - Static method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheBuilder</a></dt>
-<dd>
-<div class="block">Trains, creates and verifies a cache in a directory.</div>
-</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#build(io.micronaut.runner.build.RunnerJarSpec,io.micronaut.runner.build.BuildLogger)" class="member-name-link">build(RunnerJarSpec, BuildLogger)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarBuilder.html" title="class in io.micronaut.runner.build">RunnerJarBuilder</a></dt>
 <dd>
 <div class="block">Packages an application.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#builder()" class="member-name-link">builder()</a> - Static method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.html#builder()" class="member-name-link">builder()</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a></dt>
 <dd>
 <div class="block">Starts from the defaults.</div>
 </dd>
@@ -279,10 +258,6 @@ precedence.</div>
 </dl>
 <h2 class="title" id="I:C">C</h2>
 <dl class="index">
-<dt><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html#CACHE_FILE" class="member-name-link">CACHE_FILE</a> - Static variable in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html" title="class in io.micronaut.runner.build.aotcache">AotLaunchOptions</a></dt>
-<dd>
-<div class="block">The cache, relative to the output directory.</div>
-</dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#CENTRAL_HEADER_SIGNATURE" class="member-name-link">CENTRAL_HEADER_SIGNATURE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
 <div class="block">Central directory file header signature, <code>PK\1\2</code>.</div>
@@ -327,7 +302,7 @@ precedence.</div>
 <dd>
 <div class="block">The coordinates written into the index.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheGate.html#coverage(java.util.List,java.util.List)" class="member-name-link">coverage(List, List)</a> - Static method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheGate.html" title="class in io.micronaut.runner.build.aotcache">AotCacheGate</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheGate.html#coverage(java.util.List,java.util.List)" class="member-name-link">coverage(List, List)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheGate.html" title="class in io.micronaut.runner.build">AotCacheGate</a></dt>
 <dd>
 <div class="block">Counts what a strict launch took from the cache.</div>
 </dd>
@@ -335,7 +310,7 @@ precedence.</div>
 <dd>
 <div class="block">Prints how many CPUs a JVM sees.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/JdkProbe.html#creationFlags()" class="member-name-link">creationFlags()</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/JdkProbe.html" title="class in io.micronaut.runner.build.aotcache">JdkProbe</a></dt>
+<dt><a href="io/micronaut/runner/build/JdkProbe.html#creationFlags()" class="member-name-link">creationFlags()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/JdkProbe.html" title="class in io.micronaut.runner.build">JdkProbe</a></dt>
 <dd>
 <div class="block">The flags cache creation needs on this JDK.</div>
 </dd>
@@ -363,7 +338,7 @@ how a conditional default is chosen, or <code>none</code>.</div>
 <dd>
 <div class="block">The parent the launcher gives a loader for an application.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#defaults()" class="member-name-link">defaults()</a> - Static method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.html#defaults()" class="member-name-link">defaults()</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a></dt>
 <dd>
 <div class="block">The defaults: not strict, no JVM arguments, 10 probes, a coverage of at least 0.95, enforced.</div>
 </dd>
@@ -406,10 +381,6 @@ application's <code>main</code>.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarBuilder.html#dependency-staging-heading" class="search-tag-link">Dependency staging</a> - Section in class io.micronaut.runner.build.RunnerJarBuilder</dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#destroyed()" class="member-name-link">destroyed()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-destroyed"><code>destroyed</code></a> record component.</div>
-</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#DESUGAR_LAMBDAS" class="member-name-link">DESUGAR_LAMBDAS</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
 <div class="block">Whether to replace lambda and method-reference call sites with classes generated when the application is
@@ -614,10 +585,6 @@ alias, and <a href="io/micronaut/runner/IndexFormat.html#NO_INDEX"><code>IndexFo
 </dd>
 <dt><a href="io/micronaut/runner/build/Dependency.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
-<dd>
-<div class="block">Indicates whether some other object is "equal to" this one.</div>
-</dd>
 <dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#equals(java.lang.Object)" class="member-name-link">equals(Object)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
 <dd>
 <div class="block">Compares every setting.</div>
@@ -640,10 +607,6 @@ alias, and <a href="io/micronaut/runner/IndexFormat.html#NO_INDEX"><code>IndexFo
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/Launcher.html#exit-codes-heading" class="search-tag-link">Exit codes</a> - Section in class io.micronaut.runner.Launcher</dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#exitStatus()" class="member-name-link">exitStatus()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-exitStatus"><code>exitStatus</code></a> record component.</div>
-</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#exposure()" class="member-name-link">exposure()</a> - Method in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
 <div class="block">How the build plugins expose the option.</div>
@@ -687,10 +650,6 @@ alias, and <a href="io/micronaut/runner/IndexFormat.html#NO_INDEX"><code>IndexFo
 <dt><a href="io/micronaut/runner/RunnerClassLoader.html#findResources(java.lang.String)" class="member-name-link">findResources(String)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/RunnerClassLoader.html" title="class in io.micronaut.runner">RunnerClassLoader</a></dt>
 <dd>
 <div class="block">Every URL for a resource: one per jar that contributes it, in classpath order.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#forced()" class="member-name-link">forced()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-forced"><code>forced</code></a> record component.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#FORMAT_VERSION" class="member-name-link">FORMAT_VERSION</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
@@ -1106,10 +1065,6 @@ every URL the class loader hands out.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/Dependency.html#hashCode()" class="member-name-link">hashCode()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#hashCode()" class="member-name-link">hashCode()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
-<dd>
-<div class="block">Returns a hash code value for this object.</div>
-</dd>
 <dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#hashCode()" class="member-name-link">hashCode()</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
 <dd>
 <div class="block">Hashes every setting.</div>
@@ -1182,17 +1137,10 @@ launcher never has to parse a nested archive's central directory at startup.</di
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a> - package io.micronaut.runner.build</dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a> - package io.micronaut.runner.build.aotcache</dt>
-<dd>
-<div class="block">Trains, verifies and describes a JDK AOT cache (JEP 483, JEP 514) for an application launched with
-<code>java -jar</code>: a two-step recording and creation through the
-<a href="io/micronaut/runner/build/training/TrainingDriver.html" title="class in io.micronaut.runner.build.training"><code>TrainingDriver</code></a>, a verification gate, the launch argfile and the
-identity file.</div>
-</dd>
 <dt><a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a> - package io.micronaut.runner.build.training</dt>
 <dd>
-<div class="block">Training runs: one launch of an application from the archive a build produced, to learn something from it,
-such as the classes it loads at startup or a JDK cache.</div>
+<div class="block">The settings of a training run: one launch of an application from the archive a build produced, to learn
+something from it, such as the classes it loads at startup or a JDK cache.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a> - package io.micronaut.runner.gradle</dt>
 <dd>&nbsp;</dd>
@@ -1358,13 +1306,13 @@ of the <a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title=
 <div class="block">The number of JDK classes in the recorded startup class list, which the launcher preloads through the
 platform class loader after the archive's classes.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/JdkProbe.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">JdkProbe</a> - Class in <a href="io/micronaut/runner/build/aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></dt>
+<dt><a href="io/micronaut/runner/build/JdkProbe.html" class="type-name-link" title="class in io.micronaut.runner.build">JdkProbe</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
 <div class="block">What a JDK AOT cache is tied to, as one launch of a <code>java</code> executable reports it: the exact VM build,
 the operating system and the CPU architecture, and whether cache creation takes
 <code>-XX:+AOTCompatibleOopCompression</code>.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#jvmArgs()" class="member-name-link">jvmArgs()</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.html#jvmArgs()" class="member-name-link">jvmArgs()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a></dt>
 <dd>
 <div class="block">The JVM arguments of every launch of the cache: the recording, the creation, the strict probes, the smoke
 launch and the argfile.</div>
@@ -1373,9 +1321,9 @@ launch and the argfile.</div>
 <dd>
 <div class="block">JVM arguments of the training launch, placed before the ones the run adds for its purpose, which win.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html#jvmArgs(java.util.List)" class="member-name-link">jvmArgs(List)</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.Builder.html#jvmArgs(java.util.List)" class="member-name-link">jvmArgs(List)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build">AotCacheSettings.Builder</a></dt>
 <dd>
-<div class="block">Sets <a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#jvmArgs()"><code>AotCacheSettings.jvmArgs()</code></a>.</div>
+<div class="block">Sets <a href="io/micronaut/runner/build/AotCacheSettings.html#jvmArgs()"><code>AotCacheSettings.jvmArgs()</code></a>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html#jvmArgs(java.util.List)" class="member-name-link">jvmArgs(List)</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></dt>
 <dd>
@@ -1507,14 +1455,6 @@ archive root.</div>
 <dd>
 <div class="block">Micronaut's service metadata directory, merged into the outer archive root by the packager.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#micronautFromCache()" class="member-name-link">micronautFromCache()</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></dt>
-<dd>
-<div class="block">How many of the <code>io.micronaut</code> classes the smoke launch loaded came from the cache.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#micronautLoaded()" class="member-name-link">micronautLoaded()</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></dt>
-<dd>
-<div class="block">The <code>io.micronaut</code> classes the smoke launch loaded.</div>
-</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" class="type-name-link" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a> - Class in <a href="io/micronaut/runner/gradle/package-summary.html">io.micronaut.runner.gradle</a></dt>
 <dd>
 <div class="block">The packaging options of every archive the plugin builds, and its kill switch.</div>
@@ -1561,13 +1501,13 @@ remains an intact nested jar.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html#%3Cinit%3E()" class="member-name-link">MicronautRunnerPlugin()</a> - Constructor for class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerPlugin.html" title="class in io.micronaut.runner.gradle">MicronautRunnerPlugin</a></dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#minCoverage()" class="member-name-link">minCoverage()</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.html#minCoverage()" class="member-name-link">minCoverage()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a></dt>
 <dd>
 <div class="block">The share of the classes a strict smoke launch loads that must come from the cache, from 0 to 1.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html#minCoverage(double)" class="member-name-link">minCoverage(double)</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.Builder.html#minCoverage(double)" class="member-name-link">minCoverage(double)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build">AotCacheSettings.Builder</a></dt>
 <dd>
-<div class="block">Sets <a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#minCoverage()"><code>AotCacheSettings.minCoverage()</code></a>.</div>
+<div class="block">Sets <a href="io/micronaut/runner/build/AotCacheSettings.html#minCoverage()"><code>AotCacheSettings.minCoverage()</code></a>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#MULTI_RELEASE" class="member-name-link">MULTI_RELEASE</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
@@ -1601,10 +1541,6 @@ remains an intact nested jar.</div>
 <dt><a href="io/micronaut/runner/build/BuildLogger.html#noOp()" class="member-name-link">noOp()</a> - Static method in interface io.micronaut.runner.build.<a href="io/micronaut/runner/build/BuildLogger.html" title="interface in io.micronaut.runner.build">BuildLogger</a></dt>
 <dd>
 <div class="block">A logger that discards everything, for callers that read <a href="io/micronaut/runner/build/RunnerJarResult.html#warnings()"><code>RunnerJarResult.warnings()</code></a> instead.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html#NOTHING" class="member-name-link">NOTHING</a> - Static variable in interface io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html" title="interface in io.micronaut.runner.build.training">TrainingDriver.AfterWorkload</a></dt>
-<dd>
-<div class="block">The callback of a run that has nothing to do at this point.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:O">O</h2>
@@ -1646,10 +1582,6 @@ typed setter or not.</div>
 <dd>
 <div class="block">The option's name, in camel case, as a build script, a POM and
 <a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#option(java.lang.String,java.lang.String)"><code>RunnerJarSpec.Builder.option(String, String)</code></a> spell it.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#%3Cinit%3E(int,boolean,boolean,java.time.Duration,java.time.Duration)" class="member-name-link">Outcome(int, boolean, boolean, Duration, Duration)</a> - Constructor for record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
-<dd>
-<div class="block">Creates an instance of a <code>Outcome</code> record class.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Handlers.html#outerJarFile()" class="member-name-link">outerJarFile()</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
@@ -1794,7 +1726,7 @@ packaged, so that the application does not parse XML and run Joran at every star
 <dd>
 <div class="block">Copy every dependency byte for byte, keeping its original compression.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/JdkProbe.html#probe(java.nio.file.Path)" class="member-name-link">probe(Path)</a> - Static method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/JdkProbe.html" title="class in io.micronaut.runner.build.aotcache">JdkProbe</a></dt>
+<dt><a href="io/micronaut/runner/build/JdkProbe.html#probe(java.nio.file.Path)" class="member-name-link">probe(Path)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/JdkProbe.html" title="class in io.micronaut.runner.build">JdkProbe</a></dt>
 <dd>
 <div class="block">Launches <code>java</code> once, with the probe's command, and reads what it prints.</div>
 </dd>
@@ -1822,10 +1754,6 @@ build, or another module of a Maven reactor.</div>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#readFully(long,int)" class="member-name-link">readFully(long, int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
 <div class="block">Copies a region of the archive into a new array.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#readiness()" class="member-name-link">readiness()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-readiness"><code>readiness</code></a> record component.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#readinessPath()" class="member-name-link">readinessPath()</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
 <dd>
@@ -1887,11 +1815,6 @@ to serve it.</div>
 <dd>
 <div class="block">Whether an archive is registered.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#requireOrderlyExit()" class="member-name-link">requireOrderlyExit()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
-<dd>
-<div class="block">Fails unless the application shut down in an orderly way: with status 0, or with the status of a
-JVM that SIGTERM ended when the driver destroyed the process.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Index.html#resolveInJar(int,int,int)" class="member-name-link">resolveInJar(int, int, int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
 <div class="block">Picks the record a chain resolves to within one jar, for enumerating a resource per jar the way
@@ -1899,17 +1822,9 @@ JVM that SIGTERM ended when the driver destroyed the process.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#rules-heading" class="search-tag-link">Rules</a> - Section in enum class io.micronaut.runner.build.RunnerJarOption</dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html#run(java.lang.ProcessHandle)" class="member-name-link">run(ProcessHandle)</a> - Method in interface io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html" title="interface in io.micronaut.runner.build.training">TrainingDriver.AfterWorkload</a></dt>
-<dd>
-<div class="block">Runs while the application is still up and its workload is complete.</div>
-</dd>
 <dt><a href="io/micronaut/runner/Entry.html#run(java.lang.String%5B%5D)" class="member-name-link">run(String[])</a> - Method in interface io.micronaut.runner.<a href="io/micronaut/runner/Entry.html" title="interface in io.micronaut.runner">Entry</a></dt>
 <dd>
 <div class="block">Runs the application.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.html#run(java.nio.file.Path,java.nio.file.Path,java.util.List,io.micronaut.runner.build.training.TrainingSettings,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingDriver.AfterWorkload,io.micronaut.runner.build.BuildLogger)" class="member-name-link">run(Path, Path, List, TrainingSettings, Path, Path, TrainingDriver.AfterWorkload, BuildLogger)</a> - Static method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.html" title="class in io.micronaut.runner.build.training">TrainingDriver</a></dt>
-<dd>
-<div class="block">Runs the application once.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.ArchivePair.html#runnerArchive()" class="member-name-link">runnerArchive()</a> - Method in record class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.ArchivePair.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision.ArchivePair</a></dt>
 <dd>
@@ -2071,25 +1986,25 @@ signal, as on Windows.</div>
 <dd>
 <div class="block">Streams the content of an entry, decompressing it when needed.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#strict()" class="member-name-link">strict()</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.html#strict()" class="member-name-link">strict()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a></dt>
 <dd>
 <div class="block">Whether the launch argfile also carries <code>-XX:AOTMode=on</code>, which turns a cache that no longer matches,
 such as one whose JARs' modification times were rewritten, into a failed launch instead of a slow one.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html#strict(boolean)" class="member-name-link">strict(boolean)</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.Builder.html#strict(boolean)" class="member-name-link">strict(boolean)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build">AotCacheSettings.Builder</a></dt>
 <dd>
-<div class="block">Sets <a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#strict()"><code>AotCacheSettings.strict()</code></a>.</div>
+<div class="block">Sets <a href="io/micronaut/runner/build/AotCacheSettings.html#strict()"><code>AotCacheSettings.strict()</code></a>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
 <div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed, which makes them
 smaller to read and define.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheGate.Coverage.html#summary()" class="member-name-link">summary()</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheGate.Coverage.html" title="class in io.micronaut.runner.build.aotcache">AotCacheGate.Coverage</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheGate.Coverage.html#summary()" class="member-name-link">summary()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheGate.Coverage.html" title="class in io.micronaut.runner.build">AotCacheGate.Coverage</a></dt>
 <dd>
 <div class="block">One line for a log.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#summary()" class="member-name-link">summary()</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheReport.html#summary()" class="member-name-link">summary()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheReport.html" title="class in io.micronaut.runner.build">AotCacheReport</a></dt>
 <dd>
 <div class="block">One line that reports the cache, for a plugin to log, such as <code>Trained and verified the JDK AOT cache
 for the layout target: 97.3% of the classes and 812 of 830 io.micronaut classes from the cache, 0 of 10
@@ -2148,10 +2063,6 @@ then the main attributes, then the package sections.</div>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarResult.html#toString()" class="member-name-link">toString()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>&nbsp;</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#toString()" class="member-name-link">toString()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
-<dd>
-<div class="block">Returns a string representation of this record class.</div>
-</dd>
 <dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#toString()" class="member-name-link">toString()</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
 <dd>
 <div class="block">Describes the settings for a log.</div>
@@ -2160,10 +2071,6 @@ then the main attributes, then the package sections.</div>
 <dd>
 <div class="block">Returns a string representation of this record class.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#total()" class="member-name-link">total()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
-<dd>
-<div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-total"><code>total</code></a> record component.</div>
-</dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJdkAotCache.html#train()" class="member-name-link">train()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJdkAotCache.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJdkAotCache</a></dt>
 <dd>
 <div class="block">Trains and verifies the cache.</div>
@@ -2171,19 +2078,6 @@ then the main attributes, then the package sections.</div>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#training(org.gradle.api.Action)" class="member-name-link">training(Action)</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
 <dd>
 <div class="block">Configures <a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getTraining()"><code>MicronautRunnerExtension.getTraining()</code></a>.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.html" class="type-name-link" title="class in io.micronaut.runner.build.training">TrainingDriver</a> - Class in <a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a></dt>
-<dd>
-<div class="block">Launches an application once for a training run and takes it down again, whatever happens in between.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html" class="type-name-link" title="interface in io.micronaut.runner.build.training">TrainingDriver.AfterWorkload</a> - Interface in <a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a></dt>
-<dd>
-<div class="block">What a training run does between its workload and its stop: read what the application recorded, or
-tell the JVM to finish a recording.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" class="type-name-link" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a> - Record Class in <a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a></dt>
-<dd>
-<div class="block">How a training run ended.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/training/TrainingSettings.html" class="type-name-link" title="class in io.micronaut.runner.build.training">TrainingSettings</a> - Class in <a href="io/micronaut/runner/build/training/package-summary.html">io.micronaut.runner.build.training</a></dt>
 <dd>
@@ -2301,13 +2195,13 @@ the order they are declared.</div>
 <div class="block">The type of the option's value, which decides how its text is read: <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link"><code>Boolean</code></a>,
 <a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link"><code>String</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a>.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#verifyProbes()" class="member-name-link">verifyProbes()</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.html#verifyProbes()" class="member-name-link">verifyProbes()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a></dt>
 <dd>
 <div class="block">How many strict <code>-version</code> probes the gate runs; at least 1.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html#verifyProbes(int)" class="member-name-link">verifyProbes(int)</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheSettings.Builder.html#verifyProbes(int)" class="member-name-link">verifyProbes(int)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build">AotCacheSettings.Builder</a></dt>
 <dd>
-<div class="block">Sets <a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#verifyProbes()"><code>AotCacheSettings.verifyProbes()</code></a>.</div>
+<div class="block">Sets <a href="io/micronaut/runner/build/AotCacheSettings.html#verifyProbes()"><code>AotCacheSettings.verifyProbes()</code></a>.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:W">W</h2>
@@ -2332,14 +2226,6 @@ dependency whose signatures were removed, a <code>Class-Path</code> attribute th
 <dt><a href="io/micronaut/runner/protocol/jar/Handler.html#withCachedForm(java.lang.String)" class="member-name-link">withCachedForm(String)</a> - Static method in class io.micronaut.runner.protocol.jar.<a href="io/micronaut/runner/protocol/jar/Handler.html" title="class in io.micronaut.runner.protocol.jar">Handler</a></dt>
 <dd>
 <div class="block">Launcher-internal; public only because <a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> is in another package.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html#withEnforceCoverage(boolean)" class="member-name-link">withEnforceCoverage(boolean)</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></dt>
-<dd>
-<div class="block">The same settings with coverage enforced or only reported.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#withWarning(java.lang.String)" class="member-name-link">withWarning(String)</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></dt>
-<dd>
-<div class="block">The same report with one more warning.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#workloadCommand()" class="member-name-link">workloadCommand()</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
 <dd>
@@ -2378,13 +2264,9 @@ URL.</div>
 <dd>
 <div class="block">Writes the layout.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/AotCacheOutput.html#write(io.micronaut.runner.build.AotTarget,io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,io.micronaut.runner.build.BuildLogger)" class="member-name-link">write(AotTarget, AotCacheSettings, Path, Path, Path, TrainingSettings, BuildLogger)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheOutput.html" title="class in io.micronaut.runner.build">AotCacheOutput</a></dt>
+<dt><a href="io/micronaut/runner/build/AotCacheOutput.html#write(io.micronaut.runner.build.AotTarget,io.micronaut.runner.build.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,io.micronaut.runner.build.BuildLogger)" class="member-name-link">write(AotTarget, AotCacheSettings, Path, Path, Path, TrainingSettings, BuildLogger)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheOutput.html" title="class in io.micronaut.runner.build">AotCacheOutput</a></dt>
 <dd>
 <div class="block">Stages the program in a directory, replacing what the directory held, trains and verifies the cache.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#write(java.nio.file.Path)" class="member-name-link">write(Path)</a> - Method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></dt>
-<dd>
-<div class="block">Writes the report as JSON to <code>aot-report.json</code> in a directory.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/AotLayout.html#write(java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,java.time.Duration)" class="member-name-link">write(Path, Path, Path, Duration)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotLayout.html" title="class in io.micronaut.runner.build">AotLayout</a></dt>
 <dd>

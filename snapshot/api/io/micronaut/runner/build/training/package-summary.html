@@ -64,8 +64,8 @@ loadScripts(document, 'script');</script>
 <div class="horizontal-scroll">
 <div class="package-signature">package <span class="element-name">io.micronaut.runner.build.training</span></div>
 <section class="package-description" id="package-description">
-<div class="block">Training runs: one launch of an application from the archive a build produced, to learn something from it,
-such as the classes it loads at startup or a JDK cache.
+<div class="block">The settings of a training run: one launch of an application from the archive a build produced, to learn
+something from it, such as the classes it loads at startup or a JDK cache.
 
 <p><b>Stable API.</b> <a href="TrainingSettings.html" title="class in io.micronaut.runner.build.training"><code>TrainingSettings</code></a> and its
 <a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training"><code>Builder</code></a> are stable API for all of 1.x,
@@ -73,15 +73,8 @@ like <a href="../StartupProfileRecorder.html" title="class in io.micronaut.runne
 one 1.x release runs against any later one. From 1.0.0 the build's binary-compatibility check compares them
 with the last release and fails on an incompatible change.</p>
 
-<p><b>Internal.</b> <a href="TrainingDriver.html" title="class in io.micronaut.runner.build.training"><code>TrainingDriver</code></a>, with its nested
-<code>Outcome</code> and <code>AfterWorkload</code>, is <code>@Internal</code>: runner-build's own launcher of training
-runs, public only because code in other packages of runner-build uses it. It may change in any release: the
-binary-compatibility check still compares it, but reports an incompatible change as a warning, not a
-failure.</p>
-
-<p>No annotation marks what is stable: Micronaut's <code>Experimental</code> annotation is not kept in class files
-or shown in the Javadoc, so this text says it, and <code>@Internal</code>, which is kept and shown, marks the
-rest.</p></div>
+<p>No annotation marks them as stable: Micronaut's <code>Experimental</code> annotation is not kept in class files
+or shown in the Javadoc, so this text says it.</p></div>
 </section>
 </div>
 <section class="summary">
@@ -94,45 +87,23 @@ rest.</p></div>
 <div class="table-header col-last">Description</div>
 <div class="col-first even-row-color"><a href="../package-summary.html">io.micronaut.runner.build</a></div>
 <div class="col-last even-row-color">&nbsp;</div>
-<div class="col-first odd-row-color"><a href="../aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></div>
-<div class="col-last odd-row-color">
-<div class="block">Trains, verifies and describes a JDK AOT cache (JEP 483, JEP 514) for an application launched with
-<code>java -jar</code>: a two-step recording and creation through the
-<a href="TrainingDriver.html" title="class in io.micronaut.runner.build.training"><code>TrainingDriver</code></a>, a verification gate, the launch argfile and the
-identity file.</div>
-</div>
 </div>
 </div>
 </li>
 <li>
 <div id="class-summary">
-<div class="table-tabs" role="tablist" aria-orientation="horizontal"><button id="class-summary-tab0" role="tab" aria-selected="true" aria-controls="class-summary.tabpanel" tabindex="0" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary', 2)" class="active-table-tab">All Classes and Interfaces</button><button id="class-summary-tab1" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab1', 2)" class="table-tab">Interfaces</button><button id="class-summary-tab2" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab2', 2)" class="table-tab">Classes</button><button id="class-summary-tab4" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab4', 2)" class="table-tab">Record Classes</button></div>
-<div id="class-summary.tabpanel" role="tabpanel" aria-labelledby="class-summary-tab0">
+<div class="caption"><span>Classes</span></div>
 <div class="summary-table two-column-summary">
 <div class="table-header col-first">Class</div>
 <div class="table-header col-last">Description</div>
-<div class="col-first even-row-color class-summary class-summary-tab2"><a href="TrainingDriver.html" title="class in io.micronaut.runner.build.training">TrainingDriver</a></div>
+<div class="col-first even-row-color class-summary class-summary-tab2"><a href="TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></div>
 <div class="col-last even-row-color class-summary class-summary-tab2">
-<div class="block">Launches an application once for a training run and takes it down again, whatever happens in between.</div>
-</div>
-<div class="col-first odd-row-color class-summary class-summary-tab1"><a href="TrainingDriver.AfterWorkload.html" title="interface in io.micronaut.runner.build.training">TrainingDriver.AfterWorkload</a></div>
-<div class="col-last odd-row-color class-summary class-summary-tab1">
-<div class="block">What a training run does between its workload and its stop: read what the application recorded, or
-tell the JVM to finish a recording.</div>
-</div>
-<div class="col-first even-row-color class-summary class-summary-tab4"><a href="TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab4">
-<div class="block">How a training run ended.</div>
-</div>
-<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></div>
-<div class="col-last odd-row-color class-summary class-summary-tab2">
 <div class="block">How a training run exercises the application: how the run knows it is ready, what it asks of it, and how it
 stops it.</div>
 </div>
-<div class="col-first even-row-color class-summary class-summary-tab2"><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab2">
+<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab2">
 <div class="block">Collects training settings, starting from the <a href="TrainingSettings.html#defaults()">defaults</a>.</div>
-</div>
 </div>
 </div>
 </div>

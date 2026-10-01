@@ -56,7 +56,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#method-summary" tabindex="0">Method Summary</a></li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
-<li><a href="#write(io.micronaut.runner.build.AotTarget,io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,io.micronaut.runner.build.BuildLogger)" tabindex="0">write(AotTarget, AotCacheSettings, Path, Path, Path, TrainingSettings, BuildLogger)</a></li>
+<li><a href="#write(io.micronaut.runner.build.AotTarget,io.micronaut.runner.build.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,io.micronaut.runner.build.BuildLogger)" tabindex="0">write(AotTarget, AotCacheSettings, Path, Path, Path, TrainingSettings, BuildLogger)</a></li>
 </ol>
 </li>
 </ol>
@@ -90,7 +90,21 @@ the JDK still did not cache most of those classes.</p>
 only as long as the JARs keep their size and modification time, so a copy of the directory keeps its times,
 as <code>cp -p</code> and Docker <code>COPY</code> do.</p>
 
-<p>Internal to Runner's interim build plugins, which call <a href="#write(io.micronaut.runner.build.AotTarget,io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,io.micronaut.runner.build.BuildLogger)"><code>write(AotTarget, AotCacheSettings, Path, Path, Path, TrainingSettings, BuildLogger)</code></a>: it may change in any release.</p></div>
+<p>The cache engine behind it trains, verifies and describes a JDK AOT cache (JEP 483, JEP 514) for any
+application launched with <code>java -jar</code>: a two-step recording and creation through the
+<code>TrainingDriver</code>, a verification gate, the launch argfile and the identity file. That engine,
+<code>AotCacheBuilder</code>, <code>AotCacheGate</code>, <code>AotCacheReport</code>, <code>AotCacheSettings</code>,
+<code>AotLaunchOptions</code>, <code>Forks</code> and <code>JdkProbe</code>, knows nothing about the Runner JAR, although it
+shares this package with it: it takes a directory and the name of the JAR to launch in it, and it uses
+<code>java.base</code>, <a href="BuildLogger.html" title="interface in io.micronaut.runner.build"><code>BuildLogger</code></a>, <a href="training/TrainingSettings.html" title="class in io.micronaut.runner.build.training"><code>TrainingSettings</code></a> and the <code>TrainingDriver</code> only, which a
+test checks in the class files. Runner-only; the Micronaut Docker support trains inside images with
+plugin-local scripts (micronaut-projects/micronaut-gradle-plugin#1379,
+micronaut-projects/micronaut-maven-plugin#1721).</p>
+
+<p>Internal to Runner's interim build plugins, which call <a href="#write(io.micronaut.runner.build.AotTarget,io.micronaut.runner.build.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,io.micronaut.runner.build.BuildLogger)"><code>write(AotTarget, AotCacheSettings, Path, Path, Path, TrainingSettings, BuildLogger)</code></a>: it may change in any release. Of the
+engine, <a href="AotCacheSettings.html" title="class in io.micronaut.runner.build"><code>AotCacheSettings</code></a> with its <code>Builder</code> and <a href="AotCacheReport.html" title="class in io.micronaut.runner.build"><code>AotCacheReport</code></a> are public for the plugins,
+and <a href="JdkProbe.html" title="class in io.micronaut.runner.build"><code>JdkProbe</code></a> and <a href="AotCacheGate.html" title="class in io.micronaut.runner.build"><code>AotCacheGate</code></a> with its <code>Coverage</code> for Runner's benchmarks. Each of them is
+<code>@Internal</code>, and the rest of the engine is package-private.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -110,9 +124,9 @@ as <code>cp -p</code> and Docker <code>COPY</code> do.</p>
 <div class="table-header col-first">Modifier and Type</div>
 <div class="table-header col-second">Method</div>
 <div class="table-header col-last">Description</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="aotcache/AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#write(io.micronaut.runner.build.AotTarget,io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,io.micronaut.runner.build.BuildLogger)" class="member-name-link">write</a><wbr>(<a href="AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a>&nbsp;target,
- <a href="aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a>&nbsp;settings,
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="AotCacheReport.html" title="class in io.micronaut.runner.build">AotCacheReport</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#write(io.micronaut.runner.build.AotTarget,io.micronaut.runner.build.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,io.micronaut.runner.build.BuildLogger)" class="member-name-link">write</a><wbr>(<a href="AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a>&nbsp;target,
+ <a href="AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a>&nbsp;settings,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;java,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;runnerJar,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;out,
@@ -139,11 +153,11 @@ as <code>cp -p</code> and Docker <code>COPY</code> do.</p>
 <h2>Method Details</h2>
 <ul class="member-list">
 <li>
-<section class="detail" id="write(io.micronaut.runner.build.AotTarget,io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,io.micronaut.runner.build.BuildLogger)">
+<section class="detail" id="write(io.micronaut.runner.build.AotTarget,io.micronaut.runner.build.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,io.micronaut.runner.build.training.TrainingSettings,io.micronaut.runner.build.BuildLogger)">
 <h3>write</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="aotcache/AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></span>&nbsp;<span class="element-name">write</span><wbr><span class="parameters">(<a href="AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a>&nbsp;target,
- <a href="aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a>&nbsp;settings,
+<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="AotCacheReport.html" title="class in io.micronaut.runner.build">AotCacheReport</a></span>&nbsp;<span class="element-name">write</span><wbr><span class="parameters">(<a href="AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a>&nbsp;target,
+ <a href="AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a>&nbsp;settings,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;java,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;runnerJar,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;out,

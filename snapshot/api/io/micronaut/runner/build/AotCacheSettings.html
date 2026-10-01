@@ -5,16 +5,16 @@
 <title>AotCacheSettings (runner-parent 1.0.0-SNAPSHOT API)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<meta name="description" content="declaration: package: io.micronaut.runner.build.aotcache, class: AotCacheSettings">
+<meta name="description" content="declaration: package: io.micronaut.runner.build, class: AotCacheSettings">
 <meta name="generator" content="javadoc/ClassWriter">
-<link rel="stylesheet" type="text/css" href="../../../../../resource-files/jquery-ui.min.css">
-<link rel="stylesheet" type="text/css" href="../../../../../resource-files/stylesheet.css">
-<script type="text/javascript" src="../../../../../script-files/script.js"></script>
-<script type="text/javascript" src="../../../../../script-files/jquery-3.7.1.min.js"></script>
-<script type="text/javascript" src="../../../../../script-files/jquery-ui.min.js"></script>
+<link rel="stylesheet" type="text/css" href="../../../../resource-files/jquery-ui.min.css">
+<link rel="stylesheet" type="text/css" href="../../../../resource-files/stylesheet.css">
+<script type="text/javascript" src="../../../../script-files/script.js"></script>
+<script type="text/javascript" src="../../../../script-files/jquery-3.7.1.min.js"></script>
+<script type="text/javascript" src="../../../../script-files/jquery-ui.min.js"></script>
 </head>
 <body class="class-declaration-page">
-<script type="text/javascript">const pathtoroot = "../../../../../";
+<script type="text/javascript">const pathtoroot = "../../../../";
 loadScripts(document, 'script');</script>
 <noscript>
 <div>JavaScript is disabled on your browser.</div>
@@ -27,19 +27,19 @@ loadScripts(document, 'script');</script>
 <div class="nav-menu-button"><button id="navbar-toggle-button" aria-controls="navbar-top" aria-expanded="false" aria-label="Toggle navigation links"><span class="nav-bar-toggle-icon">&nbsp;</span><span class="nav-bar-toggle-icon">&nbsp;</span><span class="nav-bar-toggle-icon">&nbsp;</span></button></div>
 <div class="skip-nav"><a href="#skip-navbar-top" title="Skip navigation links">Skip navigation links</a></div>
 <ul id="navbar-top-firstrow" class="nav-list" title="Navigation">
-<li><a href="../../../../../index.html">Overview</a></li>
+<li><a href="../../../../index.html">Overview</a></li>
 <li class="nav-bar-cell1-rev">Class</li>
 <li><a href="package-tree.html">Tree</a></li>
-<li><a href="../../../../../index-all.html">Index</a></li>
-<li><a href="../../../../../search.html">Search</a></li>
-<li><a href="../../../../../help-doc.html#class">Help</a></li>
+<li><a href="../../../../index-all.html">Index</a></li>
+<li><a href="../../../../search.html">Search</a></li>
+<li><a href="../../../../help-doc.html#class">Help</a></li>
 </ul>
 </div>
 </div>
 <div class="sub-nav">
 <div class="nav-content">
 <ol class="sub-nav-list">
-<li><a href="package-summary.html">io.micronaut.runner.build.aotcache</a></li>
+<li><a href="package-summary.html">io.micronaut.runner.build</a></li>
 <li><a href="AotCacheSettings.html" class="current-selection">AotCacheSettings</a></li>
 </ol>
 <div class="nav-list-search"><input type="text" id="search-input" disabled placeholder="Search documentation (type /)" aria-label="Search in documentation" autocomplete="off" spellcheck="false"><input type="reset" id="reset-search" disabled value="Reset"></div>
@@ -59,7 +59,6 @@ loadScripts(document, 'script');</script>
 <ol class="toc-list">
 <li><a href="#defaults()" tabindex="0">defaults()</a></li>
 <li><a href="#builder()" tabindex="0">builder()</a></li>
-<li><a href="#withEnforceCoverage(boolean)" tabindex="0">withEnforceCoverage(boolean)</a></li>
 <li><a href="#strict()" tabindex="0">strict()</a></li>
 <li><a href="#jvmArgs()" tabindex="0">jvmArgs()</a></li>
 <li><a href="#verifyProbes()" tabindex="0">verifyProbes()</a></li>
@@ -67,14 +66,14 @@ loadScripts(document, 'script');</script>
 </ol>
 </li>
 </ol>
-<button class="hide-sidebar"><span>Hide sidebar&nbsp;</span><img src="../../../../../resource-files/left.svg" alt="Hide sidebar"></button><button class="show-sidebar"><img src="../../../../../resource-files/right.svg" alt="Show sidebar"><span>&nbsp;Show sidebar</span></button></nav>
+<button class="hide-sidebar"><span>Hide sidebar&nbsp;</span><img src="../../../../resource-files/left.svg" alt="Hide sidebar"></button><button class="show-sidebar"><img src="../../../../resource-files/right.svg" alt="Show sidebar"><span>&nbsp;Show sidebar</span></button></nav>
 <main role="main">
 <!-- ======== START OF CLASS DATA ======== -->
 <div class="header">
 <h1 title="Class AotCacheSettings" class="title">Class AotCacheSettings</h1>
 </div>
 <div class="inheritance" title="Inheritance Tree"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">java.lang.Object</a>
-<div class="inheritance">io.micronaut.runner.build.aotcache.AotCacheSettings</div>
+<div class="inheritance">io.micronaut.runner.build.AotCacheSettings</div>
 </div>
 <section class="class-description" id="class-description">
 <hr>
@@ -86,8 +85,7 @@ loadScripts(document, 'script');</script>
 <a href="#defaults()"><code>defaults()</code></a> and replace only what the user set, so every default lives here.
 
 <p>Internal to Runner's interim build plugins: it may change in any release. It is a final class rather than
-a record so that only what another package calls is public: the plugins read the defaults and build settings,
-and <code>AotCacheOutput</code> reads <a href="#jvmArgs()"><code>jvmArgs()</code></a> and decides <a href="#withEnforceCoverage(boolean)"><code>withEnforceCoverage(boolean)</code></a>.</p></div>
+a record so that only what the plugins call is public: they read the defaults and build settings.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -106,7 +104,7 @@ and <code>AotCacheOutput</code> reads <a href="#jvmArgs()"><code>jvmArgs()</code
 <div class="table-header col-second">Class</div>
 <div class="table-header col-last">Description</div>
 <div class="col-first even-row-color"><code>static final class&nbsp;</code></div>
-<div class="col-second even-row-color"><code><a href="AotCacheSettings.Builder.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></code></div>
+<div class="col-second even-row-color"><code><a href="AotCacheSettings.Builder.html" class="type-name-link" title="class in io.micronaut.runner.build">AotCacheSettings.Builder</a></code></div>
 <div class="col-last even-row-color">
 <div class="block">Collects cache settings, starting from the defaults.</div>
 </div>
@@ -124,12 +122,12 @@ and <code>AotCacheOutput</code> reads <a href="#jvmArgs()"><code>jvmArgs()</code
 <div class="table-header col-first">Modifier and Type</div>
 <div class="table-header col-second">Method</div>
 <div class="table-header col-last">Description</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build">AotCacheSettings.Builder</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#builder()" class="member-name-link">builder</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Starts from the defaults.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></code></div>
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#defaults()" class="member-name-link">defaults</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">The defaults: not strict, no JVM arguments, 10 probes, a coverage of at least 0.95, enforced.</div>
@@ -156,11 +154,6 @@ such as one whose JARs' modification times were rewritten, into a failed launch 
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">How many strict <code>-version</code> probes the gate runs; at least 1.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#withEnforceCoverage(boolean)" class="member-name-link">withEnforceCoverage</a><wbr>(boolean&nbsp;enforce)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The same settings with coverage enforced or only reported.</div>
-</div>
 </div>
 </div>
 </div>
@@ -182,7 +175,7 @@ such as one whose JARs' modification times were rewritten, into a failed launch 
 <section class="detail" id="defaults()">
 <h3>defaults</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></span>&nbsp;<span class="element-name">defaults</span>()</div>
+<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a></span>&nbsp;<span class="element-name">defaults</span>()</div>
 <div class="block">The defaults: not strict, no JVM arguments, 10 probes, a coverage of at least 0.95, enforced.</div>
 <dl class="notes">
 <dt>Returns:</dt>
@@ -195,26 +188,11 @@ such as one whose JARs' modification times were rewritten, into a failed launch 
 <section class="detail" id="builder()">
 <h3>builder</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></span>&nbsp;<span class="element-name">builder</span>()</div>
+<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build">AotCacheSettings.Builder</a></span>&nbsp;<span class="element-name">builder</span>()</div>
 <div class="block">Starts from the defaults.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>a new builder</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="withEnforceCoverage(boolean)">
-<h3>withEnforceCoverage</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></span>&nbsp;<span class="element-name">withEnforceCoverage</span><wbr><span class="parameters">(boolean&nbsp;enforce)</span></div>
-<div class="block">The same settings with coverage enforced or only reported.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>enforce</code> - whether the coverage checks fail the build</dd>
-<dt>Returns:</dt>
-<dd>the settings</dd>
 </dl>
 </div>
 </section>

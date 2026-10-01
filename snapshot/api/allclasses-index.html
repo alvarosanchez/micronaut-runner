@@ -55,39 +55,30 @@ loadScripts(document, 'script');</script>
 <div class="summary-table two-column-summary">
 <div class="table-header col-first">Class</div>
 <div class="table-header col-last">Description</div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheBuilder</a></div>
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/AotCacheGate.html" title="class in io.micronaut.runner.build">AotCacheGate</a></div>
 <div class="col-last even-row-color all-classes-table all-classes-table-tab2">
-<div class="block">Trains a JDK AOT cache for a JAR in place, and verifies it.</div>
-</div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/aotcache/AotCacheGate.html" title="class in io.micronaut.runner.build.aotcache">AotCacheGate</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">The verification gate of a trained cache.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/aotcache/AotCacheGate.Coverage.html" title="class in io.micronaut.runner.build.aotcache">AotCacheGate.Coverage</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/AotCacheGate.Coverage.html" title="class in io.micronaut.runner.build">AotCacheGate.Coverage</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">What a strict launch took from the cache.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/AotCacheOutput.html" title="class in io.micronaut.runner.build">AotCacheOutput</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/AotCacheOutput.html" title="class in io.micronaut.runner.build">AotCacheOutput</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Builds the self-contained directory of a cached deployment from a Runner JAR: the program, a verified JDK AOT
 cache trained in place, the launch argfile, the identity file, the report and the logs.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/AotCacheReport.html" title="class in io.micronaut.runner.build">AotCacheReport</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">What the verification gate found, written as <code>aot-report.json</code> next to the cache.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/AotCacheSettings.html" title="class in io.micronaut.runner.build">AotCacheSettings</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">How a JDK AOT cache is built and how strictly it is verified.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/aotcache/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
-<div class="block">Collects cache settings, starting from the defaults.</div>
-</div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/aotcache/AotLaunchOptions.html" title="class in io.micronaut.runner.build.aotcache">AotLaunchOptions</a></div>
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build">AotCacheSettings.Builder</a></div>
 <div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
-<div class="block">The files that go with a trained cache: the launch argfile, which carries the options production launches
-with, and the identity file, which records what the cache is tied to.</div>
+<div class="block">Collects cache settings, starting from the defaults.</div>
 </div>
 <div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/AotLayout.html" title="class in io.micronaut.runner.build">AotLayout</a></div>
 <div class="col-last even-row-color all-classes-table all-classes-table-tab2">
@@ -164,7 +155,7 @@ the launch argfile <code>app.jvmopts</code>, the identity file, the report and t
 <div class="block">The JDK AOT cache that <code>micronautRunnerJdkAotCache</code> trains and verifies: the <code>jdkAotCache { }</code> block
 of the <a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle"><code>MicronautRunnerExtension</code></a>.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/aotcache/JdkProbe.html" title="class in io.micronaut.runner.build.aotcache">JdkProbe</a></div>
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/JdkProbe.html" title="class in io.micronaut.runner.build">JdkProbe</a></div>
 <div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">What a JDK AOT cache is tied to, as one launch of a <code>java</code> executable reports it: the exact VM build,
 the operating system and the CPU architecture, and whether cache creation takes
@@ -279,39 +270,26 @@ with, starts each of them many times, and reports how long each takes to answer 
 <div class="block">Records the startup profile of an application: the classes a run of its runner jar loaded, in load order,
 written to a file that is meant to be committed and that the packager embeds for the launcher to preload.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/training/TrainingDriver.html" title="class in io.micronaut.runner.build.training">TrainingDriver</a></div>
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></div>
 <div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
-<div class="block">Launches an application once for a training run and takes it down again, whatever happens in between.</div>
-</div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab1"><a href="io/micronaut/runner/build/training/TrainingDriver.AfterWorkload.html" title="interface in io.micronaut.runner.build.training">TrainingDriver.AfterWorkload</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab1">
-<div class="block">What a training run does between its workload and its stop: read what the application recorded, or
-tell the JVM to finish a recording.</div>
-</div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab4"><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab4">
-<div class="block">How a training run ended.</div>
-</div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">How a training run exercises the application: how the run knows it is ready, what it asks of it, and how it
 stops it.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Collects training settings, starting from the <a href="io/micronaut/runner/build/training/TrainingSettings.html#defaults()">defaults</a>.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">How a training run exercises the application: how the build knows it is ready, what it asks of it and how
 it stops it.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Rejects a Shadow archive that shares a runner archive's output before either producer executes.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab4"><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.ArchivePair.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision.ArchivePair</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab4">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab4"><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.ArchivePair.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision.ArchivePair</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab4">
 <div class="block">A Runner task and the Shadow task that writes the same archive name by default.</div>
 </div>
 </div>
