@@ -138,7 +138,7 @@ public enum RunnerJarOption {
 
     /**
      * Whether to replace lambda and method-reference call sites with classes generated when the application is
-     * packaged. It applies to {@link Compression#STORED} only. See
+     * packaged. It applies to {@link Compression#STORED} and {@link Compression#HYBRID}. See
      * {@link RunnerJarSpec.Builder#desugarLambdas(boolean)}.
      */
     DESUGAR_LAMBDAS("desugarLambdas", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),

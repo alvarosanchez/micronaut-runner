@@ -27,6 +27,7 @@ class CompressionTest {
     void parsesIgnoringCaseAndSurroundingWhitespace() {
         assertEquals(Compression.PRESERVE, Compression.parse(" Preserve "));
         assertEquals(Compression.STORED, Compression.parse("stored"));
+        assertEquals(Compression.HYBRID, Compression.parse("hybrid"));
         for (Compression compression : Compression.values()) {
             assertEquals(compression, Compression.parse(compression.name()));
         }
@@ -42,7 +43,8 @@ class CompressionTest {
         for (Compression compression : Compression.values()) {
             assertTrue(message.contains(compression.name()), () -> message + " does not name " + compression);
         }
-        assertEquals("Unknown compression 'DEFLATED'. Supported values are STORED, PRESERVE.", message);
+        assertEquals("Unknown compression 'DEFLATED'. Supported values are STORED, PRESERVE, HYBRID.",
+                message);
     }
 
     @Test

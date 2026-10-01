@@ -129,8 +129,11 @@ final class SampleBuild implements SampleSteps {
     private static final String GENERATED_LOGBACK_CONFIGURATOR =
             "io.micronaut.runner.generated.logback.LogbackConfigurator";
 
-    /** The startup profile the preload row records in every run, in the artifacts directory. */
+    /** The startup profile the preload, ordered and hybrid rows share, recorded once per run in the artifacts. */
     private static final String STARTUP_PROFILE = "startup-classes.txt";
+
+    /** The launcher property that turns the preloader off. */
+    private static final String PRELOAD_PROPERTY = "micronaut.runner.preload";
 
     /** The working directory of that recording, in the artifacts directory. */
     private static final String STARTUP_PROFILE_WORK = "record-startup-profile";
@@ -175,6 +178,9 @@ final class SampleBuild implements SampleSteps {
 
     /** The harness that trains and verifies the caches; set by {@link #variants(StartupHarness, List)}. */
     private StartupHarness harness;
+
+    /** The startup profile of this run, recorded at most once, for every row that packages one. */
+    private final StartupProfile startupProfile = new StartupProfile(this::recordStartupProfile);
 
     private SampleBuild(Path sample,
                         Path artifacts,
@@ -325,6 +331,14 @@ final class SampleBuild implements SampleSteps {
                     (steps, spec, stored) -> steps.preloadingRunnerJar(stored, spec)),
             cached("runner-stored-preload-aot", "The same preloading Runner jar with a verified JDK AOT cache",
                     EntryMode.STUB, OPT_IN, "runner-stored-preload"),
+            // The preload row's jar, launched without the preloader: it differs from runner-stored only in the
+            // order of each nested jar's entries, startup classes first.
+            row("runner-stored-ordered", "Runner jar, nested dependencies re-packed uncompressed with the startup"
+                    + " classes recorded in this run first; preload off", EntryMode.STUB, OPT_IN, "runner-stored",
+                    (steps, spec, stored) -> steps.orderedRunnerJar(stored, spec)),
+            row("runner-stored-hybrid", "Runner jar, HYBRID: the startup classes recorded in this run stored and"
+                    + " first, every other dependency class deflated; preload off", EntryMode.STUB, OPT_IN,
+                    "runner-stored", (steps, spec, stored) -> steps.hybridRunnerJar(stored, spec)),
             row("runner-stored-positional", "Runner jar, nested dependencies re-packed uncompressed; archiveReads"
                     + " POSITIONAL (index mapped only)", EntryMode.STUB, OPT_IN, null,
                     (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
@@ -509,7 +523,12 @@ final class SampleBuild implements SampleSteps {
                 new ComparisonSpec("runner-stored-prefetch", "runner-stored",
                         "Bean definition prefetch vs the default, which has none"),
                 new ComparisonSpec("runner-stored-prefetch-aot", "runner-stored-aot",
-                        "Bean definition prefetch vs the default, which has none, with the AOT cache"));
+                        "Bean definition prefetch vs the default, which has none, with the AOT cache"),
+                new ComparisonSpec("runner-stored-ordered", "runner-stored",
+                        "Startup classes first in each nested jar vs the jar's own order"),
+                new ComparisonSpec("runner-stored-hybrid", "runner-stored", "HYBRID vs STORED"),
+                new ComparisonSpec("runner-stored-hybrid", "runner-preserve", "HYBRID vs PRESERVE"),
+                new ComparisonSpec("runner-stored-hybrid", "shadow", "Runner HYBRID vs Shadow"));
     }
 
     /**
@@ -725,29 +744,28 @@ final class SampleBuild implements SampleSteps {
     }
 
     /**
-     * Records the startup profile from the list-free {@code runner-stored} jar and packages the same inputs
-     * again with it.
+     * Records the startup profile from the list-free {@code runner-stored} jar, once per run.
      *
      * <p>The recording is the one the build plugins make: {@link StartupProfileRecorder} launches the archive
      * once without a cache through the {@code TrainingDriver}, waits for {@code /hello}, sends it once and reads
-     * the class-load log before the stop. So this row measures the profile a project would commit. It is taken
-     * afresh in every run, because the profile is a measurement input and not a cache. Classes that ForkJoin
-     * workers load can land in a slightly different order each time, so the jar, and with it the identity of
-     * its AOT cache, may differ between runs; that costs only a retraining.</p>
+     * the class-load log before the stop. So the rows that package it measure the profile a project would
+     * commit. It is taken afresh in every run, because the profile is a measurement input and not a cache, and
+     * only once: {@code runner-stored-preload}, {@code runner-stored-ordered} and {@code runner-stored-hybrid} all
+     * package the same recording. Classes that ForkJoin workers load can land in a slightly different order each
+     * time, so the jar, and with it the identity of its AOT cache, may differ between runs; that costs only a
+     * retraining.</p>
      *
      * <p>Under a CPU limit the recording launch does not run under the limit's command prefix, because the driver
      * launches {@code java} itself: it runs on every CPU the harness may use, which pins itself only once the
      * variants are prepared. The list hardly depends on the number of CPUs, since the recording pins the common
-     * pool to parallelism 0, and the row is timed under the limit like every other.</p>
+     * pool to parallelism 0, and the rows are timed under the limit like every other.</p>
      *
      * @param stored the list-free STORED runner jar
-     * @param spec   the preloading row
-     * @return the preloading variant
-     * @throws IOException          if the recording launch fails, or the jar embeds no startup class
+     * @return the profile
+     * @throws IOException          if there is no jar or the recording launch fails
      * @throws InterruptedException if the recording launch is interrupted
      */
-    @Override
-    public Variant preloadingRunnerJar(Variant stored, VariantSpec spec) throws IOException, InterruptedException {
+    private Path recordStartupProfile(Variant stored) throws IOException, InterruptedException {
         if (!stored.available()) {
             throw new IOException("there is no runner jar to record the startup classes from: "
                     + stored.unavailableReason());
@@ -767,7 +785,57 @@ final class SampleBuild implements SampleSteps {
         } catch (IOException e) {
             throw new IOException("recording the startup classes failed: " + e.getMessage(), e);
         }
-        return runnerJar(spec, Compression.STORED, RunnerJarOptions.DEFAULTS.withStartupClasses(profile));
+        return profile;
+    }
+
+    /**
+     * Packages the same inputs as {@code runner-stored} again with this run's startup profile, which the launcher
+     * preloads.
+     *
+     * @param stored the list-free STORED runner jar, which the recording launch runs
+     * @param spec   the preloading row
+     * @return the preloading variant
+     * @throws IOException          if the recording launch fails, or the jar embeds no startup class
+     * @throws InterruptedException if the recording launch is interrupted
+     */
+    @Override
+    public Variant preloadingRunnerJar(Variant stored, VariantSpec spec) throws IOException, InterruptedException {
+        return runnerJar(spec, Compression.STORED,
+                RunnerJarOptions.DEFAULTS.withStartupClasses(startupProfile.get(stored)));
+    }
+
+    /**
+     * The preload row's jar, with this run's startup profile, launched with {@code -Dmicronaut.runner.preload=false}:
+     * it differs from {@code runner-stored} only in the order of each nested jar's entries.
+     *
+     * @param stored the list-free STORED runner jar, which the recording launch runs
+     * @param spec   the ordered row
+     * @return the ordered variant
+     * @throws IOException          if the recording launch fails, or the jar embeds no startup class
+     * @throws InterruptedException if the recording launch is interrupted
+     */
+    @Override
+    public Variant orderedRunnerJar(Variant stored, VariantSpec spec) throws IOException, InterruptedException {
+        return runnerJar(spec, Compression.STORED, RunnerJarOptions.DEFAULTS
+                .withStartupClasses(startupProfile.get(stored)).withPreload(false));
+    }
+
+    /**
+     * The ordered row's inputs packaged with {@link Compression#HYBRID} and launched without the preloader: it
+     * differs from {@code runner-stored-ordered} only in how the cold classes are stored. It is unavailable when the
+     * jar holds no deflated nested entry, which means the build fell back to STORED.
+     *
+     * @param stored the list-free STORED runner jar, which the recording launch runs
+     * @param spec   the hybrid row
+     * @return the hybrid variant
+     * @throws IOException          if the recording launch fails, the jar embeds no startup class, or it compressed
+     *                              nothing
+     * @throws InterruptedException if the recording launch is interrupted
+     */
+    @Override
+    public Variant hybridRunnerJar(Variant stored, VariantSpec spec) throws IOException, InterruptedException {
+        return runnerJar(spec, Compression.HYBRID, RunnerJarOptions.DEFAULTS
+                .withStartupClasses(startupProfile.get(stored)).withPreload(false));
     }
 
     @Override
@@ -910,14 +978,52 @@ final class SampleBuild implements SampleSteps {
         EntryMode effectiveEntryMode = inspectEntryMode(output, spec.entryMode());
         inspectArchiveReads(output, jarSpec.archiveReads());
         int preloaded = inspectPreload(output, options.startupClasses());
-        List<String> command = List.of(javaExecutable().toString(), "-jar", output.toAbsolutePath().toString());
+        // Counted only for HYBRID: reading every nested jar as a stream inflates each deflated entry it skips.
+        int[] methods = compression == Compression.HYBRID ? nestedMethods(output) : null;
+        if (methods != null && methods[1] == 0) {
+            throw new IOException("HYBRID was requested, but " + output + " holds no deflated nested entry: the"
+                    + " build fell back to STORED");
+        }
+        List<String> command = new ArrayList<>(List.of(javaExecutable().toString()));
+        boolean preloadOff = Boolean.FALSE.equals(options.preload());
+        if (preloadOff) {
+            command.add("-D" + PRELOAD_PROPERTY + "=false");
+        }
+        command.add("-jar");
+        command.add(output.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", output));
         String buildNote = (result.staticServiceSlots() == 0 ? "dynamic service scan"
                 : "static services: " + result.staticServiceSlots() + " slots (core "
                         + result.staticServicesCoreVersion().orElse("unknown") + ")")
-                + (options.startupClasses() == null ? "" : "; " + preloaded + " recorded startup classes preloaded");
+                + (options.startupClasses() == null ? ""
+                        : preloadOff ? "; " + preloaded + " recorded startup classes first, not preloaded"
+                        : "; " + preloaded + " recorded startup classes preloaded")
+                + (methods == null ? "" : "; nested entries: " + methods[0] + " stored, " + methods[1] + " deflated");
         return Variant.available(spec, command, artifacts, output, deploymentSize, effectiveEntryMode, buildNote,
                 List.of(output));
+    }
+
+    /**
+     * Counts the file entries of a runner jar's nested jars by compression method, as {@code inspect} does, by
+     * reading each nested jar under {@link IndexFormat#LIB_PREFIX} as a ZIP stream.
+     *
+     * @return the stored count, then the deflated count
+     */
+    static int[] nestedMethods(Path archive) throws IOException {
+        int[] counts = new int[2];
+        try (java.util.zip.ZipFile outer = new java.util.zip.ZipFile(archive.toFile())) {
+            for (ZipEntry nested : outer.stream().filter(entry -> !entry.isDirectory()
+                    && entry.getName().startsWith(IndexFormat.LIB_PREFIX)).toList()) {
+                try (java.util.zip.ZipInputStream in = new java.util.zip.ZipInputStream(outer.getInputStream(nested))) {
+                    for (ZipEntry entry = in.getNextEntry(); entry != null; entry = in.getNextEntry()) {
+                        if (!entry.isDirectory()) {
+                            counts[entry.getMethod() == ZipEntry.STORED ? 0 : 1]++;
+                        }
+                    }
+                }
+            }
+        }
+        return counts;
     }
 
     /**
@@ -971,13 +1077,15 @@ final class SampleBuild implements SampleSteps {
      *                            for the builder default
      * @param definitionPrefetch  whether to package the bean definition prefetch, or {@code null} for the
      *                            builder default
+     * @param preload             whether the launcher preloads the embedded startup classes, or {@code null} for
+     *                            its default; {@code false} launches with {@code -Dmicronaut.runner.preload=false}
      */
     record RunnerJarOptions(ArchiveReads archiveReads, Boolean precompileLogback, Boolean stripLocalVariables,
                             Path startupClasses, Boolean staticServices, Boolean desugarLambdas,
-                            Boolean definitionPrefetch) {
+                            Boolean definitionPrefetch, Boolean preload) {
 
         /** Every option at the builder default. */
-        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null, null, null, null, null);
+        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null, null, null, null, null, null);
 
         /**
          * These options with another archive read mode.
@@ -987,7 +1095,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withArchiveReads(ArchiveReads value) {
             return new RunnerJarOptions(value, precompileLogback, stripLocalVariables, startupClasses,
-                    staticServices, desugarLambdas, definitionPrefetch);
+                    staticServices, desugarLambdas, definitionPrefetch, preload);
         }
 
         /**
@@ -998,7 +1106,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withPrecompileLogback(boolean value) {
             return new RunnerJarOptions(archiveReads, value, stripLocalVariables, startupClasses,
-                    staticServices, desugarLambdas, definitionPrefetch);
+                    staticServices, desugarLambdas, definitionPrefetch, preload);
         }
 
         /**
@@ -1009,7 +1117,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withStripLocalVariables(boolean value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, value, startupClasses,
-                    staticServices, desugarLambdas, definitionPrefetch);
+                    staticServices, desugarLambdas, definitionPrefetch, preload);
         }
 
         /**
@@ -1020,7 +1128,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withStartupClasses(Path value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, value,
-                    staticServices, desugarLambdas, definitionPrefetch);
+                    staticServices, desugarLambdas, definitionPrefetch, preload);
         }
 
         /**
@@ -1031,7 +1139,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withStaticServices(boolean value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
-                    value, desugarLambdas, definitionPrefetch);
+                    value, desugarLambdas, definitionPrefetch, preload);
         }
 
         /**
@@ -1042,7 +1150,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withDesugarLambdas(boolean value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
-                    staticServices, value, definitionPrefetch);
+                    staticServices, value, definitionPrefetch, preload);
         }
 
         /**
@@ -1053,7 +1161,20 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withDefinitionPrefetch(boolean value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
-                    staticServices, desugarLambdas, value);
+                    staticServices, desugarLambdas, value, preload);
+        }
+
+        /**
+         * These options with the launcher's preloader on or off. It is a launch option, not a packaging one: off,
+         * the row launches with {@code -Dmicronaut.runner.preload=false}, so a jar that embeds a startup class list
+         * is measured for its entry order alone.
+         *
+         * @param value whether the launcher preloads the embedded startup classes
+         * @return the new options
+         */
+        RunnerJarOptions withPreload(boolean value) {
+            return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
+                    staticServices, desugarLambdas, definitionPrefetch, value);
         }
     }
 

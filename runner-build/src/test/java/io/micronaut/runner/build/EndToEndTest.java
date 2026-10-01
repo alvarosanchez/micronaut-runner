@@ -933,6 +933,88 @@ class EndToEndTest {
     }
 
     /**
+     * HYBRID with desugaring: the nest host of a listed class is cold, and desugaring rewrote it only to add the
+     * generated class to its {@code NestMembers}. Were its original compressed bytes kept, the generated class
+     * could not call the private method of its nest, so the lambda would fail with an {@code IllegalAccessError}.
+     */
+    @Test
+    void aHybridArchiveDeflatesAColdNestHostAfreshSoItsLambdasStillRun() throws Exception {
+        Path directory = workspace.resolve("hybrid-nest");
+        Path libraryClasses = ClassFixtures.compile(directory.resolve("lib-src"), directory.resolve("lib-classes"),
+                List.of("--release", "25"), Map.of("nest/Outer.java", """
+                        package nest;
+
+                        public class Outer {
+                            private static String secret(String value) {
+                                return "secret:" + value;
+                            }
+
+                            public static class Inner {
+                                public static String run() {
+                                    java.util.function.Function<String, String> reveal = value -> secret(value);
+                                    return reveal.apply("x");
+                                }
+                            }
+                        }
+                        """));
+        // Written by JarOutputStream, so every entry of the dependency is DEFLATED.
+        Path library = ClassFixtures.jar(directory.resolve("nest-lib.jar"), ClassFixtures.classes(libraryClasses));
+        Path application = ClassFixtures.compile(directory.resolve("app-src"), directory.resolve("app-classes"),
+                List.of("--release", "25", "-cp", libraryClasses.toString()), Map.of("nestapp/Main.java", """
+                        package nestapp;
+
+                        public class Main {
+                            public static void main(String[] args) {
+                                System.out.println("inner=" + nest.Outer.Inner.run());
+                            }
+                        }
+                        """));
+        Path list = directory.resolve("startup-classes.txt");
+        Files.writeString(list, "nestapp.Main\nnest.Outer$Inner\n");
+        Path archive = directory.resolve("app.jar");
+
+        RunnerJarResult result = RunnerJarBuilder.build(RunnerJarSpec.builder()
+                .mainClass("nestapp.Main")
+                .applicationOutput(List.of(application))
+                .dependencies(List.of(Dependency.of(library)))
+                .compression(Compression.HYBRID)
+                .startupClasses(list)
+                .output(archive)
+                .build(), BuildLogger.noOp());
+        assertEquals(List.of(), result.warnings());
+        Forked run = fork(archive, workspace, List.of("-Xverify:all", "-Dmicronaut.runner.verify=true"), List.of());
+
+        assertEquals(0, run.status(), run::output);
+        assertTrue(run.output().lines().toList().contains("inner=secret:x"), run::output);
+        byte[] sourceRegion;
+        try (ZipReader reader = ZipReader.open(library)) {
+            ZipEntryInfo outer = reader.entry("nest/Outer.class").orElseThrow();
+            assertEquals(io.micronaut.runner.IndexFormat.METHOD_DEFLATED, outer.method());
+            sourceRegion = reader.readRaw(outer);
+        }
+        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+            Index index = reader.index();
+            int outer = index.findClass("nest.Outer");
+            int inner = index.findClass("nest.Outer$Inner");
+            assertEquals(io.micronaut.runner.IndexFormat.METHOD_DEFLATED, index.entryMethod(outer),
+                    "the cold nest host is compressed");
+            assertEquals(io.micronaut.runner.IndexFormat.METHOD_STORED, index.entryMethod(inner),
+                    "the listed class is stored");
+            byte[] region = ZipReaderTest.bytesAt(archive, index.entryDataOffset(outer),
+                    (int) index.entryCompressedSize(outer));
+            assertFalse(java.util.Arrays.equals(sourceRegion, region),
+                    "the nest host was deflated afresh, not copied");
+            java.lang.classfile.ClassModel host = java.lang.classfile.ClassFile.of().parse(reader.read(outer));
+            List<String> members = host.findAttribute(java.lang.classfile.Attributes.nestMembers()).orElseThrow()
+                    .nestMembers().stream().map(member -> member.asInternalName()).toList();
+            assertTrue(members.contains("nest/Outer$Inner$$Lambda$R0"),
+                    () -> "it inflates to the desugarer's output, whose NestMembers names the generated class: "
+                            + members);
+            assertTrue(index.findClass("nest.Outer$Inner$$Lambda$R0") != io.micronaut.runner.IndexFormat.NO_INDEX);
+        }
+    }
+
+    /**
      * Fails with the application's own {@code FAIL} lines when any assertion inside it did not hold.
      */
     private static void assertPassed(Forked run) {

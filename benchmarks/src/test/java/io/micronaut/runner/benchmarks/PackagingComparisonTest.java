@@ -168,6 +168,41 @@ class PackagingComparisonTest {
     }
 
     @Test
+    void aStartupClassListAddsTheHybridVariantAndChangesNothingElse() {
+        // Without the option, the variants, the comparisons and every invocation stay as they are.
+        assertEquals(PackagingComparison.VARIANTS, PackagingComparison.variants(null));
+        assertEquals(PackagingComparison.COMPARISONS, PackagingComparison.comparisons(PackagingComparison.VARIANTS));
+        for (String variant : PackagingComparison.VARIANTS) {
+            for (boolean rerun : new boolean[] {true, false}) {
+                assertEquals(PackagingComparison.arguments(variant, rerun),
+                        PackagingComparison.arguments(variant, rerun, null), variant);
+            }
+        }
+        assertFalse(PackagingComparison.arguments("runner-stored", true).stream()
+                .anyMatch(argument -> argument.contains("startupClasses")));
+
+        Path list = Path.of("/work/startup-classes.txt");
+        List<String> variants = PackagingComparison.variants(list);
+        assertEquals(List.of("runner-stored", "runner-stored-hybrid", "runner-preserve", "shadow", "shadow-stored"),
+                variants);
+        assertEquals("micronautRunnerJar", PackagingComparison.task("runner-stored-hybrid"));
+        assertEquals(List.of("-PpackagingComparison.compression=HYBRID",
+                        "-PpackagingComparison.startupClasses=" + list, "micronautRunnerJar", "--rerun"),
+                PackagingComparison.arguments("runner-stored-hybrid", true, list));
+        assertEquals(List.of("-PpackagingComparison.compression=HYBRID",
+                        "-PpackagingComparison.startupClasses=" + list, "micronautRunnerJar"),
+                PackagingComparison.arguments("runner-stored-hybrid", false, list));
+        // Only the HYBRID variant packages the list: runner-stored stays the list-free default.
+        assertEquals(List.of("-PpackagingComparison.compression=STORED", "micronautRunnerJar", "--rerun"),
+                PackagingComparison.arguments("runner-stored", true, list));
+        List<ComparisonSpec> comparisons = PackagingComparison.comparisons(variants);
+        assertEquals(PackagingComparison.COMPARISONS, comparisons.subList(0, PackagingComparison.COMPARISONS.size()));
+        assertEquals(List.of(new ComparisonSpec("runner-stored-hybrid", "runner-stored", "HYBRID vs STORED"),
+                        new ComparisonSpec("runner-stored-hybrid", "shadow", "HYBRID vs Shadow")),
+                comparisons.subList(PackagingComparison.COMPARISONS.size(), comparisons.size()));
+    }
+
+    @Test
     void resultsEscapeQuotesBackslashesAndControlCharacters(@TempDir Path directory) throws Exception {
         // BenchmarkProvenance reads java.vendor in its constructor, so the property changes around that call only.
         String vendor = System.getProperty("java.vendor");

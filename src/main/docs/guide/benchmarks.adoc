@@ -20,6 +20,8 @@ the harness works is in https://github.com/{githubSlug}/blob/master/benchmarks/R
 |`runner-stored-aot` |`runner-stored` with a trained JDK AOT cache: the single-file option
 |`runner-stored-reflection`{asterisk} |`runner-stored` entered by reflection instead of the entry stub
 |`runner-stored-preload`{asterisk}, `-aot`{asterisk} |With the startup classes recorded from `runner-stored` in the same run
+|`runner-stored-ordered`{asterisk} |The preload JAR with the preloader off: startup classes first (not in the run below)
+|`runner-stored-hybrid`{asterisk} |`HYBRID` with the same recording, preloader off (not in the run below)
 |`runner-stored-positional`{asterisk}, `-aot`{asterisk} |`archiveReads=POSITIONAL`: only the index is mapped
 |`runner-stored-prefetch`{asterisk}, `-aot`{asterisk} |`definitionPrefetch=true`
 |`runner-stored-joran`{asterisk}, `-aot`{asterisk} |Control: `precompileLogback=false`

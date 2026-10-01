@@ -324,4 +324,16 @@ public final class RunnerBuildTestAccess {
     public static int resolve(Index index, int chainHead, int effectiveVersion) {
         return index.resolve(chainHead, effectiveVersion);
     }
+
+    /**
+     * See {@link Inspect#run(String[], java.io.File, Index, ArchiveSource)}.
+     *
+     * @param archive the runner jar
+     * @param index   its index
+     * @param source  its bytes
+     * @throws java.io.IOException if the inspect mode refuses its arguments
+     */
+    public static void inspect(java.io.File archive, Index index, ArchiveSource source) throws java.io.IOException {
+        Inspect.run(new String[0], archive, index, source);
+    }
 }

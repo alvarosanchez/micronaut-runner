@@ -47,11 +47,39 @@ public enum Compression {
      * what a build that has to reproduce a published jar exactly needs. Classes then have to be inflated
      * when they are loaded.</p>
      */
-    PRESERVE;
+    PRESERVE,
+
+    /**
+     * Re-pack every dependency as {@link #STORED} does, but keep the classes the application does not load at
+     * startup compressed.
+     *
+     * <p>The startup classes come from the recorded startup class list ({@link RunnerJarSpec#startupClasses()}).
+     * A listed class stays stored, so it is still defined straight from the mapped archive. An unlisted class that
+     * no build-time class transform changed keeps its original DEFLATE bytes when the dependency had it deflated
+     * and smaller than the class; an unlisted class that a transform rewrote or generated, such as a stripped or
+     * desugared class, is deflated afresh, because its original compressed bytes would ship the class before the
+     * transform. Everything else stays stored: an unlisted class the dependency stored or could not compress, one
+     * whose fresh deflate is not smaller, a class above the transforms' size limit, resources and directories.
+     * Signature files and {@code META-INF/INDEX.LIST} are dropped as {@link #STORED} drops them, and the
+     * build-time transforms run as they do for {@link #STORED}.</p>
+     *
+     * <p>The archive is smaller on disk and unpacked than a {@link #STORED} one, but larger after layer or
+     * transfer compression, because DEFLATE bytes do not compress again. An unlisted class costs a few
+     * microseconds of inflation when it is loaded.</p>
+     *
+     * <p>Without a startup class list, or with one that names no class of any dependency, there is nothing to
+     * keep stored: the build logs one warning and writes the nested jars exactly as {@link #STORED} would with
+     * the same list.</p>
+     *
+     * <p>A class deflated afresh is compressed by the zlib the build JDK's {@code java.util.zip} uses, so an
+     * archive with rewritten cold classes is byte-reproducible only with the same JDK build and the same zlib.
+     * {@link #STORED} output does not depend on zlib.</p>
+     */
+    HYBRID;
 
     /**
      * Reads a compression mode the way a build script or a POM spells it: surrounding whitespace is ignored
-     * and so is case, so {@code " Preserve "} is {@link #PRESERVE}.
+     * and so is case, so {@code " Preserve "} is {@link #PRESERVE} and {@code "hybrid"} is {@link #HYBRID}.
      *
      * <p>Both plugins, and any other caller that takes the mode as text, parse it here, so an unknown value
      * fails with one message that lists every constant this release supports.</p>

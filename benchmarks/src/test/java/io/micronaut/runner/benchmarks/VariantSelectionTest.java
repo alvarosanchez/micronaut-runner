@@ -81,7 +81,7 @@ class VariantSelectionTest {
 
         assertTrue(all.containsAll(SampleBuild.variantNames()));
         assertEquals(List.of("runner-stored-reflection", "runner-stored-preload", "runner-stored-preload-aot",
-                        "runner-stored-positional", "runner-stored-positional-aot", "runner-stored-joran",
+                        "runner-stored-ordered", "runner-stored-hybrid", "runner-stored-positional", "runner-stored-positional-aot", "runner-stored-joran",
                         "runner-stored-joran-aot", "runner-stored-keepdebug", "runner-stored-keepdebug-aot",
                         "runner-stored-dynamic-services", "runner-stored-dynamic-services-aot",
                         "runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot",
@@ -204,6 +204,38 @@ class VariantSelectionTest {
         assertEquals(List.of("runner-stored", "runner-stored-preload"),
                 names(SampleBuild.variants(steps, List.of("runner-stored-preload", "runner-stored"), log())));
         assertEquals(Map.of("runnerJar:runner-stored", 1, "preloadingRunnerJar:runner-stored", 1), steps.calls);
+    }
+
+    @Test
+    void theOrderedAndHybridRowsAreOptInAndBuiltFromTheStoredRowAloneWhenNamed(@TempDir Path output) {
+        for (String name : List.of("runner-stored-ordered", "runner-stored-hybrid")) {
+            SampleBuild.VariantSpec spec = SampleBuild.spec(name);
+            assertTrue(spec.optIn(), name);
+            assertEquals(EntryMode.STUB, spec.entryMode(), name);
+            assertFalse(spec.aotCache(), name);
+            assertFalse(SampleBuild.variantNames().contains(name), name + " is not a core row");
+            assertFalse(StartupBenchmark.Options.parse(arguments(output)).selection().contains(name),
+                    name + " is built only on request");
+            assertTrue(StartupBenchmark.Options.parse(arguments(output, "--optional-rows")).selection()
+                    .contains(name), name + " is built with the opt-in rows");
+        }
+        StartupBenchmark.Options hybridAlone = StartupBenchmark.Options.parse(
+                arguments(output, "--variants", "runner-stored-hybrid"));
+        assertEquals(List.of(), hybridAlone.requiredVariants(), "an opt-in row never gates");
+        FakeSteps steps = new FakeSteps();
+
+        List<Variant> variants = SampleBuild.variants(steps, hybridAlone.selection(), log());
+
+        assertEquals(List.of("runner-stored-hybrid"), names(variants));
+        assertEquals(Map.of("runnerJar:runner-stored", 1, "hybridRunnerJar:runner-stored", 1), steps.calls);
+
+        steps.calls.clear();
+        assertEquals(List.of("runner-stored-preload", "runner-stored-ordered", "runner-stored-hybrid"),
+                names(SampleBuild.variants(steps, List.of("runner-stored-hybrid", "runner-stored-ordered",
+                        "runner-stored-preload"), log())));
+        assertEquals(Map.of("runnerJar:runner-stored", 1, "preloadingRunnerJar:runner-stored", 1,
+                "orderedRunnerJar:runner-stored", 1, "hybridRunnerJar:runner-stored", 1), steps.calls,
+                "the three rows that package the recording share one runner-stored jar to record it from");
     }
 
     @Test
@@ -447,6 +479,16 @@ class VariantSelectionTest {
         @Override
         public Variant preloadingRunnerJar(Variant stored, SampleBuild.VariantSpec spec) {
             return variant("preloadingRunnerJar:" + stored.name(), spec);
+        }
+
+        @Override
+        public Variant orderedRunnerJar(Variant stored, SampleBuild.VariantSpec spec) {
+            return variant("orderedRunnerJar:" + stored.name(), spec);
+        }
+
+        @Override
+        public Variant hybridRunnerJar(Variant stored, SampleBuild.VariantSpec spec) {
+            return variant("hybridRunnerJar:" + stored.name(), spec);
         }
 
         @Override

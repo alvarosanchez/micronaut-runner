@@ -48,7 +48,7 @@ final class ClassTransforms {
     private static final String APPLICATION_NAME =
             IndexFormat.CLASSES_PREFIX.substring(0, IndexFormat.CLASSES_PREFIX.length() - 1);
 
-    private final ClassTransformPipeline pipeline;
+    private ClassTransformPipeline pipeline;
     private final List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
     /** What the pipeline did to the application layer, first on the class path; {@code null} if it did not run. */
     private ClassTransformPipeline.JarReport applicationReport;
@@ -60,13 +60,14 @@ final class ClassTransforms {
     /**
      * Decides which class transforms run and, when any does, scans the class path they need.
      *
-     * <p>The transforms run only in STORED: in PRESERVE every dependency is nested byte for byte, which is
-     * reported once at info for each enabled option, and the application layer is left alone too. Stripping is
-     * turned off for the whole build, with one warning, when a layer contains a library that reads local-variable
-     * tables at run time. With every transform off, or with only stripping and no dependency, nothing is
-     * scanned. Otherwise one scan task per dependency runs on the pool, each through a {@link ZipReader} of its
-     * own, while the calling thread scans the application layer, and the scans are merged in class-path order.
-     * Desugaring lambdas needs the member tables of every class, so the scans record them when it is on.</p>
+     * <p>The transforms run only in STORED and HYBRID: in PRESERVE every dependency is nested byte for byte,
+     * which is reported once at info for each enabled option, and the application layer is left alone too.
+     * Stripping is turned off for the whole build, with one warning, when a layer contains a library that reads
+     * local-variable tables at run time. With every transform off, or with only stripping and no dependency,
+     * nothing is scanned, and the pipeline, if the options need one, has no step. Otherwise one scan task per
+     * dependency runs on the pool, each through a {@link ZipReader} of its own, while the calling thread scans the
+     * application layer, and the scans are merged in class-path order. Desugaring lambdas needs the member tables
+     * of every class, so the scans record them when it is on.</p>
      *
      * @param spec         the build's spec
      * @param dependencies the dependencies that are nested, in class-path order
@@ -74,12 +75,14 @@ final class ClassTransforms {
      * @param application  scans the application layer, on the calling thread
      * @param logger       where to report that an option has no effect
      * @param warn         where to report that a transform was turned off
+     * @param options      the startup class ranks and the HYBRID flag every stage applies; ignored in PRESERVE
      * @return the build's transforms
      * @throws IOException if a dependency or an application class cannot be read; when several dependencies
      *                     cannot, the failure of the first one on the class path
      */
     static ClassTransforms prepare(RunnerJarSpec spec, List<Dependency> dependencies, ExecutorService pool,
-                                   ApplicationClasses application, BuildLogger logger, Consumer<String> warn)
+                                   ApplicationClasses application, BuildLogger logger, Consumer<String> warn,
+                                   ClassTransformPipeline.Options options)
             throws IOException {
         boolean desugar = spec.desugarLambdas();
         boolean strip = spec.stripLocalVariables();
@@ -94,7 +97,7 @@ final class ClassTransforms {
             return new ClassTransforms(null);
         }
         if (!desugar && (!strip || dependencies.isEmpty())) {
-            return new ClassTransforms(null);
+            return new ClassTransforms(options.any() ? ClassTransformPipeline.ordering(options) : null);
         }
         // The member tables are recorded only for the step that needs them: desugaring.
         ClassPathModel model = scan(spec, dependencies, pool, application, desugar);
@@ -113,7 +116,21 @@ final class ClassTransforms {
                 steps.add(new LocalVariableStripper());
             }
         }
-        return new ClassTransforms(steps.isEmpty() ? null : new ClassTransformPipeline(steps, model));
+        if (steps.isEmpty()) {
+            return new ClassTransforms(options.any() ? ClassTransformPipeline.ordering(options) : null);
+        }
+        return new ClassTransforms(new ClassTransformPipeline(steps, model, options));
+    }
+
+    /**
+     * Turns HYBRID off for the stages that follow, keeping every step and the startup class ranks, so that they
+     * write the nested jars as STORED does with the same list. The builder calls it when a HYBRID staging found
+     * no startup class in any dependency.
+     */
+    void storeColdClasses() {
+        if (pipeline != null && pipeline.options().hybrid()) {
+            pipeline = pipeline.withOptions(new ClassTransformPipeline.Options(pipeline.options().ranks(), false));
+        }
     }
 
     /**

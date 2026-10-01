@@ -17,8 +17,10 @@
 /*
  * Applied with --init-script by PackagingComparison to its copy of benchmark-large.
  *
- * -PpackagingComparison.compression=<mode> sets micronautRunnerJar's compression and names its archive
- * all-<mode>, so each Runner variant keeps its own file. The value is passed through: the task validates it.
+ * -PpackagingComparison.compression=<mode> sets micronautRunnerJar's compression (STORED, PRESERVE or HYBRID) and
+ * names its archive all-<mode>, so each Runner variant keeps its own file. The value is passed through: the task
+ * validates it. -PpackagingComparison.startupClasses=<file> sets micronautRunnerJar's startup class list; the
+ * harness passes it only for the HYBRID variant.
  *
  * Each timed task prints one line after its last action, with the time since its first action:
  *   PACKAGING_TASK <task path> <milliseconds> <absolute archive path>
@@ -27,12 +29,16 @@
 def timed = ['micronautRunnerJar', 'shadowJar', 'shadowJarStored']
 gradle.rootProject { project ->
     def compression = project.providers.gradleProperty('packagingComparison.compression').orNull
+    def startupClasses = project.providers.gradleProperty('packagingComparison.startupClasses').orNull
     if (compression != null) {
         // configureEach runs before the sample registers its tasks and configures them when they are realized.
         project.tasks.configureEach { task ->
             if (task.name == 'micronautRunnerJar') {
                 task.compression = compression
                 task.archiveClassifier = "all-${compression.toLowerCase(Locale.ROOT)}"
+                if (startupClasses != null) {
+                    task.startupClasses = project.file(startupClasses)
+                }
             }
         }
     }

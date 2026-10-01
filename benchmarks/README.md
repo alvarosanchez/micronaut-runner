@@ -48,6 +48,7 @@ the harness works, never for a claim.
 | `-Pbenchmarks.workloads=a,b` | `packagingProfile` | `small,representative,wide` | Synthetic packaging shapes; `no-manifest` is the fourth. |
 | `-Pbenchmarks.packagingIterations=N` | `packagingProfile` | `3` | Independent packaging workers per scenario. |
 | `-Pbenchmarks.packagingComparisonIterations=N` | `packagingComparison` | `10` | Measured rounds after 3 warm-up rounds; 10 is the fewest that give a 95% interval. |
+| `-Pbenchmarks.packagingComparisonStartupClasses=file` | `packagingComparison` | none | Adds `runner-stored-hybrid`: `micronautRunnerJar` with `HYBRID` and this startup class list (relative to the repository root). |
 | `-Pjmh.includes=regex` | `jmh` | everything | Only the matching JMH benchmarks. |
 
 The harness's own options (`--warmup`, `--seed`, `--readiness`, `--timeout`) keep their defaults from Gradle: 3
@@ -116,6 +117,12 @@ service table, and `dynamic service scan` when it does not.
 `src/main/micronaut-runner/startup-classes.txt`, which the samples do not commit, and the harness calls the
 builder, not the plugin convention. The recording launch runs on every CPU, even under `-Pbenchmarks.cpus`; the
 class list barely depends on the CPU count.
+
+The recording is made at most once per run and shared: `runner-stored-ordered` packages the same inputs with it
+exactly as `runner-stored-preload` does (each nested JAR's startup classes first) and launches with
+`-Dmicronaut.runner.preload=false`, so it differs from `runner-stored` only in entry order;
+`runner-stored-hybrid` does the same with `HYBRID` compression, and is unavailable when its JAR holds no deflated
+nested entry (the build fell back to `STORED`). Naming either row builds `runner-stored` and records from it.
 
 In a row name, `maot` is Micronaut AOT and the `-aot` suffix is the JDK AOT cache. The declared pairs group like this:
 
@@ -356,7 +363,10 @@ reported apart from time and memory and are not kernel I/O counters.
 `packagingComparison` packages a real application, a fresh copy of `test-suite/samples/benchmark-large`, in a warm
 Gradle daemon of its own, which is where developers and CI pay for packaging. It compares `micronautRunnerJar`
 with STORED (`runner-stored`) and PRESERVE (`runner-preserve`) compression against `shadowJar` (`shadow`) and the
-sample's STORED control `shadowJarStored` (`shadow-stored`).
+sample's STORED control `shadowJarStored` (`shadow-stored`). With
+`-Pbenchmarks.packagingComparisonStartupClasses=<file>` it also times `runner-stored-hybrid`, `micronautRunnerJar`
+with `HYBRID` compression and that startup class list, compared with `runner-stored` and `shadow`; without the
+option the variants and every invocation are the four above.
 
 - `rerun` runs `<task> --rerun`, which re-executes only the packaging task. `micronautRunnerJar` keeps no
   packaging state between executions, so this is the cold packaging path; there is no separate cold scenario.

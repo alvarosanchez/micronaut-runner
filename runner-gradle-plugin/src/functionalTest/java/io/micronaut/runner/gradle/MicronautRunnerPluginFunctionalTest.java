@@ -269,7 +269,7 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
         String output = buildAndFail(directory, "micronautRunnerJar").getOutput();
 
         // Compression.parse's message, which lists every constant of the packaging library under test.
-        assertTrue(output.contains("Unknown compression 'SQUEEZE'. Supported values are STORED, PRESERVE."),
+        assertTrue(output.contains("Unknown compression 'SQUEEZE'. Supported values are STORED, PRESERVE, HYBRID."),
                 () -> "the failure does not name the bad value and the alternatives:\n" + output);
     }
 
