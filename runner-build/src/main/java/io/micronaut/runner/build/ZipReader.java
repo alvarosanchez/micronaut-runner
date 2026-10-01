@@ -581,8 +581,8 @@ final class ZipReader implements Closeable {
      * Inflates a deflated entry and checks how the stream is framed: it must end exactly at the recorded
      * uncompressed size, consume exactly the recorded compressed region, need no preset dictionary and match
      * the recorded CRC-32. {@link #read(ZipEntryInfo)} and {@link #transfer(ZipEntryInfo, OutputStream)} differ
-     * only in how large a chunk of compressed bytes they read through the channel at once and where the content
-     * goes.
+     * only in the buffers they pass and where the content goes; both read the compressed bytes through the
+     * channel.
      *
      * @param entry  the entry, already checked by {@link #requirePayload(ZipEntryInfo)}
      * @param input  the buffer each chunk of compressed bytes is read into; its length is the chunk size

@@ -103,11 +103,14 @@ class ZipReaderCompiledTruncationTest {
         assertTrue(truncating >= 0, () -> "the probe did not reach the truncation:\n" + output);
         assertTrue(compiledBefore(lines, truncating, probe.compiledMethod()),
                 () -> probe.compiledMethod() + " was not compiled code when the file was truncated:\n" + output);
-        assertEquals(IOException.class.getName(), value(lines, "outcome"), output);
+        // What the probe printed after the truncation, without the JIT's log.
+        String report = String.join("\n", lines.subList(truncating, lines.size()).stream()
+                .filter(line -> !line.matches("\\s*\\d+\\s+\\d+\\s.*")).toList());
+        assertEquals(IOException.class.getName(), value(lines, "outcome"), report);
         String message = value(lines, "message");
-        assertTrue(message.contains(jar.toString()), output);
-        assertTrue(message.contains("truncated"), output);
-        assertEquals("none", value(lines, "late"), output);
+        assertTrue(message.contains(jar.toString()), report);
+        assertTrue(message.contains("truncated"), report);
+        assertEquals("none", value(lines, "late"), report);
     }
 
     /**
