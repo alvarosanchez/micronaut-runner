@@ -31,7 +31,10 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -48,6 +51,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -57,6 +62,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -146,6 +152,9 @@ class ToolsTest {
             "META-INF/services/ch.qos.logback.classic.spi.Configurator";
     private static final long DOS_TIME = 0x00210000L;
     private static final String TRANSFORMS_COUNTS = DEPENDENCY_ONE + "\tstripLocalVariables\t1\t0\t0\t120";
+
+    /** How long a junction test lets one extraction run, so that a walk caught in a junction fails, not hangs. */
+    private static final Duration JUNCTION_TIMEOUT = Duration.ofSeconds(60);
 
     private static final byte[] EMPTY = new byte[0];
     private static final byte[] CONFIGURATION_BYTES = bytes("greeting: hello\n");
@@ -717,6 +726,113 @@ class ToolsTest {
         assertNoLeftovers(parent);
     }
 
+    // The junction tests below mirror the symbolic-link tests above with a Windows directory junction, which
+    // Java reports as a directory rather than as a link (#224). Each one has its own temporary directory and
+    // removes every junction left in it, so that nothing, JUnit's own cleanup included, walks through one.
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void extractReplacesOnlyTheJunctionWhenForced(@TempDir Path parent) throws Throwable {
+        withJunctions(parent, () -> {
+            Path target = Files.createDirectories(parent.resolve("target"));
+            Files.writeString(target.resolve("precious.txt"), "keep me");
+            Files.writeString(Files.createDirectories(target.resolve("nested")).resolve("deep.txt"), "keep me too");
+            Path junction = createJunction(parent.resolve("junction"), target);
+
+            String output = extractWithin(junction, true);
+
+            BasicFileAttributes replaced = Files.readAttributes(junction, BasicFileAttributes.class,
+                    LinkOption.NOFOLLOW_LINKS);
+            assertTrue(replaced.isDirectory() && !replaced.isOther(), "the destination is a plain directory now");
+            assertTrue(Files.isRegularFile(junction.resolve("app.jar")), output);
+            assertEquals(Map.of("precious.txt", "keep me", "nested/deep.txt", "keep me too"), contents(target),
+                    "the junction's former target must keep exactly its files");
+            assertNoLeftovers(parent);
+        });
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void forcedExtractRemovesAJunctionInsideTheOldDestinationAsAJunction(@TempDir Path parent) throws Throwable {
+        withJunctions(parent, () -> {
+            Path outside = Files.createDirectories(parent.resolve("outside"));
+            Files.writeString(outside.resolve("precious.txt"), "keep me");
+            Path destination = Files.createDirectories(parent.resolve("destination"));
+            Files.writeString(destination.resolve("stale.txt"), "old");
+            Path junction = createJunction(destination.resolve("junction"), outside);
+
+            String output = extractWithin(destination, true);
+
+            assertTrue(Files.isRegularFile(destination.resolve("app.jar")), output);
+            assertFalse(Files.exists(destination.resolve("stale.txt"), LinkOption.NOFOLLOW_LINKS));
+            assertFalse(Files.exists(junction, LinkOption.NOFOLLOW_LINKS));
+            assertEquals(Map.of("precious.txt", "keep me"), contents(outside),
+                    "the nested junction's target must keep its files");
+            assertNoLeftovers(parent);
+        });
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void forcedExtractRemovesAJunctionWhoseTargetIsGoneInsideTheOldDestination(@TempDir Path parent)
+            throws Throwable {
+        withJunctions(parent, () -> {
+            Path gone = Files.createDirectories(parent.resolve("gone"));
+            Path destination = Files.createDirectories(parent.resolve("destination"));
+            Files.writeString(destination.resolve("stale.txt"), "old");
+            Path junction = createJunction(destination.resolve("dangling"), gone);
+            Files.delete(gone);
+            assertTrue(Files.exists(junction, LinkOption.NOFOLLOW_LINKS), "the junction outlives its target");
+
+            String output = extractWithin(destination, true);
+
+            assertTrue(Files.isRegularFile(destination.resolve("app.jar")), output);
+            assertFalse(Files.exists(junction, LinkOption.NOFOLLOW_LINKS));
+            assertNoLeftovers(parent);
+        });
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void extractRefusesAJunctionDestinationUpFrontWithoutForce(@TempDir Path parent) throws Throwable {
+        withJunctions(parent, () -> {
+            Path target = Files.createDirectories(parent.resolve("empty"));
+            Path junction = createJunction(parent.resolve("junction"), target);
+
+            IOException failure = assertThrows(IOException.class, () -> extractWithin(junction, false));
+
+            assertTrue(failure.getMessage().contains(junction + " is a directory junction"), failure.getMessage());
+            assertTrue(failure.getMessage().contains(Extract.OPTION_FORCE), failure.getMessage());
+            assertFalse(failure.getMessage().contains("is not empty"), failure.getMessage());
+            assertFalse(failure.getMessage().contains("became occupied"), failure.getMessage());
+            assertJunction(junction, target);
+            assertArrayEquals(new String[0], target.toFile().list(), "the junction's target must stay empty");
+            assertNoLeftovers(parent);
+        });
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void publishWithoutForcePreservesAJunctionThatArrivedAfterTheCheck(@TempDir Path parent) throws Throwable {
+        withJunctions(parent, () -> {
+            Path directory = Files.createDirectories(parent.resolve("directory"));
+            Files.writeString(directory.resolve("precious.txt"), "keep me");
+            Path staged = Files.createDirectories(parent.resolve("staged"));
+            Files.writeString(staged.resolve("app.jar"), "layout");
+            // The junction arrives after the up-front check, so publish meets it first.
+            Path junction = createJunction(parent.resolve("junction"), directory);
+
+            IOException failure = assertThrows(IOException.class, () -> assertTimeoutPreemptively(
+                    JUNCTION_TIMEOUT, () -> Extract.publish(staged, junction, false)));
+
+            assertTrue(failure.getMessage().contains("became occupied"), failure.getMessage());
+            assertJunction(junction, directory);
+            assertEquals(Map.of("precious.txt", "keep me"), contents(directory),
+                    "the junction's target must keep its file");
+            assertEquals("layout", Files.readString(staged.resolve("app.jar")));
+        });
+    }
+
     @Test
     void extractPublishesADirectoryWithTheModeOfAnyNewDirectory() throws Throwable {
         Assumptions.assumeTrue(FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
@@ -1214,6 +1330,122 @@ class ToolsTest {
             Assumptions.assumeTrue(false, "symbolic links are not supported: " + e.getMessage());
             throw e;
         }
+    }
+
+    /**
+     * Runs a junction test, then removes every junction still under its temporary directory, so that no walk,
+     * JUnit's cleanup included, can go through one afterwards. A failure to remove one never changes the test's
+     * result: it is added to the test's own failure rather than hiding it, and after a passing test it is only
+     * reported on the error stream.
+     */
+    private static void withJunctions(Path root, Executable test) throws Throwable {
+        try {
+            test.execute();
+        } catch (Throwable failure) {
+            try {
+                removeJunctions(root);
+            } catch (IOException | RuntimeException cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
+        try {
+            removeJunctions(root);
+        } catch (IOException | RuntimeException cleanup) {
+            // Every junction these tests make points inside their own temporary directory, so one left behind can
+            // only lead JUnit's cleanup to files it deletes anyway: report it without failing a passing test.
+            System.err.println("Could not remove every directory junction under " + root + " after the test passed:");
+            cleanup.printStackTrace();
+        }
+    }
+
+    /**
+     * Makes a directory junction with {@code mklink /J}, which needs neither administrator rights nor Developer
+     * Mode, and fails the test (never skips it) when Windows does not make one.
+     */
+    private static Path createJunction(Path junction, Path target) throws IOException, InterruptedException {
+        Process process = new ProcessBuilder("cmd", "/c", "mklink", "/J", junction.toString(),
+                target.toAbsolutePath().toString())
+                .redirectErrorStream(true)
+                .start();
+        String output;
+        try (InputStream in = process.getInputStream()) {
+            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        int status = process.waitFor();
+        assertEquals(0, status, "mklink /J " + junction + " " + target + " failed: " + output);
+        BasicFileAttributes attributes = Files.readAttributes(junction, BasicFileAttributes.class,
+                LinkOption.NOFOLLOW_LINKS);
+        // The premise of #224: Java reports a junction as a directory, and as "other", never as a link.
+        assertTrue(attributes.isDirectory() && attributes.isOther() && !attributes.isSymbolicLink(),
+                junction + " is not reported the way a junction is");
+        return junction;
+    }
+
+    /**
+     * Removes, as a junction, every directory junction under a directory, wherever a test left it: one that moved
+     * with a renamed destination is found too. Each entry's attributes are read before it is listed, so the sweep
+     * never goes through a junction, and {@code Files.delete} never touches a junction's target.
+     */
+    private static void removeJunctions(Path directory) throws IOException {
+        List<Path> children;
+        try (var listed = Files.list(directory)) {
+            children = listed.toList();
+        }
+        IOException failure = null;
+        for (Path child : children) {
+            try {
+                BasicFileAttributes attributes = Files.readAttributes(child, BasicFileAttributes.class,
+                        LinkOption.NOFOLLOW_LINKS);
+                if (attributes.isDirectory() && attributes.isOther()) {
+                    Files.delete(child);
+                } else if (attributes.isDirectory()) {
+                    removeJunctions(child);
+                }
+            } catch (IOException e) {
+                if (failure == null) {
+                    failure = e;
+                } else {
+                    failure.addSuppressed(e);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
+    /** Extracts the fixture archive into a destination, failing rather than hanging past the time limit. */
+    private static String extractWithin(Path destination, boolean force) throws Throwable {
+        List<String> arguments = new ArrayList<>(List.of(Extract.OPTION_DESTINATION, destination.toString()));
+        if (force) {
+            arguments.add(Extract.OPTION_FORCE);
+        }
+        return assertTimeoutPreemptively(JUNCTION_TIMEOUT,
+                () -> capture(() -> Extract.run(arguments.toArray(new String[0]), archive, index, source)));
+    }
+
+    /**
+     * Asserts that a junction is still in place and still leads to its target. {@code Files.readSymbolicLink}
+     * refuses a junction, so the real paths are compared instead.
+     */
+    private static void assertJunction(Path junction, Path target) throws IOException {
+        BasicFileAttributes attributes = Files.readAttributes(junction, BasicFileAttributes.class,
+                LinkOption.NOFOLLOW_LINKS);
+        assertTrue(attributes.isDirectory() && attributes.isOther(), junction + " is no longer a junction");
+        assertEquals(target.toRealPath(), junction.toRealPath());
+    }
+
+    /** Every file under a directory, by its relative path with {@code /} separators, with its content. */
+    private static Map<String, String> contents(Path directory) throws IOException {
+        Map<String, String> contents = new TreeMap<>();
+        try (var files = Files.walk(directory)) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                contents.put(directory.relativize(file).toString().replace(File.separatorChar, '/'),
+                        Files.readString(file));
+            }
+        }
+        return contents;
     }
 
     /** Fails when a temporary extraction directory was left behind. */
