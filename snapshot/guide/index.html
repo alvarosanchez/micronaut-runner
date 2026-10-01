@@ -1968,9 +1968,11 @@ extracting once at image build time. For that cached deployment, trained and ver
 <div class="paragraph">
 <p>Extraction writes the layout into a temporary sibling directory and renames it into place, so an interrupted
 run leaves no partial tree. Without <code>--force</code>, a destination that exists and is not an empty directory,
-including a symbolic link, is refused and left untouched, also when it appears while extraction runs. With
-<code>--force</code>, the old destination (or only the link, when it is a symbolic link) is renamed to a sibling backup
-until the new layout is in place; if publication fails it is restored, or the error names the backup.</p>
+including a symbolic link or a Windows directory junction, is refused and left untouched, also when it appears
+while extraction runs. With <code>--force</code>, the old destination (or only the link, when it is a symbolic link or a
+directory junction) is renamed to a sibling backup until the new layout is in place; if publication fails it
+is restored, or the error names the backup. Removing that backup never follows a symbolic link or directory
+junction inside it, so no file outside the old destination is touched.</p>
 </div>
 </div>
 </div>

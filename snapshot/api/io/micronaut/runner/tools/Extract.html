@@ -153,10 +153,12 @@ because the JDK's loader honours it.</p>
 <h2 id="safety-heading">Safety</h2>
 <p>Everything is written into a temporary directory beside the destination and renamed into place, so an
 interrupted extraction leaves no half-written tree. Without <code>--force</code>, a destination that exists
-and is not an empty directory, a symbolic link included, is refused and left untouched, also when it
-appears while extraction runs. With <code>--force</code>, the old destination (only the link itself, when it
-is a symbolic link) is renamed to a sibling backup until the new tree is in place, and a failed
-publication restores it or names it in the error. A destination that contains the runner jar is always
+and is not an empty directory, a symbolic link or directory junction included, is refused and left
+untouched, also when it appears while extraction runs. With <code>--force</code>, the old destination (only
+the link itself, when it is a symbolic link or directory junction) is renamed to a sibling backup until
+the new tree is in place, and a failed publication restores it or names it in the error. Removing the
+backup never goes through a symbolic link or directory junction, so nothing outside the old destination
+is touched. A destination that contains the runner jar is always
 refused, also through symbolic-link and case aliases, and every name is checked to resolve inside the
 destination before anything is written. All timestamps are fixed, so extracting one archive twice
 produces the same tree and an AOT training run matches the production copy.</p>
