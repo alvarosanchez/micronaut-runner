@@ -116,10 +116,8 @@ import java.util.zip.CRC32;
  * and the classes it generates join the application layer after the scan and after the application layer was
  * transformed, so no transform rewrites them.</p>
  *
- * <p>{@link DefinitionPrefetchPackager} runs later still, once the Micronaut service entries are merged, because
- * the merged bean definition references decide whether it applies. It adds two classes this library carries and
- * a service registration to the application layer, and replaces the entry stub in place. The static service
- * table is generated after it, so that the table lists the prefetch's {@code ApplicationContextConfigurer}.</p>
+ * <p>{@link DefinitionPrefetchPackager} runs once the Micronaut service entries are merged, which decide whether it
+ * applies, and before the static service table, which has to list the prefetch's configurer.</p>
  *
  * <h2>Application jars</h2>
  * <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
@@ -227,11 +225,8 @@ public final class RunnerJarBuilder {
     private String launcherVersion;
     private String entryStubClass;
     private boolean logbackPrecompiled;
-    /** Whether the bean definition prefetch was packaged, which the gates of its planning step decide. */
     private boolean definitionPrefetch;
-    /** The merged bean definition reference entries, counted while the services are merged. */
     private DefinitionPrefetchPackager.References definitionReferences = DefinitionPrefetchPackager.References.NONE;
-    /** The application layer, then every staged dependency in class-path order, set once they are staged. */
     private List<LogbackPrecompiler.Layer> classPath = List.of();
     private int mergedServiceEntryCount;
     /** The build's class transforms, decided before any dependency is staged. */
@@ -391,7 +386,9 @@ public final class RunnerJarBuilder {
             describeApplicationJar();
             planMergedServices();
             // The prefetch adds a configurer to the application's service file, which the table has to list.
-            planDefinitionPrefetch();
+            definitionPrefetch = DefinitionPrefetchPackager.apply(spec.definitionPrefetch(),
+                    entryStubClass == null ? null : spec.mainClass(), classPath, definitionReferences, logger,
+                    this::warn, (name, bytes) -> application.put(name, ApplicationEntry.ofBytes(bytes)));
             generateStaticServices();
             planApplicationEntries();
             planNestedJars();
@@ -1443,27 +1440,6 @@ public final class RunnerJarBuilder {
         return total;
     }
 
-    /**
-     * Packages the bean definition prefetch into the application layer when the application can use it, and
-     * otherwise says why not; {@link DefinitionPrefetchPackager} decides. It runs after the merge, which counts
-     * the references, and before the application layer is planned, because it replaces the entry stub and adds
-     * entries to that layer. Anything generated from the layer's service files has to run after it.
-     *
-     * @throws IOException if a class of the class path or the application's service file cannot be read
-     */
-    private void planDefinitionPrefetch() throws IOException {
-        DefinitionPrefetchPackager.Outcome outcome = DefinitionPrefetchPackager.plan(spec.definitionPrefetch(),
-                entryStubClass == null ? null : spec.mainClass(), classPath, definitionReferences);
-        if (outcome.warning() != null) {
-            warn(outcome.warning());
-        } else {
-            logger.info(outcome.message());
-        }
-        // put() on a name the layer already has keeps that entry's position in the archive.
-        outcome.entries().forEach((name, bytes) -> application.put(name, ApplicationEntry.ofBytes(bytes)));
-        definitionPrefetch = !outcome.entries().isEmpty();
-    }
-
     /** Adds the static service table to the application layer, when it can have one; see {@link StaticServices}. */
     private void generateStaticServices() throws IOException {
         staticServices = StaticServices.generate(spec, logger, this::warn, mergedServiceSizes,
@@ -1773,9 +1749,7 @@ public final class RunnerJarBuilder {
                         + " as the entry stub but does not know the class; the launcher would not start");
             }
             StartupClassList.verify(index, layout, output);
-            if (definitionPrefetch) {
-                DefinitionPrefetchPackager.verify(index, output);
-            }
+            DefinitionPrefetchPackager.verify(definitionPrefetch, index, output);
             index.validateStringReferences();
             for (int jarId = 0; jarId < index.jarCount(); jarId++) {
                 index.validateJar(jarId);

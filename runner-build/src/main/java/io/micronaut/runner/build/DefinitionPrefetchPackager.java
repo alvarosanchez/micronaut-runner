@@ -32,6 +32,8 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.ToLongFunction;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -178,13 +180,48 @@ final class DefinitionPrefetchPackager {
     }
 
     /**
-     * Checks that the index of a finished archive knows the two classes the entry stub and the service file name.
+     * Plans the prefetch for a build and applies the outcome: logs its line or reports its warning, and puts its
+     * entries into the application layer, where {@code put} on a name the layer already has keeps that entry's
+     * position in the archive. It runs after the merge, which counts the references, and before the application
+     * layer is planned; anything generated from the layer's service files has to run after it.
      *
-     * @param index  the index of the archive
-     * @param output the archive the build was asked for, for the message
+     * @param requested  whether {@link RunnerJarSpec#definitionPrefetch()} asks for it
+     * @param mainClass  the main class the generated entry stub enters, or {@code null} when no stub was
+     *                   generated
+     * @param classPath  the application layer, then every dependency in class-path order
+     * @param references the merged bean definition reference entries
+     * @param logger     where the line goes when nothing is to be warned about
+     * @param warn       what reports a warning
+     * @param layer      what puts an entry into the application layer
+     * @return whether the prefetch was packaged
+     * @throws IOException as {@link #plan(boolean, String, List, References)} does
+     */
+    static boolean apply(boolean requested, String mainClass, List<LogbackPrecompiler.Layer> classPath,
+                         References references, BuildLogger logger, Consumer<String> warn,
+                         BiConsumer<String, byte[]> layer) throws IOException {
+        Outcome outcome = plan(requested, mainClass, classPath, references);
+        if (outcome.warning() != null) {
+            warn.accept(outcome.warning());
+        } else {
+            logger.info(outcome.message());
+        }
+        outcome.entries().forEach(layer);
+        return !outcome.entries().isEmpty();
+    }
+
+    /**
+     * Checks that the index of a finished archive knows the two classes the entry stub and the service file name,
+     * when the prefetch was packaged.
+     *
+     * @param packaged whether the prefetch was packaged; nothing is checked otherwise
+     * @param index    the index of the archive
+     * @param output   the archive the build was asked for, for the message
      * @throws IOException if a class is missing
      */
-    static void verify(Index index, Path output) throws IOException {
+    static void verify(boolean packaged, Index index, Path output) throws IOException {
+        if (!packaged) {
+            return;
+        }
         for (String name : List.of(TASK_CLASS, CONFIGURER_CLASS)) {
             if (index.findClass(name) == IndexFormat.NO_INDEX) {
                 throw new IOException("The entry stub of " + output + " starts the bean definition prefetch but"
