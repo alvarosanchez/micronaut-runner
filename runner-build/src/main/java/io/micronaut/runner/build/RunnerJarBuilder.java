@@ -21,7 +21,6 @@ import io.micronaut.runner.IndexFormat;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
@@ -31,7 +30,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -612,63 +610,22 @@ public final class RunnerJarBuilder {
      */
     private void collectApplication() throws IOException {
         List<Path> applicationOutput = spec.applicationOutput();
+        ApplicationDirectoryWalk walk = new ApplicationDirectoryWalk(outputDirectory, output, this::addApplicationFile);
         for (int i = 0; i < applicationOutput.size(); i++) {
             Path input = applicationOutput.get(i);
             Path realDirectory = applicationDirectories[i];
             if (realDirectory != null) {
-                Set<Path> walking = new HashSet<>();
-                walking.add(realDirectory);
-                collectDirectory(input, input, realDirectory, walking);
+                walk.walk(input, realDirectory);
             } else {
                 collectApplicationJar(input);
             }
         }
     }
 
-    /**
-     * Adds the files below one directory of an application directory, following symbolic links as a class
-     * path does: an entry reached through a link keeps the link's own name.
-     *
-     * @param root      the application directory, which entry names are relative to
-     * @param directory the directory to list, named through any links that led to it
-     * @param real      the real path of {@code directory}
-     * @param walking   the real paths of {@code directory} and of every directory above it up to {@code root}
-     * @throws IOException if an entry cannot be read, a link does not resolve, leads into a directory the walk
-     *                     is already inside, or reaches the directory that holds the output
-     */
-    private void collectDirectory(Path root, Path directory, Path real, Set<Path> walking) throws IOException {
-        List<Path> children = new ArrayList<>();
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
-            for (Path child : stream) {
-                children.add(child);
-            }
-        }
-        // Sorted, so that the archive does not depend on the order the file system happens to report.
-        children.sort(Comparator.comparing(RunnerJarBuilder::fileName));
-        for (Path child : children) {
-            BasicFileAttributes attributes =
-                    Files.readAttributes(child, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            boolean link = attributes.isSymbolicLink();
-            if (link) {
-                attributes = followLink(root, child);
-            }
-            if (attributes.isDirectory()) {
-                // A plain subdirectory's real path follows from its parent's without a system call.
-                Path childReal = link ? linkedDirectory(root, child) : real.resolve(child.getFileName());
-                if (!walking.add(childReal)) {
-                    throw new IOException("The application output " + root + " reaches " + child
-                            + ", which leads back to " + childReal
-                            + "; symbolic-link cycles are not supported");
-                }
-                collectDirectory(root, child, childReal, walking);
-                walking.remove(childReal);
-            } else if (attributes.isRegularFile()) {
-                String name = root.relativize(child).toString().replace(File.separatorChar, '/');
-                requireSafeName(name, root.toString());
-                addApplicationEntry(name, ApplicationEntry.ofFile(child, attributes.size(), crc32(child)),
-                        root);
-            }
-        }
+    /** Adds one regular file that the walk of an application directory found. */
+    private void addApplicationFile(Path root, String name, Path file, long size) throws IOException {
+        requireSafeName(name, root.toString());
+        addApplicationEntry(name, ApplicationEntry.ofFile(file, size, crc32(file)), root);
     }
 
     /**
@@ -686,41 +643,6 @@ public final class RunnerJarBuilder {
             }
         }
         return crc.getValue();
-    }
-
-    /**
-     * Resolves a symbolic link to a directory inside an application directory, refusing one that leads to
-     * the directory that holds the output or to one of its ancestors. Validation has already refused an
-     * output directory below an application directory, so every other directory the walk enters is below
-     * the root or below a link checked here.
-     *
-     * @throws IOException if the link reaches the directory where the work directory and the output go
-     */
-    private Path linkedDirectory(Path root, Path link) throws IOException {
-        Path real = link.toRealPath();
-        if (outputDirectory.startsWith(real)) {
-            throw new IOException("The application output " + root + " contains the symbolic link " + link
-                    + " to " + real + ", which is or contains the directory of the output " + output
-                    + "; packaging it would read what it is writing");
-        }
-        return real;
-    }
-
-    /**
-     * Reads the attributes of what a symbolic link inside an application directory leads to.
-     *
-     * @throws IOException if the link does not resolve, including a link that leads back to itself
-     */
-    private static BasicFileAttributes followLink(Path root, Path link) throws IOException {
-        try {
-            return Files.readAttributes(link, BasicFileAttributes.class);
-        } catch (IOException e) {
-            throw new IOException("The application output " + root + " contains the symbolic link " + link
-                    + " to " + Files.readSymbolicLink(link) + ", which does not resolve"
-                    + "; maven-resources-plugin 3.3.1 copies symbolic links into target/classes verbatim, so a"
-                    + " relative link that works from src/main/resources can dangle there. Use an absolute"
-                    + " link, a copy, or maven-resources-plugin 3.4.0 or later", e);
-        }
     }
 
     /**
@@ -1790,7 +1712,7 @@ public final class RunnerJarBuilder {
         }
     }
 
-    private static String fileName(Path path) {
+    static String fileName(Path path) {
         Path name = path.getFileName();
         return name == null ? path.toString() : name.toString();
     }
