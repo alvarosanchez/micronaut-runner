@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.core.annotation.Nullable;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -24,9 +26,9 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 /**
  * The walk of {@link RunnerJarBuilder} through its application directories: it hands every regular file below
@@ -62,9 +64,9 @@ final class ApplicationDirectoryWalk {
      *                     directory the walk is already inside, or reaches the directory that holds the output
      */
     void walk(Path root, Path real) throws IOException {
-        Set<Path> walking = new HashSet<>();
-        walking.add(real);
-        collectDirectory(root, root, real, walking, false);
+        Map<Path, Path> walking = new HashMap<>();
+        walking.put(real, root);
+        collectDirectory(root, root, real, walking, null);
     }
 
     /**
@@ -72,18 +74,19 @@ final class ApplicationDirectoryWalk {
      * directory junctions as a class path does: an entry reached through a link or a junction keeps the link's
      * or the junction's own name.
      *
-     * @param root            the application directory, which entry names are relative to
-     * @param directory       the directory to list, named through any links that led to it
-     * @param real            the real path of {@code directory}
-     * @param walking         the real paths of {@code directory} and of every directory above it up to
-     *                        {@code root}
-     * @param throughJunction whether a directory junction lies between {@code root} and {@code directory}; it
-     *                        only words the message of a cycle
+     * @param root      the application directory, which entry names are relative to
+     * @param directory the directory to list, named through any links that led to it
+     * @param real      the real path of {@code directory}
+     * @param walking   the real paths of {@code directory} and of every directory above it up to {@code root},
+     *                  each mapped to that directory as the walk names it
+     * @param junction  the directory junction nearest to {@code directory} on the walk from {@code root},
+     *                  {@code directory} itself included, or {@code null} if there is none; only the message of
+     *                  a cycle names it
      * @throws IOException if an entry cannot be read or added, a link or junction does not resolve, leads into a
      *                     directory the walk is already inside, or reaches the directory that holds the output
      */
-    private void collectDirectory(Path root, Path directory, Path real, Set<Path> walking, boolean throughJunction)
-            throws IOException {
+    private void collectDirectory(Path root, Path directory, Path real, Map<Path, Path> walking,
+            @Nullable Path junction) throws IOException {
         List<Path> children = new ArrayList<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
             for (Path child : stream) {
@@ -104,25 +107,41 @@ final class ApplicationDirectoryWalk {
                 // is not a symbolic link), never as a link, and only Windows reports a directory as "other". Any
                 // other such directory, such as a cloud-files placeholder, costs one toRealPath(), which resolves
                 // it to its own path, and passes both checks.
-                boolean junction = !link && attributes.isOther();
+                boolean isJunction = !link && attributes.isOther();
                 // A plain subdirectory's real path follows from its parent's without a system call.
-                Path childReal = link || junction
-                        ? linkedDirectory(root, child, junction)
+                Path childReal = link || isJunction
+                        ? linkedDirectory(root, child, isJunction)
                         : real.resolve(child.getFileName());
-                boolean junctionBelow = throughJunction || junction;
-                if (!walking.add(childReal)) {
-                    throw new IOException("The application output " + root + " reaches " + child
-                            + ", which leads back to " + childReal + "; " + (junctionBelow
-                            ? "cycles through directory junctions or symbolic links are not supported"
-                            : "symbolic-link cycles are not supported"));
+                Path nearestJunction = isJunction ? child : junction;
+                Path reentered = walking.putIfAbsent(childReal, child);
+                if (reentered != null) {
+                    throw cycle(root, child, childReal, reentered, nearestJunction);
                 }
-                collectDirectory(root, child, childReal, walking, junctionBelow);
+                collectDirectory(root, child, childReal, walking, nearestJunction);
                 walking.remove(childReal);
             } else if (attributes.isRegularFile()) {
                 String name = root.relativize(child).toString().replace(File.separatorChar, '/');
                 files.accept(root, name, child, attributes.size());
             }
         }
+    }
+
+    /**
+     * The failure for a cycle: the walk reached {@code child}, whose real path is that of {@code reentered}, a
+     * directory the walk is already inside. The message names the nearest directory junction when the cycle runs
+     * through it, that is, when it lies below {@code reentered}. Both name directories on the walk's way to
+     * {@code child}, through the links that led there, so the one with more name elements is the deeper. A cycle
+     * that runs through no junction keeps the symbolic-link message.
+     */
+    private static IOException cycle(Path root, Path child, Path childReal, Path reentered,
+            @Nullable Path junction) {
+        String message = "The application output " + root + " reaches " + child + ", which leads back to "
+                + childReal;
+        if (junction != null && junction.getNameCount() > reentered.getNameCount()) {
+            return new IOException(message + " through the directory junction " + junction
+                    + "; cycles through directory junctions or symbolic links are not supported");
+        }
+        return new IOException(message + "; symbolic-link cycles are not supported");
     }
 
     /**

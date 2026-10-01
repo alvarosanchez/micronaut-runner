@@ -1417,7 +1417,7 @@ class RunnerJarBuilderTest {
             Path directory = Files.createDirectories(tree.resolve("a"));
             Path loop = createJunction(directory.resolve("loop"), directory);
 
-            assertJunctionCycleRejected(tree, loop, existingOutput(parent));
+            assertJunctionCycleRejected(tree, loop, loop, existingOutput(parent));
         });
     }
 
@@ -1430,7 +1430,7 @@ class RunnerJarBuilderTest {
             Path first = createJunction(directory.resolve("l1"), directory);
             createJunction(directory.resolve("l2"), directory);
 
-            assertJunctionCycleRejected(tree, first, existingOutput(parent));
+            assertJunctionCycleRejected(tree, first, first, existingOutput(parent));
         });
     }
 
@@ -1440,12 +1440,40 @@ class RunnerJarBuilderTest {
             throws Throwable {
         withJunctions(parent, () -> {
             // The junction reaches <parent>/cycle-up, whose only child is the application directory: the walk
-            // comes back to its own root, far from the directory that holds the output.
+            // comes back to its own root, far from the directory that holds the output. It notices that at the
+            // plain directory a/up/app, below the junction, and still names the junction.
             Path above = parent.resolve("cycle-up");
             Path tree = applicationTree(above.resolve("app"));
             Path up = createJunction(Files.createDirectories(tree.resolve("a")).resolve("up"), above);
 
-            assertJunctionCycleRejected(tree, up, existingOutput(parent));
+            assertJunctionCycleRejected(tree, up.resolve("app"), up, existingOutput(parent));
+        });
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void keepsTheSymbolicLinkWordingForACycleBelowAJunctionThatIsNotPartOfIt(@TempDir Path parent)
+            throws Throwable {
+        withJunctions(parent, () -> {
+            // The junction only leads into the directory where a symbolic link to itself closes the cycle, so
+            // the cycle runs through no junction, and the message neither names one nor blames one.
+            Path outside = Files.createDirectories(parent.resolve("outside"));
+            Path tree = applicationTree(parent.resolve("app"));
+            Path linked = createJunction(tree.resolve("linked"), outside);
+            createSymbolicLink(outside.resolve("loop"), Path.of("."));
+            Path output = existingOutput(parent);
+
+            IOException failure = assertThrows(IOException.class,
+                    () -> buildWithin(Duration.ofSeconds(10), tree, output));
+
+            String message = failure.getMessage();
+            assertTrue(message.startsWith("The application output " + tree + " reaches " + linked.resolve("loop")
+                    + ", which leads back to "), message);
+            assertTrue(message.endsWith("; symbolic-link cycles are not supported"), message);
+            assertFalse(message.contains("junction"), message);
+            assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
+                    "a symbolic-link cycle below a junction must leave an existing good output intact");
+            assertNoWorkDirectory(output.getParent());
         });
     }
 
@@ -1463,8 +1491,11 @@ class RunnerJarBuilderTest {
             IOException failure = assertThrows(IOException.class,
                     () -> buildWithin(JUNCTION_TIMEOUT, tree, output));
 
-            assertTrue(failure.getMessage().contains(junction.toString()), failure.getMessage());
-            assertTrue(failure.getMessage().contains("would read what it is writing"), failure.getMessage());
+            String message = failure.getMessage();
+            assertTrue(message.startsWith("The application output " + tree + " contains the directory junction "
+                    + junction + " to "), message);
+            assertTrue(message.endsWith(", which is or contains the directory of the output " + output
+                    + "; packaging it would read what it is writing"), message);
             assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
                     "a junction to " + target + " must leave an existing good output intact");
             assertNoWorkDirectory(output.getParent());
@@ -1488,8 +1519,8 @@ class RunnerJarBuilderTest {
             // Runner's own message, not a NotLinkException from reading the junction as a symbolic link, nor the
             // raw exception from listing it.
             assertEquals(IOException.class, failure.getClass(), failure::toString);
-            assertTrue(failure.getMessage().contains(junction.toString()), failure.getMessage());
-            assertTrue(failure.getMessage().contains("does not resolve"), failure.getMessage());
+            assertEquals("The application output " + tree + " contains the directory junction " + junction
+                    + ", which does not resolve", failure.getMessage());
             assertNotNull(failure.getCause(), "the reason it does not resolve is kept");
             assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
                     "a junction whose target is gone must leave an existing good output intact");
@@ -1497,12 +1528,20 @@ class RunnerJarBuilderTest {
         });
     }
 
-    private void assertJunctionCycleRejected(Path tree, Path junction, Path output) throws Throwable {
+    /**
+     * Asserts Runner's own cycle message, which names the junction the cycle runs through, rather than a path
+     * that merely starts with the junction's: an operating-system error from a walk that went round the cycle
+     * until Windows refused the path carries such a path too.
+     */
+    private void assertJunctionCycleRejected(Path tree, Path closing, Path junction, Path output) throws Throwable {
         IOException failure = assertThrows(IOException.class,
                 () -> buildWithin(Duration.ofSeconds(10), tree, output));
 
-        assertTrue(failure.getMessage().contains(junction.toString()), failure.getMessage());
-        assertTrue(failure.getMessage().contains("cycles through directory junctions"), failure.getMessage());
+        String message = failure.getMessage();
+        assertTrue(message.startsWith("The application output " + tree + " reaches " + closing
+                + ", which leads back to "), message);
+        assertTrue(message.endsWith(" through the directory junction " + junction
+                + "; cycles through directory junctions or symbolic links are not supported"), message);
         assertArrayEquals(PREVIOUS_OUTPUT, Files.readAllBytes(output),
                 "a directory-junction cycle must leave an existing good output intact");
         assertNoWorkDirectory(output.getParent());
