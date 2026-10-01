@@ -85,10 +85,11 @@ class VariantSelectionTest {
                         "runner-stored-joran-aot", "runner-stored-keepdebug", "runner-stored-keepdebug-aot",
                         "runner-stored-dynamic-services", "runner-stored-dynamic-services-aot",
                         "runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot",
-                        "shadow-maot-aot", "runner-maot-aot"),
+                        "runner-stored-prefetch", "runner-stored-prefetch-aot", "shadow-maot-aot", "runner-maot-aot"),
                 all.stream().filter(name -> !SampleBuild.variantNames().contains(name)).toList());
         assertEquals(all.indexOf("runner-stored-aot") + 1, all.indexOf("runner-stored-reflection"));
-        assertEquals(all.indexOf("runner-extracted-lambdas-aot") + 1, all.indexOf("runner-preserve"));
+        assertEquals(all.indexOf("runner-extracted-lambdas-aot") + 1, all.indexOf("runner-stored-prefetch"));
+        assertEquals(all.indexOf("runner-stored-prefetch-aot") + 1, all.indexOf("runner-preserve"));
         assertEquals(all.indexOf("shadow-maot") + 1, all.indexOf("shadow-maot-aot"));
         assertEquals(all.indexOf("runner-maot") + 1, all.indexOf("runner-maot-aot"));
     }
@@ -176,6 +177,17 @@ class VariantSelectionTest {
         assertEquals(List.of("runner-stored-joran-aot"), names(variants));
         assertEquals(Map.of("runnerJar:runner-stored", 1, "joranControl:runner-stored", 1,
                 "aotCache:runner-stored-joran->runner-stored-joran-aot", 1), steps.calls);
+    }
+
+    @Test
+    void thePrefetchRowsAreBuiltFromTheStoredRowWhichIsNotReportedUnlessNamed() {
+        FakeSteps steps = new FakeSteps();
+
+        List<Variant> variants = SampleBuild.variants(steps, List.of("runner-stored-prefetch-aot"), log());
+
+        assertEquals(List.of("runner-stored-prefetch-aot"), names(variants));
+        assertEquals(Map.of("runnerJar:runner-stored", 1, "prefetchCandidate:runner-stored", 1,
+                "aotCache:runner-stored-prefetch->runner-stored-prefetch-aot", 1), steps.calls);
     }
 
     @Test
@@ -443,6 +455,12 @@ class VariantSelectionTest {
         public Variant joranControl(Variant stored) {
             note("joranControl:" + stored.name());
             return variant("runner-stored-joran");
+        }
+
+        @Override
+        public Variant prefetchCandidate(Variant stored) {
+            note("prefetchCandidate:" + stored.name());
+            return variant("runner-stored-prefetch");
         }
 
         @Override

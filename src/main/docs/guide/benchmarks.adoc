@@ -127,6 +127,14 @@ JDK AOT cache
 |Opt-in, non-gating control: the `runner-stored-lambdas` JAR extracted and launched by the JDK's built-in loader,
 with a trained, application-class-verified JDK AOT cache; compared with `runner-extracted-aot`
 
+|`runner-stored-prefetch`
+|Opt-in, non-gating: the same stored Runner JAR inputs packaged with `definitionPrefetch=true`, so the entry stub
+starts loading the bean definitions before `main` (see <<definitionPrefetch>>); compared with `runner-stored`
+
+|`runner-stored-prefetch-aot`
+|Opt-in, non-gating: that prefetching Runner JAR with a trained, application-class-verified JDK AOT cache; compared
+with `runner-stored-aot`
+
 |`runner-preserve`
 |Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub
 

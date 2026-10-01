@@ -116,6 +116,9 @@ import java.util.zip.CRC32;
  * and the classes it generates join the application layer after the scan and after the application layer was
  * transformed, so no transform rewrites them.</p>
  *
+ * <p>{@link DefinitionPrefetchPackager} runs once the Micronaut service entries are merged, which decide whether it
+ * applies, and before the static service table, which has to list the prefetch's configurer.</p>
+ *
  * <h2>Application jars</h2>
  * <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
  * archive has been written. Its entries are streamed from it into the archive, each inflated and checked
@@ -222,6 +225,9 @@ public final class RunnerJarBuilder {
     private String launcherVersion;
     private String entryStubClass;
     private boolean logbackPrecompiled;
+    private boolean definitionPrefetch;
+    private DefinitionPrefetchPackager.References definitionReferences = DefinitionPrefetchPackager.References.NONE;
+    private List<LogbackPrecompiler.Layer> classPath = List.of();
     private int mergedServiceEntryCount;
     /** The build's class transforms, decided before any dependency is staged. */
     private ClassTransforms transforms;
@@ -379,6 +385,10 @@ public final class RunnerJarBuilder {
             }
             describeApplicationJar();
             planMergedServices();
+            // The prefetch adds a configurer to the application's service file, which the table has to list.
+            definitionPrefetch = DefinitionPrefetchPackager.apply(spec.definitionPrefetch(),
+                    entryStubClass == null ? null : spec.mainClass(), classPath, definitionReferences, logger,
+                    this::warn, (name, bytes) -> application.put(name, ApplicationEntry.ofBytes(bytes)));
             generateStaticServices();
             planApplicationEntries();
             planNestedJars();
@@ -408,7 +418,7 @@ public final class RunnerJarBuilder {
             return new RunnerJarResult(output, writer.jars().size(), layout.entryCount(),
                     application.size(), mergedServiceEntryCount, archiveSize, warnings, spec.effectiveOptions(),
                     logbackPrecompiled, transformReports, staticServices.slotCount(),
-                    staticServices.coreVersion());
+                    staticServices.coreVersion()).withDefinitionPrefetch(definitionPrefetch);
         } catch (Throwable e) {
             failure = e;
             throw e;
@@ -1174,6 +1184,7 @@ public final class RunnerJarBuilder {
         for (NestedJar jar : nested) {
             layers.add(LogbackPrecompiler.Layer.of(jar.dependency, jar.file, jar.manifest, jar.result.entries()));
         }
+        classPath = layers;
         Map<String, byte[]> generated = LogbackPrecompiler.precompile(spec.precompileLogback(), layers,
                 application.keySet(), work, logger, this::warn);
         generated.forEach((name, bytes) -> application.putIfAbsent(name, ApplicationEntry.ofBytes(bytes)));
@@ -1274,6 +1285,8 @@ public final class RunnerJarBuilder {
         if (serviceNames.isEmpty()) {
             return;
         }
+        definitionReferences =
+                DefinitionPrefetchPackager.References.of(serviceNames, name -> contents.get(name).size);
         mergedServiceEntryCount = serviceNames.size();
         Set<String> merged = new TreeSet<>(serviceNames);
         merged.add(IndexFormat.MICRONAUT_SERVICES_PREFIX);
@@ -1736,6 +1749,7 @@ public final class RunnerJarBuilder {
                         + " as the entry stub but does not know the class; the launcher would not start");
             }
             StartupClassList.verify(index, layout, output);
+            DefinitionPrefetchPackager.verify(definitionPrefetch, index, output);
             index.validateStringReferences();
             for (int jarId = 0; jarId < index.jarCount(); jarId++) {
                 index.validateJar(jarId);

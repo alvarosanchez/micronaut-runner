@@ -1,0 +1,30 @@
+/*
+ * A standalone build: hello-netty plus a bean definition reference whose static initialiser fails on demand.
+ * The end-to-end tests drive it with Gradle TestKit, passing runner.repo and runner.version so it resolves the
+ * plugin from the aggregated local repository of -DUMMY publications, and compare how the packaged application
+ * starts with the bean definition prefetch and without it.
+ */
+pluginManagement {
+    repositories {
+        maven { url = uri(providers.gradleProperty('runner.repo').get()) }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+    plugins {
+        id 'io.micronaut.runner.standalone' version providers.gradleProperty('runner.version').get()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        maven { url = uri(providers.gradleProperty('runner.repo').get()) }
+        mavenCentral()
+    }
+    versionCatalogs {
+        libs {
+            from(files('../../../gradle/libs.versions.toml'))
+        }
+    }
+}
+
+rootProject.name = 'prefetch-parity'

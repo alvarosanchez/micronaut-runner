@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner.suite;
 
+import org.gradle.testkit.runner.BuildResult;
+import org.gradle.testkit.runner.GradleRunner;
 import org.junit.jupiter.api.Assumptions;
 
 import java.io.IOException;
@@ -156,6 +158,35 @@ final class Samples {
         if (!"required".equals(MODE)) {
             throw new AssertionError("runner.test.mode must be 'required' or 'offline', not '" + MODE + "'");
         }
+    }
+
+    /**
+     * Runs a sample's Gradle build with the plugins under test, on the newest Gradle version of the matrix the
+     * build passes in {@code runner.test.gradleVersions}, or on the distribution running this build when that is
+     * empty.
+     *
+     * @param projectDirectory the sample
+     * @param arguments        tasks and options
+     * @return the result of a build that succeeded
+     */
+    static BuildResult gradle(Path projectDirectory, String... arguments) {
+        List<String> all = new ArrayList<>(List.of(arguments));
+        all.add("-Prunner.repo=" + REPO);
+        all.add("-Prunner.version=" + VERSION);
+        all.add("--stacktrace");
+        GradleRunner runner = GradleRunner.create()
+                .withProjectDir(projectDirectory.toFile())
+                .withArguments(all)
+                .forwardOutput();
+        String[] versions = System.getProperty("runner.test.gradleVersions", "").split(",");
+        for (int i = versions.length - 1; i >= 0; i--) {
+            String version = versions[i].trim();
+            if (!version.isEmpty()) {
+                runner = runner.withGradleVersion(version);
+                break;
+            }
+        }
+        return runner.build();
     }
 
     /**

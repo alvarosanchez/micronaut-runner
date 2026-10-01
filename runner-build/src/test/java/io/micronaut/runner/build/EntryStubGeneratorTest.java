@@ -30,6 +30,7 @@ import java.lang.classfile.Attributes;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.ClassModel;
 import java.lang.classfile.CodeElement;
+import java.lang.classfile.Instruction;
 import java.lang.classfile.MethodModel;
 import java.lang.classfile.attribute.ExceptionsAttribute;
 import java.lang.classfile.instruction.InvokeInstruction;
@@ -39,9 +40,13 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.jar.JarOutputStream;
@@ -338,6 +343,55 @@ class EntryStubGeneratorTest {
                 "the launcher rethrows what the application throws, unchanged");
         assertTrue(invocations(run).contains("com/example/Application#main:([Ljava/lang/String;)V"),
                 "run has to call the application main method directly: " + invocations(run));
+    }
+
+    /**
+     * The SHA-256 of {@code generate("com.example.Application")} as the generator wrote it before it learnt the
+     * prefetch flag (commit {@code ea826c1}), computed with that commit's {@code EntryStubGenerator} on JDK 25.0.4
+     * and JDK 26.0.1, which wrote the same 483 bytes.
+     */
+    private static final String STUB_SHA256_BEFORE_THE_PREFETCH =
+            "e120f388e68d197e03b46328e5be6d0f7d8e5c28f95a8c1910daa844b55c6137";
+
+    /**
+     * Without the prefetch flag the stub is, byte for byte, the one earlier versions generated: three
+     * instructions in {@code run}. An archive built with {@code definitionPrefetch=false} therefore does not
+     * change.
+     */
+    @Test
+    void withoutThePrefetchFlagTheStubIsTheOneItAlwaysWas() throws NoSuchAlgorithmException {
+        byte[] stub = EntryStubGenerator.generate(APPLICATION_CLASS);
+
+        assertEquals(STUB_SHA256_BEFORE_THE_PREFETCH,
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(stub)));
+        assertArrayEquals(stub, EntryStubGenerator.generate(APPLICATION_CLASS, false));
+        assertEquals(List.of("aload_1", "invokestatic com/example/Application#main:([Ljava/lang/String;)V",
+                "return"), instructions(method(ClassFile.of().parse(stub), "run")));
+    }
+
+    /**
+     * With the flag, {@code run} starts the prefetch and then does what it always did: exactly four
+     * instructions, and nothing else in the class changes shape.
+     */
+    @Test
+    void withThePrefetchFlagRunStartsThePrefetchFirst() {
+        byte[] stub = EntryStubGenerator.generate(APPLICATION_CLASS, true);
+        ClassModel model = ClassFile.of().parse(stub);
+
+        assertEquals(List.of(
+                "invokestatic io/micronaut/runner/generated/prefetch/DefinitionPrefetchConfigurer#start:()V",
+                "aload_1",
+                "invokestatic com/example/Application#main:([Ljava/lang/String;)V",
+                "return"), instructions(method(model, "run")));
+        assertEquals(List.of(), ClassFile.of().verify(stub), "the stub has to verify");
+        assertEquals(69, model.majorVersion());
+        assertEquals(0, model.minorVersion());
+        assertEquals(3, model.methods().size(), "a constructor, a static initialiser and run");
+        assertEquals(instructions(method(ClassFile.of().parse(EntryStubGenerator.generate(APPLICATION_CLASS)),
+                "<clinit>")), instructions(method(model, "<clinit>")));
+        assertArrayEquals(stub, EntryStubGenerator.generate(APPLICATION_CLASS, true), "reproducible");
+        assertEquals("io.micronaut.runner.generated.prefetch.DefinitionPrefetchConfigurer",
+                DefinitionPrefetchPackager.CONFIGURER_CLASS);
     }
 
     /**
@@ -751,6 +805,23 @@ class EntryStubGeneratorTest {
             if (element instanceof InvokeInstruction invoke) {
                 found.add(invoke.owner().asInternalName() + "#" + invoke.name().stringValue() + ":"
                         + invoke.type().stringValue());
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Every instruction of a method, in the order of the bytecode: its mnemonic, and for an invocation what
+     * it invokes. Labels, line numbers and other pseudo-instructions are left out.
+     */
+    private static List<String> instructions(MethodModel method) {
+        List<String> found = new ArrayList<>();
+        for (CodeElement element : method.code().orElseThrow().elementList()) {
+            if (element instanceof InvokeInstruction invoke) {
+                found.add(invoke.opcode().name().toLowerCase(Locale.ROOT) + " " + invoke.owner().asInternalName()
+                        + "#" + invoke.name().stringValue() + ":" + invoke.type().stringValue());
+            } else if (element instanceof Instruction instruction) {
+                found.add(instruction.opcode().name().toLowerCase(Locale.ROOT));
             }
         }
         return found;

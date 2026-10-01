@@ -80,6 +80,24 @@ class RunnerJarSpecTest {
     }
 
     @Test
+    void leavesTheDefinitionPrefetchOutByDefaultAndTakesTheOptInByName() {
+        assertFalse(complete(RunnerJarSpec.builder()).build().definitionPrefetch());
+        assertEquals("false", complete(RunnerJarSpec.builder()).build().effectiveOptions().get("definitionPrefetch"));
+        assertTrue(complete(RunnerJarSpec.builder().definitionPrefetch(true)).build().definitionPrefetch());
+        RunnerJarSpec on = complete(RunnerJarSpec.builder().option("definitionPrefetch", " TRUE ")).build();
+        assertTrue(on.definitionPrefetch());
+        assertEquals("true", on.effectiveOptions().get("definitionPrefetch"));
+        assertFalse(complete(RunnerJarSpec.builder().option("definitionPrefetch", "true")
+                .option("definitionPrefetch", "false")).build().definitionPrefetch(), "the last call wins");
+        assertEquals(RunnerJarOption.Exposure.PASSTHROUGH, RunnerJarOption.DEFINITION_PREFETCH.exposure());
+        assertEquals("false", RunnerJarOption.DEFINITION_PREFETCH.defaultValue().orElseThrow());
+        assertEquals(Boolean.class, RunnerJarOption.DEFINITION_PREFETCH.valueType());
+        assertTrue(complete(RunnerJarSpec.builder().entryStub(false).definitionPrefetch(true)).build()
+                        .definitionPrefetch(),
+                "asking for the prefetch without an entry stub is not an error: nothing is packaged");
+    }
+
+    @Test
     void acceptsMultipleManifestModulePackagePairs() {
         RunnerJarSpec.Builder builder = RunnerJarSpec.builder()
                 .addExports(List.of("java.base/sun.nio.ch", "java.base/jdk.internal.misc"))
@@ -165,7 +183,7 @@ class RunnerJarSpecTest {
     @Test
     void aBooleanOptionAcceptsOnlyTrueOrFalse() {
         for (String name : List.of("entryStub", "multiRelease", "enableNativeAccess", "precompileLogback",
-                "stripLocalVariables", "desugarLambdas")) {
+                "stripLocalVariables", "desugarLambdas", "definitionPrefetch")) {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                     () -> RunnerJarSpec.builder().option(name, "yes"));
             assertTrue(failure.getMessage().contains(name), failure::getMessage);

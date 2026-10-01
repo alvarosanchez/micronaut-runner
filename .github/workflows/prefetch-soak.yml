@@ -1,0 +1,52 @@
+# This workflow is specific to micronaut-runner and is NOT synced from micronaut-project-template.
+# It starts the sample applications hundreds of times with the bean definition prefetch, in legs that shift the
+# timing of class initialisation (class+init logging, C1 only, interpreted, an AOT cache, two to four CPUs), plus
+# benchmark-large's Micronaut AOT archive, and fails when a start does not become ready within a minute, attaching
+# a thread dump. It takes tens of minutes and only changes of the prefetch need it, so it runs on demand only.
+name: Prefetch soak
+on:
+  workflow_dispatch:
+    inputs:
+      launches:
+        description: 'Starts per leg, for each sample'
+        required: false
+        default: '30'
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  soak:
+    name: "Prefetch soak"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: "🔧 Setup JDK 25"
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: "🔧 Setup Gradle"
+        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+
+      - name: "🔁 Soak"
+        env:
+          SOAK_LAUNCHES: ${{ github.event.inputs.launches || '30' }}
+        run: ./gradlew :test-suite:prefetchSoak --no-daemon -Prunner.integration=required "-PprefetchSoak.launches=$SOAK_LAUNCHES"
+
+      - name: "📜 Upload the test report"
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: prefetch-soak-report
+          path: |
+            test-suite/build/reports/tests/prefetchSoak/**
+            test-suite/build/test-results/prefetchSoak/**
+          if-no-files-found: warn
+          retention-days: 30
