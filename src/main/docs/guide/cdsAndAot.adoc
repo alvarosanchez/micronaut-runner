@@ -200,7 +200,7 @@ are the `lib/` JARs' `file:` URLs.
 <<preload,Preloading the recorded startup classes>> complements a cache: its gain is in launches without one. Build
 the JAR with the list first, then train the cache on that JAR.
 
-Run the training script (<<trainingSnippet>>) with `JAR` at the path production launches, on every JDK as
+Run the <<trainingSnippet,training script>> with `JAR` at the path production launches, on every JDK as
 `JDK_JAVA_OPTIONS='-Dmicronaut.runner.aot.training=true' bash train.sh`, with
 <<aotCreationFlags,JDK 27's creation-flag setting>> in front of it on JDK 27; in a Dockerfile both assignments go in
 front of `bash train.sh` in the `RUN` step, never in `ENV`. Production launches unchanged, with
