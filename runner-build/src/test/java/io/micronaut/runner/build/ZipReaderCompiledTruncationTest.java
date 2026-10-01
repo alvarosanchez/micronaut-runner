@@ -19,7 +19,8 @@ import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -30,6 +31,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,7 +53,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * code.</p>
  *
  * <p>Each case expects the reader's {@link java.io.IOException} that names the file and says it may have been
- * truncated, and then runs a loop and closes the reader, so that an error thrown late fails it too.</p>
+ * truncated, and then runs a loop and closes the reader, so that an error thrown late fails it too. Every case runs
+ * on the buffer view of the mapping that a reader of such a small archive reads through, and the cases that read
+ * the mapping after {@code open}, a deflated entry's {@code read}, also run on the segment reads.</p>
  */
 @DisabledOnOs(value = OS.WINDOWS, disabledReason = "Windows cannot truncate a file that is mapped")
 class ZipReaderCompiledTruncationTest {
@@ -91,11 +95,20 @@ class ZipReaderCompiledTruncationTest {
         }
     }
 
-    @ParameterizedTest
-    @EnumSource(Case.class)
-    void aCompiledReadOfAFileTruncatedWhileItIsOpenFailsWithAnIOException(Case probe) throws Exception {
+    /** Every case through the view, and the cases that read the mapping after {@code open} through the segment. */
+    static Stream<Arguments> cases() {
+        return Stream.concat(
+                Stream.of(Case.values()).map(probe -> Arguments.of(probe, true)),
+                Stream.of(Case.values()).filter(probe -> !probe.raw && !probe.stored)
+                        .map(probe -> Arguments.of(probe, false)));
+    }
+
+    @ParameterizedTest(name = "{0}, bufferView={1}")
+    @MethodSource("cases")
+    void aCompiledReadOfAFileTruncatedWhileItIsOpenFailsWithAnIOException(Case probe, boolean bufferView)
+            throws Exception {
         Path jar = temp.resolve("truncated-while-open.jar");
-        String output = fork(probe, temp);
+        String output = fork(probe, bufferView, temp);
 
         List<String> lines = output.lines().toList();
         int truncating = lines.indexOf(TRUNCATING);
@@ -136,7 +149,8 @@ class ZipReaderCompiledTruncationTest {
      * Runs the probe and returns what it printed. Its output goes to a file rather than a pipe, so that waiting
      * for it can time out: reading a pipe to its end would block for as long as a hung probe keeps it open.
      */
-    private static String fork(Case probe, Path directory) throws IOException, InterruptedException {
+    private static String fork(Case probe, boolean bufferView, Path directory)
+            throws IOException, InterruptedException {
         String home = System.getProperty("runner.test.javaHome", System.getProperty("java.home"));
         Path java = Path.of(home, "bin", "java");
         Path log = directory.resolve("probe.log");
@@ -147,7 +161,7 @@ class ZipReaderCompiledTruncationTest {
                 "-XX:CompileCommand=dontinline," + ZipReader.class.getName() + "::readRaw",
                 "-Xmx128m",
                 "-cp", System.getProperty("java.class.path"),
-                Probe.class.getName(), probe.name(), directory.toString())
+                Probe.class.getName(), probe.name(), Boolean.toString(bufferView), directory.toString())
                 .redirectErrorStream(true)
                 .redirectOutput(log.toFile());
         Map<String, String> environment = builder.environment();
@@ -182,24 +196,26 @@ class ZipReaderCompiledTruncationTest {
         /**
          * Runs one case and prints what happened.
          *
-         * @param args the {@link Case} and the directory to write the two archives in
+         * @param args the {@link Case}, whether to read the mapping through a buffer view, and the directory to
+         *             write the two archives in
          * @throws Exception if the archives cannot be written
          */
         static void main(String[] args) throws Exception {
             Case probe = Case.valueOf(args[0]);
-            Path directory = Path.of(args[1]);
+            boolean bufferView = Boolean.parseBoolean(args[1]);
+            Path directory = Path.of(args[2]);
             Path warm = archive(directory.resolve("warm-up.jar"), probe, probe.payload.bytes(4 * 1024));
             Path jar = archive(directory.resolve("truncated-while-open.jar"), probe,
                     probe.payload.bytes(256 * 1024));
 
-            try (ZipReader reader = ZipReader.open(warm)) {
+            try (ZipReader reader = ZipReader.open(warm, bufferView)) {
                 ZipEntryInfo entry = reader.entry("data.bin").orElseThrow();
                 for (int i = 0; i < WARM_UP_CALLS; i++) {
                     sink += call(probe, reader, entry).length;
                 }
             }
 
-            ZipReader reader = ZipReader.open(jar);
+            ZipReader reader = ZipReader.open(jar, bufferView);
             ZipEntryInfo entry = reader.entry("data.bin").orElseThrow();
             System.out.println(TRUNCATING);
             try (FileChannel channel = FileChannel.open(jar, StandardOpenOption.WRITE)) {
