@@ -21,16 +21,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -41,6 +46,9 @@ import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
@@ -56,6 +64,7 @@ import java.util.zip.ZipOutputStream;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -67,11 +76,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>The archives under test are built with {@link ZipOutputStream}, so every assertion is against an
  * independent implementation, and the reported data offsets are cross-checked by seeking to them in the
  * file and comparing the bytes with what {@link ZipFile} returns for the same entry.</p>
+ *
+ * <p>Every case runs on both of the reader's ways of reading its mapping, see {@link ReadPath}.</p>
  */
+@ParameterizedClass
+@EnumSource(ZipReaderTest.ReadPath.class)
 class ZipReaderTest {
+
+    /** How a reader under test reads the mapping of its archive. */
+    enum ReadPath {
+        /** Through a buffer view of the mapping, as every archive of at most {@code Integer.MAX_VALUE - 8} bytes is. */
+        VIEW,
+        /** Through the segment, as an archive too large for a buffer view is. */
+        SEGMENT
+    }
+
+    @Parameter
+    ReadPath readPath;
 
     @TempDir
     Path temp;
+
+    /** Opens an archive on {@link #readPath}. */
+    private ZipReader open(Path jar) throws IOException {
+        return ZipReader.open(jar, readPath == ReadPath.VIEW);
+    }
 
     @Test
     void readsEveryFieldOfAMixedArchive() throws IOException {
@@ -90,7 +119,7 @@ class ZipReaderTest {
             deflated(zip, "META-INF/versions/21/org/example/App.class", repeat("v21-", 200));
         }
 
-        try (ZipReader reader = ZipReader.open(jar); ZipFile oracle = new ZipFile(jar.toFile())) {
+        try (ZipReader reader = open(jar); ZipFile oracle = new ZipFile(jar.toFile())) {
             assertEquals("an archive comment", reader.comment());
             assertEquals(Files.size(jar), reader.fileLength());
             assertEquals(jar, reader.path());
@@ -147,7 +176,7 @@ class ZipReaderTest {
             assertEquals("safe.txt", centralView.entries().nextElement().getName());
             assertEquals("../x.txt", localView.getNextEntry().getName());
         }
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("safe.txt"), failure.getMessage());
         assertTrue(failure.getMessage().contains("local"), failure.getMessage());
         assertTrue(failure.getMessage().contains("name"), failure.getMessage());
@@ -166,7 +195,7 @@ class ZipReaderTest {
         archive[name] = (byte) 0xC0;
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("invalid UTF-8"), failure.getMessage());
         assertTrue(failure.getMessage().contains(central ? "central" : "local"), failure.getMessage());
     }
@@ -192,7 +221,7 @@ class ZipReaderTest {
             assertEquals(1, local.getCompressedSize());
             assertEquals(0, local.getSize());
         }
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("bad.txt"), failure.getMessage());
         assertTrue(failure.getMessage().contains("STORED"), failure.getMessage());
         assertTrue(failure.getMessage().contains("size"), failure.getMessage());
@@ -219,7 +248,7 @@ class ZipReaderTest {
         }
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("safe.txt"), failure.getMessage());
         assertTrue(failure.getMessage().contains("local"), failure.getMessage());
         assertTrue(failure.getMessage().contains(field), failure.getMessage());
@@ -239,7 +268,7 @@ class ZipReaderTest {
         putShort(archive, central + 8, flags);
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("secret.txt"), failure.getMessage());
         assertTrue(failure.getMessage().contains("flags"), failure.getMessage());
     }
@@ -256,7 +285,7 @@ class ZipReaderTest {
         putShort(archive, end + offset, value);
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("single-disk"), failure.getMessage());
     }
 
@@ -272,7 +301,7 @@ class ZipReaderTest {
         putShort(archive, central + 34, 1);
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("one.txt"), failure.getMessage());
         assertTrue(failure.getMessage().contains("disk"), failure.getMessage());
     }
@@ -291,7 +320,7 @@ class ZipReaderTest {
         assertEquals(0, intAt(header, 18), "the local header carries no compressed size");
         assertEquals(0, intAt(header, 22), "the local header carries no uncompressed size");
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             ZipEntryInfo entry = reader.entry("a/B.class").orElseThrow();
             assertEquals(content.length, entry.uncompressedSize(), "sizes come from the central directory");
             assertTrue(entry.compressedSize() > 0);
@@ -313,7 +342,7 @@ class ZipReaderTest {
         System.arraycopy(archive, central + 16, archive, 14, 12);
         Files.write(jar, archive);
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             assertArrayEquals(content, reader.read(reader.entry("data.txt").orElseThrow()));
         }
     }
@@ -334,7 +363,7 @@ class ZipReaderTest {
         putInt(archive, offset, 1);
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("bad.txt"), failure.getMessage());
         assertTrue(failure.getMessage().contains("local"), failure.getMessage());
         assertTrue(failure.getMessage().contains(field), failure.getMessage());
@@ -359,7 +388,7 @@ class ZipReaderTest {
         putInt(archive, descriptor + offset, (intAt(archive, descriptor + offset) & 0xFFFFFFFFL) + 1);
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("bad.txt"), failure.getMessage());
         assertTrue(failure.getMessage().contains("descriptor"), failure.getMessage());
     }
@@ -376,7 +405,7 @@ class ZipReaderTest {
                 stored(zip, "e/" + i, empty);
             }
         }
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             assertEquals(count, reader.entries().size());
             assertEquals("e/0", reader.entries().get(0).name());
             assertEquals("e/" + (count - 1), reader.entries().get(count - 1).name());
@@ -399,7 +428,7 @@ class ZipReaderTest {
         putLong(archive, zip64End + 4, recordSize);
         Files.write(plain, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(plain));
+        IOException failure = assertThrows(IOException.class, () -> open(plain));
         assertTrue(failure.getMessage().contains("ZIP64"), failure.getMessage());
         assertTrue(failure.getMessage().contains("size"), failure.getMessage());
     }
@@ -412,7 +441,7 @@ class ZipReaderTest {
             deflated(zip, "a/two.txt", repeat("second-", 100));
         }
         List<ZipEntryInfo> expected;
-        try (ZipReader reader = ZipReader.open(plain)) {
+        try (ZipReader reader = open(plain)) {
             expected = List.copyOf(reader.entries());
         }
 
@@ -426,7 +455,7 @@ class ZipReaderTest {
             assertEquals(List.of("a/one.txt", "a/two.txt"), names(oracle), "the fixture must be a valid archive");
             assertArrayEquals("first".getBytes(StandardCharsets.UTF_8), readAll(oracle, oracle.getEntry("a/one.txt")));
         }
-        try (ZipReader reader = ZipReader.open(patched)) {
+        try (ZipReader reader = open(patched)) {
             assertEquals(expected, reader.entries());
             assertArrayEquals("first".getBytes(StandardCharsets.UTF_8),
                     reader.read(reader.entry("a/one.txt").orElseThrow()));
@@ -447,7 +476,7 @@ class ZipReaderTest {
         try (ZipFile oracle = new ZipFile(patched.toFile())) {
             assertArrayEquals(content, readAll(oracle, oracle.getEntry("safe.txt")));
         }
-        try (ZipReader reader = ZipReader.open(patched)) {
+        try (ZipReader reader = open(patched)) {
             ZipEntryInfo entry = reader.entry("safe.txt").orElseThrow();
             assertEquals(content.length, entry.compressedSize());
             assertEquals(content.length, entry.uncompressedSize());
@@ -467,7 +496,7 @@ class ZipReaderTest {
         putInt(archive, central + 20, 0xFFFFFFFFL);
         Path broken = temp.resolve("marked-broken.jar");
         Files.write(broken, archive);
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(broken));
+        IOException failure = assertThrows(IOException.class, () -> open(broken));
         assertTrue(failure.getMessage().contains("ZIP64"), failure.getMessage());
     }
 
@@ -483,7 +512,7 @@ class ZipReaderTest {
         putShort(archive, end + 10, 0xFFFF);
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("entry count"), failure.getMessage());
         assertTrue(failure.getMessage().contains("central directory"), failure.getMessage());
     }
@@ -501,7 +530,7 @@ class ZipReaderTest {
         putShort(archive, end + 10, 1);
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("central directory"), failure.getMessage());
         assertTrue(failure.getMessage().contains("trailing"), failure.getMessage());
     }
@@ -517,7 +546,7 @@ class ZipReaderTest {
         putInt(archive, end + 12, (intAt(archive, end + 12) & 0xFFFFFFFFL) + 1);
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("central directory"), failure.getMessage());
         assertTrue(failure.getMessage().contains("end"), failure.getMessage());
     }
@@ -543,7 +572,7 @@ class ZipReaderTest {
         putInt(archive, central + 24, overlappingSize);
         Files.write(jar, archive);
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("one.txt"), failure.getMessage());
         assertTrue(failure.getMessage().contains("two.txt"), failure.getMessage());
         assertTrue(failure.getMessage().contains("overlap"), failure.getMessage());
@@ -572,7 +601,7 @@ class ZipReaderTest {
         try (ZipFile oracle = new ZipFile(jar.toFile())) {
             assertEquals(2, oracle.size(), "the JDK accepts repeated records for one local entry");
         }
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             assertEquals(2, reader.entries().size());
             assertEquals(reader.entries().get(0), reader.entries().get(1));
             assertArrayEquals("content".getBytes(StandardCharsets.UTF_8), reader.read(reader.entries().get(1)));
@@ -583,7 +612,7 @@ class ZipReaderTest {
     void readsAnArchiveWithNoEntries() throws IOException {
         Path jar = temp.resolve("empty.jar");
         new ZipOutputStream(Files.newOutputStream(jar)).close();
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             assertEquals(List.of(), reader.entries());
             assertTrue(reader.manifest().isEmpty());
             assertEquals("", reader.comment());
@@ -594,7 +623,7 @@ class ZipReaderTest {
     void opensAnArchiveWhoseManifestFailsItsCrcAndFailsOnlyWhenTheManifestIsAskedFor() throws IOException {
         Path jar = manifestCrcMismatch(temp.resolve("manifest-crc-mismatch.jar"));
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             assertEquals(List.of("META-INF/MANIFEST.MF", "a/B.class"),
                     reader.entries().stream().map(ZipEntryInfo::name).toList(),
                     "opening an archive neither reads nor parses its manifest");
@@ -614,7 +643,7 @@ class ZipReaderTest {
             deflated(zip, "META-INF/MANIFEST.MF", manifestBytes("Created-By", "test"));
         }
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             Manifest manifest = reader.manifest().orElseThrow();
             assertEquals("test", manifest.getMainAttributes().getValue("Created-By"));
             assertSame(manifest, reader.manifest().orElseThrow(), "the manifest is parsed once");
@@ -641,11 +670,11 @@ class ZipReaderTest {
         Path jar = temp.resolve("launcher-script.jar");
         Files.write(jar, prefixed);
         List<ZipEntryInfo> unprefixed;
-        try (ZipReader reader = ZipReader.open(plain)) {
+        try (ZipReader reader = open(plain)) {
             unprefixed = List.copyOf(reader.entries());
         }
 
-        try (ZipReader reader = ZipReader.open(jar); ZipFile oracle = new ZipFile(jar.toFile())) {
+        try (ZipReader reader = open(jar); ZipFile oracle = new ZipFile(jar.toFile())) {
             assertEquals(names(oracle), reader.entries().stream().map(ZipEntryInfo::name).toList());
             assertEquals(unprefixed.stream().map(entry -> entry.shift(script.length)).toList(), reader.entries(),
                     "every offset moves by the length of the script");
@@ -670,7 +699,7 @@ class ZipReaderTest {
         }
         Files.write(jar, withCentralRecordsReversed(Files.readAllBytes(jar)));
 
-        try (ZipReader reader = ZipReader.open(jar); ZipFile oracle = new ZipFile(jar.toFile())) {
+        try (ZipReader reader = open(jar); ZipFile oracle = new ZipFile(jar.toFile())) {
             assertEquals(List.of("three.txt", "two.txt", "one.txt"), names(oracle),
                     "the fixture lists the entries in the reverse of their order in the file");
             assertEquals(names(oracle), reader.entries().stream().map(ZipEntryInfo::name).toList());
@@ -700,7 +729,7 @@ class ZipReaderTest {
         putInt(archive, central + 24, overlappingSize);
         Files.write(jar, withCentralRecordsReversed(archive));
 
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
+        IOException failure = assertThrows(IOException.class, () -> open(jar));
         assertTrue(failure.getMessage().contains("entry 'one.txt' overlaps entry 'two.txt'"), failure.getMessage());
     }
 
@@ -716,7 +745,7 @@ class ZipReaderTest {
             stored(zip, "after.txt", after);
         }
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             ZipEntryInfo entry = reader.entry("data.bin").orElseThrow();
             assertArrayEquals(content, reader.read(entry));
             assertArrayEquals(content, reader.readRaw(entry));
@@ -740,17 +769,29 @@ class ZipReaderTest {
         assertEquals(chunk - 1, ZipReader.chunkLimit(0, chunk - 1));
     }
 
-    @Test
+    /**
+     * A stored entry is read through the channel, which meets the end of the shrunk file. A deflated entry's
+     * compressed bytes are copied out of the mapping, whose pages the truncation left without backing, so it is the
+     * case that reads the mapping after {@code open}: through the view or the segment, as {@link #readPath} says,
+     * and with however much of the reader this test JVM has compiled by then. {@link ZipReaderCompiledTruncationTest}
+     * repeats such reads in JVMs of their own once C2 has compiled them.
+     */
+    @ParameterizedTest(name = "reading an entry of a file truncated while it is open fails, deflated={0}")
+    @ValueSource(booleans = {false, true})
     @DisabledOnOs(value = OS.WINDOWS, disabledReason = "Windows cannot truncate a file that is mapped")
-    void readingAnEntryOfAFileTruncatedWhileItIsOpenFailsWithAnIOException() throws IOException {
+    void readingAnEntryOfAFileTruncatedWhileItIsOpenFailsWithAnIOException(boolean deflate) throws IOException {
         byte[] content = new byte[256 * 1024];
         new Random(145).nextBytes(content);
         Path jar = temp.resolve("truncated-while-open.jar");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
-            stored(zip, "data.bin", content);
+            if (deflate) {
+                deflated(zip, "data.bin", content);
+            } else {
+                stored(zip, "data.bin", content);
+            }
         }
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             ZipEntryInfo entry = reader.entry("data.bin").orElseThrow();
             try (FileChannel channel = FileChannel.open(jar, StandardOpenOption.WRITE)) {
                 channel.truncate(0);
@@ -758,7 +799,66 @@ class ZipReaderTest {
             IOException failure = assertThrows(IOException.class, () -> reader.read(entry));
             assertTrue(failure.getMessage().contains(jar.toString()), failure.getMessage());
             assertTrue(failure.getMessage().contains("truncated"), failure.getMessage());
+            // Which read met the truncation: the mapping's fault, or the channel's end of file.
+            Class<? extends Throwable> cause = deflate ? InternalError.class : EOFException.class;
+            assertInstanceOf(cause, failure.getCause(), () -> failure + " caused by " + failure.getCause());
         }
+    }
+
+    /**
+     * Reads of the mapping, which reading a deflated entry or the manifest makes, are confined to the thread that
+     * opened the reader: on any other thread they fail rather than race with its {@code close()}. Stored entries,
+     * raw regions and transfers are read through the channel instead, so a deflated entry is what this reads.
+     */
+    @Test
+    void aReadOfTheMappingFromAnotherThreadFailsRatherThanReading() throws IOException {
+        byte[] content = repeat("deflated-content-", 200);
+        Path jar = temp.resolve("other-thread.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "META-INF/MANIFEST.MF", manifestBytes("Created-By", "test"));
+            deflated(zip, "a/B.class", content);
+        }
+
+        try (ZipReader reader = open(jar); ExecutorService other = Executors.newSingleThreadExecutor()) {
+            ZipEntryInfo entry = reader.entry("a/B.class").orElseThrow();
+            ExecutionException read = assertThrows(ExecutionException.class,
+                    () -> other.submit(() -> reader.read(entry)).get());
+            assertInstanceOf(WrongThreadException.class, read.getCause());
+            ExecutionException manifest = assertThrows(ExecutionException.class,
+                    () -> other.submit(reader::manifest).get());
+            assertInstanceOf(WrongThreadException.class, manifest.getCause());
+
+            assertArrayEquals(content, reader.read(entry), "the thread that opened the reader still reads it");
+            assertEquals("test", reader.manifest().orElseThrow().getMainAttributes().getValue("Created-By"));
+        }
+    }
+
+    /** Closing a reader unmaps the file and closes the channel: every read after that fails rather than read. */
+    @Test
+    void aReadAfterCloseFailsRatherThanReturningData() throws IOException {
+        Path jar = temp.resolve("closed.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "META-INF/MANIFEST.MF", manifestBytes("Created-By", "test"));
+            deflated(zip, "a/B.class", repeat("deflated-content-", 200));
+            stored(zip, "a/data.bin", "stored content".getBytes(StandardCharsets.UTF_8));
+        }
+
+        ZipReader reader = open(jar);
+        ZipEntryInfo deflatedEntry = reader.entry("a/B.class").orElseThrow();
+        ZipEntryInfo storedEntry = reader.entry("a/data.bin").orElseThrow();
+        reader.close();
+
+        // The mapping is gone, and its arena refuses the read.
+        assertThrows(IllegalStateException.class, () -> reader.read(deflatedEntry));
+        assertThrows(IllegalStateException.class, reader::manifest);
+        // The channel is closed.
+        assertThrows(ClosedChannelException.class, () -> reader.read(storedEntry));
+        assertThrows(ClosedChannelException.class, () -> reader.readRaw(deflatedEntry));
+        assertThrows(ClosedChannelException.class,
+                () -> reader.transfer(storedEntry, OutputStream.nullOutputStream()));
+        assertThrows(ClosedChannelException.class,
+                () -> reader.transfer(deflatedEntry, OutputStream.nullOutputStream()));
+        reader.close();
     }
 
     @Test
@@ -770,7 +870,7 @@ class ZipReaderTest {
             deflated(zip, "META-INF/MY.RSA", new byte[] {1, 2, 3});
             deflated(zip, "a/B.class", new byte[] {4});
         }
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             assertTrue(reader.hasSignatureFiles());
         }
 
@@ -822,7 +922,7 @@ class ZipReaderTest {
     void rejectsSomethingThatIsNotAnArchive() throws IOException {
         Path notAJar = temp.resolve("not-a-jar.txt");
         Files.write(notAJar, "hello".getBytes(StandardCharsets.UTF_8));
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(notAJar));
+        IOException failure = assertThrows(IOException.class, () -> open(notAJar));
         assertTrue(failure.getMessage().contains("not-a-jar.txt"), failure.getMessage());
     }
 
@@ -833,7 +933,7 @@ class ZipReaderTest {
             deflated(zip, "a/B.class", repeat("corrupt-me-", 100));
         }
         ZipEntryInfo entry;
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             entry = reader.entry("a/B.class").orElseThrow();
         }
         byte[] all = Files.readAllBytes(jar);
@@ -843,7 +943,7 @@ class ZipReaderTest {
             all[(int) entry.dataOffset() + i] = 0;
         }
         Files.write(jar, all);
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             ZipEntryInfo corrupt = reader.entry("a/B.class").orElseThrow();
             assertThrows(IOException.class, () -> reader.read(corrupt));
         }
@@ -860,7 +960,7 @@ class ZipReaderTest {
         ZipEntryInfo oversized = new ZipEntryInfo("large.bin", IndexFormat.METHOD_DEFLATED,
                 compressedSize, uncompressedSize, 0, 0, 0, Files.size(jar), false);
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             IOException failure = assertThrows(IOException.class, () -> reader.read(oversized));
             assertTrue(failure.getMessage().contains("too large to read into memory"), failure.getMessage());
         }
@@ -915,7 +1015,7 @@ class ZipReaderTest {
             deflated(zip, "a/B.class", repeat("make-room-for-the-fixture-", 20));
         }
         ZipEntryInfo original;
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             original = reader.entry("a/B.class").orElseThrow();
         }
         byte[] all = Files.readAllBytes(jar);
@@ -932,7 +1032,7 @@ class ZipReaderTest {
         putInt(all, descriptor + 12, 1);
         Files.write(jar, all);
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             ZipEntryInfo entry = reader.entry("a/B.class").orElseThrow();
             assertThrows(IOException.class, () -> reader.read(entry));
         }
@@ -943,7 +1043,7 @@ class ZipReaderTest {
         Path jar = deflatedWithTrailingByte(temp.resolve("trailing-compressed-byte.jar"),
                 "data.txt", "ABCDEF".getBytes(StandardCharsets.UTF_8));
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             ZipEntryInfo entry = reader.entry("data.txt").orElseThrow();
             IOException failure = assertThrows(IOException.class, () -> reader.read(entry));
             assertTrue(failure.getMessage().contains("data.txt"), failure.getMessage());
@@ -957,7 +1057,7 @@ class ZipReaderTest {
         Path jar = deflatedWithRecordedContent(temp.resolve("overproduction-" + recorded.length() + ".jar"),
                 "data.txt", "ABCDEF".getBytes(StandardCharsets.UTF_8), recorded.getBytes(StandardCharsets.UTF_8));
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             ZipEntryInfo entry = reader.entry("data.txt").orElseThrow();
             IOException failure = assertThrows(IOException.class, () -> reader.read(entry));
             assertTrue(failure.getMessage().contains("data.txt"), failure.getMessage());
@@ -975,7 +1075,7 @@ class ZipReaderTest {
             deflated(zip, "a/Large.class", large);
             deflated(zip, "a/empty.txt", new byte[0]);
         }
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             for (ZipEntryInfo entry : reader.entries()) {
                 byte[] raw = reader.readRaw(entry);
                 assertEquals(entry.compressedSize(), raw.length, entry.name());
@@ -991,7 +1091,7 @@ class ZipReaderTest {
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(stored))) {
             stored(zip, "a/Stored.class", small);
         }
-        try (ZipReader reader = ZipReader.open(stored)) {
+        try (ZipReader reader = open(stored)) {
             ZipEntryInfo entry = reader.entry("a/Stored.class").orElseThrow();
             IOException notDeflated = assertThrows(IOException.class,
                     () -> reader.inflate(entry, reader.readRaw(entry)));
@@ -1019,7 +1119,7 @@ class ZipReaderTest {
                 "ABCDEF".getBytes(StandardCharsets.UTF_8));
 
         for (Path jar : List.of(flipped, wrongSize, overproduced, trailing)) {
-            try (ZipReader reader = ZipReader.open(jar)) {
+            try (ZipReader reader = open(jar)) {
                 ZipEntryInfo entry = reader.entry("data.txt").orElseThrow();
                 IOException transferred = assertThrows(IOException.class,
                         () -> reader.transfer(entry, OutputStream.nullOutputStream()), jar::toString);
@@ -1037,7 +1137,7 @@ class ZipReaderTest {
             deflated(zip, "empty.txt", new byte[0]);
         }
 
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             assertArrayEquals(new byte[0], reader.read(reader.entry("empty.txt").orElseThrow()));
         }
     }
@@ -1048,7 +1148,7 @@ class ZipReaderTest {
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
             stored(zip, name, new byte[] {1});
         }
-        IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar), name);
+        IOException failure = assertThrows(IOException.class, () -> open(jar), name);
         assertTrue(failure.getMessage().contains(jar.toString()), failure.getMessage());
         assertTrue(failure.getMessage().contains(name), failure.getMessage());
     }
@@ -1079,8 +1179,8 @@ class ZipReaderTest {
         Files.write(jar, archive);
     }
 
-    private static void assertCrcFailure(Path jar, String name) throws IOException {
-        try (ZipReader reader = ZipReader.open(jar)) {
+    private void assertCrcFailure(Path jar, String name) throws IOException {
+        try (ZipReader reader = open(jar)) {
             IOException failure = assertThrows(IOException.class,
                     () -> reader.read(reader.entry(name).orElseThrow()));
             assertTrue(failure.getMessage().contains(jar.toString()), failure.getMessage());
@@ -1533,7 +1633,7 @@ class ZipReaderTest {
         try (ZipFile oracle = new ZipFile(jar.toFile())) {
             assertEquals(count, oracle.size(), "the JDK reads it, so this reader has to as well");
         }
-        try (ZipReader reader = ZipReader.open(jar)) {
+        try (ZipReader reader = open(jar)) {
             assertEquals(count, reader.entries().size());
             assertArrayEquals(new byte[] {0}, reader.read(reader.entry("e/0").orElseThrow()));
             assertArrayEquals(new byte[] {(byte) (count - 1)},

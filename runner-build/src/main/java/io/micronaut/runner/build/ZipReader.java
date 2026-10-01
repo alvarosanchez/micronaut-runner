@@ -83,19 +83,29 @@ import java.util.zip.Inflater;
  * {@link #read(ZipEntryInfo)} of a deflated entry copies its compressed bytes out of the mapping instead, in
  * chunks of at most 64 KiB, each of which the {@link Inflater} consumes before the next is copied.</p>
  *
+ * <p>The mapping is read in one of two ways, which read the same bytes with the same checks. An archive of at most
+ * {@code Integer.MAX_VALUE - 8} bytes, which is every jar in practice, is read through a little-endian
+ * {@link ByteBuffer} view of the whole mapping, taken once when it is opened and read only with absolute accessors,
+ * so its position and limit never matter. Its first use in a JVM costs less than the segment accessors' first use:
+ * those initialise {@link ValueLayout} constants and link a {@code VarHandle} per layout, which every packaging
+ * JVM that starts fresh would pay. A larger archive, which no buffer can span, is read through the segment itself.
+ * The view comes from the arena's segment, so it lives exactly as long as the mapping and keeps the arena's
+ * checks; no reader ever hands it, or a slice of it, to a caller, and every method returns copies on the heap.</p>
+ *
  * <p>A reader is confined to the thread that opened it: only that thread may use it and close it, and it
  * must never be handed to another thread, whose reads of the mapping would fail. Every reader must be
- * closed, which unmaps the file and then closes the channel. The mapping lives outside the heap and the
- * garbage collector never releases it, and on Windows a mapped file can be neither moved nor deleted.</p>
+ * closed, which unmaps the file and then closes the channel; a read of the mapping after that fails too. The
+ * mapping lives outside the heap and the garbage collector never releases it, and on Windows a mapped file can
+ * be neither moved nor deleted.</p>
  *
  * <p>The file must not change while it is open. A positional read stops at the end of the file, at a known
  * point, so once {@code open} has returned, a truncation makes every later read through the channel of data
  * that lay past the new end of the file fail with an {@link IOException} that names the file. Reads of the
- * mapping are different. When a concurrent truncation leaves a mapped page without backing, the JVM raises the
- * fault of reading it as an {@link InternalError}, and HotSpot throws that error later than the read: at the
- * thread's next method return or return from native code or the VM, or, from a loop in compiled code, once the
- * frame has been deoptimized. The reader turns it into the same {@link IOException} when it is thrown inside
- * one of its reads of the mapping, and two remain:</p>
+ * mapping are different, through the view and the segment alike. When a concurrent truncation leaves a mapped
+ * page without backing, the JVM raises the fault of reading it as an {@link InternalError}, and HotSpot throws
+ * that error later than the read: at the thread's next method return or return from native code or the VM, or,
+ * from a loop in compiled code, once the frame has been deoptimized. The reader turns it into the same
+ * {@link IOException} when it is thrown inside one of its reads of the mapping, and two remain:</p>
  * <ul>
  *     <li>{@link #read(ZipEntryInfo)} of a deflated entry. The {@link Inflater}'s native call that follows each
  *     chunk it copies is such a return, inside {@code read}'s handler, so even compiled code throws the error
@@ -156,17 +166,16 @@ final class ZipReader implements Closeable {
     /** Name of the jar index the packager drops, since a nested jar never has a class path of its own. */
     private static final String INDEX_LIST_NAME = "META-INF/INDEX.LIST";
 
-    /** ZIP integers are little-endian and sit at any offset, so every read of the mapping uses these. */
-    private static final ValueLayout.OfShort SHORT_LE =
-            ValueLayout.JAVA_SHORT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
-    private static final ValueLayout.OfInt INT_LE = ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
-    private static final ValueLayout.OfLong LONG_LE =
-            ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
-
     private final Path path;
     private final FileChannel channel;
     private final Arena arena;
     private final MemorySegment mapping;
+    /**
+     * A little-endian view of the whole {@link #mapping}, through which every read of it goes, or {@code null} when
+     * the archive is larger than {@link #MAX_ARRAY_LENGTH} bytes, which no buffer can span, or a test asked for the
+     * segment reads. Only its absolute accessors are used: its position and limit never move.
+     */
+    private final ByteBuffer view;
     private final long fileLength;
     private final String comment;
     private final List<ZipEntryInfo> entries;
@@ -180,14 +189,16 @@ final class ZipReader implements Closeable {
     private byte[] transferOutput;
 
     /**
-     * Parses an archive that {@link #map(Path)} has opened and mapped. The caller closes the channel and the
-     * arena when this throws.
+     * Parses an archive that {@link #map(Path, boolean)} has opened and mapped. The caller closes the channel and
+     * the arena when this throws.
      */
-    private ZipReader(Path path, FileChannel channel, Arena arena, MemorySegment mapping) throws IOException {
+    private ZipReader(Path path, FileChannel channel, Arena arena, MemorySegment mapping, ByteBuffer view)
+            throws IOException {
         this.path = path;
         this.channel = channel;
         this.arena = arena;
         this.mapping = mapping;
+        this.view = view;
         this.fileLength = mapping.byteSize();
         try {
             long endOffset = findEndOfCentralDirectory();
@@ -282,7 +293,7 @@ final class ZipReader implements Closeable {
      */
     static ZipReader open(Path path) throws IOException {
         Objects.requireNonNull(path, "path");
-        return map(path);
+        return map(path, true);
     }
 
     /**
@@ -295,7 +306,21 @@ final class ZipReader implements Closeable {
      */
     static ZipReader open(File file) throws IOException {
         Objects.requireNonNull(file, "file");
-        return map(file.toPath());
+        return map(file.toPath(), true);
+    }
+
+    /**
+     * Opens an archive for reading, optionally without the buffer view of its mapping, so that tests can run the
+     * segment reads that otherwise only an archive over {@code Integer.MAX_VALUE - 8} bytes takes.
+     *
+     * @param path       the archive file
+     * @param bufferView whether to read the mapping through a buffer view when the archive is small enough for one
+     * @return an open reader the caller must close, on the thread that opened it
+     * @throws IOException if the file cannot be read or mapped, or is not a well-formed ZIP archive
+     */
+    static ZipReader open(Path path, boolean bufferView) throws IOException {
+        Objects.requireNonNull(path, "path");
+        return map(path, bufferView);
     }
 
     /**
@@ -813,14 +838,22 @@ final class ZipReader implements Closeable {
      * Opens and maps an archive, then parses it. Whatever fails after the channel is open closes the arena
      * as well as the channel: a confined arena is never reclaimed by the garbage collector, so every archive
      * this rejects would otherwise leak its mapping and, on Windows, keep the file from being deleted.
+     *
+     * <p>The view is taken from the arena's segment, never from an arena-less mapping, so that closing the arena
+     * still unmaps the file and the view keeps the arena's confinement to this thread.
+     * {@link MemorySegment#asByteBuffer()} refuses a segment longer than {@link #MAX_ARRAY_LENGTH}, and a buffer's
+     * {@code int} index could not reach past it either.</p>
      */
-    private static ZipReader map(Path path) throws IOException {
+    private static ZipReader map(Path path, boolean bufferView) throws IOException {
         FileChannel channel = FileChannel.open(path, StandardOpenOption.READ);
         Arena arena = null;
         try {
             arena = Arena.ofConfined();
             MemorySegment mapping = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size(), arena);
-            return new ZipReader(path, channel, arena, mapping);
+            ByteBuffer view = bufferView && mapping.byteSize() <= MAX_ARRAY_LENGTH
+                    ? mapping.asByteBuffer().order(ByteOrder.LITTLE_ENDIAN)
+                    : null;
+            return new ZipReader(path, channel, arena, mapping, view);
         } catch (IOException | RuntimeException | Error e) {
             if (arena != null) {
                 arena.close();
@@ -869,25 +902,39 @@ final class ZipReader implements Closeable {
                 | ((long) readInt(buffer, offset + 4) << 32);
     }
 
-    // Reads of the mapping. Every caller has checked the range first, with requireRange or against a bound
-    // derived from the file length, so the messages name what is wrong with the archive; an access that
-    // still falls outside the mapping, or faults because the file shrank, becomes an IOException in the
-    // constructor, copyFromMapping or bytesAt.
+    // Reads of the mapping, through the view when there is one and through the segment otherwise. Every caller
+    // has checked the range first, with requireRange or against a bound derived from the file length, so the
+    // messages name what is wrong with the archive; an access that still falls outside the mapping, or faults
+    // because the file shrank, becomes an IOException in the constructor, copyFromMapping or bytesAt, or in read's
+    // handler. A view exists only for a file of at most MAX_ARRAY_LENGTH bytes, and every offset read through it
+    // lies inside the file, so the (int) casts of those offsets cannot wrap.
 
     private int readUnsignedShort(long offset) {
-        return Short.toUnsignedInt(mapping.get(SHORT_LE, offset));
+        ByteBuffer buffer = view;
+        if (buffer != null) {
+            return Short.toUnsignedInt(buffer.getShort((int) offset));
+        }
+        return Short.toUnsignedInt(mapping.get(SegmentLayouts.SHORT_LE, offset));
     }
 
     private int readInt(long offset) {
-        return mapping.get(INT_LE, offset);
+        ByteBuffer buffer = view;
+        if (buffer != null) {
+            return buffer.getInt((int) offset);
+        }
+        return mapping.get(SegmentLayouts.INT_LE, offset);
     }
 
     private long readUnsignedInt(long offset) {
-        return Integer.toUnsignedLong(mapping.get(INT_LE, offset));
+        return Integer.toUnsignedLong(readInt(offset));
     }
 
     private long readLong(long offset) {
-        return mapping.get(LONG_LE, offset);
+        ByteBuffer buffer = view;
+        if (buffer != null) {
+            return buffer.getLong((int) offset);
+        }
+        return mapping.get(SegmentLayouts.LONG_LE, offset);
     }
 
     /** Copies {@code length} bytes of the archive at {@code position} into a new array. */
@@ -900,9 +947,15 @@ final class ZipReader implements Closeable {
 
     private void copyFromMapping(long position, byte[] destination, int offset, int length) throws IOException {
         try {
-            // Segment to segment rather than segment to array: the array overload bootstraps a type switch on
-            // its first call, about a millisecond that every fresh packaging JVM would pay.
-            MemorySegment.copy(mapping, position, MemorySegment.ofArray(destination), offset, length);
+            ByteBuffer buffer = view;
+            if (buffer != null) {
+                // An absolute bulk get, which leaves the view's position alone.
+                buffer.get((int) position, destination, offset, length);
+            } else {
+                // Segment to segment rather than segment to array: the array overload bootstraps a type switch
+                // on its first call, about a millisecond.
+                MemorySegment.copy(mapping, position, MemorySegment.ofArray(destination), offset, length);
+            }
         } catch (IndexOutOfBoundsException | InternalError e) {
             throw unreadable(e);
         }
@@ -992,8 +1045,9 @@ final class ZipReader implements Closeable {
             throw malformed("the archive declares too many entries: " + entryCount);
         }
         byte[] directory = bytesAt(directoryStart, (int) directorySize);
-        // Compares central names with local names in place, without copying the local ones.
-        MemorySegment directoryView = MemorySegment.ofArray(directory);
+        // Lets the segment reads compare central names with local names in place, without copying the local ones;
+        // the view compares them byte by byte against the array and needs none.
+        MemorySegment directorySegment = view == null ? MemorySegment.ofArray(directory) : null;
         int count = (int) entryCount;
         List<ZipEntryInfo> result = new ArrayList<>(count);
         // Where each entry's local header starts and its data or data descriptor ends, by central
@@ -1015,7 +1069,7 @@ final class ZipReader implements Closeable {
             if (recordSize > directory.length - position) {
                 throw malformed("central directory record " + i + " runs past the end of the directory");
             }
-            ZipEntryInfo entry = readCentralDirectoryRecord(directory, directoryView, position, nameLength,
+            ZipEntryInfo entry = readCentralDirectoryRecord(directory, directorySegment, position, nameLength,
                     extraLength, delta, directoryStart, spanEnds, i);
             spanStarts[i] = entry.localHeaderOffset();
             result.add(entry);
@@ -1035,7 +1089,7 @@ final class ZipReader implements Closeable {
         return List.copyOf(result);
     }
 
-    private ZipEntryInfo readCentralDirectoryRecord(byte[] directory, MemorySegment directoryView, int position,
+    private ZipEntryInfo readCentralDirectoryRecord(byte[] directory, MemorySegment directorySegment, int position,
             int nameLength, int extraLength, long delta, long directoryStart, long[] spanEnds, int index)
             throws IOException {
         int flags = readUnsignedShort(directory, position + 8);
@@ -1087,8 +1141,8 @@ final class ZipReader implements Closeable {
         }
         localHeaderOffset = checkedAdd(localHeaderOffset, delta,
                 "local header offset of entry '" + name + "'");
-        long dataOffset = resolveDataOffset(name, directoryView, nameStart, nameLength, localHeaderOffset,
-                flags, method, crc, compressedSize, uncompressedSize, directoryStart);
+        long dataOffset = resolveDataOffset(name, directory, directorySegment, nameStart, nameLength,
+                localHeaderOffset, flags, method, crc, compressedSize, uncompressedSize, directoryStart);
         long dataEnd = dataOffset + compressedSize;
         int descriptorLength = 0;
         if ((flags & FLAG_DATA_DESCRIPTOR) != 0) {
@@ -1164,9 +1218,9 @@ final class ZipReader implements Closeable {
      * Checks an entry's local file header against its central directory record, reading the header and
      * the name from the mapping, and returns the offset of its first data byte.
      */
-    private long resolveDataOffset(String name, MemorySegment directory, int centralNameStart, int centralNameLength,
-            long localHeaderOffset, int flags, int method, long crc, long compressedSize, long uncompressedSize,
-            long directoryStart) throws IOException {
+    private long resolveDataOffset(String name, byte[] directory, MemorySegment directorySegment,
+            int centralNameStart, int centralNameLength, long localHeaderOffset, int flags, int method, long crc,
+            long compressedSize, long uncompressedSize, long directoryStart) throws IOException {
         requireRange(localHeaderOffset, LOCAL_HEADER_SIZE);
         if (readInt(localHeaderOffset) != IndexFormat.LOCAL_HEADER_SIGNATURE) {
             throw malformed("no local file header for entry '" + name + "' at offset " + localHeaderOffset);
@@ -1194,8 +1248,7 @@ final class ZipReader implements Closeable {
         // Equal bytes are all it takes to prove the names equal; the local name is only decoded to say
         // what it is instead, strictly, so a malformed one is reported as malformed.
         if (nameLength != centralNameLength
-                || MemorySegment.mismatch(directory, centralNameStart, centralNameStart + centralNameLength,
-                        mapping, nameOffset, nameOffset + nameLength) >= 0) {
+                || !sameName(directory, directorySegment, centralNameStart, nameOffset, nameLength)) {
             byte[] localName = bytesAt(nameOffset, nameLength);
             throw malformed("the local header name '"
                     + decodeName(localName, 0, nameLength, "local header of entry '" + name + "'")
@@ -1244,6 +1297,29 @@ final class ZipReader implements Closeable {
             throw malformed("the compressed data of entry '" + name + "' runs into the central directory");
         }
         return dataOffset;
+    }
+
+    /**
+     * Whether the {@code length} bytes of the mapping at {@code nameOffset}, a local header's name, equal those of the
+     * copied central directory at {@code centralNameStart}, without copying the local name. The caller has checked
+     * that the local name lies before the central directory, so inside the file.
+     *
+     * @param directorySegment the central directory as a segment, for the segment reads; {@code null} with a view
+     */
+    private boolean sameName(byte[] directory, MemorySegment directorySegment, int centralNameStart, long nameOffset,
+            int length) {
+        ByteBuffer buffer = view;
+        if (buffer != null) {
+            int local = (int) nameOffset;
+            for (int i = 0; i < length; i++) {
+                if (buffer.get(local + i) != directory[centralNameStart + i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return MemorySegment.mismatch(directorySegment, centralNameStart, centralNameStart + length,
+                mapping, nameOffset, nameOffset + length) < 0;
     }
 
     /**
@@ -1432,5 +1508,25 @@ final class ZipReader implements Closeable {
         CHANNEL,
         /** One array that holds the whole region, which {@link #inflate(ZipEntryInfo, byte[])} is given. */
         ARRAY
+    }
+
+    /**
+     * The layouts of the segment reads, which only a reader without a {@link #view} makes: one over an archive
+     * larger than {@link #MAX_ARRAY_LENGTH} bytes. Holding them here keeps the {@link ValueLayout} classes their
+     * initialisation loads, and the {@code VarHandle}s their first reads link, off every JVM that only opens
+     * smaller archives. ZIP integers are little-endian and sit at any offset.
+     */
+    private static final class SegmentLayouts {
+
+        static final ValueLayout.OfShort SHORT_LE =
+                ValueLayout.JAVA_SHORT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+
+        static final ValueLayout.OfInt INT_LE = ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+
+        static final ValueLayout.OfLong LONG_LE =
+                ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
+
+        private SegmentLayouts() {
+        }
     }
 }
