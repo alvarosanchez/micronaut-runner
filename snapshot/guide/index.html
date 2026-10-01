@@ -1060,13 +1060,14 @@ corrects or complains about: two appenders writing to the same <code>&lt;file&gt
 <p>The packager also leaves the file to Joran when logback-classic, logback-core or slf4j-api is missing, when the two
 Logback jars differ in version or are outside 1.5.37 to 1.6 (exclusive), when there is no <code>logback.xml</code>, when any
 layer has a <code>logback-test.xml</code>, <code>logback.groovy</code> or versioned Logback file, when any layer already registers a
-<code>Configurator</code> (your own, or Micronaut AOT&#8217;s), and when a packaged <code>application*</code> or <code>bootstrap*</code> file may set
-<code>logger.config</code> or <code>logback.configurationFile</code>. That last check errs on the side of Joran: a <code>.properties</code> file is
-parsed, and any other format counts when its text names <code>configurationFile</code> or <code>logger.config</code>, or has the word
-<code>logger</code> and a <code>config</code> key anywhere, whatever the nesting or the line breaks. The build logs one line either way,
-at info level: <code>Precompiled logback.xml (application layer) into &#8230;&#8203;</code> or <code>No Logback configuration was precompiled
-because &lt;reason&gt;; Logback will configure itself with Joran at startup</code>. A generated class name that is already
-taken is a warning.</p>
+<code>Configurator</code> (your own, or Micronaut AOT&#8217;s), and when an <code>application*</code> or <code>bootstrap*</code> file of the
+application layer may set <code>logger.config</code> or <code>logback.configurationFile</code>. That last check errs on the side of
+Joran: a <code>.properties</code> file is parsed, and any other format counts when its text names <code>configurationFile</code> or
+<code>logger.config</code>, or has the word <code>logger</code> and a <code>config</code> key anywhere, whatever the nesting or the line breaks. It
+reads neither dependency JARs nor imported configuration (see the end of the next section). The build logs one
+line either way, at info level: <code>Precompiled logback.xml (application layer) into &#8230;&#8203;</code> or <code>No Logback configuration
+was precompiled because &lt;reason&gt;; Logback will configure itself with Joran at startup</code>. A generated class name that
+is already taken is a warning.</p>
 </div>
 </div>
 <div class="sect2">
@@ -1097,10 +1098,25 @@ configured, as without Micronaut Runner;</p>
 way to see them falls back to Joran. <code>logback.xml</code> is read only on the paths above.</p>
 </div>
 <div class="paragraph">
-<p>One case is not covered: a <code>logger.config</code> set by configuration outside the archive, such as
-<code>-Dmicronaut.config.files</code>, an <code>application.yml</code> in the working directory or a <code>--logger.config</code> program argument,
-is not applied once a <code>Configurator</code> is registered, and the runtime opt-out does not change that. Set the location
-with <code>-Dlogger.config</code> or <code>LOGGER_CONFIG</code> instead, or turn precompilation off.</p>
+<p>Some cases are not covered. A <code>logger.config</code> set where the build does not look is not applied once a
+<code>Configurator</code> is registered, and the runtime opt-out does not change that:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>configuration outside the archive, such as <code>-Dmicronaut.config.files</code>, an <code>application.yml</code> in the working
+directory or a <code>--logger.config</code> program argument;</p>
+</li>
+<li>
+<p>an <code>application*</code> or <code>bootstrap*</code> file of a dependency JAR: the build reads only the application layer&#8217;s;</p>
+</li>
+<li>
+<p>configuration that a packaged file imports with <code>micronaut.config.import</code>: the build does not follow imports.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Set the location with <code>-Dlogger.config</code> or <code>LOGGER_CONFIG</code> instead, or turn precompilation off.</p>
 </div>
 </div>
 <div class="sect2">
