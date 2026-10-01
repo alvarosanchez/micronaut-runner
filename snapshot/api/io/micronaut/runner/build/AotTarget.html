@@ -96,10 +96,14 @@ loadScripts(document, 'script');</script>
 </dl>
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public enum </span><span class="element-name type-name-label">AotTarget</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public enum </span><span class="element-name type-name-label">AotTarget</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Enum.html" title="class or interface in java.lang" class="external-link">Enum</a>&lt;<a href="AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a>&gt;</span></div>
 <div class="block">What a JDK AOT cache is trained for: the extracted layout, which every JDK caches in full, or a copy of the
-single Runner JAR, whose nested classes JDK 27 and later do not cache.</div>
+single Runner JAR, whose nested classes JDK 27 and later do not cache.
+
+<p>Internal to Runner's interim build plugins, which read their <code>target</code> setting with <a href="#parse(java.lang.String)"><code>parse(String)</code></a>: it
+may change in any release.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>

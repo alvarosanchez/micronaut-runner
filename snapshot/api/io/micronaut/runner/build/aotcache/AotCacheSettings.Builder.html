@@ -5,7 +5,7 @@
 <title>AotCacheSettings.Builder (runner-parent 1.0.0-SNAPSHOT API)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<meta name="description" content="declaration: package: io.micronaut.runner.build.aotcache, record: AotCacheSettings, class: Builder">
+<meta name="description" content="declaration: package: io.micronaut.runner.build.aotcache, class: AotCacheSettings, class: Builder">
 <meta name="generator" content="javadoc/ClassWriter">
 <link rel="stylesheet" type="text/css" href="../../../../../resource-files/jquery-ui.min.css">
 <link rel="stylesheet" type="text/css" href="../../../../../resource-files/stylesheet.css">
@@ -61,7 +61,6 @@ loadScripts(document, 'script');</script>
 <li><a href="#jvmArgs(java.util.List)" tabindex="0">jvmArgs(List)</a></li>
 <li><a href="#verifyProbes(int)" tabindex="0">verifyProbes(int)</a></li>
 <li><a href="#minCoverage(double)" tabindex="0">minCoverage(double)</a></li>
-<li><a href="#enforceCoverage(boolean)" tabindex="0">enforceCoverage(boolean)</a></li>
 <li><a href="#build()" tabindex="0">build()</a></li>
 </ol>
 </li>
@@ -82,10 +81,13 @@ loadScripts(document, 'script');</script>
 </dl>
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public static final class </span><span class="element-name type-name-label">AotCacheSettings.Builder</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public static final class </span><span class="element-name type-name-label">AotCacheSettings.Builder</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
 <div class="block">Collects cache settings, starting from the defaults. A setter that is not called leaves the default in
-place.</div>
+place.
+
+<p>Internal to Runner's interim build plugins: it may change in any release.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -111,28 +113,23 @@ place.</div>
 <div class="block">Validates and builds the settings.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#enforceCoverage(boolean)" class="member-name-link">enforceCoverage</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jvmArgs(java.util.List)" class="member-name-link">jvmArgs</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Sets <a href="AotCacheSettings.html#enforceCoverage()"><code>AotCacheSettings.enforceCoverage()</code></a>.</div>
-</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jvmArgs(java.util.List)" class="member-name-link">jvmArgs</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets <a href="AotCacheSettings.html#jvmArgs()"><code>AotCacheSettings.jvmArgs()</code></a>.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#minCoverage(double)" class="member-name-link">minCoverage</a><wbr>(double&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#minCoverage(double)" class="member-name-link">minCoverage</a><wbr>(double&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets <a href="AotCacheSettings.html#minCoverage()"><code>AotCacheSettings.minCoverage()</code></a>.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#strict(boolean)" class="member-name-link">strict</a><wbr>(boolean&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#strict(boolean)" class="member-name-link">strict</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets <a href="AotCacheSettings.html#strict()"><code>AotCacheSettings.strict()</code></a>.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#verifyProbes(int)" class="member-name-link">verifyProbes</a><wbr>(int&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#verifyProbes(int)" class="member-name-link">verifyProbes</a><wbr>(int&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets <a href="AotCacheSettings.html#verifyProbes()"><code>AotCacheSettings.verifyProbes()</code></a>.</div>
 </div>
 </div>
@@ -206,21 +203,6 @@ place.</div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>value</code> - the minimum share of classes from the cache</dd>
-<dt>Returns:</dt>
-<dd>this builder</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="enforceCoverage(boolean)">
-<h3>enforceCoverage</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></span>&nbsp;<span class="element-name">enforceCoverage</span><wbr><span class="parameters">(boolean&nbsp;value)</span></div>
-<div class="block">Sets <a href="AotCacheSettings.html#enforceCoverage()"><code>AotCacheSettings.enforceCoverage()</code></a>.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>value</code> - whether the coverage checks fail the build</dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
 </dl>

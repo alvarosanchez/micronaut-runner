@@ -54,17 +54,9 @@ loadScripts(document, 'script');</script>
 <ol class="toc-list" tabindex="-1">
 <li><a href="#" tabindex="0">Description</a></li>
 <li><a href="#nested-class-summary" tabindex="0">Nested Class Summary</a></li>
-<li><a href="#field-summary" tabindex="0">Field Summary</a></li>
 <li><a href="#method-summary" tabindex="0">Method Summary</a></li>
-<li><a href="#field-detail" tabindex="0">Field Details</a>
-<ol class="toc-list">
-<li><a href="#SMOKE_LOG" tabindex="0">SMOKE_LOG</a></li>
-<li><a href="#CLASS_LOAD_LOG" tabindex="0">CLASS_LOAD_LOG</a></li>
-</ol>
-</li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
-<li><a href="#verify(io.micronaut.runner.build.aotcache.AotCacheSettings,io.micronaut.runner.build.aotcache.JdkProbe,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.lang.String,io.micronaut.runner.build.BuildLogger)" tabindex="0">verify(AotCacheSettings, JdkProbe, Path, Path, String, TrainingSettings, String, BuildLogger)</a></li>
 <li><a href="#coverage(java.util.List,java.util.List)" tabindex="0">coverage(List, List)</a></li>
 </ol>
 </li>
@@ -81,7 +73,8 @@ loadScripts(document, 'script');</script>
 <section class="class-description" id="class-description">
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">AotCacheGate</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public final class </span><span class="element-name type-name-label">AotCacheGate</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
 <div class="block">The verification gate of a trained cache. It passes only when every enforced check holds:
 
@@ -96,9 +89,12 @@ loadScripts(document, 'script');</script>
     <li><b>Coverage.</b> From that launch's class-load log, up to the end of its workload: at least
     <a href="AotCacheSettings.html#minCoverage()"><code>AotCacheSettings.minCoverage()</code></a> of the classes come from the cache, and every <code>io.micronaut</code>
     class that does not is a lambda proxy or one the recording named as skipped because it failed
-    verification or is a JFR event class. With <a href="AotCacheSettings.html#enforceCoverage()"><code>AotCacheSettings.enforceCoverage()</code></a> off, the numbers are
-    only reported.</li>
-</ol></div>
+    verification or is a JFR event class. With the settings' <code>enforceCoverage</code> off, the numbers are only
+    reported.</li>
+</ol>
+
+<p>Internal: <a href="#coverage(java.util.List,java.util.List)"><code>coverage(List, List)</code></a> is public only for Runner's own benchmarks, which count what a cached
+launch took from the cache. It may change in any release.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -116,32 +112,10 @@ loadScripts(document, 'script');</script>
 <div class="table-header col-first">Modifier and Type</div>
 <div class="table-header col-second">Class</div>
 <div class="table-header col-last">Description</div>
-<div class="col-first even-row-color"><code>static final record&nbsp;</code></div>
+<div class="col-first even-row-color"><code>static final class&nbsp;</code></div>
 <div class="col-second even-row-color"><code><a href="AotCacheGate.Coverage.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheGate.Coverage</a></code></div>
 <div class="col-last even-row-color">
 <div class="block">What a strict launch took from the cache.</div>
-</div>
-</div>
-</section>
-</li>
-<!-- =========== FIELD SUMMARY =========== -->
-<li>
-<section class="field-summary" id="field-summary">
-<h2>Field Summary</h2>
-<div class="caption"><span>Fields</span></div>
-<div class="summary-table three-column-summary">
-<div class="table-header col-first">Modifier and Type</div>
-<div class="table-header col-second">Field</div>
-<div class="table-header col-last">Description</div>
-<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#CLASS_LOAD_LOG" class="member-name-link">CLASS_LOAD_LOG</a></code></div>
-<div class="col-last even-row-color">
-<div class="block">The strict smoke launch's class-load log, up to the end of its workload, relative to the output directory.</div>
-</div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#SMOKE_LOG" class="member-name-link">SMOKE_LOG</a></code></div>
-<div class="col-last odd-row-color">
-<div class="block">The strict smoke launch's output, relative to the output directory.</div>
 </div>
 </div>
 </section>
@@ -163,18 +137,6 @@ loadScripts(document, 'script');</script>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
 <div class="block">Counts what a strict launch took from the cache.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#verify(io.micronaut.runner.build.aotcache.AotCacheSettings,io.micronaut.runner.build.aotcache.JdkProbe,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.lang.String,io.micronaut.runner.build.BuildLogger)" class="member-name-link">verify</a><wbr>(<a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a>&nbsp;settings,
- <a href="JdkProbe.html" title="class in io.micronaut.runner.build.aotcache">JdkProbe</a>&nbsp;jdk,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;java,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;directory,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;jarName,
- <a href="../training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a>&nbsp;training,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;recordStop,
- <a href="../BuildLogger.html" title="interface in io.micronaut.runner.build">BuildLogger</a>&nbsp;log)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">Runs the checks and writes <a href="AotCacheReport.html#FILE">"aot-report.json"</a> into the directory, whether they pass or not.</div>
-</div>
 </div>
 </div>
 </div>
@@ -187,91 +149,11 @@ loadScripts(document, 'script');</script>
 </section>
 <section class="details">
 <ul class="details-list">
-<!-- ============ FIELD DETAIL =========== -->
-<li>
-<section class="field-details" id="field-detail">
-<h2>Field Details</h2>
-<ul class="member-list">
-<li>
-<section class="detail" id="SMOKE_LOG">
-<h3>SMOKE_LOG</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">SMOKE_LOG</span></div>
-<div class="block">The strict smoke launch's output, relative to the output directory.</div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../../../constant-values.html#io.micronaut.runner.build.aotcache.AotCacheGate.SMOKE_LOG">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="CLASS_LOAD_LOG">
-<h3>CLASS_LOAD_LOG</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">CLASS_LOAD_LOG</span></div>
-<div class="block">The strict smoke launch's class-load log, up to the end of its workload, relative to the output directory.</div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../../../constant-values.html#io.micronaut.runner.build.aotcache.AotCacheGate.CLASS_LOAD_LOG">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
-</ul>
-</section>
-</li>
 <!-- ============ METHOD DETAIL ========== -->
 <li>
 <section class="method-details" id="method-detail">
 <h2>Method Details</h2>
 <ul class="member-list">
-<li>
-<section class="detail" id="verify(io.micronaut.runner.build.aotcache.AotCacheSettings,io.micronaut.runner.build.aotcache.JdkProbe,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.lang.String,io.micronaut.runner.build.BuildLogger)">
-<h3>verify</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></span>&nbsp;<span class="element-name">verify</span><wbr><span class="parameters">(<a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a>&nbsp;settings,
- <a href="JdkProbe.html" title="class in io.micronaut.runner.build.aotcache">JdkProbe</a>&nbsp;jdk,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;java,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;directory,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;jarName,
- <a href="../training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a>&nbsp;training,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;recordStop,
- <a href="../BuildLogger.html" title="interface in io.micronaut.runner.build">BuildLogger</a>&nbsp;log)</span>
-                             throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a>,
-<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/InterruptedException.html" title="class or interface in java.lang" class="external-link">InterruptedException</a></span></div>
-<div class="block">Runs the checks and writes <a href="AotCacheReport.html#FILE">"aot-report.json"</a> into the directory, whether they pass or not.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>settings</code> - the cache settings; their <a href="AotCacheSettings.html#jvmArgs()"><code>AotCacheSettings.jvmArgs()</code></a> go on every launch</dd>
-<dd><code>jdk</code> - what the verifying <code>java</code> reported</dd>
-<dd><code>java</code> - the <code>java</code> executable to verify with; a relative path is resolved against this JVM's
-                  working directory</dd>
-<dd><code>directory</code> - the directory that holds the JAR, the cache and the identity file, and the working
-                  directory of every launch</dd>
-<dd><code>jarName</code> - the JAR's file name in that directory</dd>
-<dd><code>training</code> - how to reach, exercise and stop the application; its own <code>jvmArgs</code> are replaced by
-                  the settings'</dd>
-<dd><code>recordStop</code> - how the recording ended, for the report</dd>
-<dd><code>log</code> - where the checks are reported</dd>
-<dt>Returns:</dt>
-<dd>the report of a gate that passed</dd>
-<dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if an enforced check fails; the message says which and why, and the report
-                             has been written</dd>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/InterruptedException.html" title="class or interface in java.lang" class="external-link">InterruptedException</a></code> - if the thread is interrupted; every launch has been reaped by then</dd>
-</dl>
-</div>
-</section>
-</li>
 <li>
 <section class="detail" id="coverage(java.util.List,java.util.List)">
 <h3>coverage</h3>

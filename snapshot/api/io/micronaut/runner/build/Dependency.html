@@ -133,7 +133,7 @@ flag are equal.</p></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#fileName()" class="member-name-link">fileName</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The file name of the dependency, which is the name the nested entry takes under
-<a href="../IndexFormat.html#LIB_PREFIX"><code>IndexFormat.LIB_PREFIX</code></a> unless another dependency already claimed it.</div>
+<code>MICRONAUT-INF/lib/</code> unless another dependency already claimed it.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#hashCode()" class="member-name-link">hashCode</a>()</code></div>
@@ -278,8 +278,9 @@ build, or another module of a Maven reactor.</div>
 build, or another module of a Maven reactor.
 
 <p>Unlike the coordinates, the flag changes how the archive is built. A project module is user code,
-whose locals users debug, so its classes are nested as they are: <a href="RunnerJarSpec.html#stripLocalVariables()"><code>RunnerJarSpec.stripLocalVariables()</code></a> never rewrites them, just as it never rewrites the application's
-own classes. <a href="#of(java.nio.file.Path)"><code>of(Path)</code></a> and <a href="#of(java.nio.file.Path,java.lang.String)"><code>of(Path, String)</code></a> leave it unset.</p></div>
+whose locals users debug, so its classes are nested as they are: the <code>stripLocalVariables</code> option
+never rewrites them, just as it never rewrites the application's own classes. <a href="#of(java.nio.file.Path)"><code>of(Path)</code></a> and
+<a href="#of(java.nio.file.Path,java.lang.String)"><code>of(Path, String)</code></a> leave it unset.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>whether this dependency is a module of the same build</dd>
@@ -293,7 +294,7 @@ own classes. <a href="#of(java.nio.file.Path)"><code>of(Path)</code></a> and <a 
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">fileName</span>()</div>
 <div class="block">The file name of the dependency, which is the name the nested entry takes under
-<a href="../IndexFormat.html#LIB_PREFIX"><code>IndexFormat.LIB_PREFIX</code></a> unless another dependency already claimed it.</div>
+<code>MICRONAUT-INF/lib/</code> unless another dependency already claimed it.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the last element of the path</dd>

@@ -59,15 +59,11 @@ loadScripts(document, 'script');</script>
 <li><a href="#field-detail" tabindex="0">Field Details</a>
 <ol class="toc-list">
 <li><a href="#DEFAULT_TIMEOUT" tabindex="0">DEFAULT_TIMEOUT</a></li>
-<li><a href="#FILE_TIME" tabindex="0">FILE_TIME</a></li>
-<li><a href="#LIBRARY_DIRECTORY" tabindex="0">LIBRARY_DIRECTORY</a></li>
 </ol>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
 <li><a href="#write(java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,java.time.Duration)" tabindex="0">write(Path, Path, Path, Duration)</a></li>
-<li><a href="#verify(java.nio.file.Path,java.nio.file.Path)" tabindex="0">verify(Path, Path)</a></li>
-<li><a href="#applicationJarName(java.nio.file.Path)" tabindex="0">applicationJarName(Path)</a></li>
 </ol>
 </li>
 </ol>
@@ -83,7 +79,8 @@ loadScripts(document, 'script');</script>
 <section class="class-description" id="class-description">
 <hr>
 <div class="horizontal-scroll">
-<div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">AotLayout</span>
+<div class="type-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public final class </span><span class="element-name type-name-label">AotLayout</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
 <div class="block">Writes the extracted layout of a Runner JAR, the deployment a JDK AOT cache serves in full: an application
 JAR whose manifest <code>Class-Path</code> lists <code>lib/*.jar</code> in class-path order, and the dependencies under
@@ -92,7 +89,9 @@ JAR whose manifest <code>Class-Path</code> lists <code>lib/*.jar</code> in class
 <p>The layout is what <code>java -Dmicronaut.runner.mode=extract</code> writes, forked with the <code>java</code> the
 cache is trained with, so the build runs exactly the path a user runs and keeps its own JVM clean. Every file
 carries the modification time <code>1980-02-01T00:00:00Z</code>, so a layout copied with its times kept, or
-extracted again from the same JAR, still matches a cache trained on it.</p></div>
+extracted again from the same JAR, still matches a cache trained on it.</p>
+
+<p>Internal to Runner's interim build plugins, which call <a href="#write(java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,java.time.Duration)"><code>write(Path, Path, Path, Duration)</code></a>: it may change in any release.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -110,7 +109,7 @@ extracted again from the same JAR, still matches a cache trained on it.</p></div
 <div class="table-header col-first">Modifier and Type</div>
 <div class="table-header col-second">Class</div>
 <div class="table-header col-last">Description</div>
-<div class="col-first even-row-color"><code>static final record&nbsp;</code></div>
+<div class="col-first even-row-color"><code>static final class&nbsp;</code></div>
 <div class="col-second even-row-color"><code><a href="AotLayout.Result.html" class="type-name-link" title="class in io.micronaut.runner.build">AotLayout.Result</a></code></div>
 <div class="col-last even-row-color">
 <div class="block">An extracted layout.</div>
@@ -132,16 +131,6 @@ extracted again from the same JAR, still matches a cache trained on it.</p></div
 <div class="col-last even-row-color">
 <div class="block">How long an extraction may take unless the caller says otherwise.</div>
 </div>
-<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/attribute/FileTime.html" title="class or interface in java.nio.file.attribute" class="external-link">FileTime</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#FILE_TIME" class="member-name-link">FILE_TIME</a></code></div>
-<div class="col-last odd-row-color">
-<div class="block">The modification time of every file of the layout.</div>
-</div>
-<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#LIBRARY_DIRECTORY" class="member-name-link">LIBRARY_DIRECTORY</a></code></div>
-<div class="col-last even-row-color">
-<div class="block">The directory of the dependencies, relative to the layout.</div>
-</div>
 </div>
 </section>
 </li>
@@ -156,20 +145,6 @@ extracted again from the same JAR, still matches a cache trained on it.</p></div
 <div class="table-header col-first">Modifier and Type</div>
 <div class="table-header col-second">Method</div>
 <div class="table-header col-last">Description</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#applicationJarName(java.nio.file.Path)" class="member-name-link">applicationJarName</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;runnerJar)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">The file name Extract gives the application JAR: the Runner JAR's, with any extension replaced by
-<code>.jar</code>.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="AotLayout.Result.html" title="class in io.micronaut.runner.build">AotLayout.Result</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#verify(java.nio.file.Path,java.nio.file.Path)" class="member-name-link">verify</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;destination,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;runnerJar)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
-<div class="block">Checks a layout against the Runner JAR it was extracted from: the application JAR's <code>Class-Path</code>
-names <code>lib/</code> plus each dependency's file name, in index order, and the application JAR and every
-file under <code>lib/</code> carry <a href="#FILE_TIME"><code>FILE_TIME</code></a>.</div>
-</div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="AotLayout.Result.html" title="class in io.micronaut.runner.build">AotLayout.Result</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#write(java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,java.time.Duration)" class="member-name-link">write</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;java,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;runnerJar,
@@ -204,32 +179,6 @@ file under <code>lib/</code> carry <a href="#FILE_TIME"><code>FILE_TIME</code></
 </div>
 </section>
 </li>
-<li>
-<section class="detail" id="FILE_TIME">
-<h3>FILE_TIME</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/attribute/FileTime.html" title="class or interface in java.nio.file.attribute" class="external-link">FileTime</a></span>&nbsp;<span class="element-name">FILE_TIME</span></div>
-<div class="block">The modification time of every file of the layout.</div>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="LIBRARY_DIRECTORY">
-<h3>LIBRARY_DIRECTORY</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">LIBRARY_DIRECTORY</span></div>
-<div class="block">The directory of the dependencies, relative to the layout.</div>
-<dl class="notes">
-<dt>See Also:</dt>
-<dd>
-<ul class="tag-list">
-<li><a href="../../../../constant-values.html#io.micronaut.runner.build.AotLayout.LIBRARY_DIRECTORY">Constant Field Values</a></li>
-</ul>
-</dd>
-</dl>
-</div>
-</section>
-</li>
 </ul>
 </section>
 </li>
@@ -261,44 +210,6 @@ file under <code>lib/</code> carry <a href="#FILE_TIME"><code>FILE_TIME</code></
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the extraction fails or times out, or its output does not verify</dd>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/InterruptedException.html" title="class or interface in java.lang" class="external-link">InterruptedException</a></code> - if the thread is interrupted; the extraction has been killed by then</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="verify(java.nio.file.Path,java.nio.file.Path)">
-<h3>verify</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="AotLayout.Result.html" title="class in io.micronaut.runner.build">AotLayout.Result</a></span>&nbsp;<span class="element-name">verify</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;destination,
- <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;runnerJar)</span>
-                               throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></span></div>
-<div class="block">Checks a layout against the Runner JAR it was extracted from: the application JAR's <code>Class-Path</code>
-names <code>lib/</code> plus each dependency's file name, in index order, and the application JAR and every
-file under <code>lib/</code> carry <a href="#FILE_TIME"><code>FILE_TIME</code></a>. A JDK AOT cache validates both.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>destination</code> - the layout</dd>
-<dd><code>runnerJar</code> - the Runner JAR</dd>
-<dt>Returns:</dt>
-<dd>the application JAR and the dependencies, in class-path order</dd>
-<dt>Throws:</dt>
-<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if the layout does not match; the message names the first offending entry</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="applicationJarName(java.nio.file.Path)">
-<h3>applicationJarName</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">applicationJarName</span><wbr><span class="parameters">(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;runnerJar)</span></div>
-<div class="block">The file name Extract gives the application JAR: the Runner JAR's, with any extension replaced by
-<code>.jar</code>.</div>
-<dl class="notes">
-<dt>Parameters:</dt>
-<dd><code>runnerJar</code> - the Runner JAR</dd>
-<dt>Returns:</dt>
-<dd>the file name</dd>
 </dl>
 </div>
 </section>

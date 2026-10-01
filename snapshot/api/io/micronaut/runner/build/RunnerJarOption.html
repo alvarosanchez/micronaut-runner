@@ -125,8 +125,16 @@ and no Runner parsing; it only decides which options get a typed property of the
     <li>Options are added only in Runner minor releases.</li>
     <li>A new option starts as <a href="RunnerJarOption.Exposure.html#PASSTHROUGH"><code>RunnerJarOption.Exposure.PASSTHROUGH</code></a>: a build sets it by name, through the plugin's
     generic options map, and it needs no plugin release.</li>
+    <li>A <a href="RunnerJarOption.Exposure.html#PASSTHROUGH"><code>RunnerJarOption.Exposure.PASSTHROUGH</code></a> option has no typed Java API: no setter on
+    <a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build"><code>RunnerJarSpec.Builder</code></a>, no getter on <a href="RunnerJarSpec.html" title="class in io.micronaut.runner.build"><code>RunnerJarSpec</code></a>, and a <a href="#valueType()">value type</a>
+    from the JDK, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link"><code>String</code></a> for a choice of values. <a href="RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiveOptions()</code></a> reports its
+    value.</li>
     <li>An option becomes <a href="RunnerJarOption.Exposure.html#TYPED"><code>RunnerJarOption.Exposure.TYPED</code></a> only in a Runner minor release, once its default is
-    settled. The Micronaut build plugins then add its typed property in their next minor release.</li>
+    settled. That release adds its typed setter and getter, and the Micronaut build plugins then add its typed
+    property in their next minor release.</li>
+    <li>In 1.x no constant leaves this table, a <a href="RunnerJarOption.Exposure.html#PASSTHROUGH"><code>RunnerJarOption.Exposure.PASSTHROUGH</code></a> one included: the build's
+    binary-compatibility check covers enum constants, so an option that goes is deprecated instead, and removed
+    only in the next major release.</li>
 </ul>
 
 <h2 id="value-grammar-heading">Value grammar</h2>
@@ -136,7 +144,8 @@ and <a href="RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiv
     <li><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link"><code>Boolean</code></a>: <code>true</code> or <code>false</code>, ignoring case and surrounding whitespace. Anything
     else fails.</li>
     <li><a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>: as <a href="Compression.html#parse(java.lang.String)"><code>Compression.parse(String)</code></a> reads it.</li>
-    <li><a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a>: as <a href="ArchiveReads.html#parse(java.lang.String)"><code>ArchiveReads.parse(String)</code></a> reads it.</li>
+    <li><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link"><code>String</code></a>: one of the values the option's constant lists, ignoring case and surrounding
+    whitespace. Anything else fails.</li>
     <li><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a>: comma-separated. Entries are trimmed and empty entries dropped, so the empty string
     is the empty list.</li>
     <li><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a>: one <code>Name: value</code> pair per line, as in <code>MANIFEST.MF</code> but without
@@ -193,8 +202,10 @@ and <a href="RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiv
 </div>
 <div class="col-first even-row-color"><code><a href="#ARCHIVE_READS" class="member-name-link">ARCHIVE_READS</a></code></div>
 <div class="col-last even-row-color">
-<div class="block">How the launcher reads the archive when <code>micronaut.runner.mmap</code> does not say, an
-<a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a> name.</div>
+<div class="block">How the launcher reads the archive when <code>micronaut.runner.mmap</code> does not say, one of:
+
+    <code>MAPPED</code>, the default: map the whole archive and define every STORED class straight from the
+    mapping.</div>
 </div>
 <div class="col-first odd-row-color"><code><a href="#COMPRESSION" class="member-name-link">COMPRESSION</a></code></div>
 <div class="col-last odd-row-color">
@@ -202,13 +213,13 @@ and <a href="RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiv
 </div>
 <div class="col-first even-row-color"><code><a href="#DEFINITION_PREFETCH" class="member-name-link">DEFINITION_PREFETCH</a></code></div>
 <div class="col-last even-row-color">
-<div class="block">Whether to package the bean definition prefetch, which the entry stub starts before the application's
-<code>main</code>.</div>
+<div class="block">Whether to package the bean definition prefetch, which the entry stub starts on the common pool before the
+application's <code>main</code>.</div>
 </div>
 <div class="col-first odd-row-color"><code><a href="#DESUGAR_LAMBDAS" class="member-name-link">DESUGAR_LAMBDAS</a></code></div>
 <div class="col-last odd-row-color">
 <div class="block">Whether to replace lambda and method-reference call sites with classes generated when the application is
-packaged.</div>
+packaged, so that they are not linked at every start and a JDK AOT cache can hold them.</div>
 </div>
 <div class="col-first even-row-color"><code><a href="#ENABLE_NATIVE_ACCESS" class="member-name-link">ENABLE_NATIVE_ACCESS</a></code></div>
 <div class="col-last even-row-color">
@@ -229,7 +240,7 @@ packaged.</div>
 <div class="col-first even-row-color"><code><a href="#PRECOMPILE_LOGBACK" class="member-name-link">PRECOMPILE_LOGBACK</a></code></div>
 <div class="col-last even-row-color">
 <div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
-packaged.</div>
+packaged, so that the application does not parse XML and run Joran at every start.</div>
 </div>
 <div class="col-first odd-row-color"><code><a href="#STARTUP_CLASSES" class="member-name-link">STARTUP_CLASSES</a></code></div>
 <div class="col-last odd-row-color">
@@ -238,12 +249,13 @@ packaged.</div>
 </div>
 <div class="col-first even-row-color"><code><a href="#STATIC_SERVICES" class="member-name-link">STATIC_SERVICES</a></code></div>
 <div class="col-last even-row-color">
-<div class="block">Whether to generate the static service table that answers Micronaut's service lookups from names
-computed at packaging time.</div>
+<div class="block">Whether to generate the static service table, classes that answer Micronaut's service lookups from names
+computed at packaging time, so that the application does not scan its class path for them when it starts.</div>
 </div>
 <div class="col-first odd-row-color"><code><a href="#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a></code></div>
 <div class="col-last odd-row-color">
-<div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed.</div>
+<div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed, which makes them
+smaller to read and define.</div>
 </div>
 </div>
 </section>
@@ -307,7 +319,7 @@ the order they are declared.</div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#valueType()" class="member-name-link">valueType</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The type of the option's value, which decides how its text is read: <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link"><code>Boolean</code></a>,
-<a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a>.</div>
+<a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link"><code>String</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a>.</div>
 </div>
 </div>
 </div>
@@ -404,8 +416,16 @@ the order they are declared.</div>
 <h3>ARCHIVE_READS</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">ARCHIVE_READS</span></div>
-<div class="block">How the launcher reads the archive when <code>micronaut.runner.mmap</code> does not say, an
-<a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a> name. See <a href="RunnerJarSpec.Builder.html#archiveReads(io.micronaut.runner.build.ArchiveReads)"><code>RunnerJarSpec.Builder.archiveReads(ArchiveReads)</code></a>.</div>
+<div class="block">How the launcher reads the archive when <code>micronaut.runner.mmap</code> does not say, one of:
+<ul>
+    <li><code>MAPPED</code>, the default: map the whole archive and define every STORED class straight from the
+    mapping. It starts fastest, and the pages a class read touches count in the process's resident set
+    size;</li>
+    <li><code>POSITIONAL</code>: map only the index and read each STORED class with one positional read into a
+    pooled buffer. The resident set size is lower, and startup slightly slower.</li>
+</ul>
+<p>The choice is recorded as a flag of the index header; <code>-Dmicronaut.runner.mmap=full</code> or
+<code>index</code> overrides it per launch.</p></div>
 </div>
 </section>
 </li>
@@ -415,7 +435,10 @@ the order they are declared.</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">PRECOMPILE_LOGBACK</span></div>
 <div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
-packaged. See <a href="RunnerJarSpec.Builder.html#precompileLogback(boolean)"><code>RunnerJarSpec.Builder.precompileLogback(boolean)</code></a>.</div>
+packaged, so that the application does not parse XML and run Joran at every start. On by default. The
+packager generates nothing, and logs why, whenever it cannot prove that the generated configurator reproduces
+Joran's result; <code>-Dmicronaut.runner.logback.precompiled=false</code> leaves <code>logback.xml</code> to Joran at
+run time.</div>
 </div>
 </section>
 </li>
@@ -424,8 +447,11 @@ packaged. See <a href="RunnerJarSpec.Builder.html#precompileLogback(boolean)"><c
 <h3>STRIP_LOCAL_VARIABLES</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">STRIP_LOCAL_VARIABLES</span></div>
-<div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed. See
-<a href="RunnerJarSpec.Builder.html#stripLocalVariables(boolean)"><code>RunnerJarSpec.Builder.stripLocalVariables(boolean)</code></a>.</div>
+<div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed, which makes them
+smaller to read and define. On by default; it has no effect with <a href="Compression.html#PRESERVE"><code>Compression.PRESERVE</code></a> and never
+touches the application's own classes or a project module. Line numbers, parameter names and every
+annotation reflection sees are kept, and stripping is turned off for the build, with a warning, when a
+library that reads local-variable tables at run time is on the class path.</div>
 </div>
 </section>
 </li>
@@ -445,8 +471,10 @@ packaged. See <a href="RunnerJarSpec.Builder.html#precompileLogback(boolean)"><c
 <h3>STATIC_SERVICES</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">STATIC_SERVICES</span></div>
-<div class="block">Whether to generate the static service table that answers Micronaut's service lookups from names
-computed at packaging time. See <a href="RunnerJarSpec.Builder.html#staticServices(boolean)"><code>RunnerJarSpec.Builder.staticServices(boolean)</code></a>.</div>
+<div class="block">Whether to generate the static service table, classes that answer Micronaut's service lookups from names
+computed at packaging time, so that the application does not scan its class path for them when it starts.
+On by default. The packager generates one only for micronaut-core <code>[5.1.10, 5.2)</code>, and logs why
+otherwise; <code>-Dmicronaut.runner.static-services=false</code> turns it off at run time.</div>
 </div>
 </section>
 </li>
@@ -456,8 +484,9 @@ computed at packaging time. See <a href="RunnerJarSpec.Builder.html#staticServic
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">DESUGAR_LAMBDAS</span></div>
 <div class="block">Whether to replace lambda and method-reference call sites with classes generated when the application is
-packaged. It applies to <a href="Compression.html#STORED"><code>Compression.STORED</code></a> and <a href="Compression.html#HYBRID"><code>Compression.HYBRID</code></a>. See
-<a href="RunnerJarSpec.Builder.html#desugarLambdas(boolean)"><code>RunnerJarSpec.Builder.desugarLambdas(boolean)</code></a>.</div>
+packaged, so that they are not linked at every start and a JDK AOT cache can hold them. On by default; it
+applies to <a href="Compression.html#STORED"><code>Compression.STORED</code></a> and <a href="Compression.html#HYBRID"><code>Compression.HYBRID</code></a>. A rewritten lambda's class is not
+hidden, has a stable name and adds one frame to stack traces.</div>
 </div>
 </section>
 </li>
@@ -466,8 +495,9 @@ packaged. It applies to <a href="Compression.html#STORED"><code>Compression.STOR
 <h3>DEFINITION_PREFETCH</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">DEFINITION_PREFETCH</span></div>
-<div class="block">Whether to package the bean definition prefetch, which the entry stub starts before the application's
-<code>main</code>. Off unless a build asks for it. See <a href="RunnerJarSpec.Builder.html#definitionPrefetch(boolean)"><code>RunnerJarSpec.Builder.definitionPrefetch(boolean)</code></a>.</div>
+<div class="block">Whether to package the bean definition prefetch, which the entry stub starts on the common pool before the
+application's <code>main</code>. Off unless a build asks for it. The packager leaves it out, and logs why, when
+the application cannot use it; <code>-Dmicronaut.runner.prefetch=false</code> turns it off at run time.</div>
 </div>
 </section>
 </li>
@@ -534,7 +564,7 @@ not permitted.)</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Class.html" title="class or interface in java.lang" class="external-link">Class</a>&lt;?&gt;</span>&nbsp;<span class="element-name">valueType</span>()</div>
 <div class="block">The type of the option's value, which decides how its text is read: <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Boolean.html" title="class or interface in java.lang" class="external-link"><code>Boolean</code></a>,
-<a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build"><code>ArchiveReads</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a>.</div>
+<a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link"><code>String</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link"><code>List</code></a>, <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link"><code>Map</code></a> or <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link"><code>Path</code></a>.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the value type</dd>

@@ -76,7 +76,15 @@ it. It depends on <code>java.base</code>, <a href="../BuildLogger.html" title="i
 <p>Runner-only; the Micronaut Docker support trains inside images with plugin-local scripts
 (micronaut-projects/micronaut-gradle-plugin#1379, micronaut-projects/micronaut-maven-plugin#1721).</p>
 
-<p>Every public type is experimental and outside the stable API: it may change in any release.</p></div>
+<p><b>Internal.</b> No type here is API: every public type is internal to Runner's interim build plugins and
+its benchmarks, and may change in any release. The types they reach carry <code>@Internal</code>, so the build's
+binary-compatibility check reports a change to them as a warning, not a failure:
+<a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache"><code>AotCacheSettings</code></a> with its <code>Builder</code> and
+<a href="AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache"><code>AotCacheReport</code></a>, which the plugins use, and
+<a href="JdkProbe.html" title="class in io.micronaut.runner.build.aotcache"><code>JdkProbe</code></a> and <a href="AotCacheGate.html" title="class in io.micronaut.runner.build.aotcache"><code>AotCacheGate</code></a>
+with its <code>Coverage</code>, which the benchmarks use. <code>AotCacheBuilder</code> and <code>AotLaunchOptions</code> are
+public only because <code>io.micronaut.runner.build.AotCacheOutput</code> calls them, and they become
+package-private once this package joins that one.</p></div>
 </section>
 </div>
 <section class="summary">
@@ -99,8 +107,7 @@ such as the classes it loads at startup or a JDK cache.</div>
 </li>
 <li>
 <div id="class-summary">
-<div class="table-tabs" role="tablist" aria-orientation="horizontal"><button id="class-summary-tab0" role="tab" aria-selected="true" aria-controls="class-summary.tabpanel" tabindex="0" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary', 2)" class="active-table-tab">All Classes and Interfaces</button><button id="class-summary-tab2" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab2', 2)" class="table-tab">Classes</button><button id="class-summary-tab4" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab4', 2)" class="table-tab">Record Classes</button></div>
-<div id="class-summary.tabpanel" role="tabpanel" aria-labelledby="class-summary-tab0">
+<div class="caption"><span>Classes</span></div>
 <div class="summary-table two-column-summary">
 <div class="table-header col-first">Class</div>
 <div class="table-header col-last">Description</div>
@@ -112,16 +119,16 @@ such as the classes it loads at startup or a JDK cache.</div>
 <div class="col-last odd-row-color class-summary class-summary-tab2">
 <div class="block">The verification gate of a trained cache.</div>
 </div>
-<div class="col-first even-row-color class-summary class-summary-tab4"><a href="AotCacheGate.Coverage.html" title="class in io.micronaut.runner.build.aotcache">AotCacheGate.Coverage</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab4">
+<div class="col-first even-row-color class-summary class-summary-tab2"><a href="AotCacheGate.Coverage.html" title="class in io.micronaut.runner.build.aotcache">AotCacheGate.Coverage</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab2">
 <div class="block">What a strict launch took from the cache.</div>
 </div>
-<div class="col-first odd-row-color class-summary class-summary-tab4"><a href="AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></div>
-<div class="col-last odd-row-color class-summary class-summary-tab4">
-<div class="block">What the verification gate found, written as <a href="AotCacheReport.html#FILE">"aot-report.json"</a> next to the cache.</div>
+<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab2">
+<div class="block">What the verification gate found, written as <code>aot-report.json</code> next to the cache.</div>
 </div>
-<div class="col-first even-row-color class-summary class-summary-tab4"><a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab4">
+<div class="col-first even-row-color class-summary class-summary-tab2"><a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab2">
 <div class="block">How a JDK AOT cache is built and how strictly it is verified.</div>
 </div>
 <div class="col-first odd-row-color class-summary class-summary-tab2"><a href="AotCacheSettings.Builder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings.Builder</a></div>
@@ -133,12 +140,11 @@ such as the classes it loads at startup or a JDK cache.</div>
 <div class="block">The files that go with a trained cache: the launch argfile, which carries the options production launches
 with, and the identity file, which records what the cache is tied to.</div>
 </div>
-<div class="col-first odd-row-color class-summary class-summary-tab4"><a href="JdkProbe.html" title="class in io.micronaut.runner.build.aotcache">JdkProbe</a></div>
-<div class="col-last odd-row-color class-summary class-summary-tab4">
+<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="JdkProbe.html" title="class in io.micronaut.runner.build.aotcache">JdkProbe</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab2">
 <div class="block">What a JDK AOT cache is tied to, as one launch of a <code>java</code> executable reports it: the exact VM build,
 the operating system and the CPU architecture, and whether cache creation takes
 <code>-XX:+AOTCompatibleOopCompression</code>.</div>
-</div>
 </div>
 </div>
 </div>

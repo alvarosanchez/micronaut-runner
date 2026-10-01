@@ -97,7 +97,7 @@ such as the classes it loads at startup or a JDK cache.</div>
 </li>
 <li>
 <div id="class-summary">
-<div class="table-tabs" role="tablist" aria-orientation="horizontal"><button id="class-summary-tab0" role="tab" aria-selected="true" aria-controls="class-summary.tabpanel" tabindex="0" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary', 2)" class="active-table-tab">All Classes and Interfaces</button><button id="class-summary-tab1" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab1', 2)" class="table-tab">Interfaces</button><button id="class-summary-tab2" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab2', 2)" class="table-tab">Classes</button><button id="class-summary-tab3" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab3', 2)" class="table-tab">Enum Classes</button><button id="class-summary-tab4" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab4', 2)" class="table-tab">Record Classes</button></div>
+<div class="table-tabs" role="tablist" aria-orientation="horizontal"><button id="class-summary-tab0" role="tab" aria-selected="true" aria-controls="class-summary.tabpanel" tabindex="0" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary', 2)" class="active-table-tab">All Classes and Interfaces</button><button id="class-summary-tab1" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab1', 2)" class="table-tab">Interfaces</button><button id="class-summary-tab2" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab2', 2)" class="table-tab">Classes</button><button id="class-summary-tab3" role="tab" aria-selected="false" aria-controls="class-summary.tabpanel" tabindex="-1" onkeydown="switchTab(event)" onclick="show('class-summary', 'class-summary-tab3', 2)" class="table-tab">Enum Classes</button></div>
 <div id="class-summary.tabpanel" role="tabpanel" aria-labelledby="class-summary-tab0">
 <div class="summary-table two-column-summary">
 <div class="table-header col-first">Class</div>
@@ -113,8 +113,8 @@ cache trained in place, the launch argfile, the identity file, the report and th
 JAR whose manifest <code>Class-Path</code> lists <code>lib/*.jar</code> in class-path order, and the dependencies under
 <code>lib/</code>, byte for byte the JARs the Runner JAR nests.</div>
 </div>
-<div class="col-first even-row-color class-summary class-summary-tab4"><a href="AotLayout.Result.html" title="class in io.micronaut.runner.build">AotLayout.Result</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab4">
+<div class="col-first even-row-color class-summary class-summary-tab2"><a href="AotLayout.Result.html" title="class in io.micronaut.runner.build">AotLayout.Result</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab2">
 <div class="block">An extracted layout.</div>
 </div>
 <div class="col-first odd-row-color class-summary class-summary-tab3"><a href="AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a></div>
@@ -127,60 +127,51 @@ single Runner JAR, whose nested classes JDK 27 and later do not cache.</div>
 <div class="block">The part of an application's manifest the packaging library reads, for a build tool that describes that
 manifest in its own model rather than as a file.</div>
 </div>
-<div class="col-first odd-row-color class-summary class-summary-tab3"><a href="ArchiveReads.html" title="enum class in io.micronaut.runner.build">ArchiveReads</a></div>
-<div class="col-last odd-row-color class-summary class-summary-tab3">
-<div class="block">How the launcher reads the runner jar at run time when <code>micronaut.runner.mmap</code> does not say.</div>
-</div>
-<div class="col-first even-row-color class-summary class-summary-tab1"><a href="BuildLogger.html" title="interface in io.micronaut.runner.build">BuildLogger</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab1">
+<div class="col-first odd-row-color class-summary class-summary-tab1"><a href="BuildLogger.html" title="interface in io.micronaut.runner.build">BuildLogger</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab1">
 <div class="block">Where the packaging library reports what it did and what looked wrong.</div>
 </div>
-<div class="col-first odd-row-color class-summary class-summary-tab3"><a href="Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></div>
-<div class="col-last odd-row-color class-summary class-summary-tab3">
+<div class="col-first even-row-color class-summary class-summary-tab3"><a href="Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab3">
 <div class="block">How a dependency is stored inside the runner jar.</div>
 </div>
-<div class="col-first even-row-color class-summary class-summary-tab2"><a href="Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab2">
+<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="Dependency.html" title="class in io.micronaut.runner.build">Dependency</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab2">
 <div class="block">One dependency to nest into the runner jar, together with the coordinates it was resolved from.</div>
 </div>
-<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="RunnerJarBuilder.html" title="class in io.micronaut.runner.build">RunnerJarBuilder</a></div>
-<div class="col-last odd-row-color class-summary class-summary-tab2">
+<div class="col-first even-row-color class-summary class-summary-tab2"><a href="RunnerJarBuilder.html" title="class in io.micronaut.runner.build">RunnerJarBuilder</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab2">
 <div class="block">Turns an application's own output and its resolved dependencies into a runner jar.</div>
 </div>
-<div class="col-first even-row-color class-summary class-summary-tab3"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab3">
+<div class="col-first odd-row-color class-summary class-summary-tab3"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab3">
 <div class="block">Every packaging option of a runner jar, in one table: its name, the type of its value, its default,
 how the build plugins expose it and the Runner release that added it.</div>
 </div>
-<div class="col-first odd-row-color class-summary class-summary-tab3"><a href="RunnerJarOption.Exposure.html" title="enum class in io.micronaut.runner.build">RunnerJarOption.Exposure</a></div>
-<div class="col-last odd-row-color class-summary class-summary-tab3">
+<div class="col-first even-row-color class-summary class-summary-tab3"><a href="RunnerJarOption.Exposure.html" title="enum class in io.micronaut.runner.build">RunnerJarOption.Exposure</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab3">
 <div class="block">How the build plugins expose an option.</div>
 </div>
-<div class="col-first even-row-color class-summary class-summary-tab2"><a href="RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab2">
-<div class="block">Recognises a runner jar, and opens one with the launcher's own reader.</div>
-</div>
-<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></div>
+<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></div>
 <div class="col-last odd-row-color class-summary class-summary-tab2">
+<div class="block">Recognises a runner jar.</div>
+</div>
+<div class="col-first even-row-color class-summary class-summary-tab2"><a href="RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab2">
 <div class="block">What <a href="RunnerJarBuilder.html#build(io.micronaut.runner.build.RunnerJarSpec,io.micronaut.runner.build.BuildLogger)"><code>RunnerJarBuilder.build(RunnerJarSpec, BuildLogger)</code></a> produced.</div>
 </div>
-<div class="col-first even-row-color class-summary class-summary-tab2"><a href="RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab2">
+<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab2">
 <div class="block">Everything <a href="RunnerJarBuilder.html" title="class in io.micronaut.runner.build"><code>RunnerJarBuilder</code></a> needs to know to produce a runner jar.</div>
 </div>
-<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></div>
-<div class="col-last odd-row-color class-summary class-summary-tab2">
+<div class="col-first even-row-color class-summary class-summary-tab2"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></div>
+<div class="col-last even-row-color class-summary class-summary-tab2">
 <div class="block">Describes a runner jar step by step.</div>
 </div>
-<div class="col-first even-row-color class-summary class-summary-tab2"><a href="StartupProfileRecorder.html" title="class in io.micronaut.runner.build">StartupProfileRecorder</a></div>
-<div class="col-last even-row-color class-summary class-summary-tab2">
+<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="StartupProfileRecorder.html" title="class in io.micronaut.runner.build">StartupProfileRecorder</a></div>
+<div class="col-last odd-row-color class-summary class-summary-tab2">
 <div class="block">Records the startup profile of an application: the classes a run of its runner jar loaded, in load order,
 written to a file that is meant to be committed and that the packager embeds for the launcher to preload.</div>
-</div>
-<div class="col-first odd-row-color class-summary class-summary-tab2"><a href="TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></div>
-<div class="col-last odd-row-color class-summary class-summary-tab2">
-<div class="block">What one build-time class transform did to the classes of a runner jar it ran over: how many it rewrote,
-how many it left as they were, and how many it had to give up on.</div>
 </div>
 </div>
 </div>

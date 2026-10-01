@@ -65,11 +65,8 @@ loadScripts(document, 'script');</script>
 <li><a href="#warnings()" tabindex="0">warnings()</a></li>
 <li><a href="#dependencyCount()" tabindex="0">dependencyCount()</a></li>
 <li><a href="#effectiveOptions()" tabindex="0">effectiveOptions()</a></li>
-<li><a href="#logbackPrecompiled()" tabindex="0">logbackPrecompiled()</a></li>
-<li><a href="#transforms()" tabindex="0">transforms()</a></li>
 <li><a href="#staticServiceSlots()" tabindex="0">staticServiceSlots()</a></li>
 <li><a href="#staticServicesCoreVersion()" tabindex="0">staticServicesCoreVersion()</a></li>
-<li><a href="#definitionPrefetch()" tabindex="0">definitionPrefetch()</a></li>
 <li><a href="#summary()" tabindex="0">summary()</a></li>
 <li><a href="#toString()" tabindex="0">toString()</a></li>
 </ol>
@@ -127,41 +124,28 @@ the <a href="BuildLogger.html" title="interface in io.micronaut.runner.build"><c
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The length of the archive.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#definitionPrefetch()" class="member-name-link">definitionPrefetch</a>()</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#dependencyCount()" class="member-name-link">dependencyCount</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether the build packaged the bean definition prefetch, which <a href="RunnerJarSpec.html#definitionPrefetch()"><code>RunnerJarSpec.definitionPrefetch()</code></a>
-requests: the entry stub then starts Micronaut's bean definition loading before the application's
-<code>main</code>.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#dependencyCount()" class="member-name-link">dependencyCount</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The number of nested dependency jars, which is every jar but the application layer.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#effectiveOptions()" class="member-name-link">effectiveOptions</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#effectiveOptions()" class="member-name-link">effectiveOptions</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The value every <a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> had in this build, keyed by option name in table order, as
 <a href="RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiveOptions()</code></a> reports them.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryCount()" class="member-name-link">entryCount</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryCount()" class="member-name-link">entryCount</a>()</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The number of index records: physical entries, versioned aliases and synthesised directories of every
 jar.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarCount()" class="member-name-link">jarCount</a>()</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#jarCount()" class="member-name-link">jarCount</a>()</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The number of jars in the index, the application layer included, so the number of nested dependencies
 is one less.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#logbackPrecompiled()" class="member-name-link">logbackPrecompiled</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Whether the build compiled the application's <code>logback.xml</code> into a Logback <code>Configurator</code>, which
-<a href="RunnerJarSpec.html#precompileLogback()"><code>RunnerJarSpec.precompileLogback()</code></a> requests.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#mergedServiceEntryCount()" class="member-name-link">mergedServiceEntryCount</a>()</code></div>
@@ -183,8 +167,8 @@ it.</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#staticServiceSlots()" class="member-name-link">staticServiceSlots</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The number of implementation names the static service table lists, which
-<a href="RunnerJarSpec.html#staticServices()"><code>RunnerJarSpec.staticServices()</code></a> requests.</div>
+<div class="block">The number of implementation names the static service table lists, which the <code>staticServices</code>
+option requests.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#summary()" class="member-name-link">summary</a>()</code></div>
@@ -195,16 +179,9 @@ it.</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#toString()" class="member-name-link">toString</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">&nbsp;</div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a><wbr>&lt;<a href="TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a>&gt;</code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#transforms()" class="member-name-link">transforms</a>()</code></div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#warnings()" class="member-name-link">warnings</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">What each build-time class transform did to the classes it ran over, one report per transform that
-ran, in the order they ran: <code>desugarLambdas</code>, which runs over the dependencies and the application
-layer, then <code>stripLocalVariables</code>, which runs over the dependencies.</div>
-</div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#warnings()" class="member-name-link">warnings</a>()</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Every warning the build reported, in the order it reported them.</div>
 </div>
 </div>
@@ -349,45 +326,17 @@ builder skipped because it is not a ZIP archive is not counted.</div>
 </section>
 </li>
 <li>
-<section class="detail" id="logbackPrecompiled()">
-<h3>logbackPrecompiled</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">logbackPrecompiled</span>()</div>
-<div class="block">Whether the build compiled the application's <code>logback.xml</code> into a Logback <code>Configurator</code>, which
-<a href="RunnerJarSpec.html#precompileLogback()"><code>RunnerJarSpec.precompileLogback()</code></a> requests. It is <code>false</code> whenever nothing was generated; the
-build log names the reason.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>whether the archive carries a precompiled Logback configuration</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="transforms()">
-<h3>transforms</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a>&gt;</span>&nbsp;<span class="element-name">transforms</span>()</div>
-<div class="block">What each build-time class transform did to the classes it ran over, one report per transform that
-ran, in the order they ran: <code>desugarLambdas</code>, which runs over the dependencies and the application
-layer, then <code>stripLocalVariables</code>, which runs over the dependencies. It is empty when none ran:
-every transform is turned off, the dependencies are nested with <a href="Compression.html#PRESERVE"><code>Compression.PRESERVE</code></a>, or a
-transform was turned off for the build because the class path needs what it would remove.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>the reports, unmodifiable</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
 <section class="detail" id="staticServiceSlots()">
 <h3>staticServiceSlots</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">staticServiceSlots</span>()</div>
-<div class="block">The number of implementation names the static service table lists, which
-<a href="RunnerJarSpec.html#staticServices()"><code>RunnerJarSpec.staticServices()</code></a> requests. It is <code>0</code> when no table was generated; the build
-log names the reason.</div>
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">staticServiceSlots</span>()</div>
+<div class="block">The number of implementation names the static service table lists, which the <code>staticServices</code>
+option requests. It is <code>0</code> when no table was generated; the build log names the reason.
+
+<p>Internal: it is public only for the build note of Runner's own benchmarks,
+<code>static services: N slots (core V)</code>, and may change in any release. A packaging option gets a public
+result accessor of its own when it becomes <a href="RunnerJarOption.Exposure.html#TYPED"><code>TYPED</code></a>.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the slot count of the static service table</dd>
@@ -399,28 +348,16 @@ log names the reason.</div>
 <section class="detail" id="staticServicesCoreVersion()">
 <h3>staticServicesCoreVersion</h3>
 <div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html" title="class or interface in java.util" class="external-link">Optional</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">staticServicesCoreVersion</span>()</div>
+<div class="member-signature"><span class="annotations">@Internal
+</span><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html" title="class or interface in java.util" class="external-link">Optional</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">staticServicesCoreVersion</span>()</div>
 <div class="block">The micronaut-core version the static service table was generated for, as that JAR's manifest states
-it.</div>
+it.
+
+<p>Internal: it is public only for the build note of Runner's own benchmarks,
+<code>static services: N slots (core V)</code>, and may change in any release.</p></div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the version, or empty when no table was generated</dd>
-</dl>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="definitionPrefetch()">
-<h3>definitionPrefetch</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">boolean</span>&nbsp;<span class="element-name">definitionPrefetch</span>()</div>
-<div class="block">Whether the build packaged the bean definition prefetch, which <a href="RunnerJarSpec.html#definitionPrefetch()"><code>RunnerJarSpec.definitionPrefetch()</code></a>
-requests: the entry stub then starts Micronaut's bean definition loading before the application's
-<code>main</code>. It is <code>false</code> whenever the prefetch was left out, whatever the option said; the build
-log names the reason. <a href="#effectiveOptions()"><code>effectiveOptions()</code></a> reports what was requested.</div>
-<dl class="notes">
-<dt>Returns:</dt>
-<dd>whether the archive carries the bean definition prefetch</dd>
 </dl>
 </div>
 </section>
