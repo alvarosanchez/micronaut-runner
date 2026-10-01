@@ -45,11 +45,12 @@ https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119[CI ru
 <<benchmarkResults,Benchmarks>> (4 vCPUs, JDK 25.0.4.1, 20 pairs), Micronaut AOT made the sample's Shadow JAR ready
 sooner: `shadow-maot` − `shadow` -126.2 ms (-134.1 to -122.6), -9.0%. That is the nearest pair the harness has: it
 compares `optimizedJitJarAll` with the plain Shadow JAR, not with `optimizedJitJarAll` built with every flag off.
-`replaceLogbackXml` and `optimizeClassLoading` carry the whole startup gain, as paired A/B runs of `optimizedJitJarAll`
-outside the harness found, measured locally on a 12-CPU Apple Silicon Mac with Homebrew OpenJDK 25.0.4.1. There,
-adding `cacheEnvironment`, `deduceEnvironment` and `precomputeOperations` to the three changed nothing measurable
-(+0.7 ms, −9.3 to +12.9, and +2.4 ms, −4.6 to +6.2, in two sessions of 30 pairs). Micronaut Launch 5.2.0 and later
-generate those three as `false`, and so do the samples this guide measures.
+Paired A/B runs of `optimizedJitJarAll` outside the harness made that second comparison, measured locally on a 12-CPU
+Apple Silicon Mac with Homebrew OpenJDK 25.0.4.1. They found that `replaceLogbackXml` and `optimizeClassLoading` carry
+the whole gain over the same JAR with every flag off, and that adding `cacheEnvironment`, `deduceEnvironment` and
+`precomputeOperations` to the three changed nothing measurable (+0.7 ms, −9.3 to +12.9, and +2.4 ms, −4.6 to +6.2, in
+two sessions of 30 pairs). Micronaut Launch 5.2.0 and later generate those three as `false`, and so do the samples
+this guide measures.
 
 Micronaut AOT 3 does not optimize service loading. Its `optimizeServiceLoading` flag only logs a warning, so the
 application still discovers its beans and services from `META-INF/micronaut` and `META-INF/services` at startup, in a

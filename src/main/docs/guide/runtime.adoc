@@ -239,12 +239,13 @@ https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119[CI ru
 |===
 
 CI does not run on macOS, where private memory is `phys_footprint`. Measured locally on a 12-CPU Apple Silicon Mac with
-Homebrew OpenJDK 25.0.4.1, before Runner's build-time transformations (two runs of 30 pairs, with and without the
-cache), positional reads changed it by -3.0 to +0.8 MiB. In that setup the Runner JAR's resident mapping fell from
-25 MiB on macOS, or 30 MiB in a Linux container (Temurin 25.0.4+7, in a colima VM on that Mac), to 1.2 MiB, the index.
-Positional reads change RSS, not page-cache use: in that container the working set that Kubernetes reports
-(`memory.current` minus `inactive_file`) did not drop, because the archive's pages sit on the inactive file list
-whether they are mapped or read. The slower start is why `MAPPED` is the default.
+Homebrew OpenJDK 25.0.4.1, in two runs of 30 pairs with and without the cache, before Runner's build-time
+transformations (<<buildTransforms,Build-Time Transformations>>) and before the static service table
+(<<staticServices,Static service table>>), positional reads changed it by -3.0 to +0.8 MiB. In that setup the Runner
+JAR's resident mapping fell from 25 MiB on macOS, or 30 MiB in a Linux container (Temurin 25.0.4+7, in a colima VM on
+that Mac), to 1.2 MiB, the index. Positional reads change RSS, not page-cache use: in that container the working set
+that Kubernetes reports (`memory.current` minus `inactive_file`) did not drop, because the archive's pages sit on the
+inactive file list whether they are mapped or read. The slower start is why `MAPPED` is the default.
 
 [[preload]]
 == Preloading the startup classes
@@ -263,15 +264,16 @@ rows with 4 vCPUs only. Measured locally in a Linux container limited to 2 CPUs 
 12-CPU Apple Silicon Mac), before Runner stripped local variables, generated the static service table or desugared
 lambdas, it was -106.0 ms (95% CI -116.8 to -94.3, 20 pairs). The same class loading happens earlier and on two
 threads, which can cost memory while the application starts: measured locally on that Mac with Homebrew OpenJDK
-25.0.4.1, in sessions taken before the static service table and lambda desugaring, private memory at readiness
-(`phys_footprint`) was 3 to 17 MiB higher from one session to the next, with the process's peak footprint within 5 MB.
+25.0.4.1, in sessions taken before the static service table and lambda desugaring, some of them also before
+local-variable stripping and Logback precompilation, private memory at readiness (`phys_footprint`) was 3 to 17 MiB
+higher from one session to the next, with the process's peak footprint within 5 MB.
 
 With a JDK AOT cache the recorded classes are already cheap to load, and preloading is not what makes a cached launch
 fast: in the CI run, `runner-stored-preload-aot` − `runner-stored-aot` was -11.3 ms (-18.1 to -5.1), and in the local
 2-CPU container -14.8 ms (95% CI -22.5 to +7.0). That small gain has a memory cost of its own. With a cache the
 preloader gets through the whole list before readiness, and the list, recorded without a cache over a whole run, names
 classes that a cached launch loads later or not at all. In the CI run, 439 more classes were loaded at readiness, with
-6.6 MiB more RSS and 3.6 MiB more private memory (`RssAnon`). In the local macOS sessions, private memory at readiness
+6.6 MiB more RSS and 3.6 MiB more private memory (`RssAnon`). In those local macOS sessions, private memory at readiness
 (`phys_footprint`) was 5.4 MiB higher (95% CI 4.7 to 6.5 MiB, 60 pairs; 4 to 6.5 MiB across sessions). To combine the
 two, build the JAR with the list first and train the cache on that JAR
 (<<cdsAndAot,Class Data Sharing and the AOT Cache>>).

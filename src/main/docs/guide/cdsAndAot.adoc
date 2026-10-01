@@ -183,11 +183,11 @@ JDK_AOT_VM_OPTIONS='-XX:+UnlockDiagnosticVMOptions -XX:+AOTCompatibleOopCompress
 `STORED`, the default, gives the smaller gzipped layer and is faster if the cache is missing or rejected. Set
 `micronautRunnerJar { compression = 'PRESERVE' }` in Gradle or `-Dmicronaut.runner.compression=PRESERVE` in Maven. CI
 has no layout extracted from `PRESERVE`. Measured locally on `benchmark-large`, on a 12-CPU Apple Silicon Mac with
-Homebrew OpenJDK 25.0.4.1 and before Runner's build-time transformations
-(<<buildTransforms,Build-Time Transformations>>), PRESERVE minus STORED was −2.6 ms (95% CI −7.9 to +2.9, 20 pairs) and
-+3.0 ms (95% CI −3.1 to +8.9, 30 pairs) with the cache, and STORED was 20.4 ms faster (95% CI 2.3 to 25.1, 20 pairs)
-without it. In that build the layout extracted from PRESERVE was 14,791,648 B on disk and 13.18 MB as `tar | gzip -6`,
-against the same build's 14,774,163 B Shadow JAR.
+Homebrew OpenJDK 25.0.4.1, before Runner's build-time transformations (<<buildTransforms,Build-Time Transformations>>)
+and before the static service table (<<staticServices,Static service table>>), PRESERVE minus STORED was −2.6 ms (95% CI
+−7.9 to +2.9, 20 pairs) and +3.0 ms (95% CI −3.1 to +8.9, 30 pairs) with the cache, and STORED was 20.4 ms faster (95%
+CI 2.3 to 25.1, 20 pairs) without it. In that build the layout extracted from PRESERVE was 14,791,648 B on disk and
+13.18 MB as `tar | gzip -6`, against the same build's 14,774,163 B Shadow JAR.
 
 Count the cache in a cached deployment's raw and gzipped bytes. In the CI run, the complete deployments measured as
 follows, gzip being the sum of each file's gzip -6 size; the layout's cache alone was 47,140,864 B (45.0 MiB), from one
@@ -241,8 +241,9 @@ On JDK 27 the property is what makes the cache work. Measured locally on a 12-CP
 OpenJDK 27 (build 27) and lambdas desugared, the single JAR trained with it served 1,838 of 1,844 non-lambda
 `io.micronaut` classes from the cache before the first request (13 of 1,923 without it) and was ready 107 to 109 ms
 sooner than the same JAR trained without it, at the same maximum RSS (three runs of 20 pairs). With Homebrew OpenJDK
-25.0.4.1 on that Mac, before Runner's build-time transformations, the single JAR's AOT cache was ready 37.5 ms sooner
-than explicit CDS (95% CI 32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS.
+25.0.4.1 on that Mac, before Runner's build-time transformations and before the static service table
+(<<staticServices,Static service table>>), the single JAR's AOT cache was ready 37.5 ms sooner than explicit CDS (95% CI
+32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS.
 
 [[lambdaGap]]
 === Closing the lambda gap on the single JAR
@@ -281,8 +282,9 @@ concurrent instances must not write one path; and, being dynamic CDS, it is slow
 In the training script, use `CACHE=app.jsa` and `-XX:ArchiveClassesAtExit="$CACHE"` instead of
 `-XX:AOTCacheOutput="$CACHE"`; nothing else changes. Run with `-XX:SharedArchiveFile=app.jsa`, and `-Xshare:on` to
 require it. CI has no CDS row. Measured locally on `benchmark-large`, on a 12-CPU Apple Silicon Mac: with Homebrew
-OpenJDK 25.0.4.1, before Runner's build-time transformations, the single JAR's archive was 31.4 MB against the AOT
-cache's 49.5 MB, for 37.5 ms later readiness and about 15 MiB more maximum RSS (20 pairs); with Homebrew OpenJDK 27
+OpenJDK 25.0.4.1, before Runner's build-time transformations and before the static service table
+(<<staticServices,Static service table>>), the single JAR's archive was 31.4 MB against the AOT cache's 49.5 MB, for
+37.5 ms later readiness and about 15 MiB more maximum RSS (20 pairs); with Homebrew OpenJDK 27
 (build 27) and lambdas desugared, the single JAR's AOT cache, trained with the property (<<aotSingleJar>>), was ready
 27 to 32 ms sooner than its dynamic CDS archive, at 7 MiB less maximum RSS (three runs of 20 pairs).
 
