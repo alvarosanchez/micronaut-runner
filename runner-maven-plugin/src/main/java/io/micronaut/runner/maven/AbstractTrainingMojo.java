@@ -28,7 +28,7 @@ import java.util.Map;
 /**
  * The training settings of a goal that launches the application: how it is reached, exercised and stopped.
  *
- * <p>There is one parameter for each component of {@link TrainingSettings}, which documents them and owns
+ * <p>There is one parameter for each setting of {@link TrainingSettings}, which documents them and owns
  * their defaults and their validation. Each is the user property {@code micronaut.runner.training.<name>}, so
  * it can be set with {@code -D} on the command line and in the POM's {@code <properties>}; a list is then
  * comma-separated. In a {@code <configuration>} element the parameter carries a {@code training} prefix, such

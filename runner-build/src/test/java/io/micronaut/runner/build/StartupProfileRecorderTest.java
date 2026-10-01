@@ -254,7 +254,8 @@ class StartupProfileRecorderTest {
 
     @Test
     void theRerecordCommandMustBeOneNonBlankLine() {
-        for (String command : new String[] {"", "   ", "./gradlew a\n./gradlew b", "mvn a\r", null}) {
+        // A null command is a NullPointerException, as for every argument: StartupProfileApiTest.
+        for (String command : new String[] {"", "   ", "./gradlew a\n./gradlew b", "mvn a\r"}) {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                     () -> StartupProfileRecorder.record(java(), runnerJar, TrainingSettings.defaults(),
                             temp.resolve("record"), temp.resolve("startup-classes.txt"), command, log));

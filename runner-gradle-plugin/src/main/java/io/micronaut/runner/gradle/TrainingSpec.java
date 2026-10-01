@@ -40,7 +40,7 @@ import java.time.Duration;
  * }
  * </pre>
  *
- * <p>There is one property for each component of {@link TrainingSettings}, which documents them and owns
+ * <p>There is one property for each setting of {@link TrainingSettings}, which documents them and owns
  * their defaults and their validation. A path is the path of an HTTP request to the application on the
  * loopback interface.</p>
  *

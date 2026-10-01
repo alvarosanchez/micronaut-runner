@@ -94,7 +94,7 @@ public final class TrainingFixture {
         report.add("pid=" + ProcessHandle.current().pid());
         report.add("port=" + System.getenv().getOrDefault("MICRONAUT_SERVER_PORT", ""));
         report.add("marker=" + System.getenv().getOrDefault(MARKER, ""));
-        report.add("url=" + System.getenv().getOrDefault(TrainingDriver.URL_VARIABLE, ""));
+        report.add("url=" + System.getenv().getOrDefault(TrainingSettings.URL_VARIABLE, ""));
 
         if (modes.contains("sleep")) {
             Thread.sleep(Long.MAX_VALUE);
@@ -137,7 +137,7 @@ public final class TrainingFixture {
             return;
         }
         if (modes.contains("command")) {
-            System.out.println("TRAINING FIXTURE command saw " + System.getenv(TrainingDriver.URL_VARIABLE));
+            System.out.println("TRAINING FIXTURE command saw " + System.getenv(TrainingSettings.URL_VARIABLE));
             return;
         }
         if (modes.contains("never-listen") || modes.contains("command-hang")) {

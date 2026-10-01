@@ -177,7 +177,7 @@ class TrainingDriverTest {
                 () -> run(settings("exit-3").build(), TrainingDriver.AfterWorkload.NOTHING));
 
         assertTrue(failure.getMessage().contains("exited with status 3 before it was ready"), failure.getMessage());
-        assertTrue(System.nanoTime() - started < TrainingSettings.DEFAULT_READINESS_TIMEOUT.toNanos() / 2,
+        assertTrue(System.nanoTime() - started < TrainingSettings.defaults().readinessTimeout().toNanos() / 2,
                 "the failure does not wait for the readiness timeout");
         assertGone(report(), "pid");
     }
