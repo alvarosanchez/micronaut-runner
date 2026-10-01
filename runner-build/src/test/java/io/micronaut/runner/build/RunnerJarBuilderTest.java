@@ -3413,7 +3413,7 @@ class RunnerJarBuilderTest {
         Path again = output();
         RunnerJarBuilder.build(spec(again).startupClasses(list).build(), BuildLogger.noOp());
         assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(again), "the same list builds the same bytes");
-        try (RunnerJarReader reader = RunnerJarReader.open(first)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(first)) {
             List<String> physical = physicalNames(reader.index(), 1);
             assertEquals(List.of("META-INF/MANIFEST.MF", "com/example/api/Api.class", "com/example/dep/Dep.class"),
                     physical.subList(0, 3), "the manifest, then the listed class, then the jar's own order");
@@ -3461,7 +3461,7 @@ class RunnerJarBuilderTest {
         long debugCrc;
         long plainCrc;
         Map<String, Long> nestedCrcs = new TreeMap<>();
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertFalse(RunnerBuildTestAccess.nestedStored(index), "an archive with deflated nested entries does not claim to be stored");
             assertEquals(List.of("META-INF/MANIFEST.MF", "hy/Listed.class"), physicalNames(index, 1).subList(0, 2));
@@ -3493,7 +3493,7 @@ class RunnerJarBuilderTest {
         Path keep = output();
         RunnerJarBuilder.build(fixture.spec(keep, Compression.HYBRID).startupClasses(list).stripLocalVariables(false)
                 .build(), BuildLogger.noOp());
-        try (RunnerJarReader reader = RunnerJarReader.open(keep)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(keep)) {
             assertArrayEquals(raw.get("hy/Debug.class"),
                     region(keep, reader.index(), physicalRecord(reader.index(), "hy/Debug.class")),
                     "without stripping the -g class keeps its compressed bytes too");
@@ -3540,7 +3540,7 @@ class RunnerJarBuilderTest {
                 listLogger);
         assertEquals(List.of(DependencyStage.HYBRID_WITHOUT_HOT_ENTRY), listLogger.warnings);
         assertArrayEquals(Files.readAllBytes(storedWithList), Files.readAllBytes(hybridWithList));
-        try (RunnerJarReader reader = RunnerJarReader.open(hybridWithList)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(hybridWithList)) {
             assertTrue(RunnerBuildTestAccess.nestedStored(reader.index()), "a HYBRID build that compressed nothing is a STORED one");
             assertEquals(1, reader.index().preloadCount(), "and it embeds the list");
         }
@@ -3549,10 +3549,10 @@ class RunnerJarBuilderTest {
         Path preserve = output();
         RunnerJarBuilder.build(fixture.spec(preserve, Compression.PRESERVE).startupClasses(list).build(),
                 BuildLogger.noOp());
-        try (RunnerJarReader reader = RunnerJarReader.open(stored)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(stored)) {
             assertTrue(RunnerBuildTestAccess.nestedStored(reader.index()));
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(preserve)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(preserve)) {
             assertFalse(RunnerBuildTestAccess.nestedStored(reader.index()));
         }
         assertEquals("0 stored, 7 deflated", inspectHeader(preserve, "Nested compression"),
@@ -3651,7 +3651,7 @@ class RunnerJarBuilderTest {
     /** One header value of the archive's {@code inspect} output. */
     private static String inspectHeader(Path archive, String label) throws IOException {
         String inspected;
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {
             java.io.PrintStream original = System.out;
             java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
             System.setOut(new java.io.PrintStream(captured, true, StandardCharsets.UTF_8));

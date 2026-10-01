@@ -992,7 +992,7 @@ class EndToEndTest {
             assertEquals(io.micronaut.runner.IndexFormat.METHOD_DEFLATED, outer.method());
             sourceRegion = reader.readRaw(outer);
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {
             Index index = reader.index();
             int outer = index.findClass("nest.Outer");
             int inner = index.findClass("nest.Outer$Inner");
