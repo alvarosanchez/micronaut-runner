@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.build;
 
-import io.micronaut.core.annotation.Experimental;
 import io.micronaut.runner.RunnerClassLoader;
 import io.micronaut.runner.build.training.TrainingDriver;
 import io.micronaut.runner.build.training.TrainingSettings;
@@ -69,7 +68,6 @@ import java.util.stream.Stream;
  *
  * @since 1.0
  */
-@Experimental
 public final class StartupProfileRecorder {
 
     /**

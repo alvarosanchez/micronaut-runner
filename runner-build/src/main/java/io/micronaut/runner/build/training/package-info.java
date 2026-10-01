@@ -28,7 +28,8 @@
  * runs, public only because code in other packages of runner-build uses it. It may change in any release, and
  * the binary-compatibility check skips it.</p>
  *
- * <p>No annotation marks what is stable: Micronaut's {@code @Experimental} is not kept in class files or shown
- * in the Javadoc, so this text says it, and {@code @Internal}, which is kept and shown, marks the rest.</p>
+ * <p>No annotation marks what is stable: Micronaut's {@code Experimental} annotation is not kept in class files
+ * or shown in the Javadoc, so this text says it, and {@code @Internal}, which is kept and shown, marks the
+ * rest.</p>
  */
 package io.micronaut.runner.build.training;

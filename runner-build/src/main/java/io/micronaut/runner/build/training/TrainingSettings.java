@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.build.training;
 
-import io.micronaut.core.annotation.Experimental;
 import io.micronaut.core.annotation.Nullable;
 
 import java.net.URI;
@@ -54,7 +53,6 @@ import java.util.StringJoiner;
  *
  * @since 1.0
  */
-@Experimental
 public final class TrainingSettings {
 
     /**
