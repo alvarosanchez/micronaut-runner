@@ -307,7 +307,8 @@ or by mapping only the index and reading classes positionally.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#bytesSaved()" class="member-name-link">bytesSaved()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>
-<div class="block">How many bytes smaller the classes the transform rewrote became, together.</div>
+<div class="block">How many bytes smaller the classes the transform rewrote became, together, less the size of the classes
+it generated.</div>
 </dd>
 </dl>
 <h2 class="title" id="I:C">C</h2>
@@ -394,7 +395,7 @@ or by mapping only the index and reading classes positionally.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#classes()" class="member-name-link">classes()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>
-<div class="block">The number of dependency classes the transform considered.</div>
+<div class="block">The number of classes the transform considered.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#CLASSES_PREFIX" class="member-name-link">CLASSES_PREFIX</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
@@ -602,6 +603,21 @@ destroying the process.</div>
 <dt><a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html#destroyed()" class="member-name-link">destroyed()</a> - Method in record class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingDriver.Outcome.html" title="class in io.micronaut.runner.build.training">TrainingDriver.Outcome</a></dt>
 <dd>
 <div class="block">Returns the value of the <a href="./io/micronaut/runner/build/training/TrainingDriver.Outcome.html#param-destroyed"><code>destroyed</code></a> record component.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#DESUGAR_LAMBDAS" class="member-name-link">DESUGAR_LAMBDAS</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">Whether to replace lambda and method-reference call sites with classes generated when the application is
+packaged.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#desugarLambdas()" class="member-name-link">desugarLambdas()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
+<dd>
+<div class="block">Whether the lambda and method-reference call sites of dependency and application classes are replaced
+with classes generated when the application is packaged.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#desugarLambdas(boolean)" class="member-name-link">desugarLambdas(boolean)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
+<dd>
+<div class="block">Sets whether lambda and method-reference call sites are replaced with classes generated at packaging
+time.</div>
 </dd>
 <dt><a href="io/micronaut/runner/NestedJarEntry.html#dosTimeToMillis(long)" class="member-name-link">dosTimeToMillis(long)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/NestedJarEntry.html" title="class in io.micronaut.runner">NestedJarEntry</a></dt>
 <dd>
@@ -995,7 +1011,7 @@ layout that the JDK's own application class loader runs.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#fallbacks()" class="member-name-link">fallbacks()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>
-<div class="block">The number of dependency classes the transform would have rewritten but gave up on.</div>
+<div class="block">The number of classes the transform would have rewritten but gave up on.</div>
 </dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#file()" class="member-name-link">file()</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
@@ -2852,7 +2868,7 @@ JVM that SIGTERM ended when the driver destroyed the process.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#rewritten()" class="member-name-link">rewritten()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>
-<div class="block">The number of dependency classes the transform rewrote.</div>
+<div class="block">The number of classes the transform rewrote.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#rules-heading" class="search-tag-link">Rules</a> - Section in enum class io.micronaut.runner.build.RunnerJarOption</dt>
 <dd>&nbsp;</dd>
@@ -3083,7 +3099,7 @@ it.</div>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#step()" class="member-name-link">step()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>
 <div class="block">The transform's name, which is the name of the <a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> that enables it, such as
-<code>stripLocalVariables</code>.</div>
+<code>desugarLambdas</code> or <code>stripLocalVariables</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/aotcache/AotCacheReport.html#STOP_DRIVER" class="member-name-link">STOP_DRIVER</a> - Static variable in record class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></dt>
 <dd>
@@ -3313,13 +3329,14 @@ it stops it.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html" class="type-name-link" title="class in io.micronaut.runner.build">TransformReport</a> - Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
-<div class="block">What one build-time class transform did to the dependency classes of a runner jar: how many it rewrote,
+<div class="block">What one build-time class transform did to the classes of a runner jar it ran over: how many it rewrote,
 how many it left as they were, and how many it had to give up on.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarResult.html#transforms()" class="member-name-link">transforms()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
-<div class="block">What each build-time class transform did to the dependency classes, one report per transform that
-ran, in the order they ran.</div>
+<div class="block">What each build-time class transform did to the classes it ran over, one report per transform that
+ran, in the order they ran: <code>desugarLambdas</code>, which runs over the dependencies and the application
+layer, then <code>stripLocalVariables</code>, which runs over the dependencies.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#TRANSFORMS_ENTRY_NAME" class="member-name-link">TRANSFORMS_ENTRY_NAME</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
@@ -3355,7 +3372,7 @@ with the documented default.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/TransformReport.html#unchanged()" class="member-name-link">unchanged()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a></dt>
 <dd>
-<div class="block">The number of dependency classes the transform left byte for byte as they were: it had nothing to
+<div class="block">The number of classes the transform left byte for byte as they were: it had nothing to
 change in them, or it does not apply to them.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/aotcache/AotCacheGate.Coverage.html#unexpected()" class="member-name-link">unexpected()</a> - Method in record class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheGate.Coverage.html" title="class in io.micronaut.runner.build.aotcache">AotCacheGate.Coverage</a></dt>

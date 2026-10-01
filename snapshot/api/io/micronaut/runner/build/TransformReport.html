@@ -82,14 +82,15 @@ loadScripts(document, 'script');</script>
 <div class="horizontal-scroll">
 <div class="type-signature"><span class="modifiers">public final class </span><span class="element-name type-name-label">TransformReport</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a></span></div>
-<div class="block">What one build-time class transform did to the dependency classes of a runner jar: how many it rewrote,
-how many it left as they were, and how many it had to give up on.
+<div class="block">What one build-time class transform did to the classes of a runner jar it ran over: how many it rewrote,
+how many it left as they were, and how many it had to give up on. Those are the dependency classes, and for
+<code>desugarLambdas</code> the application's own classes too.
 
 <p>Every class a transform considered is counted exactly once: <a href="#rewritten()"><code>rewritten()</code></a>,
 <a href="#unchanged()"><code>unchanged()</code></a> and <a href="#fallbacks()"><code>fallbacks()</code></a> add up to the number of classes it considered. A fallback is
 a class the transform would have rewritten but did not, because the transform failed on it or its rewritten
 bytes verified worse than the original; the class is then nested as the other transforms left it, and the
-build log says why.</p>
+build log says why. A class a transform generates is not counted: it only lowers <a href="#bytesSaved()"><code>bytesSaved()</code></a>.</p>
 
 <p>Only the builder creates a report, so later releases can add accessors without breaking callers.</p></div>
 <dl class="notes">
@@ -114,12 +115,13 @@ build log says why.</p>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>long</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#bytesSaved()" class="member-name-link">bytesSaved</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">How many bytes smaller the classes the transform rewrote became, together.</div>
+<div class="block">How many bytes smaller the classes the transform rewrote became, together, less the size of the classes
+it generated.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#classes()" class="member-name-link">classes</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The number of dependency classes the transform considered.</div>
+<div class="block">The number of classes the transform considered.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>boolean</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#equals(java.lang.Object)" class="member-name-link">equals</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html" title="class or interface in java.lang" class="external-link">Object</a>&nbsp;other)</code></div>
@@ -127,7 +129,7 @@ build log says why.</p>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#fallbacks()" class="member-name-link">fallbacks</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The number of dependency classes the transform would have rewritten but gave up on.</div>
+<div class="block">The number of classes the transform would have rewritten but gave up on.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#hashCode()" class="member-name-link">hashCode</a>()</code></div>
@@ -135,13 +137,13 @@ build log says why.</p>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#rewritten()" class="member-name-link">rewritten</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The number of dependency classes the transform rewrote.</div>
+<div class="block">The number of classes the transform rewrote.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#step()" class="member-name-link">step</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">The transform's name, which is the name of the <a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> that enables it, such as
-<code>stripLocalVariables</code>.</div>
+<code>desugarLambdas</code> or <code>stripLocalVariables</code>.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#toString()" class="member-name-link">toString</a>()</code></div>
@@ -149,7 +151,7 @@ build log says why.</p>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code>int</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#unchanged()" class="member-name-link">unchanged</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">The number of dependency classes the transform left byte for byte as they were: it had nothing to
+<div class="block">The number of classes the transform left byte for byte as they were: it had nothing to
 change in them, or it does not apply to them.</div>
 </div>
 </div>
@@ -175,7 +177,7 @@ change in them, or it does not apply to them.</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">step</span>()</div>
 <div class="block">The transform's name, which is the name of the <a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build"><code>RunnerJarOption</code></a> that enables it, such as
-<code>stripLocalVariables</code>.</div>
+<code>desugarLambdas</code> or <code>stripLocalVariables</code>.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the name</dd>
@@ -188,7 +190,7 @@ change in them, or it does not apply to them.</div>
 <h3>rewritten</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">rewritten</span>()</div>
-<div class="block">The number of dependency classes the transform rewrote.</div>
+<div class="block">The number of classes the transform rewrote.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the rewritten count</dd>
@@ -201,7 +203,7 @@ change in them, or it does not apply to them.</div>
 <h3>unchanged</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">unchanged</span>()</div>
-<div class="block">The number of dependency classes the transform left byte for byte as they were: it had nothing to
+<div class="block">The number of classes the transform left byte for byte as they were: it had nothing to
 change in them, or it does not apply to them.</div>
 <dl class="notes">
 <dt>Returns:</dt>
@@ -215,7 +217,7 @@ change in them, or it does not apply to them.</div>
 <h3>fallbacks</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">fallbacks</span>()</div>
-<div class="block">The number of dependency classes the transform would have rewritten but gave up on.</div>
+<div class="block">The number of classes the transform would have rewritten but gave up on.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the fallback count</dd>
@@ -228,8 +230,8 @@ change in them, or it does not apply to them.</div>
 <h3>bytesSaved</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">long</span>&nbsp;<span class="element-name">bytesSaved</span>()</div>
-<div class="block">How many bytes smaller the classes the transform rewrote became, together. It is negative when they
-grew.</div>
+<div class="block">How many bytes smaller the classes the transform rewrote became, together, less the size of the classes
+it generated. It is negative when the classes grew, as they do when lambdas are desugared.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the bytes saved</dd>
@@ -242,7 +244,7 @@ grew.</div>
 <h3>classes</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type">int</span>&nbsp;<span class="element-name">classes</span>()</div>
-<div class="block">The number of dependency classes the transform considered.</div>
+<div class="block">The number of classes the transform considered.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd><code>rewritten() + unchanged() + fallbacks()</code></dd>

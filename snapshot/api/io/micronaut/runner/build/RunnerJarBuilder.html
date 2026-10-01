@@ -120,16 +120,25 @@ starts, warnings are emitted in that order afterwards, and the outer archive is 
 
 <h2 id="class-transforms-heading">Class transforms</h2>
 <p>In STORED, each stage also runs the <code>ClassTransforms</code> of the build over its dependency's classes, by
-default <a href="RunnerJarSpec.html#stripLocalVariables()"><code>RunnerJarSpec.stripLocalVariables()</code></a>. Before staging, one scan task per dependency runs on the
-same threads, with its own <code>ZipReader</code>, into a read-only <code>ClassPathModel</code> that every stage shares
-and that is discarded when <code>build</code> returns. A staging thread then also holds the original and the
-rewritten bytes of one class, at most <code>ClassTransformPipeline.MAX_CLASS_SIZE</code> each. What the stages
-did is logged on the calling thread in class-path order and written into <code>MICRONAUT-INF/transforms.txt</code>
-right after the launcher classes; with every transform off there is no scan and no such entry.</p>
+default <a href="RunnerJarSpec.html#desugarLambdas()"><code>RunnerJarSpec.desugarLambdas()</code></a> and then <a href="RunnerJarSpec.html#stripLocalVariables()"><code>RunnerJarSpec.stripLocalVariables()</code></a>. Before
+staging, one scan task per dependency runs on the same threads, with its own <code>ZipReader</code>, into a
+read-only <code>ClassPathModel</code> that every stage shares and that is discarded when <code>build</code> returns. A
+staging thread then also holds the original and the rewritten bytes of one class, at most
+<code>ClassTransformPipeline.MAX_CLASS_SIZE</code> each. With <code>desugarLambdas</code>, a stage plans its
+dependency's nests before it writes the first entry, so the thread also holds the planned nests of the jar
+it is staging: the original and the accepted bytes of each class with a rewritten lambda call site, of its
+nest host and of the classes generated for it, each released when the entry loop has written it. One jar's
+output then depends on other jars' classes, whose members decide what a generated class may call, but only
+through the model, which is complete before the first stage starts: the archive's bytes still do not depend
+on the thread count. The application layer's lambdas are desugared on the calling thread, while the stages
+run. What the transforms did is logged on the calling thread in class-path order and written into
+<code>MICRONAUT-INF/transforms.txt</code> right after the launcher classes; with every transform off there is no
+scan and no such entry.</p>
 
 <p><code>LogbackPrecompiler</code> runs after the stages, because the staged dependencies decide whether it applies.
 The two do not meet: its front end loads Logback from the dependencies' own files, not from the staged copies,
-and the classes it generates join the application layer after the scan, where no transform rewrites them.</p>
+and the classes it generates join the application layer after the scan and after the application layer was
+transformed, so no transform rewrites them.</p>
 
 <h2 id="application-jars-heading">Application jars</h2>
 <p>An application output that is a jar is opened once, on the calling thread, and stays open until the

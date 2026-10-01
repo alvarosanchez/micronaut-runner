@@ -190,8 +190,9 @@ it.</div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a><wbr>&lt;<a href="TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a>&gt;</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#transforms()" class="member-name-link">transforms</a>()</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">What each build-time class transform did to the dependency classes, one report per transform that
-ran, in the order they ran.</div>
+<div class="block">What each build-time class transform did to the classes it ran over, one report per transform that
+ran, in the order they ran: <code>desugarLambdas</code>, which runs over the dependencies and the application
+layer, then <code>stripLocalVariables</code>, which runs over the dependencies.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a><wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</code></div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#warnings()" class="member-name-link">warnings</a>()</code></div>
@@ -359,10 +360,11 @@ build log names the reason.</div>
 <h3>transforms</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="TransformReport.html" title="class in io.micronaut.runner.build">TransformReport</a>&gt;</span>&nbsp;<span class="element-name">transforms</span>()</div>
-<div class="block">What each build-time class transform did to the dependency classes, one report per transform that
-ran, in the order they ran. It is empty when none ran: every transform is turned off, the dependencies
-are nested with <a href="Compression.html#PRESERVE"><code>Compression.PRESERVE</code></a>, or a transform was turned off for the build because the
-class path needs what it would remove.</div>
+<div class="block">What each build-time class transform did to the classes it ran over, one report per transform that
+ran, in the order they ran: <code>desugarLambdas</code>, which runs over the dependencies and the application
+layer, then <code>stripLocalVariables</code>, which runs over the dependencies. It is empty when none ran:
+every transform is turned off, the dependencies are nested with <a href="Compression.html#PRESERVE"><code>Compression.PRESERVE</code></a>, or a
+transform was turned off for the build because the class path needs what it would remove.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the reports, unmodifiable</dd>

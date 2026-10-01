@@ -365,6 +365,9 @@ Micronaut AOT-optimized application into <code>build/libs/my-app-0.1-all-optimiz
 
         // On by default; false builds no static service table. See "Static service table".
         // options.put('staticServices', 'false')
+
+        // On by default for STORED; 'false' keeps lambdas as invokedynamic call sites. See Build-Time Transformations.
+        // options.put('desugarLambdas', 'false')
     }
 }</code></pre>
 </div>
@@ -479,6 +482,13 @@ tool resolve the path against the project and, in Gradle, rebuild the archive wh
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>staticServices</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">boolean</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">passthrough</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>desugarLambdas</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">boolean</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">passthrough</p></td>
@@ -639,7 +649,10 @@ scalar ones also read <code>-Dmicronaut.runner.&lt;name&gt;</code>. <code>&lt;ru
 options by name, <code>-Dmicronaut.runner.&lt;name&gt;</code> only for passthrough options, and a <code>&lt;runnerOptions&gt;</code> entry wins. For
 example, <code>-Dmicronaut.runner.precompileLogback=false</code> leaves <code>logback.xml</code> to Logback at startup.
 Dependency local-variable tables are dropped by default (see <a href="#localVariableTables">Local-variable tables</a>); pass
-<code>-Dmicronaut.runner.stripLocalVariables=false</code> to keep them.</p>
+<code>-Dmicronaut.runner.stripLocalVariables=false</code> to keep them. Lambdas are desugared by default (see
+<a href="#desugaredLambdas">Desugared lambdas</a>); to keep them as <code>invokedynamic</code> call sites, pass
+<code>-Dmicronaut.runner.desugarLambdas=false</code> or set
+<code>&lt;runnerOptions&gt;&lt;desugarLambdas&gt;false&lt;/desugarLambdas&gt;&lt;/runnerOptions&gt;</code>.</p>
 </div>
 <div class="paragraph">
 <p>To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
@@ -715,10 +728,11 @@ not.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>MICRONAUT-INF/transforms.txt</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Present only when a build-time transform changed a dependency class or recorded a fallback: tab-separated lines,
-the first naming the Runner version, then one per nested JAR and transform with its counts. It is not indexed, the
-launcher never reads it at run time, and <code>extract</code> ignores it; <code>inspect</code> prints it. See
-<a href="#classTransforms">Dependency class transforms</a>.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Present only when a build-time transform changed a class or recorded a fallback: tab-separated lines, the first
+naming the Runner version, then one per nested JAR and transform with its counts, then one <code>lambdas</code> line per
+JAR, or for the application layer, with the lambda call sites rewritten and left. It is not indexed, the launcher
+never reads it at run time, and <code>extract</code> ignores it; <code>inspect</code> prints it. See
+<a href="#classTransforms">Class transforms</a>.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>META-INF/micronaut/**</code></p></td>
@@ -748,7 +762,10 @@ decompression from class loading at the cost of a larger archive. Re-packing als
 (<code>META-INF/<strong>.SF</code>, <code></strong>.DSA</code>, <code><strong>.RSA</code>, <code></strong>.EC</code>, <code>META-INF/SIG-*</code>) and <code>META-INF/INDEX.LIST</code>. Manifests are
 never rewritten, so package metadata and sealing survive intact. By default, re-packing also strips
 local-variable tables from dependency classes, which then carry new CRC-32 values; see
-<a href="#localVariableTables">Local-variable tables</a>. The <code>PRESERVE</code> option copies each dependency byte for byte instead.</p>
+<a href="#localVariableTables">Local-variable tables</a>. By default it also rewrites eligible lambda call sites and adds a
+generated <code>$$Lambda$R&lt;n&gt;</code> class after each host, so those entries get new CRC-32 values too, and the application
+layer&#8217;s lambdas are rewritten the same way; see <a href="#desugaredLambdas">Desugared lambdas</a>. The <code>PRESERVE</code> option
+copies each dependency byte for byte instead.</p>
 </div>
 <div class="paragraph">
 <p>Shadow can also write <code>STORED</code> entries (<code>entryCompression = ZipEntryCompression.STORED</code>), so the gain from not
@@ -893,10 +910,11 @@ does nothing.</p>
 </div>
 <div class="paragraph">
 <p>There are two kinds. <a href="#precompiledLogback">Precompiled Logback configuration</a> adds generated classes to the application layer, and
-<a href="#classTransforms">Dependency class transforms</a> rewrites the classes of the dependencies as they are re-packed, first of all by dropping their
-<a href="#localVariableTables">local-variable tables</a>. Both are on by default, and neither touches what the other produces:
-the class transforms never rewrite the application layer, where the generated Logback classes go, and the Logback
-front end runs the application&#8217;s Logback JARs as they were published, not their re-packed copies.</p>
+<a href="#classTransforms">Class transforms</a> rewrites classes as the archive is assembled: it <a href="#desugaredLambdas">desugars the lambdas</a> of
+the dependencies and of the application&#8217;s own classes, and drops the dependencies'
+<a href="#localVariableTables">local-variable tables</a>. All of them are on by default, and neither kind touches what the
+other produces: the generated Logback classes join the application layer after the class transforms have run, and
+the Logback front end runs the application&#8217;s Logback JARs as they were published, not their re-packed copies.</p>
 </div>
 <div class="sect1">
 <h2 id="precompiledLogback">Precompiled Logback configuration</h2>
@@ -1009,25 +1027,28 @@ with <code>-Dlogger.config</code> or <code>LOGGER_CONFIG</code> instead, or turn
 </div>
 </div>
 <div class="sect1">
-<h2 id="classTransforms">Dependency class transforms</h2>
+<h2 id="classTransforms">Class transforms</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>A runner JAR re-packs every dependency, and with the default <code>STORED</code> compression it can also rewrite the
-dependency classes on the way: whatever a class carries that the application never needs at run time is paid for
-again on every start. This section lists what Runner changes in dependency classes at build time, the default
-and the opt-out of each change, and what an application can observe as a result.</p>
+<p>A runner JAR re-packs every dependency, and with the default <code>STORED</code> compression it can also rewrite classes on
+the way: whatever a class carries that the application never needs at run time, or has to work out again at every
+start, is paid for on every start. This section lists what Runner changes in classes at build time, the default and
+the opt-out of each change, and what an application can observe as a result.</p>
 </div>
 <div class="paragraph">
-<p>Every change runs in one pass: each dependency class is parsed once, every enabled transform is applied to it, and
-the result is written once. Before a rewritten class is accepted it is verified, with the JDK&#8217;s class-file
-verifier, against the whole runtime class path and the JDK&#8217;s own classes; a transform that fails on a class, or
-makes it verify worse than the class it replaces, is dropped for that class alone, and the build log says so.</p>
+<p>Every change runs in one pass: each class is parsed once, every enabled transform is applied to it, and the result
+is written once. Before a rewritten class is accepted it is verified, with the JDK&#8217;s class-file verifier, against
+the whole runtime class path and the JDK&#8217;s own classes; a transform that fails on a class, or makes it verify
+worse than the class it replaces, is dropped for that class alone, and the build log says so. Desugaring changes
+several classes together, so there the unit is the nest: the classes of one top-level class and the ones generated
+for them.</p>
 </div>
 <div class="paragraph">
-<p>Nothing here applies to the application&#8217;s own classes, the ones Runner generates into the application layer
-included, to a project dependency (another project of a Gradle build, another module of a Maven reactor), or to
-any class of a signed JAR: they are nested exactly as they were built. With <code>PRESERVE</code> compression every
-dependency is nested byte for byte, so none of these transforms run.</p>
+<p>Stripping never applies to the application&#8217;s own classes or to a project dependency (another project of a Gradle
+build, another module of a Maven reactor): they are user code, whose locals users debug. Desugaring applies to
+both. Neither applies to the classes Runner generates into the application layer or to any class of a signed JAR,
+which are nested exactly as they were built. With <code>PRESERVE</code> compression every dependency is nested byte for
+byte, and none of these transforms run, in the application layer either.</p>
 </div>
 <div class="paragraph">
 <p>What a build changed is recorded in the archive, in <code>MICRONAUT-INF/transforms.txt</code> (see
@@ -1036,6 +1057,151 @@ dependency is nested byte for byte, so none of these transforms run.</p>
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">java -Dmicronaut.runner.mode=inspect -jar build/libs/my-app-0.1-all.jar</code></pre>
+</div>
+</div>
+<div class="sect2">
+<h3 id="desugaredLambdas">Desugared lambdas</h3>
+<div class="paragraph">
+<p>On by default with <code>STORED</code> compression. A lambda or a method reference compiles to an <code>invokedynamic</code> call site,
+and the first time the site runs, the JDK spins a hidden class for it. A CDS archive or an AOT cache keeps such a
+class only when the calling class was defined by one of the JDK&#8217;s built-in class loaders, and the classes of a
+runner JAR are defined by Runner&#8217;s own. So every lambda that runs before the application is ready is linked again
+at every start, with or without a cache. Desugaring writes that class when the application is packaged instead:
+each eligible site calls a generated class, <code>&lt;Host&gt;$$Lambda$R&lt;n&gt;</code>, stored right after its host, in the same JAR or
+in the application layer. Nothing is linked at run time, and a cache holds the generated class like any other.</p>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">Rewritten</dt>
+<dd>
+<p>A call site of <code>LambdaMetafactory.metafactory</code> whose implementation the generated class can call as
+the site did: a member of the host&#8217;s own nest, private ones included; a non-private member of the host&#8217;s package;
+or a public member of a public class, in any JAR or in an exported package of the JDK. The generated class
+implements the same interface, keeps the captured values in final fields, and converts arguments and results as
+the JDK would.</p>
+</dd>
+<dt class="hdlist1">Left as <code>invokedynamic</code></dt>
+<dd>
+<p>A <code>super::method</code> reference, or any other non-virtual (<code>invokespecial</code>) reference that is
+not to a private method of the host; a caller-sensitive JDK method, such as <code>Class::forName</code>; a
+site whose host, or whose implementation&#8217;s owner, an earlier JAR shadows or a multi-release variant replaces; a
+site that would need a class that is not on the class path; every class of a signed JAR and of
+<code>META-INF/versions/</code>; and every other bootstrap: string concatenation, the <code>ObjectMethods</code> of records, and
+serializable or marker-interface lambdas.</p>
+</dd>
+<dt class="hdlist1">Java 8 classes</dt>
+<dd>
+<p>A class below class-file version 55 has no nestmates, so a private lambda body is reached through
+a package-private static synthetic method, <code>$runner$lambda$&lt;n&gt;</code>, added to the host. Two hosts cannot take one and
+keep such sites: an interface, where it would have to be public, and a serializable class that declares no
+<code>serialVersionUID</code>, whose default value it would change.</p>
+</dd>
+</dl>
+</div>
+<div class="paragraph">
+<p>What an application can observe, for the rewritten lambdas of dependency and application classes:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>Class.isHidden()</code> is <code>false</code>, and the class has a stable name that <code>Class.forName</code> finds. Its name still
+contains <code>$$Lambda</code>, so code that recognises lambdas by name still does.</p>
+</li>
+<li>
+<p>Each call of the lambda adds one visible frame, <code>&lt;Host&gt;$$Lambda$R&lt;n&gt;.&lt;method&gt;</code>, to stack traces and to
+<code>StackWalker</code>, where the hidden class&#8217;s frame was hidden. Code that finds its caller by walking the stack from a
+method used as a method reference sees the generated class.</p>
+</li>
+<li>
+<p>The JARs and the application layer gain one <code>.class</code> resource per rewritten site, and a rewritten host and its
+nest host have new bytes and a new CRC-32. Class-level composition analysis may report them as modified.</p>
+</li>
+<li>
+<p>A Java 8 host gains its <code>$runner$lambda$&lt;n&gt;</code> methods, which <code>getDeclaredMethods()</code> returns.</p>
+</li>
+<li>
+<p>A generated class is resolved by name, by the class loader that defined its host. A class loader of your own
+that defines a copy of a host from its bytes has to be able to find the generated classes next to it as well.</p>
+</li>
+<li>
+<p>Output bytes depend on the JDK that runs the build: the archive is byte-reproducible only when it is built with
+the same JDK build.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The step fails closed. Every class it writes or rewrites is verified, and when one class of a nest verifies worse
+than before, or the step fails on it, the whole nest is packaged as it was, with one line in the build log. The
+build log&#8217;s summary line and the <code>lambdas</code> lines of <code>transforms.txt</code> give the sites rewritten, the classes
+generated, the bridges added and the sites left, by reason. The sites left include those of signed JARs and of the
+<code>META-INF/versions/</code> classes the runtime loads; the copies of a class that the runtime never loads are not counted.</p>
+</div>
+<div class="paragraph">
+<p>On <code>test-suite/samples/benchmark-large</code>, desugaring rewrites 2,963 of the 2,992 lambda call sites of the
+dependencies and the application, 361 of them through bridges, with no fallback; none of the 29 it leaves runs
+before the application is ready. Measured by the startup harness (<a href="#benchmarks">Benchmarks</a>) against the
+<code>runner-stored-lambdas</code> control, 30 interleaved pairs on an Apple Silicon machine with 12 CPUs and Homebrew OpenJDK
+25.0.4.1:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 40%;">
+<col style="width: 60%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Measure</th>
+<th class="tableblock halign-left valign-top">Desugared minus lambdas kept</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Readiness without a JDK cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−38.9 ms paired median, 95% CI [−47.3, −30.2] (386.9 ms against 422.9 ms)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Readiness with the JDK AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−38.0 ms, 95% CI [−41.6, −33.9] (220.2 ms against 259.7 ms)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Maximum RSS</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">135.7 against 170.9 MiB without a cache, 144.4 against 164.1 MiB with the AOT cache (medians of three runs)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Archive size</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">36,023,843 against 32,810,600 bytes raw (+9.8%), 8,781,234 against 8,367,796 bytes gzip -6 (+4.9%); the AOT cache
+is 0.6 MB larger</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>Packaging does the extra work on the staging threads. With both class transforms on, the sample&#8217;s
+<code>micronautRunnerJar</code> task took 0.26 s instead of 0.11 s with both off, and 0.22 s with desugaring alone off (medians
+of ten warm-daemon rounds), against 0.75 s for its <code>shadowJar</code>.</p>
+</div>
+<div class="paragraph">
+<p>To keep every lambda an <code>invokedynamic</code> call site, set the <code>desugarLambdas</code> option to <code>false</code>. In Gradle:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-groovy hljs" data-lang="groovy">micronaut {
+    runner {
+        options.put('desugarLambdas', 'false')
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>In Maven, pass <code>-Dmicronaut.runner.desugarLambdas=false</code>, or add a <code>&lt;runnerOptions&gt;</code> entry:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;configuration&gt;
+    &lt;runnerOptions&gt;
+        &lt;desugarLambdas&gt;false&lt;/desugarLambdas&gt;
+    &lt;/runnerOptions&gt;
+&lt;/configuration&gt;</code></pre>
+</div>
 </div>
 </div>
 <div class="sect2">
@@ -1237,7 +1403,7 @@ constructor.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.mode</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>run</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>run</code> starts the application. <code>inspect</code> prints the index header, the build-time transforms (see
-<a href="#classTransforms">Dependency class transforms</a>) and the jar table, <code>list</code> prints the entries, and <code>extract</code> writes
+<a href="#classTransforms">Class transforms</a>) and the jar table, <code>list</code> prints the entries, and <code>extract</code> writes
 an exploded copy. The non-<code>run</code> modes consume the remaining command line arguments.</p></td>
 </tr>
 <tr>
@@ -1856,7 +2022,8 @@ JDK 26 the AOT cache does. JDK classes, and the launcher classes that the JDK&#8
 from the outer JAR, get full AOT loading and linking. Classes that Runner&#8217;s own loader defines are stored as
 <em>unregistered</em> classes: when the loader later defines a class whose name, class-file size and CRC-32 match a stored one,
 HotSpot reuses the pre-parsed and pre-verified copy instead of parsing the bytes again. Those classes are not
-AOT-linked, and the lambdas they spin at run time are not archived. The extracted layout runs entirely on the built-in
+AOT-linked, and the lambdas they spin at run time are not archived, which is why Runner writes lambda classes when it
+packages the JAR (<a href="#lambdaGap">Closing the lambda gap on the single JAR</a>). The extracted layout runs entirely on the built-in
 loader, so its application classes are AOT-linked too. JDK 27&#8217;s AOT cache stores only classes from <code>file:</code> code sources
 (<a href="https://bugs.openjdk.org/browse/JDK-8380291">JDK-8380291</a>), so it stores none of the single JAR&#8217;s application classes
 (dynamic CDS still does). The single JAR&#8217;s cache, trained by hand or with <code>jdkAotCache.target = 'singleJar'</code>, is worth
@@ -2113,6 +2280,23 @@ the static service table (<a href="#staticServices">[staticServices]</a>). With 
 16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <a href="#aotLayout">Recommended: the extracted layout with the AOT cache</a>). On JDK 27 (build 27) it
 caches no application classes and, before the table, was 173.5 ms behind Shadow&#8217;s (95% CI 169.7 to 179.8 ms, 20
 pairs): a single file there uses CDS.</p>
+</div>
+<div class="sect2">
+<h3 id="lambdaGap">Closing the lambda gap on the single JAR</h3>
+<div class="paragraph">
+<p>Every lambda the single JAR&#8217;s classes run would otherwise be linked at every start, cache or not, as the first section
+says. So Runner desugars lambdas when it packages (<a href="#desugaredLambdas">[desugaredLambdas]</a>), on by default with <code>STORED</code>; set the
+<code>desugarLambdas</code> option to <code>false</code> to opt out. Train with the snippet above unchanged: the generated classes are
+ordinary classes, and the cache holds them. On <code>benchmark-large</code> with JDK 25.0.4.1 (30 pairs), desugaring made the
+single JAR 38.0 ms faster with its AOT cache (95% CI 33.9 to 41.6 ms) and 38.9 ms faster without one (95% CI 30.2 to
+47.3 ms). With its cache it was then 16.0 ms ahead of Shadow&#8217;s (95% CI 11.1 to 22.7 ms), at 144.4 MiB maximum RSS
+against Shadow&#8217;s 133.6 MiB. The single-JAR figures above were taken before lambdas were desugared. The cached gain
+holds for JDK 25 and 26; on JDK 27 the single JAR&#8217;s cache holds no application class (see the first section), and the
+extracted layout is the cached deployment. What is left of the cached difference: the 29 sites still excluded (none on
+this sample&#8217;s startup path), about 40 string concatenation sites, the per-class cost of reusing unregistered classes,
+and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT cache
+remains the parity option, with Shadow&#8217;s RSS.</p>
+</div>
 </div>
 </div>
 </div>
@@ -2378,7 +2562,7 @@ AOT has removed <code>logback.xml</code> and registered its own <code>Configurat
 behaviour above, not Runner&#8217;s. The <a href="#staticServices">static service table</a> still applies: Micronaut AOT 3 leaves
 service discovery to the scan, so the table&#8217;s loader is put in front of Micronaut AOT&#8217;s own in the application&#8217;s
 <code>META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader</code>. For a Micronaut AOT whose loaders supply
-Micronaut&#8217;s service loaders, the table stands down by itself. The <a href="#classTransforms">dependency class transforms</a> apply
+Micronaut&#8217;s service loaders, the table stands down by itself. The <a href="#classTransforms">class transforms</a> apply
 to both archives.</p>
 </div>
 <div class="paragraph">
@@ -2472,7 +2656,8 @@ start without its cache. A cache trained on <code>-all.jar</code> does not fit <
 AOT&#8217;s <code>optimizedJitJarAll</code>, and even Runner&#8217;s plain <code>-all.jar</code> was about 58 ms ahead of it. With a JDK AOT cache on
 both sides, no: the single <code>-all-optimized.jar</code> was about 23 ms behind <code>optimizedJitJarAll</code> on JDK 25, and on JDK 27 the
 cache stores none of a single Runner JAR&#8217;s application classes (<a href="#cdsAndAot">[cdsAndAot]</a>). <a href="#micronautAotResults">[micronautAotResults]</a> has the
-numbers, the sizes and the second session.</p>
+numbers, the sizes and the second session. They were taken before Runner desugared lambdas by default
+(<a href="#desugaredLambdas">[desugaredLambdas]</a>), which made the cached single JAR faster, and have not been measured again since.</p>
 </div>
 </div>
 </div>
@@ -2537,9 +2722,10 @@ compilation and the packaging task&#8217;s other dependencies execute as well. E
 task&#8217;s action time and the wall time of the whole <code>gradlew</code> process. The comparisons are <code>runner-stored</code>/<code>shadow</code>
 (the defaults) and the compression-matched <code>runner-stored</code>/<code>shadow-stored</code> (neither archive deflated) and
 <code>runner-preserve</code>/<code>shadow</code> (both deflated), each the median of per-round differences.
-The <code>runner-stored</code> time includes the default class transform, which strips the local-variable tables of the
-dependency classes (see <a href="#localVariableTables">Local-variable tables</a>); <code>runner-preserve</code> nests the dependencies
-byte for byte and runs none.</p>
+The <code>runner-stored</code> time includes the default class transforms, which desugar lambdas (see
+<a href="#desugaredLambdas">Desugared lambdas</a>) and strip the local-variable tables of the dependency classes (see
+<a href="#localVariableTables">Local-variable tables</a>); <code>runner-preserve</code> nests the dependencies byte for byte and runs
+none.</p>
 </div>
 <div class="paragraph">
 <p>Maven Shade is not compared. <code>test-suite/samples/maven-basic</code> configures no <code>maven-shade-plugin</code>, and in that
@@ -2647,6 +2833,21 @@ that Micronaut scans for its services; compared with <code>runner-stored</code><
 application-class-verified JDK AOT cache; compared with <code>runner-stored-aot</code></p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-lambdas</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the same stored Runner JAR inputs with <code>desugarLambdas</code> off, so every lambda stays an
+<code>invokedynamic</code> call site (see <a href="#desugaredLambdas">Desugared lambdas</a>)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-lambdas-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the identical <code>runner-stored-lambdas</code> JAR with a trained, application-class-verified
+JDK AOT cache</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted-lambdas-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the <code>runner-stored-lambdas</code> JAR extracted and launched by the JDK&#8217;s built-in loader,
+with a trained, application-class-verified JDK AOT cache; compared with <code>runner-extracted-aot</code></p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub</p></td>
 </tr>
@@ -2702,8 +2903,12 @@ sharing is a separate baseline condition.</p>
 <div class="paragraph">
 <p>Every Runner row builds with the packaging library&#8217;s defaults, so <code>runner-stored</code> and the rows derived from it,
 <code>runner-stored-aot</code>, <code>runner-extracted</code> and <code>runner-extracted-aot</code>, measure dependency classes stripped of their
-local-variable tables. The opt-in pairs <code>runner-stored</code>/<code>runner-stored-keepdebug</code> and
-<code>runner-stored-aot</code>/<code>runner-stored-keepdebug-aot</code> measure that default against keeping the tables.</p>
+local-variable tables and lambdas desugared into generated classes: <code>runner-stored</code> is the desugared default. The
+opt-in pairs <code>runner-stored</code>/<code>runner-stored-keepdebug</code> and <code>runner-stored-aot</code>/<code>runner-stored-keepdebug-aot</code>
+measure the first default against keeping the tables. The opt-in pairs <code>runner-stored</code>/<code>runner-stored-lambdas</code>,
+<code>runner-stored-aot</code>/<code>runner-stored-lambdas-aot</code> and <code>runner-extracted-aot</code>/<code>runner-extracted-lambdas-aot</code> measure
+the second against keeping the call sites; the last pair runs on the JDK&#8217;s built-in loader, which archives lambdas
+itself, so it checks that desugaring costs the extracted layout nothing.</p>
 </div>
 <div class="paragraph">
 <p>The compression-matched pairs are <code>runner-stored</code>/<code>shadow-stored</code>, where neither side inflates class bytes, and
@@ -3030,7 +3235,8 @@ not: the single <code>-all-optimized.jar</code> was about 23 ms behind on JDK 25
 Runner rows used the packaging defaults of the day: STORED, the entry stub, stripped local-variable tables, precompiled
 Logback, which stands down in <code>runner-maot</code> for Micronaut AOT&#8217;s own configurator, and the static service table, which
 applies to both. That is why Micronaut AOT adds less to Runner than to Shadow, whose plain JAR still configures Logback
-with Joran.</p>
+with Joran. These runs predate lambda desugaring (<a href="#desugaredLambdas">Desugared lambdas</a>), now also a default, which
+changed the cached single JAR the most; these rows have not been measured again with it.</p>
 </div>
 <div class="paragraph">
 <p>Size and memory go the other way in places. The <code>runner-maot</code> JAR is 2.22 times the <code>shadow-maot</code> JAR on disk

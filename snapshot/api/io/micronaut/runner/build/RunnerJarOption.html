@@ -75,6 +75,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#STRIP_LOCAL_VARIABLES" tabindex="0">STRIP_LOCAL_VARIABLES</a></li>
 <li><a href="#STARTUP_CLASSES" tabindex="0">STARTUP_CLASSES</a></li>
 <li><a href="#STATIC_SERVICES" tabindex="0">STATIC_SERVICES</a></li>
+<li><a href="#DESUGAR_LAMBDAS" tabindex="0">DESUGAR_LAMBDAS</a></li>
 </ol>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
@@ -198,39 +199,44 @@ and <a href="RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiv
 <div class="col-last odd-row-color">
 <div class="block">How the nested dependencies are stored, a <a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a> name.</div>
 </div>
-<div class="col-first even-row-color"><code><a href="#ENABLE_NATIVE_ACCESS" class="member-name-link">ENABLE_NATIVE_ACCESS</a></code></div>
+<div class="col-first even-row-color"><code><a href="#DESUGAR_LAMBDAS" class="member-name-link">DESUGAR_LAMBDAS</a></code></div>
 <div class="col-last even-row-color">
+<div class="block">Whether to replace lambda and method-reference call sites with classes generated when the application is
+packaged.</div>
+</div>
+<div class="col-first odd-row-color"><code><a href="#ENABLE_NATIVE_ACCESS" class="member-name-link">ENABLE_NATIVE_ACCESS</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest.</div>
 </div>
-<div class="col-first odd-row-color"><code><a href="#ENTRY_STUB" class="member-name-link">ENTRY_STUB</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code><a href="#ENTRY_STUB" class="member-name-link">ENTRY_STUB</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Whether to generate the entry stub that calls the main method directly.</div>
 </div>
-<div class="col-first even-row-color"><code><a href="#MANIFEST_ATTRIBUTES" class="member-name-link">MANIFEST_ATTRIBUTES</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code><a href="#MANIFEST_ATTRIBUTES" class="member-name-link">MANIFEST_ATTRIBUTES</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Extra main attributes of the runner jar's manifest.</div>
 </div>
-<div class="col-first odd-row-color"><code><a href="#MULTI_RELEASE" class="member-name-link">MULTI_RELEASE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code><a href="#MULTI_RELEASE" class="member-name-link">MULTI_RELEASE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Whether the application layer itself is multi-release.</div>
 </div>
-<div class="col-first even-row-color"><code><a href="#PRECOMPILE_LOGBACK" class="member-name-link">PRECOMPILE_LOGBACK</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code><a href="#PRECOMPILE_LOGBACK" class="member-name-link">PRECOMPILE_LOGBACK</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
 packaged.</div>
 </div>
-<div class="col-first odd-row-color"><code><a href="#STARTUP_CLASSES" class="member-name-link">STARTUP_CLASSES</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code><a href="#STARTUP_CLASSES" class="member-name-link">STARTUP_CLASSES</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The recorded startup class list the launcher preloads on a background thread: the
 <code>-Xlog:class+load</code> output of a run of the runner jar, or a file of binary class names.</div>
 </div>
-<div class="col-first even-row-color"><code><a href="#STATIC_SERVICES" class="member-name-link">STATIC_SERVICES</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code><a href="#STATIC_SERVICES" class="member-name-link">STATIC_SERVICES</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Whether to generate the static service table that answers Micronaut's service lookups from names
 computed at packaging time.</div>
 </div>
-<div class="col-first odd-row-color"><code><a href="#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code><a href="#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed.</div>
 </div>
 </div>
@@ -435,6 +441,17 @@ packaged. See <a href="RunnerJarSpec.Builder.html#precompileLogback(boolean)"><c
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">STATIC_SERVICES</span></div>
 <div class="block">Whether to generate the static service table that answers Micronaut's service lookups from names
 computed at packaging time. See <a href="RunnerJarSpec.Builder.html#staticServices(boolean)"><code>RunnerJarSpec.Builder.staticServices(boolean)</code></a>.</div>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="DESUGAR_LAMBDAS">
+<h3>DESUGAR_LAMBDAS</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">DESUGAR_LAMBDAS</span></div>
+<div class="block">Whether to replace lambda and method-reference call sites with classes generated when the application is
+packaged. It applies to <a href="Compression.html#STORED"><code>Compression.STORED</code></a> only. See
+<a href="RunnerJarSpec.Builder.html#desugarLambdas(boolean)"><code>RunnerJarSpec.Builder.desugarLambdas(boolean)</code></a>.</div>
 </div>
 </section>
 </li>
