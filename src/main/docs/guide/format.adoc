@@ -76,9 +76,10 @@ that do not get smaller stay stored. On benchmark-large:
 |`HYBRID` |26,646,740 |11,848,014 |−3.0 ms (−14.3 to +17.5)
 |===
 
-GitHub `ubuntu-latest` runner (4 vCPUs, AMD EPYC 7763), Temurin JDK 25.0.4.1, commit `0871050`, 20 paired iterations,
-page cache uncontrolled; the `HYBRID` JAR packages the startup profile recorded in the same run and starts with the
-preloader off.
+From https://github.com/alvarosanchez/micronaut-runner/actions/runs/36843944300[one CI run] of the change that added
+`HYBRID` (commit `0871050`): GitHub `ubuntu-latest` runner (4 vCPUs, AMD EPYC 7763), Temurin JDK 25.0.4.1, 20 paired
+iterations, page cache uncontrolled. The `HYBRID` JAR packages the startup profile recorded in the same run and starts
+with the preloader off.
 
 Use `HYBRID` only where on-disk or unpacked size matters more than transfer size: DEFLATE bytes do not compress
 again, so a `HYBRID` image layer is larger after gzip than a `STORED` one. It needs the startup profile (see
