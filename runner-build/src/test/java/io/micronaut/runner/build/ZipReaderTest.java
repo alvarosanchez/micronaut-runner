@@ -31,6 +31,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -768,14 +769,26 @@ class ZipReaderTest {
         assertEquals(chunk - 1, ZipReader.chunkLimit(0, chunk - 1));
     }
 
-    @Test
+    /**
+     * A stored entry is read through the channel, which meets the end of the shrunk file. A deflated entry's
+     * compressed bytes are copied out of the mapping, whose pages the truncation left without backing, so it is the
+     * case that reads the mapping after {@code open}: through the view or the segment, as {@link #readPath} says,
+     * and with however much of the reader this test JVM has compiled by then. {@link ZipReaderCompiledTruncationTest}
+     * repeats such reads in JVMs of their own once C2 has compiled them.
+     */
+    @ParameterizedTest(name = "reading an entry of a file truncated while it is open fails, deflated={0}")
+    @ValueSource(booleans = {false, true})
     @DisabledOnOs(value = OS.WINDOWS, disabledReason = "Windows cannot truncate a file that is mapped")
-    void readingAnEntryOfAFileTruncatedWhileItIsOpenFailsWithAnIOException() throws IOException {
+    void readingAnEntryOfAFileTruncatedWhileItIsOpenFailsWithAnIOException(boolean deflate) throws IOException {
         byte[] content = new byte[256 * 1024];
         new Random(145).nextBytes(content);
         Path jar = temp.resolve("truncated-while-open.jar");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
-            stored(zip, "data.bin", content);
+            if (deflate) {
+                deflated(zip, "data.bin", content);
+            } else {
+                stored(zip, "data.bin", content);
+            }
         }
 
         try (ZipReader reader = open(jar)) {
@@ -786,6 +799,9 @@ class ZipReaderTest {
             IOException failure = assertThrows(IOException.class, () -> reader.read(entry));
             assertTrue(failure.getMessage().contains(jar.toString()), failure.getMessage());
             assertTrue(failure.getMessage().contains("truncated"), failure.getMessage());
+            // Which read met the truncation: the mapping's fault, or the channel's end of file.
+            Class<? extends Throwable> cause = deflate ? InternalError.class : EOFException.class;
+            assertInstanceOf(cause, failure.getCause(), () -> failure + " caused by " + failure.getCause());
         }
     }
 
