@@ -43,13 +43,14 @@ corrects or complains about: two appenders writing to the same `<file>`, a prope
 The packager also leaves the file to Joran when logback-classic, logback-core or slf4j-api is missing, when the two
 Logback jars differ in version or are outside 1.5.37 to 1.6 (exclusive), when there is no `logback.xml`, when any
 layer has a `logback-test.xml`, `logback.groovy` or versioned Logback file, when any layer already registers a
-`Configurator` (your own, or Micronaut AOT's), and when a packaged `+application*+` or `+bootstrap*+` file may set
-`logger.config` or `logback.configurationFile`. That last check errs on the side of Joran: a `.properties` file is
-parsed, and any other format counts when its text names `configurationFile` or `logger.config`, or has the word
-`logger` and a `config` key anywhere, whatever the nesting or the line breaks. The build logs one line either way,
-at info level: `Precompiled logback.xml (application layer) into ...` or `No Logback configuration was precompiled
-because <reason>; Logback will configure itself with Joran at startup`. A generated class name that is already
-taken is a warning.
+`Configurator` (your own, or Micronaut AOT's), and when an `+application*+` or `+bootstrap*+` file of the
+application layer may set `logger.config` or `logback.configurationFile`. That last check errs on the side of
+Joran: a `.properties` file is parsed, and any other format counts when its text names `configurationFile` or
+`logger.config`, or has the word `logger` and a `config` key anywhere, whatever the nesting or the line breaks. It
+reads neither dependency JARs nor imported configuration (see the end of the next section). The build logs one
+line either way, at info level: `Precompiled logback.xml (application layer) into ...` or `No Logback configuration
+was precompiled because <reason>; Logback will configure itself with Joran at startup`. A generated class name that
+is already taken is a warning.
 
 === At runtime
 
@@ -65,10 +66,15 @@ configured, as without Micronaut Runner;
 What changes when it applies: Joran's INFO status messages about reading `logback.xml` are not recorded, and every
 way to see them falls back to Joran. `logback.xml` is read only on the paths above.
 
-One case is not covered: a `logger.config` set by configuration outside the archive, such as
-`-Dmicronaut.config.files`, an `application.yml` in the working directory or a `--logger.config` program argument,
-is not applied once a `Configurator` is registered, and the runtime opt-out does not change that. Set the location
-with `-Dlogger.config` or `LOGGER_CONFIG` instead, or turn precompilation off.
+Some cases are not covered. A `logger.config` set where the build does not look is not applied once a
+`Configurator` is registered, and the runtime opt-out does not change that:
+
+* configuration outside the archive, such as `-Dmicronaut.config.files`, an `application.yml` in the working
+directory or a `--logger.config` program argument;
+* an `+application*+` or `+bootstrap*+` file of a dependency JAR: the build reads only the application layer's;
+* configuration that a packaged file imports with `micronaut.config.import`: the build does not follow imports.
+
+Set the location with `-Dlogger.config` or `LOGGER_CONFIG` instead, or turn precompilation off.
 
 === Turning it off
 
