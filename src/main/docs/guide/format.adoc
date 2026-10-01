@@ -61,8 +61,8 @@ bytes startup reads are then contiguous instead of scattered through every depen
 places in the outer archive and class path order, so lookups and duplicate precedence do not change.
 
 The `HYBRID` option re-packs as `STORED` does, startup classes first, but stores only the listed classes. Every
-other class keeps its original DEFLATE bytes, and a class a build-time transform rewrote or generated is deflated
-afresh. Resources stay stored. On benchmark-large:
+other class is written `DEFLATED`: with its original compressed bytes when no build-time transform changed it, and
+deflated afresh when a transform rewrote or generated it. Resources stay stored. On benchmark-large:
 
 // HYBRID_TABLE: filled in from the measured runs of the pull request that adds HYBRID.
 

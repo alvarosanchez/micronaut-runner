@@ -341,6 +341,9 @@ public final class RunnerJarSpec {
      * classes of the list. The launcher loads them and never initialises them, so a list that names a class
      * the application no longer uses costs background work and changes no behaviour.</p>
      *
+     * <p>In {@link Compression#STORED} and {@link Compression#HYBRID} the same list puts each nested jar's startup
+     * classes first, and {@link Compression#HYBRID} keeps every class it does not name compressed.</p>
+     *
      * @return the list file, if one was configured
      */
     public Optional<Path> startupClasses() {
@@ -375,8 +378,8 @@ public final class RunnerJarSpec {
      * Whether the lambda and method-reference call sites of dependency and application classes are replaced
      * with classes generated when the application is packaged.
      *
-     * <p>It applies to {@link Compression#STORED} only and is on by default. To opt out, set it to
-     * {@code false}: through {@link Builder#desugarLambdas(boolean)}, or by name, as the build plugins'
+     * <p>It applies to {@link Compression#STORED} and {@link Compression#HYBRID} and is on by default. To opt out,
+     * set it to {@code false}: through {@link Builder#desugarLambdas(boolean)}, or by name, as the build plugins'
      * generic options do, with {@code option("desugarLambdas", "false")}. See
      * {@link Builder#desugarLambdas(boolean)} for what is rewritten and what changes as a result.</p>
      *
