@@ -53,8 +53,8 @@ import java.util.regex.Pattern;
  *     <li><b>Coverage.</b> From that launch's class-load log, up to the end of its workload: at least
  *     {@link AotCacheSettings#minCoverage()} of the classes come from the cache, and every {@code io.micronaut}
  *     class that does not is a lambda proxy or one the recording named as skipped because it failed
- *     verification or is a JFR event class. With {@link AotCacheSettings#enforceCoverage()} off, the numbers are
- *     only reported.</li>
+ *     verification or is a JFR event class. With the settings' {@code enforceCoverage} off, the numbers are only
+ *     reported.</li>
  * </ol>
  *
  * <p>Internal: {@link #coverage(List, List)} is public only for Runner's own benchmarks, which count what a cached

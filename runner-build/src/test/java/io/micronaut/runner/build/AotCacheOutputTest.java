@@ -18,6 +18,7 @@ package io.micronaut.runner.build;
 import io.micronaut.runner.RunnerClassLoader;
 import io.micronaut.runner.build.aotcache.AotCacheReport;
 import io.micronaut.runner.build.aotcache.AotCacheSettings;
+import io.micronaut.runner.build.aotcache.AotCacheTestAccess;
 import io.micronaut.runner.build.training.TrainingSettings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -60,12 +61,12 @@ class AotCacheOutputTest {
 
         AotCacheReport warned = AotCacheOutput.warnUnlessRunnerClassesAreCached(report, directory, log);
 
-        assertEquals(List.of(AotCacheOutput.SINGLE_JAR_WARNING), warned.warnings());
+        assertEquals(List.of(AotCacheOutput.SINGLE_JAR_WARNING), AotCacheTestAccess.warnings(warned));
         assertTrue(AotCacheOutput.SINGLE_JAR_WARNING.contains("JDK-8380291"), AotCacheOutput.SINGLE_JAR_WARNING);
         assertEquals(List.of(AotCacheOutput.SINGLE_JAR_WARNING), log.warnings);
         assertTrue(Files.readString(directory.resolve(REPORT)).contains(AotCacheOutput.SINGLE_JAR_WARNING),
                 "the report on disk carries the warning");
-        assertEquals("passed", warned.verdict(), "the warning does not fail the build");
+        assertEquals("passed", AotCacheTestAccess.verdict(warned), "the warning does not fail the build");
     }
 
     @Test
@@ -115,12 +116,12 @@ class AotCacheOutputTest {
 
     @Test
     void halfOfThemIsEnoughAndLessIsNot() throws IOException {
-        assertTrue(AotCacheOutput.warnUnlessRunnerClassesAreCached(report(5, 10), directory, new Logged())
-                .warnings().isEmpty());
-        assertTrue(AotCacheOutput.warnUnlessRunnerClassesAreCached(report(0, 0), directory, new Logged())
-                .warnings().isEmpty(), "no io.micronaut class loaded, nothing to warn about");
-        assertEquals(List.of(AotCacheOutput.SINGLE_JAR_WARNING),
-                AotCacheOutput.warnUnlessRunnerClassesAreCached(report(4, 9), directory, new Logged()).warnings());
+        assertTrue(AotCacheTestAccess.warnings(AotCacheOutput.warnUnlessRunnerClassesAreCached(report(5, 10),
+                directory, new Logged())).isEmpty());
+        assertTrue(AotCacheTestAccess.warnings(AotCacheOutput.warnUnlessRunnerClassesAreCached(report(0, 0),
+                directory, new Logged())).isEmpty(), "no io.micronaut class loaded, nothing to warn about");
+        assertEquals(List.of(AotCacheOutput.SINGLE_JAR_WARNING), AotCacheTestAccess.warnings(
+                AotCacheOutput.warnUnlessRunnerClassesAreCached(report(4, 9), directory, new Logged())));
     }
 
     private static List<Path> listed(Path directory) throws IOException {
@@ -130,9 +131,9 @@ class AotCacheOutputTest {
     }
 
     private static AotCacheReport report(int micronautFromCache, int micronautLoaded) {
-        return new AotCacheReport("27+36", "Linux", "amd64", Map.of(AotCacheOutput.TARGET_LABEL, "singleJar"),
-                "app-all.jar", List.of(), "jcmd", 20, 0, 5763, 2075, 2075 / 5763.0, micronautLoaded,
-                micronautFromCache, List.of(), 458, List.of(), List.of(), "passed");
+        return AotCacheTestAccess.report("27+36", "Linux", "amd64", Map.of(AotCacheOutput.TARGET_LABEL,
+                "singleJar"), "app-all.jar", "jcmd", 20, 5763, 2075, micronautLoaded, micronautFromCache, 458,
+                "passed");
     }
 
     /** Keeps the warnings. */

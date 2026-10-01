@@ -25,27 +25,14 @@ import java.util.Objects;
  * How a JDK AOT cache is built and how strictly it is verified. Both build plugins start from
  * {@link #defaults()} and replace only what the user set, so every default lives here.
  *
- * <p>Internal to Runner's interim build plugins: it may change in any release.</p>
+ * <p>Internal to Runner's interim build plugins: it may change in any release. It is a final class rather than
+ * a record so that only what another package calls is public: the plugins read the defaults and build settings,
+ * and {@code AotCacheOutput} reads {@link #jvmArgs()} and decides {@link #withEnforceCoverage(boolean)}.</p>
  *
- * @param strict          whether the launch argfile also carries {@code -XX:AOTMode=on}, which turns a cache
- *                        that no longer matches, such as one whose JARs' modification times were rewritten, into
- *                        a failed launch instead of a slow one
- * @param jvmArgs         the JVM arguments of every launch of the cache: the recording, the creation, the strict
- *                        probes, the smoke launch and the argfile. Flags the cache depends on, such as the
- *                        collector, compact object headers or a heap size that changes the compressed-oops mode,
- *                        go here, so that training and production agree
- * @param verifyProbes    how many strict {@code -version} probes the gate runs; at least 1
- * @param minCoverage     the share of the classes a strict smoke launch loads that must come from the cache,
- *                        from 0 to 1
- * @param enforceCoverage whether the coverage checks fail the build; without it they are only reported
  * @since 1.0
  */
 @Internal
-public record AotCacheSettings(boolean strict,
-                               List<String> jvmArgs,
-                               int verifyProbes,
-                               double minCoverage,
-                               boolean enforceCoverage) {
+public final class AotCacheSettings {
 
     /** The default of {@link #verifyProbes()}. */
     static final int DEFAULT_VERIFY_PROBES = 10;
@@ -58,15 +45,27 @@ public record AotCacheSettings(boolean strict,
             "-XX:AOTConfiguration", "-XX:SharedArchiveFile", "-XX:ArchiveClassesAtExit", "-Xshare",
             "-XX:+AutoCreateSharedArchive", "-jar", "-cp", "-classpath", "--class-path");
 
+    private final boolean strict;
+    private final List<String> jvmArgs;
+    private final int verifyProbes;
+    private final double minCoverage;
+    private final boolean enforceCoverage;
+
     /**
      * Validates the settings and copies the list.
      *
+     * @param strict          see {@link #strict()}
+     * @param jvmArgs         see {@link #jvmArgs()}
+     * @param verifyProbes    see {@link #verifyProbes()}
+     * @param minCoverage     see {@link #minCoverage()}
+     * @param enforceCoverage see {@link #enforceCoverage()}
      * @throws NullPointerException     if {@code jvmArgs} is {@code null}
      * @throws IllegalArgumentException if a value is not usable; the message names the setting
      */
-    public AotCacheSettings {
-        jvmArgs = List.copyOf(Objects.requireNonNull(jvmArgs, "jvmArgs"));
-        for (String argument : jvmArgs) {
+    private AotCacheSettings(boolean strict, List<String> jvmArgs, int verifyProbes, double minCoverage,
+                             boolean enforceCoverage) {
+        List<String> arguments = List.copyOf(Objects.requireNonNull(jvmArgs, "jvmArgs"));
+        for (String argument : arguments) {
             if (argument.isBlank()) {
                 throw new IllegalArgumentException("jvmArgs must not contain a blank argument");
             }
@@ -86,6 +85,11 @@ public record AotCacheSettings(boolean strict,
             throw new IllegalArgumentException(String.format(Locale.ROOT,
                     "minCoverage must be between 0 and 1, not %s", minCoverage));
         }
+        this.strict = strict;
+        this.jvmArgs = arguments;
+        this.verifyProbes = verifyProbes;
+        this.minCoverage = minCoverage;
+        this.enforceCoverage = enforceCoverage;
     }
 
     /**
@@ -114,6 +118,54 @@ public record AotCacheSettings(boolean strict,
      */
     public AotCacheSettings withEnforceCoverage(boolean enforce) {
         return new AotCacheSettings(strict, jvmArgs, verifyProbes, minCoverage, enforce);
+    }
+
+    /**
+     * Whether the launch argfile also carries {@code -XX:AOTMode=on}, which turns a cache that no longer matches,
+     * such as one whose JARs' modification times were rewritten, into a failed launch instead of a slow one.
+     *
+     * @return whether the cache is launched strictly
+     */
+    public boolean strict() {
+        return strict;
+    }
+
+    /**
+     * The JVM arguments of every launch of the cache: the recording, the creation, the strict probes, the smoke
+     * launch and the argfile. Flags the cache depends on, such as the collector, compact object headers or a heap
+     * size that changes the compressed-oops mode, go here, so that training and production agree.
+     *
+     * @return the JVM arguments
+     */
+    public List<String> jvmArgs() {
+        return jvmArgs;
+    }
+
+    /**
+     * How many strict {@code -version} probes the gate runs; at least 1.
+     *
+     * @return the number of probes
+     */
+    public int verifyProbes() {
+        return verifyProbes;
+    }
+
+    /**
+     * The share of the classes a strict smoke launch loads that must come from the cache, from 0 to 1.
+     *
+     * @return the minimum coverage
+     */
+    public double minCoverage() {
+        return minCoverage;
+    }
+
+    /**
+     * Whether the coverage checks fail the build; without it they are only reported.
+     *
+     * @return whether coverage is enforced
+     */
+    boolean enforceCoverage() {
+        return enforceCoverage;
     }
 
     /**

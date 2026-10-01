@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -241,13 +242,42 @@ public final class AotLayout {
     }
 
     /**
-     * An extracted layout.
-     *
-     * @param applicationJar the application JAR, which {@code java -jar} launches
-     * @param libraries      the dependencies, in class-path order
+     * An extracted layout. A final class rather than a record, so that its constructor stays package-private.
      */
     @Internal
-    public record Result(Path applicationJar, List<Path> libraries) {
+    public static final class Result {
+
+        private final Path applicationJar;
+        private final List<Path> libraries;
+
+        /**
+         * Keeps the layout.
+         *
+         * @param applicationJar the application JAR, which {@code java -jar} launches
+         * @param libraries      the dependencies, in class-path order
+         */
+        Result(Path applicationJar, List<Path> libraries) {
+            this.applicationJar = Objects.requireNonNull(applicationJar, "applicationJar");
+            this.libraries = List.copyOf(libraries);
+        }
+
+        /**
+         * The application JAR, which {@code java -jar} launches.
+         *
+         * @return the application JAR
+         */
+        public Path applicationJar() {
+            return applicationJar;
+        }
+
+        /**
+         * The dependencies, in class-path order.
+         *
+         * @return the files under {@code lib/}
+         */
+        public List<Path> libraries() {
+            return libraries;
+        }
 
         /**
          * One line that reports the layout, for a plugin to log:

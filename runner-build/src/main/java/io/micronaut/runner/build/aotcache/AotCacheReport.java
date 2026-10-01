@@ -33,52 +33,14 @@ import java.util.Objects;
  * What the verification gate found, written as {@code aot-report.json} next to the cache.
  *
  * <p>Internal to Runner's interim build plugins, which log its {@link #summary()}: it may change in any
- * release.</p>
+ * release. It is a final class rather than a record so that only what another package calls is public:
+ * {@code AotCacheOutput} reads {@link #micronautLoaded()} and {@link #micronautFromCache()}, adds a warning and
+ * writes the report again.</p>
  *
- * @param jdk                   the exact VM build, {@code java.vm.version}
- * @param os                    the operating system, {@code os.name}
- * @param arch                  the CPU architecture, {@code os.arch}
- * @param labels                what the caller added, such as the {@code target}
- * @param jar                   the file name of the JAR the cache serves, which {@code java -jar} launches from
- *                              the cache's directory
- * @param creationFlags         the flags the cache was created with
- * @param recordStop            how the recording ended: {@code jcmd} ({@code jcmd <pid> AOT.end_recording}),
- *                              {@code driver} (the training stop: a signal or the stop path) or
- *                              {@code exit} (an application that ran to its exit)
- * @param probes                how many strict probes ran
- * @param probeFailures         how many of them failed
- * @param classesLoaded         the classes the strict smoke launch loaded up to the end of its workload
- * @param classesFromCache      how many of them came from the cache
- * @param coverage              {@code classesFromCache / classesLoaded}
- * @param micronautLoaded       the {@code io.micronaut} classes the smoke launch loaded
- * @param micronautFromCache    how many of them came from the cache
- * @param micronautNotFromCache the names of the others
- * @param runtimeLambdas        the lambda proxy classes the smoke launch spun instead of loading them from the cache
- * @param warnings              what the build warned about
- * @param failures              why the gate failed; empty when it passed
- * @param verdict               {@code passed} or {@code failed}
  * @since 1.0
  */
 @Internal
-public record AotCacheReport(String jdk,
-                             String os,
-                             String arch,
-                             Map<String, String> labels,
-                             String jar,
-                             List<String> creationFlags,
-                             String recordStop,
-                             int probes,
-                             int probeFailures,
-                             int classesLoaded,
-                             int classesFromCache,
-                             double coverage,
-                             int micronautLoaded,
-                             int micronautFromCache,
-                             List<String> micronautNotFromCache,
-                             int runtimeLambdas,
-                             List<String> warnings,
-                             List<String> failures,
-                             String verdict) {
+public final class AotCacheReport {
 
     /** The report file, relative to the output directory. */
     static final String FILE = "aot-report.json";
@@ -98,23 +60,263 @@ public record AotCacheReport(String jdk,
     /** {@link #recordStop()} when the application ran to its exit. */
     static final String STOP_EXIT = "exit";
 
+    private final String jdk;
+    private final String os;
+    private final String arch;
+    private final Map<String, String> labels;
+    private final String jar;
+    private final List<String> creationFlags;
+    private final String recordStop;
+    private final int probes;
+    private final int probeFailures;
+    private final int classesLoaded;
+    private final int classesFromCache;
+    private final double coverage;
+    private final int micronautLoaded;
+    private final int micronautFromCache;
+    private final List<String> micronautNotFromCache;
+    private final int runtimeLambdas;
+    private final List<String> warnings;
+    private final List<String> failures;
+    private final String verdict;
+
     /**
      * Copies the collections.
      *
-     * @throws NullPointerException if a component is {@code null}
+     * @param jdk                   the exact VM build, {@code java.vm.version}
+     * @param os                    the operating system, {@code os.name}
+     * @param arch                  the CPU architecture, {@code os.arch}
+     * @param labels                what the caller added, such as the {@code target}
+     * @param jar                   the file name of the JAR the cache serves, which {@code java -jar} launches
+     *                              from the cache's directory
+     * @param creationFlags         the flags the cache was created with
+     * @param recordStop            how the recording ended: {@code jcmd} ({@code jcmd <pid> AOT.end_recording}),
+     *                              {@code driver} (the training stop: a signal or the stop path) or
+     *                              {@code exit} (an application that ran to its exit)
+     * @param probes                how many strict probes ran
+     * @param probeFailures         how many of them failed
+     * @param classesLoaded         the classes the strict smoke launch loaded up to the end of its workload
+     * @param classesFromCache      how many of them came from the cache
+     * @param coverage              {@code classesFromCache / classesLoaded}
+     * @param micronautLoaded       the {@code io.micronaut} classes the smoke launch loaded
+     * @param micronautFromCache    how many of them came from the cache
+     * @param micronautNotFromCache the names of the others
+     * @param runtimeLambdas        the lambda proxy classes the smoke launch spun instead of loading them from
+     *                              the cache
+     * @param warnings              what the build warned about
+     * @param failures              why the gate failed; empty when it passed
+     * @param verdict               {@value #PASSED} or {@value #FAILED}
+     * @throws NullPointerException if a value is {@code null}
      */
-    public AotCacheReport {
-        Objects.requireNonNull(jdk, "jdk");
-        Objects.requireNonNull(os, "os");
-        Objects.requireNonNull(arch, "arch");
-        labels = Collections.unmodifiableMap(new LinkedHashMap<>(Objects.requireNonNull(labels, "labels")));
-        Objects.requireNonNull(jar, "jar");
-        creationFlags = List.copyOf(creationFlags);
-        Objects.requireNonNull(recordStop, "recordStop");
-        micronautNotFromCache = List.copyOf(micronautNotFromCache);
-        warnings = List.copyOf(warnings);
-        failures = List.copyOf(failures);
-        Objects.requireNonNull(verdict, "verdict");
+    AotCacheReport(String jdk,
+                   String os,
+                   String arch,
+                   Map<String, String> labels,
+                   String jar,
+                   List<String> creationFlags,
+                   String recordStop,
+                   int probes,
+                   int probeFailures,
+                   int classesLoaded,
+                   int classesFromCache,
+                   double coverage,
+                   int micronautLoaded,
+                   int micronautFromCache,
+                   List<String> micronautNotFromCache,
+                   int runtimeLambdas,
+                   List<String> warnings,
+                   List<String> failures,
+                   String verdict) {
+        this.jdk = Objects.requireNonNull(jdk, "jdk");
+        this.os = Objects.requireNonNull(os, "os");
+        this.arch = Objects.requireNonNull(arch, "arch");
+        this.labels = Collections.unmodifiableMap(new LinkedHashMap<>(Objects.requireNonNull(labels, "labels")));
+        this.jar = Objects.requireNonNull(jar, "jar");
+        this.creationFlags = List.copyOf(creationFlags);
+        this.recordStop = Objects.requireNonNull(recordStop, "recordStop");
+        this.probes = probes;
+        this.probeFailures = probeFailures;
+        this.classesLoaded = classesLoaded;
+        this.classesFromCache = classesFromCache;
+        this.coverage = coverage;
+        this.micronautLoaded = micronautLoaded;
+        this.micronautFromCache = micronautFromCache;
+        this.micronautNotFromCache = List.copyOf(micronautNotFromCache);
+        this.runtimeLambdas = runtimeLambdas;
+        this.warnings = List.copyOf(warnings);
+        this.failures = List.copyOf(failures);
+        this.verdict = Objects.requireNonNull(verdict, "verdict");
+    }
+
+    /**
+     * The {@code io.micronaut} classes the smoke launch loaded.
+     *
+     * @return the number of classes
+     */
+    public int micronautLoaded() {
+        return micronautLoaded;
+    }
+
+    /**
+     * How many of the {@code io.micronaut} classes the smoke launch loaded came from the cache.
+     *
+     * @return the number of classes
+     */
+    public int micronautFromCache() {
+        return micronautFromCache;
+    }
+
+    /**
+     * The exact VM build, {@code java.vm.version}.
+     *
+     * @return the VM build
+     */
+    String jdk() {
+        return jdk;
+    }
+
+    /**
+     * The operating system, {@code os.name}.
+     *
+     * @return the operating system
+     */
+    String os() {
+        return os;
+    }
+
+    /**
+     * The CPU architecture, {@code os.arch}.
+     *
+     * @return the architecture
+     */
+    String arch() {
+        return arch;
+    }
+
+    /**
+     * What the caller added, such as the {@code target}.
+     *
+     * @return the labels, in the caller's order
+     */
+    Map<String, String> labels() {
+        return labels;
+    }
+
+    /**
+     * The file name of the JAR the cache serves, which {@code java -jar} launches from the cache's directory.
+     *
+     * @return the file name
+     */
+    String jar() {
+        return jar;
+    }
+
+    /**
+     * The flags the cache was created with.
+     *
+     * @return the flags
+     */
+    List<String> creationFlags() {
+        return creationFlags;
+    }
+
+    /**
+     * How the recording ended: {@value #STOP_JCMD}, {@value #STOP_DRIVER} or {@value #STOP_EXIT}.
+     *
+     * @return how the recording ended
+     */
+    String recordStop() {
+        return recordStop;
+    }
+
+    /**
+     * How many strict probes ran.
+     *
+     * @return the number of probes
+     */
+    int probes() {
+        return probes;
+    }
+
+    /**
+     * How many strict probes failed.
+     *
+     * @return the number of failed probes
+     */
+    int probeFailures() {
+        return probeFailures;
+    }
+
+    /**
+     * The classes the strict smoke launch loaded up to the end of its workload.
+     *
+     * @return the number of classes
+     */
+    int classesLoaded() {
+        return classesLoaded;
+    }
+
+    /**
+     * How many of the classes the smoke launch loaded came from the cache.
+     *
+     * @return the number of classes
+     */
+    int classesFromCache() {
+        return classesFromCache;
+    }
+
+    /**
+     * {@code classesFromCache / classesLoaded}.
+     *
+     * @return the share of the classes from the cache
+     */
+    double coverage() {
+        return coverage;
+    }
+
+    /**
+     * The names of the {@code io.micronaut} classes the smoke launch did not load from the cache.
+     *
+     * @return the class names
+     */
+    List<String> micronautNotFromCache() {
+        return micronautNotFromCache;
+    }
+
+    /**
+     * The lambda proxy classes the smoke launch spun instead of loading them from the cache.
+     *
+     * @return the number of lambda proxy classes
+     */
+    int runtimeLambdas() {
+        return runtimeLambdas;
+    }
+
+    /**
+     * What the build warned about.
+     *
+     * @return the warnings
+     */
+    List<String> warnings() {
+        return warnings;
+    }
+
+    /**
+     * Why the gate failed.
+     *
+     * @return the failures; empty when it passed
+     */
+    List<String> failures() {
+        return failures;
+    }
+
+    /**
+     * {@value #PASSED} or {@value #FAILED}.
+     *
+     * @return the verdict
+     */
+    String verdict() {
+        return verdict;
     }
 
     /**

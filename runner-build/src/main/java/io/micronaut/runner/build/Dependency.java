@@ -115,7 +115,8 @@ public final class Dependency {
      *
      * <p>Unlike the coordinates, the flag changes how the archive is built. A project module is user code,
      * whose locals users debug, so its classes are nested as they are: the {@code stripLocalVariables} option
-     * never rewrites them, just as it never rewrites the application's own classes. {@link #of(Path)} and {@link #of(Path, String)} leave it unset.</p>
+     * never rewrites them, just as it never rewrites the application's own classes. {@link #of(Path)} and
+     * {@link #of(Path, String)} leave it unset.</p>
      *
      * @return whether this dependency is a module of the same build
      */

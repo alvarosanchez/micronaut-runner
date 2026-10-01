@@ -85,7 +85,9 @@ class AotLayoutTest {
         assertEquals(List.of(extracted.resolve("lib").resolve(ALPHA), extracted.resolve("lib").resolve(BETA)),
                 result.libraries());
         assertEquals(List.of("lib/" + ALPHA, "lib/" + BETA), classPath(result.applicationJar()));
-        assertEquals(result, AotLayout.verify(extracted, runnerJar));
+        AotLayout.Result verified = AotLayout.verify(extracted, runnerJar);
+        assertEquals(result.applicationJar(), verified.applicationJar());
+        assertEquals(result.libraries(), verified.libraries());
         assertEquals("Wrote the layout " + AotLayout.applicationJarName(runnerJar) + " with 2 JARs in lib/ to "
                 + extracted.toAbsolutePath().normalize(), result.summary());
     }

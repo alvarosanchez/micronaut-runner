@@ -163,6 +163,64 @@ class PublicApiTest {
     }
 
     @Test
+    void listsTheProtectedMembersOfATypeThatIsNotFinal() {
+        ClassDesc index = ClassDesc.of("io.example.launcher.Index");
+        byte[] type = ClassFile.of().build(ClassDesc.of("io.example.Open"), builder -> builder
+                .withFlags(AccessFlag.PUBLIC)
+                .withField("shared", ConstantDescs.CD_int, ClassFile.ACC_PROTECTED)
+                .withMethodBody("<init>", MethodTypeDesc.of(ConstantDescs.CD_void), ClassFile.ACC_PROTECTED,
+                        code -> code.return_())
+                .withMethodBody("index", MethodTypeDesc.of(index), ClassFile.ACC_PROTECTED, code -> code
+                        .aconst_null().areturn()));
+
+        assertEquals(List.of("io.example.Open", "io.example.Open#<init>()V",
+                        "io.example.Open#index()Lio/example/launcher/Index;", "io.example.Open#shared:I"),
+                publicApi(Map.of("io.example.Open", type)));
+        assertEquals(List.of("io.example.Open#index()Lio/example/launcher/Index; names io.example.launcher.Index"),
+                launcherTypesInSignatures(Map.of("io.example.Open", type), Set.of("io/example/launcher")));
+    }
+
+    @Test
+    void listsANestedTypeOnlyWhenEveryEnclosingTypeIsExported() {
+        ClassDesc hidden = ClassDesc.of("io.example.Hidden");
+        ClassDesc hiddenNested = ClassDesc.of("io.example.Hidden$Nested");
+        ClassDesc open = ClassDesc.of("io.example.Open");
+        ClassDesc openNested = ClassDesc.of("io.example.Open$Nested");
+        ClassDesc closed = ClassDesc.of("io.example.Closed");
+        ClassDesc closedNested = ClassDesc.of("io.example.Closed$Nested");
+        // A public type nested in a package-private one: unreachable from another package.
+        byte[] hiddenType = ClassFile.of().build(hidden, builder -> builder
+                .withFlags(ClassFile.ACC_SUPER)
+                .with(innerClasses(hiddenNested, hidden, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC)));
+        byte[] hiddenNestedType = ClassFile.of().build(hiddenNested, builder -> builder
+                .withFlags(AccessFlag.PUBLIC)
+                .with(innerClasses(hiddenNested, hidden, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC)));
+        // A protected type nested in a public type that is not final: a subclass in another package reaches it.
+        // Its class file flags say public, as javac writes them.
+        byte[] openType = ClassFile.of().build(open, builder -> builder
+                .withFlags(AccessFlag.PUBLIC)
+                .with(innerClasses(openNested, open, ClassFile.ACC_PROTECTED | ClassFile.ACC_STATIC)));
+        byte[] openNestedType = ClassFile.of().build(openNested, builder -> builder
+                .withFlags(AccessFlag.PUBLIC, AccessFlag.FINAL)
+                .with(innerClasses(openNested, open, ClassFile.ACC_PROTECTED | ClassFile.ACC_STATIC)));
+        // The same in a final type, which nothing can extend.
+        byte[] closedType = ClassFile.of().build(closed, builder -> builder
+                .withFlags(AccessFlag.PUBLIC, AccessFlag.FINAL)
+                .with(innerClasses(closedNested, closed, ClassFile.ACC_PROTECTED | ClassFile.ACC_STATIC)));
+        byte[] closedNestedType = ClassFile.of().build(closedNested, builder -> builder
+                .withFlags(AccessFlag.PUBLIC, AccessFlag.FINAL)
+                .with(innerClasses(closedNested, closed, ClassFile.ACC_PROTECTED | ClassFile.ACC_STATIC)));
+
+        assertEquals(List.of("io.example.Closed", "io.example.Open", "io.example.Open$Nested"), publicApi(Map.of(
+                "io.example.Hidden", hiddenType,
+                "io.example.Hidden$Nested", hiddenNestedType,
+                "io.example.Open", openType,
+                "io.example.Open$Nested", openNestedType,
+                "io.example.Closed", closedType,
+                "io.example.Closed$Nested", closedNestedType)));
+    }
+
+    @Test
     void leavesOutWhatMicronautBuildLowersToAWarningAndCountsInternalPerClass() {
         ClassDesc outer = ClassDesc.of("io.example.Outer");
         ClassDesc nested = ClassDesc.of("io.example.Outer$Nested");
