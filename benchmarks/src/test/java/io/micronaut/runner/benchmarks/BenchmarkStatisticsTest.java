@@ -42,16 +42,14 @@ class BenchmarkStatisticsTest {
         assertNull(statistics.ciLow());
         assertNull(statistics.ciHigh());
 
-        Path sample = Files.createDirectory(output.resolve("sample"));
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
-                1, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z");
-        Variant variant = Variant.available("a", "fixture a", List.of("java"), Path.of("."), Path.of("."));
         StartupSample startupSample = new StartupSample(0, false, 8080, 100, -1, -1, 0.1, 143,
                 ReadinessSnapshot.UNAVAILABLE);
-        VariantResult result = new VariantResult(variant, 1, List.of(startupSample),
-                statistics, null, null, List.of());
+        VariantResult result = VariantResult.summarize(BenchmarkFixtures.variant("a"),
+                List.of(RunAttempt.success("a", 0, 0, startupSample)), 0, 1, 123L);
+        assertEquals(statistics, result.readiness());
 
-        Reports.write(output, context, List.of(result), List.of());
+        Reports.write(output, BenchmarkFixtures.context(output, 1, List.of("a"), CompletenessPolicy.REQUIRED,
+                BenchmarkProvenance.unavailable()), List.of(result), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"count\": 1"));
@@ -68,7 +66,7 @@ class BenchmarkStatisticsTest {
 
     @Test
     void readinessMediansIgnoreUnavailableValuesAndAreWrittenAsNull(@TempDir Path output) throws Exception {
-        Variant variant = Variant.available("a", "fixture a", List.of("java"), Path.of("."), Path.of("."));
+        Variant variant = BenchmarkFixtures.variant("a");
         long[] rss = {100, -1, 300};
         List<RunAttempt> attempts = new ArrayList<>();
         for (int iteration = 0; iteration < rss.length; iteration++) {
@@ -78,18 +76,15 @@ class BenchmarkStatisticsTest {
                     8080 + iteration, 100 + iteration, -1, -1, 0.1, 143, snapshot)));
         }
 
-        VariantResult result = VariantResult.summarize(variant, 1, attempts, 0, rss.length, 123L);
+        VariantResult result = VariantResult.summarize(variant, attempts, 0, rss.length, 123L);
 
         assertEquals(200, result.atReadiness().rssBytes());
         assertEquals(11.0, result.atReadiness().probeMillis());
         assertEquals(-1, result.atReadiness().loadedClasses());
         assertEquals(-1, result.atReadiness().sharedClasses());
 
-        Path sample = Files.createDirectory(output.resolve("sample"));
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
-                3, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z",
-                List.of("a"), CompletenessPolicy.REQUIRED);
-        Reports.write(output, context, List.of(result), List.of());
+        Reports.write(output, BenchmarkFixtures.context(output, 3, List.of("a"), CompletenessPolicy.REQUIRED,
+                BenchmarkProvenance.unavailable()), List.of(result), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"atReadiness\": {\"probeMillis\": 11.000, \"rssBytes\": 200,"
@@ -122,11 +117,9 @@ class BenchmarkStatisticsTest {
                         -1, -1, 6100, 1270, 0, 4 * mebibyte));
         VariantResult preserve = withSnapshot("runner-preserve", ReadinessSnapshot.UNAVAILABLE);
 
-        Path sample = Files.createDirectory(output.resolve("sample"));
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
-                1, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z",
-                List.of("runner-stored", "shadow", "runner-preserve"), CompletenessPolicy.PARTIAL);
-        Reports.write(output, context, List.of(stored, shadow, preserve), List.of());
+        Reports.write(output, BenchmarkFixtures.context(output, 1, List.of("runner-stored", "shadow",
+                "runner-preserve"), CompletenessPolicy.PARTIAL, BenchmarkProvenance.unavailable()),
+                List.of(stored, shadow, preserve), List.of());
 
         String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
         String section = section(markdown, "## Runner vs Shadow");
@@ -249,11 +242,9 @@ class BenchmarkStatisticsTest {
         assertEquals("success", comparison.exclusions().getFirst().candidateOutcome());
         assertEquals("failed", comparison.exclusions().getFirst().baselineOutcome());
 
-        Path sample = Files.createDirectory(output.resolve("sample"));
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
-                4, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z",
-                List.of("runner-stored", "shadow"), CompletenessPolicy.PARTIAL);
-        Reports.write(output, context, List.of(candidate, baseline), List.of());
+        Reports.write(output, BenchmarkFixtures.context(output, 4, List.of("runner-stored", "shadow"),
+                CompletenessPolicy.PARTIAL, BenchmarkProvenance.unavailable()), List.of(candidate, baseline),
+                List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"comparisons\""));
@@ -322,12 +313,9 @@ class BenchmarkStatisticsTest {
         }
         VariantResult candidate = result("runner-stored", runner, -1, size(300, 100));
         VariantResult baseline = result("shadow", shadow, -1, size(150, 120));
-        Path sample = Files.createDirectory(output.resolve("sample"));
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
-                10, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z",
-                List.of("runner-stored", "shadow"), CompletenessPolicy.REQUIRED);
-
-        Reports.write(output, context, List.of(baseline, candidate), List.of());
+        Reports.write(output, BenchmarkFixtures.context(output, 10, List.of("runner-stored", "shadow"),
+                CompletenessPolicy.REQUIRED, BenchmarkProvenance.unavailable()), List.of(baseline, candidate),
+                List.of());
 
         String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
         assertTrue(markdown.startsWith("# Startup benchmark\n\n**COMPLETE required comparison**"), markdown);
@@ -370,11 +358,8 @@ class BenchmarkStatisticsTest {
             results.add(result(name, values, -1));
             offset++;
         }
-        Path sample = Files.createDirectory(output.resolve("sample"));
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
-                iterations, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z");
-
-        Reports.write(output, context, results, List.of());
+        Reports.write(output, BenchmarkFixtures.context(output, iterations, SampleBuild.variantNames(),
+                CompletenessPolicy.REQUIRED, BenchmarkProvenance.unavailable()), results, List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         String comparisons = json.substring(json.indexOf("\"comparisons\""), json.indexOf("\"attempts\""));
@@ -435,12 +420,10 @@ class BenchmarkStatisticsTest {
             stub[i] = 500 + (i * 7 % 13);
             reflection[i] = 510 + (i * 5 % 11);
         }
-        Path sample = Files.createDirectory(output.resolve("sample"));
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
-                iterations, 0, 123L, "/hello", false, "2026-09-22T00:00:00Z",
-                List.of("runner-stored"), CompletenessPolicy.REQUIRED);
+        Reports.write(output, BenchmarkFixtures.context(output, iterations, List.of("runner-stored"),
+                CompletenessPolicy.REQUIRED, BenchmarkProvenance.unavailable()),
+                List.of(result("runner-stored", stub, -1),
 
-        Reports.write(output, context, List.of(result("runner-stored", stub, -1),
                 result("runner-stored-reflection", reflection, -1)), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
@@ -466,7 +449,7 @@ class BenchmarkStatisticsTest {
     }
 
     private static DeploymentSize size(long bytes, long gzipBytes) {
-        return new DeploymentSize(List.of(new DeploymentSize.Component("archive", bytes, gzipBytes)), bytes);
+        return new DeploymentSize(List.of(new DeploymentSize.Component("archive", bytes, gzipBytes)));
     }
 
     private static VariantResult result(String name, double[] values, int failedIteration) {
@@ -477,8 +460,7 @@ class BenchmarkStatisticsTest {
                                         double[] values,
                                         int failedIteration,
                                         DeploymentSize deploymentSize) {
-        Variant variant = Variant.available(name, "fixture " + name,
-                List.of("java"), Path.of("."), Path.of("."), deploymentSize);
+        Variant variant = BenchmarkFixtures.variant(name, List.of("java"), Path.of("."), deploymentSize);
         List<RunAttempt> attempts = new ArrayList<>();
         for (int iteration = 0; iteration < values.length; iteration++) {
             if (iteration == failedIteration) {
@@ -490,19 +472,17 @@ class BenchmarkStatisticsTest {
                 attempts.add(RunAttempt.success(name, iteration, iteration, sample));
             }
         }
-        long deploymentBytes = deploymentSize == null ? 1 : deploymentSize.totalBytes();
-        return VariantResult.summarize(variant, deploymentBytes, attempts, 0, values.length, 123L);
+        return VariantResult.summarize(variant, attempts, 0, values.length, 123L);
     }
 
     private static VariantResult withSnapshot(String name, ReadinessSnapshot snapshot) {
-        Variant variant = Variant.available(name, "fixture " + name, List.of("java"), Path.of("."), Path.of("."));
         StartupSample sample = new StartupSample(0, false, 8080, 100, -1, -1, 0.1, 143, snapshot);
-        return VariantResult.summarize(variant, 1, List.of(RunAttempt.success(name, 0, 0, sample)), 0, 1, 123L);
+        return VariantResult.summarize(BenchmarkFixtures.variant(name), List.of(RunAttempt.success(name, 0, 0, sample)),
+                0, 1, 123L);
     }
 
     private static VariantResult resultWithMissing(String name, double[] values, int missingIteration) {
-        Variant variant = Variant.available(name, "fixture " + name,
-                List.of("java"), Path.of("."), Path.of("."));
+        Variant variant = BenchmarkFixtures.variant(name);
         List<RunAttempt> attempts = new ArrayList<>();
         for (int iteration = 0; iteration < values.length; iteration++) {
             if (iteration == missingIteration) {
@@ -512,6 +492,7 @@ class BenchmarkStatisticsTest {
                     values[iteration], -1, -1, 0.1, 143, ReadinessSnapshot.UNAVAILABLE);
             attempts.add(RunAttempt.success(name, iteration, iteration, sample));
         }
-        return VariantResult.summarize(variant, 1, attempts, 0, values.length, 123L);
+        return VariantResult.summarize(variant, attempts, 0, values.length, 123L);
     }
 }
+

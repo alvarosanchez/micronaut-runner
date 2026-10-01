@@ -100,97 +100,28 @@ import java.util.zip.ZipEntry;
  */
 final class SampleBuild implements SampleSteps {
 
-    private static final String EXPLODED_CLASSPATH = "exploded-cp";
-    private static final String THIN_JAR = "thin-jar";
-    private static final String SHADOW = "shadow";
-    private static final String SHADOW_STORED = "shadow-stored";
-    private static final String SHADOW_AOT = "shadow-aot";
-    private static final String RUNNER_STORED = "runner-stored";
-    private static final String RUNNER_STORED_AOT = "runner-stored-aot";
-    private static final String RUNNER_STORED_REFLECTION = "runner-stored-reflection";
-    private static final String RUNNER_STORED_PRELOAD = "runner-stored-preload";
-    private static final String RUNNER_STORED_PRELOAD_AOT = "runner-stored-preload-aot";
-    private static final String RUNNER_STORED_POSITIONAL = "runner-stored-positional";
-    private static final String RUNNER_STORED_POSITIONAL_AOT = "runner-stored-positional-aot";
-    private static final String RUNNER_STORED_JORAN = "runner-stored-joran";
-    private static final String RUNNER_STORED_JORAN_AOT = "runner-stored-joran-aot";
-    private static final String RUNNER_STORED_KEEPDEBUG = "runner-stored-keepdebug";
-    private static final String RUNNER_STORED_KEEPDEBUG_AOT = "runner-stored-keepdebug-aot";
-    private static final String RUNNER_STORED_DYNAMIC_SERVICES = "runner-stored-dynamic-services";
-    private static final String RUNNER_STORED_DYNAMIC_SERVICES_AOT = "runner-stored-dynamic-services-aot";
-    private static final String RUNNER_STORED_LAMBDAS = "runner-stored-lambdas";
-    private static final String RUNNER_STORED_LAMBDAS_AOT = "runner-stored-lambdas-aot";
-    private static final String RUNNER_EXTRACTED_LAMBDAS_AOT = "runner-extracted-lambdas-aot";
-    private static final String RUNNER_STORED_PREFETCH = "runner-stored-prefetch";
-    private static final String RUNNER_STORED_PREFETCH_AOT = "runner-stored-prefetch-aot";
-    private static final String RUNNER_PRESERVE = "runner-preserve";
-    private static final String RUNNER_EXTRACTED = "runner-extracted";
-    private static final String RUNNER_EXTRACTED_AOT = "runner-extracted-aot";
-    // "maot" marks a Micronaut AOT row. The -aot suffix stays reserved for the JDK AOT cache.
-    private static final String SHADOW_MAOT = "shadow-maot";
-    private static final String SHADOW_MAOT_AOT = "shadow-maot-aot";
-    private static final String RUNNER_MAOT = "runner-maot";
-    private static final String RUNNER_MAOT_AOT = "runner-maot-aot";
+    /**
+     * One row of the matrix, written once: everything the report says about a row that does not depend on how its
+     * build went.
+     *
+     * @param name        the short identifier used in the report, for example {@code runner-stored}
+     * @param description one line explaining what the row is
+     * @param entryMode   how the harness asks the row to enter the application
+     * @param aotCache    whether the row launches with a trained, verified JDK AOT cache
+     * @param optIn       whether the row is built only on request and never gates the exit code, rather than core
+     * @param source      the row this row is built from, or {@code null}
+     */
+    record VariantSpec(String name, String description, EntryMode entryMode, boolean aotCache, boolean optIn,
+                       String source) {
+    }
 
-    private static final String SHADOW_MAOT_DESCRIPTION =
-            "Micronaut AOT's optimizedJitJarAll: the AOT-optimized application flattened by Shadow";
-    private static final String SHADOW_MAOT_AOT_DESCRIPTION =
-            "The same optimizedJitJarAll with a verified JDK AOT cache";
-    private static final String RUNNER_MAOT_DESCRIPTION =
-            "Runner jar of the Micronaut AOT-optimized application (optimizedJitJar); plugin-default entry stub";
-    private static final String RUNNER_MAOT_AOT_DESCRIPTION =
-            "The same Micronaut AOT Runner jar with a verified JDK AOT cache";
-
-    private static final String SHADOW_DESCRIPTION = "Everything flattened into one jar by the Shadow plugin";
-    private static final String SHADOW_STORED_DESCRIPTION =
-            "The same Shadow inputs written with STORED entries (compression-matched control)";
-    private static final String RUNNER_STORED_PRELOAD_DESCRIPTION =
-            "Runner jar, nested dependencies re-packed uncompressed; startup classes recorded in this run and"
-                    + " preloaded";
-    private static final String RUNNER_STORED_PRELOAD_AOT_DESCRIPTION =
-            "The same preloading Runner jar with a verified JDK AOT cache";
-    private static final String RUNNER_STORED_POSITIONAL_DESCRIPTION =
-            "Runner jar, nested dependencies re-packed uncompressed; archiveReads POSITIONAL (index mapped only)";
-    private static final String RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION =
-            "The same POSITIONAL Runner jar with a verified JDK AOT cache";
-    private static final String RUNNER_STORED_KEEPDEBUG_DESCRIPTION =
-            "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub;"
-                    + " local-variable tables kept";
-    private static final String RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION =
-            "The same local-variable-table control with a verified JDK AOT cache";
-    private static final String RUNNER_STORED_LAMBDAS_DESCRIPTION =
-            "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub;"
-                    + " dependency lambdas kept";
-    private static final String RUNNER_STORED_LAMBDAS_AOT_DESCRIPTION =
-            "The same lambda control with a verified JDK AOT cache";
-    private static final String RUNNER_EXTRACTED_LAMBDAS_AOT_DESCRIPTION =
-            "The lambda control unpacked and run by the JDK's own loader, with a verified JDK AOT cache";
+    private static final boolean CORE = false;
+    private static final boolean OPT_IN = true;
 
     /** The lambda control's unpacked layout, which is trained but is not a row of its own. */
-    private static final String EXTRACTED_LAMBDAS_LAYOUT = "runner-extracted-lambdas";
-
-    /** Where that layout is unpacked, next to the default one. */
-    private static final String EXTRACTED_LAMBDAS_DIRECTORY = "extracted-lambdas";
-
-    private static final String RUNNER_STORED_JORAN_DESCRIPTION =
-            "The same stored Runner jar with precompileLogback=false: logback.xml read by Joran (control)";
-    private static final String RUNNER_STORED_JORAN_AOT_DESCRIPTION =
-            "The same Joran control Runner jar with a verified JDK AOT cache";
-    private static final String RUNNER_STORED_DYNAMIC_SERVICES_DESCRIPTION =
-            "Runner jar, nested dependencies re-packed uncompressed; staticServices false (control)";
-    private static final String RUNNER_STORED_DYNAMIC_SERVICES_AOT_DESCRIPTION =
-            "The same Runner jar without a static service table, with a verified JDK AOT cache";
-
-    /** What a Runner row's description says when its jar carries no static service table. */
-    private static final String DYNAMIC_SERVICE_SCAN = "; dynamic service scan";
-
-    /** What starts the part of a Runner row's description that counts its static service table. */
-    private static final String STATIC_SERVICES = "; static services: ";
-
-    private static final String RUNNER_STORED_PREFETCH_DESCRIPTION =
-            "The same stored Runner jar with definitionPrefetch=true: bean definitions loaded from the entry stub";
-    private static final String RUNNER_STORED_PREFETCH_AOT_DESCRIPTION =
-            "The same prefetching Runner jar with a verified JDK AOT cache";
+    private static final VariantSpec EXTRACTED_LAMBDAS = new VariantSpec("runner-extracted-lambdas",
+            "The lambda control unpacked and run by the JDK's own loader", EntryMode.STANDARD_LOADER, false, OPT_IN,
+            "runner-stored-lambdas");
 
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
@@ -229,9 +160,6 @@ final class SampleBuild implements SampleSteps {
     /** How long the extraction of a runner jar may take. */
     private static final long EXTRACT_TIMEOUT_SECONDS = 120;
 
-    /** How long cache training, workload, verification and the SIGTERM shutdown may take. */
-    private static final long CACHE_TIMEOUT_SECONDS = 120;
-
     private final Path sample;
     private final Path artifacts;
     private final PrintStream log;
@@ -244,6 +172,9 @@ final class SampleBuild implements SampleSteps {
     private final Path optimizedJitJar;
     private final Path optimizedJitJarAll;
     private final CpuLimit cpuLimit;
+
+    /** The harness that trains and verifies the caches; set by {@link #variants(StartupHarness, List)}. */
+    private StartupHarness harness;
 
     private SampleBuild(Path sample,
                         Path artifacts,
@@ -361,103 +292,118 @@ final class SampleBuild implements SampleSteps {
     }
 
     /**
-     * The row table: every row the harness can build, in report order. It is the only list of rows. A row is
-     * either core or opt-in. Core rows are always built and scheduled, and they are the run's required variants:
+     * The row table: every row the harness can build, in report order. It is the only list of rows, and each
+     * row's {@link VariantSpec} is the only place its name, description, entry mode, cache flag, core/opt-in flag
+     * and source are written. Core rows are always built and scheduled, and they are the run's required variants:
      * under the required policy each one gates the exit code. Opt-in rows (diagnostic ablations and experiments)
      * are built and scheduled only when selected, and they are reported with their failure counts but never
-     * change the exit code. A derived row gets its source from {@link VariantRows.Sources}, so building a
-     * selection builds exactly the rows it derives from, each once.
+     * change the exit code. A derived row is handed the variant of its source row, so building a selection
+     * builds exactly the rows it derives from, each once.
      */
     private static final List<VariantRows.Row<SampleSteps>> ROWS = List.of(
-            core(EXPLODED_CLASSPATH, "Class files and dependency jars on an explicit, ordered -cp",
-                    (steps, rows) -> steps.explodedClasspath()),
-            core(THIN_JAR, "Application jar with a Class-Path manifest pointing at lib/",
-                    (steps, rows) -> steps.thinJar()),
-            core(SHADOW, SHADOW_DESCRIPTION, (steps, rows) -> steps.shadow()),
-            core(SHADOW_STORED, SHADOW_STORED_DESCRIPTION, (steps, rows) -> steps.shadowStored()),
-            core(SHADOW_AOT, "The same Shadow jar with a verified JDK AOT cache",
-                    (steps, rows) -> steps.aotCache(rows.get(SHADOW), SHADOW_AOT, AotCache.NO_TRAINING_ARGUMENTS)),
-            core(RUNNER_STORED,
-                    "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub",
-                    (steps, rows) -> steps.runnerJar(RUNNER_STORED, Compression.STORED, EntryMode.STUB,
+            row("exploded-cp", "Class files and dependency jars on an explicit, ordered -cp",
+                    EntryMode.STANDARD_LOADER, CORE, null, (steps, spec, source) -> steps.explodedClasspath(spec)),
+            row("thin-jar", "Application jar with a Class-Path manifest pointing at lib/",
+                    EntryMode.STANDARD_LOADER, CORE, null, (steps, spec, source) -> steps.thinJar(spec)),
+            row("shadow", "Everything flattened into one jar by the Shadow plugin",
+                    EntryMode.STANDARD_LOADER, CORE, null, (steps, spec, source) -> steps.shadow(spec)),
+            row("shadow-stored", "The same Shadow inputs written with STORED entries (compression-matched control)",
+                    EntryMode.STANDARD_LOADER, CORE, null, (steps, spec, source) -> steps.shadowStored(spec)),
+            cached("shadow-aot", "The same Shadow jar with a verified JDK AOT cache",
+                    EntryMode.STANDARD_LOADER, CORE, "shadow"),
+            row("runner-stored", "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub",
+                    EntryMode.STUB, CORE, null, (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
                             RunnerJarOptions.DEFAULTS)),
-            core(RUNNER_STORED_AOT, "The same default-entry Runner jar with a verified JDK AOT cache",
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED), RUNNER_STORED_AOT,
-                            AotCache.RUNNER_SINGLE_JAR_TRAINING)),
-            optIn(RUNNER_STORED_REFLECTION,
+            cached("runner-stored-aot", "The same default-entry Runner jar with a verified JDK AOT cache",
+                    EntryMode.STUB, CORE, "runner-stored"),
+            row("runner-stored-reflection",
                     "Runner jar, nested dependencies re-packed uncompressed; reflection ablation",
-                    (steps, rows) -> steps.runnerJar(RUNNER_STORED_REFLECTION, Compression.STORED,
-                            EntryMode.REFLECTION, RunnerJarOptions.DEFAULTS)),
-            optIn(RUNNER_STORED_PRELOAD, RUNNER_STORED_PRELOAD_DESCRIPTION,
-                    (steps, rows) -> steps.preloadingRunnerJar(rows.get(RUNNER_STORED))),
-            optIn(RUNNER_STORED_PRELOAD_AOT, RUNNER_STORED_PRELOAD_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_PRELOAD), RUNNER_STORED_PRELOAD_AOT,
-                            AotCache.RUNNER_SINGLE_JAR_TRAINING)),
-            optIn(RUNNER_STORED_POSITIONAL, RUNNER_STORED_POSITIONAL_DESCRIPTION,
-                    (steps, rows) -> steps.runnerJar(RUNNER_STORED_POSITIONAL, Compression.STORED, EntryMode.STUB,
+                    EntryMode.REFLECTION, OPT_IN, null, (steps, spec, source) -> steps.runnerJar(spec,
+                            Compression.STORED, RunnerJarOptions.DEFAULTS)),
+            row("runner-stored-preload", "Runner jar, nested dependencies re-packed uncompressed; startup classes"
+                    + " recorded in this run and preloaded", EntryMode.STUB, OPT_IN, "runner-stored",
+                    (steps, spec, stored) -> steps.preloadingRunnerJar(stored, spec)),
+            cached("runner-stored-preload-aot", "The same preloading Runner jar with a verified JDK AOT cache",
+                    EntryMode.STUB, OPT_IN, "runner-stored-preload"),
+            row("runner-stored-positional", "Runner jar, nested dependencies re-packed uncompressed; archiveReads"
+                    + " POSITIONAL (index mapped only)", EntryMode.STUB, OPT_IN, null,
+                    (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
                             RunnerJarOptions.DEFAULTS.withArchiveReads(ArchiveReads.POSITIONAL))),
-            optIn(RUNNER_STORED_POSITIONAL_AOT, RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_POSITIONAL),
-                            RUNNER_STORED_POSITIONAL_AOT, AotCache.RUNNER_SINGLE_JAR_TRAINING)),
-            optIn(RUNNER_STORED_JORAN, RUNNER_STORED_JORAN_DESCRIPTION,
-                    (steps, rows) -> steps.joranControl(rows.get(RUNNER_STORED))),
-            optIn(RUNNER_STORED_JORAN_AOT, RUNNER_STORED_JORAN_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_JORAN), RUNNER_STORED_JORAN_AOT,
-                            AotCache.RUNNER_SINGLE_JAR_TRAINING)),
+            cached("runner-stored-positional-aot", "The same POSITIONAL Runner jar with a verified JDK AOT cache",
+                    EntryMode.STUB, OPT_IN, "runner-stored-positional"),
+            row("runner-stored-joran", "The same stored Runner jar with precompileLogback=false: logback.xml read by"
+                    + " Joran (control)", EntryMode.STUB, OPT_IN, "runner-stored",
+                    (steps, spec, stored) -> steps.joranControl(stored, spec)),
+            cached("runner-stored-joran-aot", "The same Joran control Runner jar with a verified JDK AOT cache",
+                    EntryMode.STUB, OPT_IN, "runner-stored-joran"),
             // The default strips local-variable tables; this control keeps them. Drop both rows once the default
             // has shipped for one release.
-            optIn(RUNNER_STORED_KEEPDEBUG, RUNNER_STORED_KEEPDEBUG_DESCRIPTION,
-                    (steps, rows) -> steps.runnerJar(RUNNER_STORED_KEEPDEBUG, Compression.STORED, EntryMode.STUB,
+            row("runner-stored-keepdebug", "Runner jar, nested dependencies re-packed uncompressed; plugin-default"
+                    + " entry stub; local-variable tables kept", EntryMode.STUB, OPT_IN, null,
+                    (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
                             RunnerJarOptions.DEFAULTS.withStripLocalVariables(false))),
-            optIn(RUNNER_STORED_KEEPDEBUG_AOT, RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_KEEPDEBUG),
-                            RUNNER_STORED_KEEPDEBUG_AOT, AotCache.RUNNER_SINGLE_JAR_TRAINING)),
+            cached("runner-stored-keepdebug-aot",
+                    "The same local-variable-table control with a verified JDK AOT cache",
+                    EntryMode.STUB, OPT_IN, "runner-stored-keepdebug"),
             // Today's jar without the table: whatever else the builder defaults to, it has too.
-            optIn(RUNNER_STORED_DYNAMIC_SERVICES, RUNNER_STORED_DYNAMIC_SERVICES_DESCRIPTION,
-                    (steps, rows) -> steps.runnerJar(RUNNER_STORED_DYNAMIC_SERVICES, Compression.STORED,
-                            EntryMode.STUB, RunnerJarOptions.DEFAULTS.withStaticServices(false))),
-            optIn(RUNNER_STORED_DYNAMIC_SERVICES_AOT, RUNNER_STORED_DYNAMIC_SERVICES_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_DYNAMIC_SERVICES),
-                            RUNNER_STORED_DYNAMIC_SERVICES_AOT, AotCache.RUNNER_SINGLE_JAR_TRAINING)),
+            row("runner-stored-dynamic-services", "Runner jar, nested dependencies re-packed uncompressed;"
+                    + " staticServices false (control)", EntryMode.STUB, OPT_IN, null,
+                    (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
+                            RunnerJarOptions.DEFAULTS.withStaticServices(false))),
+            cached("runner-stored-dynamic-services-aot",
+                    "The same Runner jar without a static service table, with a verified JDK AOT cache",
+                    EntryMode.STUB, OPT_IN, "runner-stored-dynamic-services"),
             // The default desugars lambdas; these controls keep every call site an invokedynamic, with everything
             // else at the defaults, stripping included. The third is the control's extracted layout, which the
             // JDK's own loader runs: there the JDK archives lambdas itself, so that pair should be neutral.
-            optIn(RUNNER_STORED_LAMBDAS, RUNNER_STORED_LAMBDAS_DESCRIPTION,
-                    (steps, rows) -> steps.runnerJar(RUNNER_STORED_LAMBDAS, Compression.STORED, EntryMode.STUB,
+            row("runner-stored-lambdas", "Runner jar, nested dependencies re-packed uncompressed; plugin-default"
+                    + " entry stub; dependency lambdas kept", EntryMode.STUB, OPT_IN, null,
+                    (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
                             RunnerJarOptions.DEFAULTS.withDesugarLambdas(false))),
-            optIn(RUNNER_STORED_LAMBDAS_AOT, RUNNER_STORED_LAMBDAS_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_LAMBDAS), RUNNER_STORED_LAMBDAS_AOT,
-                            AotCache.RUNNER_SINGLE_JAR_TRAINING)),
-            optIn(RUNNER_EXTRACTED_LAMBDAS_AOT, RUNNER_EXTRACTED_LAMBDAS_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(steps.extractedLambdas(rows.get(RUNNER_STORED_LAMBDAS)),
-                            RUNNER_EXTRACTED_LAMBDAS_AOT, AotCache.NO_TRAINING_ARGUMENTS)),
-            optIn(RUNNER_STORED_PREFETCH, RUNNER_STORED_PREFETCH_DESCRIPTION,
-                    (steps, rows) -> steps.prefetchCandidate(rows.get(RUNNER_STORED))),
-            optIn(RUNNER_STORED_PREFETCH_AOT, RUNNER_STORED_PREFETCH_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_PREFETCH), RUNNER_STORED_PREFETCH_AOT,
-                            AotCache.RUNNER_SINGLE_JAR_TRAINING)),
-            core(RUNNER_PRESERVE,
-                    "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
-                    (steps, rows) -> steps.runnerJar(RUNNER_PRESERVE, Compression.PRESERVE, EntryMode.STUB,
+            cached("runner-stored-lambdas-aot", "The same lambda control with a verified JDK AOT cache",
+                    EntryMode.STUB, OPT_IN, "runner-stored-lambdas"),
+            new VariantRows.Row<>(new VariantSpec("runner-extracted-lambdas-aot", "The lambda control unpacked and"
+                    + " run by the JDK's own loader, with a verified JDK AOT cache", EntryMode.STANDARD_LOADER, true,
+                    OPT_IN, "runner-stored-lambdas"),
+                    (steps, spec, lambdas) -> steps.aotCache(steps.extracted(lambdas, EXTRACTED_LAMBDAS), spec)),
+            row("runner-stored-prefetch", "The same stored Runner jar with definitionPrefetch=true: bean definitions"
+                    + " loaded from the entry stub", EntryMode.STUB, OPT_IN, "runner-stored",
+                    (steps, spec, stored) -> steps.prefetchCandidate(stored, spec)),
+            cached("runner-stored-prefetch-aot", "The same prefetching Runner jar with a verified JDK AOT cache",
+                    EntryMode.STUB, OPT_IN, "runner-stored-prefetch"),
+            row("runner-preserve", "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
+                    EntryMode.STUB, CORE, null, (steps, spec, source) -> steps.runnerJar(spec, Compression.PRESERVE,
                             RunnerJarOptions.DEFAULTS)),
-            core(RUNNER_EXTRACTED,
-                    "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
-                    (steps, rows) -> steps.extracted(rows.get(RUNNER_STORED))),
-            core(RUNNER_EXTRACTED_AOT, "The same extracted layout with a verified JDK AOT cache",
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_EXTRACTED), RUNNER_EXTRACTED_AOT,
-                            AotCache.NO_TRAINING_ARGUMENTS)),
-            // The Micronaut AOT rows. The two cached ones are opt-in: training two more caches is what they cost.
-            core(SHADOW_MAOT, SHADOW_MAOT_DESCRIPTION, (steps, rows) -> steps.shadowMaot()),
-            optIn(SHADOW_MAOT_AOT, SHADOW_MAOT_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(SHADOW_MAOT), SHADOW_MAOT_AOT,
-                                    AotCache.NO_TRAINING_ARGUMENTS)
-                            .describedAs(SHADOW_MAOT_AOT_DESCRIPTION)),
-            core(RUNNER_MAOT, RUNNER_MAOT_DESCRIPTION, (steps, rows) -> steps.runnerMaot()),
-            optIn(RUNNER_MAOT_AOT, RUNNER_MAOT_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_MAOT), RUNNER_MAOT_AOT,
-                                    AotCache.RUNNER_SINGLE_JAR_TRAINING)
-                            .describedAs(RUNNER_MAOT_AOT_DESCRIPTION
-                                    + staticServicesNote(rows.get(RUNNER_MAOT).description()))));
+            row("runner-extracted", "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own"
+                    + " loader", EntryMode.STANDARD_LOADER, CORE, "runner-stored",
+                    (steps, spec, stored) -> steps.extracted(stored, spec)),
+            cached("runner-extracted-aot", "The same extracted layout with a verified JDK AOT cache",
+                    EntryMode.STANDARD_LOADER, CORE, "runner-extracted"),
+            // The Micronaut AOT rows; "maot" is Micronaut AOT and the -aot suffix the JDK AOT cache. The two cached
+            // ones are opt-in: training two more caches is what they cost.
+            row("shadow-maot", "Micronaut AOT's optimizedJitJarAll: the AOT-optimized application flattened by"
+                    + " Shadow", EntryMode.STANDARD_LOADER, CORE, null,
+                    (steps, spec, source) -> steps.shadowMaot(spec)),
+            cached("shadow-maot-aot", "The same optimizedJitJarAll with a verified JDK AOT cache",
+                    EntryMode.STANDARD_LOADER, OPT_IN, "shadow-maot"),
+            row("runner-maot", "Runner jar of the Micronaut AOT-optimized application (optimizedJitJar);"
+                    + " plugin-default entry stub", EntryMode.STUB, CORE, null,
+                    (steps, spec, source) -> steps.runnerMaot(spec)),
+            cached("runner-maot-aot", "The same Micronaut AOT Runner jar with a verified JDK AOT cache",
+                    EntryMode.STUB, OPT_IN, "runner-maot"));
+
+    private static VariantRows.Row<SampleSteps> row(String name, String description, EntryMode entryMode,
+                                                    boolean optIn, String source,
+                                                    VariantRows.Factory<SampleSteps> factory) {
+        return new VariantRows.Row<>(new VariantSpec(name, description, entryMode, false, optIn, source), factory);
+    }
+
+    /** A row that trains a JDK AOT cache on its source row and launches with it. */
+    private static VariantRows.Row<SampleSteps> cached(String name, String description, EntryMode entryMode,
+                                                       boolean optIn, String source) {
+        return new VariantRows.Row<>(new VariantSpec(name, description, entryMode, true, optIn, source),
+                (steps, spec, uncached) -> steps.aotCache(uncached, spec));
+    }
 
     /**
      * Names every core variant in report order without building their artifacts. These are the rows a run
@@ -466,7 +412,7 @@ final class SampleBuild implements SampleSteps {
      * @return the core variant names
      */
     static List<String> variantNames() {
-        return VariantRows.coreNames(ROWS);
+        return ROWS.stream().map(VariantRows.Row::spec).filter(spec -> !spec.optIn()).map(VariantSpec::name).toList();
     }
 
     /**
@@ -476,7 +422,19 @@ final class SampleBuild implements SampleSteps {
      * @return every variant name
      */
     static List<String> allVariantNames() {
-        return VariantRows.names(ROWS);
+        return ROWS.stream().map(row -> row.spec().name()).toList();
+    }
+
+    /**
+     * The row of the table with a name.
+     *
+     * @param name the row
+     * @return its spec
+     * @throws IllegalArgumentException if the table has no such row
+     */
+    static VariantSpec spec(String name) {
+        return ROWS.stream().map(VariantRows.Row::spec).filter(spec -> spec.name().equals(name)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("no row named " + name));
     }
 
     /**
@@ -488,15 +446,6 @@ final class SampleBuild implements SampleSteps {
      * @param label     what the comparison answers, for the report
      */
     record ComparisonSpec(String candidate, String baseline, String label) {
-
-        ComparisonSpec {
-            if (candidate == null || baseline == null || candidate.equals(baseline)) {
-                throw new IllegalArgumentException("a comparison needs two distinct variants");
-            }
-            if (label == null || label.isBlank()) {
-                throw new IllegalArgumentException("a comparison needs a label");
-            }
-        }
     }
 
     /**
@@ -507,60 +456,59 @@ final class SampleBuild implements SampleSteps {
      */
     static List<ComparisonSpec> comparisons() {
         return List.of(
-                new ComparisonSpec(RUNNER_STORED, SHADOW, "Runner default vs Shadow"),
-                new ComparisonSpec(RUNNER_PRESERVE, SHADOW, "Runner PRESERVE vs Shadow"),
-                new ComparisonSpec(RUNNER_STORED_AOT, SHADOW_AOT, "Runner + AOT cache vs Shadow + AOT cache"),
-                new ComparisonSpec(RUNNER_EXTRACTED_AOT, SHADOW_AOT,
+                new ComparisonSpec("runner-stored", "shadow", "Runner default vs Shadow"),
+                new ComparisonSpec("runner-preserve", "shadow", "Runner PRESERVE vs Shadow"),
+                new ComparisonSpec("runner-stored-aot", "shadow-aot", "Runner + AOT cache vs Shadow + AOT cache"),
+                new ComparisonSpec("runner-extracted-aot", "shadow-aot",
                         "Extracted Runner + AOT cache vs Shadow + AOT cache"),
-                new ComparisonSpec(RUNNER_EXTRACTED_AOT, RUNNER_STORED_AOT,
+                new ComparisonSpec("runner-extracted-aot", "runner-stored-aot",
                         "Extracted layout + AOT vs single JAR + AOT"),
-                new ComparisonSpec(RUNNER_STORED, RUNNER_PRESERVE, "STORED vs PRESERVE"),
-                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_REFLECTION, "Entry stub vs reflection"),
-                new ComparisonSpec(RUNNER_STORED, SHADOW_STORED,
+                new ComparisonSpec("runner-stored", "runner-preserve", "STORED vs PRESERVE"),
+                new ComparisonSpec("runner-stored", "runner-stored-reflection", "Entry stub vs reflection"),
+                new ComparisonSpec("runner-stored", "shadow-stored",
                         "Runner default vs Shadow STORED (compression-matched)"),
-                new ComparisonSpec(SHADOW_STORED, SHADOW,
+                new ComparisonSpec("shadow-stored", "shadow",
                         "Shadow-only control: Shadow STORED vs Shadow default (compression only)"),
-                new ComparisonSpec(RUNNER_STORED_POSITIONAL, RUNNER_STORED,
-                        "Archive reads: POSITIONAL vs MAPPED"),
-                new ComparisonSpec(RUNNER_STORED_POSITIONAL_AOT, RUNNER_STORED_AOT,
+                new ComparisonSpec("runner-stored-positional", "runner-stored", "Archive reads: POSITIONAL vs MAPPED"),
+                new ComparisonSpec("runner-stored-positional-aot", "runner-stored-aot",
                         "Archive reads + AOT cache: POSITIONAL vs MAPPED"),
-                new ComparisonSpec(RUNNER_STORED_POSITIONAL, SHADOW, "Runner POSITIONAL vs Shadow"),
-                new ComparisonSpec(RUNNER_STORED_POSITIONAL_AOT, SHADOW_AOT,
+                new ComparisonSpec("runner-stored-positional", "shadow", "Runner POSITIONAL vs Shadow"),
+                new ComparisonSpec("runner-stored-positional-aot", "shadow-aot",
                         "Runner POSITIONAL + AOT cache vs Shadow + AOT cache"),
-                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_JORAN,
+                new ComparisonSpec("runner-stored", "runner-stored-joran",
                         "Precompiled Logback vs Joran at startup (Runner-only control)"),
-                new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_JORAN_AOT,
+                new ComparisonSpec("runner-stored-aot", "runner-stored-joran-aot",
                         "Precompiled Logback vs Joran at startup (Runner-only control) + AOT cache"),
-                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_KEEPDEBUG,
+                new ComparisonSpec("runner-stored", "runner-stored-keepdebug",
                         "Local-variable tables stripped vs kept"),
-                new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_KEEPDEBUG_AOT,
+                new ComparisonSpec("runner-stored-aot", "runner-stored-keepdebug-aot",
                         "Local-variable tables stripped vs kept, with the AOT cache"),
-                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_DYNAMIC_SERVICES,
+                new ComparisonSpec("runner-stored", "runner-stored-dynamic-services",
                         "Static service table vs Micronaut's scan"),
-                new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_DYNAMIC_SERVICES_AOT,
+                new ComparisonSpec("runner-stored-aot", "runner-stored-dynamic-services-aot",
                         "Static service table + AOT cache vs Micronaut's scan + AOT cache"),
-                new ComparisonSpec(RUNNER_STORED_PRELOAD, RUNNER_STORED,
-                        "Startup class preload vs none"),
-                new ComparisonSpec(RUNNER_STORED_PRELOAD, SHADOW, "Runner + startup class preload vs Shadow"),
-                new ComparisonSpec(RUNNER_STORED_PRELOAD_AOT, RUNNER_STORED_AOT,
+                new ComparisonSpec("runner-stored-preload", "runner-stored", "Startup class preload vs none"),
+                new ComparisonSpec("runner-stored-preload", "shadow", "Runner + startup class preload vs Shadow"),
+                new ComparisonSpec("runner-stored-preload-aot", "runner-stored-aot",
                         "Startup class preload + AOT cache vs AOT cache alone"),
                 // Micronaut AOT: the like-for-like pair first, then what a project keeps without Runner's
                 // optimized archive, then what Micronaut AOT adds on each side.
-                new ComparisonSpec(RUNNER_MAOT, SHADOW_MAOT, "Runner vs Micronaut AOT Shadow"),
-                new ComparisonSpec(RUNNER_STORED, SHADOW_MAOT,
+                new ComparisonSpec("runner-maot", "shadow-maot", "Runner vs Micronaut AOT Shadow"),
+                new ComparisonSpec("runner-stored", "shadow-maot",
                         "Runner without Micronaut AOT vs Micronaut AOT Shadow"),
-                new ComparisonSpec(RUNNER_MAOT, RUNNER_STORED, "Micronaut AOT's gain on Runner"),
-                new ComparisonSpec(SHADOW_MAOT, SHADOW, "Micronaut AOT's gain on Shadow"),
-                new ComparisonSpec(RUNNER_MAOT_AOT, SHADOW_MAOT_AOT,
+
+                new ComparisonSpec("runner-maot", "runner-stored", "Micronaut AOT's gain on Runner"),
+                new ComparisonSpec("shadow-maot", "shadow", "Micronaut AOT's gain on Shadow"),
+                new ComparisonSpec("runner-maot-aot", "shadow-maot-aot",
                         "Runner vs Micronaut AOT Shadow, both with a JDK AOT cache"),
-                new ComparisonSpec(RUNNER_STORED, RUNNER_STORED_LAMBDAS, "Lambdas desugared vs kept"),
-                new ComparisonSpec(RUNNER_STORED_AOT, RUNNER_STORED_LAMBDAS_AOT,
+                new ComparisonSpec("runner-stored", "runner-stored-lambdas", "Lambdas desugared vs kept"),
+                new ComparisonSpec("runner-stored-aot", "runner-stored-lambdas-aot",
                         "Lambdas desugared vs kept, with the AOT cache"),
-                new ComparisonSpec(RUNNER_EXTRACTED_AOT, RUNNER_EXTRACTED_LAMBDAS_AOT,
+                new ComparisonSpec("runner-extracted-aot", "runner-extracted-lambdas-aot",
                         "Extracted layout + AOT cache: lambdas desugared vs kept"),
-                new ComparisonSpec(RUNNER_STORED_PREFETCH, RUNNER_STORED,
+                new ComparisonSpec("runner-stored-prefetch", "runner-stored",
                         "Bean definition prefetch vs the default, which has none"),
-                new ComparisonSpec(RUNNER_STORED_PREFETCH_AOT, RUNNER_STORED_AOT,
+                new ComparisonSpec("runner-stored-prefetch-aot", "runner-stored-aot",
                         "Bean definition prefetch vs the default, which has none, with the AOT cache"));
     }
 
@@ -572,25 +520,25 @@ final class SampleBuild implements SampleSteps {
      * @return one unavailable variant per selected row, in report order
      */
     static List<Variant> unavailableVariants(String reason, List<String> selection) {
-        return ROWS.stream()
-                .filter(row -> selection.contains(row.name()))
-                .map(row -> Variant.unavailable(row.name(), row.description(), reason))
-                .toList();
+        return ROWS.stream().map(VariantRows.Row::spec).filter(spec -> selection.contains(spec.name()))
+                .map(spec -> Variant.unavailable(spec, reason)).toList();
     }
 
     /**
      * Builds the selected rows, each at most once, together with the rows they derive from.
      *
+     * @param harness   trains and verifies the JDK AOT caches, with the settings of the timed runs
      * @param selection the selected rows
      * @return the selected variants only, in report order, available and unavailable alike; a prerequisite
      *         built only for another row is not among them
      */
-    List<Variant> variants(List<String> selection) {
+    List<Variant> variants(StartupHarness harness, List<String> selection) {
+        this.harness = harness;
         return variants(this, selection, log);
     }
 
     /**
-     * Builds the selected rows of the row table with the given steps; see {@link #variants(List)}.
+     * Builds the selected rows of the row table with the given steps; see {@link #variants(StartupHarness, List)}.
      *
      * @param steps     what the rows are built with
      * @param selection the selected rows
@@ -598,15 +546,13 @@ final class SampleBuild implements SampleSteps {
      * @return the selected variants only, in report order
      */
     static List<Variant> variants(SampleSteps steps, List<String> selection, PrintStream log) {
-        return VariantRows.build(ROWS, steps, selection,
-                (name, description, create) -> attempt(name, description, create, log));
+        return VariantRows.build(ROWS, steps, selection, (spec, create) -> attempt(spec, create, log));
     }
 
     /**
-     * The AOT-cache request of a run: under a CPU limit, training and verification run under the limit's command
-     * prefix, and the limit enters the cache identity, so a cache is never reused under different VM
-     * ergonomics. Without a limit the identity is exactly what it was before limits existed, and existing caches
-     * are reused.
+     * The AOT-cache request of a run. Under a CPU limit the limit enters the cache identity, so a cache is never
+     * reused under different VM ergonomics; the harness runs training and verification under the limit's command
+     * prefix, as it runs every launch.
      *
      * @param artifacts the work directory
      * @param mainClass the application class verification requires to come from the cache
@@ -615,54 +561,40 @@ final class SampleBuild implements SampleSteps {
      * @return the request
      */
     static AotCache.Request aotRequest(Path artifacts, String mainClass, CpuLimit cpuLimit, PrintStream log) {
-        return new AotCache.Request(artifacts.resolve("managed-aot"), "/hello", List.of("/hello"),
-                java.time.Duration.ofSeconds(CACHE_TIMEOUT_SECONDS), mainClass,
-                cpuLimit == null ? List.of() : cpuLimit.relevantJvmFlags(),
-                cpuLimit == null ? List.of() : cpuLimit.commandPrefix(), log);
+        return new AotCache.Request(artifacts.resolve("managed-aot"), List.of(HELLO), mainClass,
+                cpuLimit == null ? List.of() : cpuLimit.relevantJvmFlags(), log);
     }
 
-    private static Variant attempt(String name, String description, VariantRows.Creation create, PrintStream log) {
+    private static Variant attempt(VariantSpec spec, VariantRows.Creation create, PrintStream log) {
         try {
             Variant variant = create.create();
-            log.println("[startup-benchmark] prepared " + name);
+            log.println("[startup-benchmark] prepared " + spec.name());
             return variant;
         } catch (Exception e) {
             String reason = oneLine(e.getClass().getSimpleName() + ": " + e.getMessage());
-            log.println("[startup-benchmark] " + name + " is unavailable: " + reason);
-            return Variant.unavailable(name, description, reason);
+            log.println("[startup-benchmark] " + spec.name() + " is unavailable: " + reason);
+            return Variant.unavailable(spec, reason);
         }
     }
 
-    private static VariantRows.Row<SampleSteps> core(String name,
-                                                     String description,
-                                                     VariantRows.Factory<SampleSteps> factory) {
-        return new VariantRows.Row<>(name, description, true, factory);
-    }
-
-    private static VariantRows.Row<SampleSteps> optIn(String name,
-                                                      String description,
-                                                      VariantRows.Factory<SampleSteps> factory) {
-        return new VariantRows.Row<>(name, description, false, factory);
+    @Override
+    public Variant shadow(VariantSpec spec) throws IOException {
+        return shadowJar(spec, "shadowJar", shadowJar);
     }
 
     @Override
-    public Variant shadow() throws IOException {
-        return shadowJar(SHADOW, SHADOW_DESCRIPTION, "shadowJar", shadowJar);
+    public Variant shadowStored(VariantSpec spec) throws IOException {
+        return shadowJar(spec, "shadowJarStored", shadowStoredJar);
     }
 
     @Override
-    public Variant shadowStored() throws IOException {
-        return shadowJar(SHADOW_STORED, SHADOW_STORED_DESCRIPTION, "shadowJarStored", shadowStoredJar);
+    public Variant shadowMaot(VariantSpec spec) throws IOException {
+        return shadowJar(spec, "optimizedJitJarAll", optimizedJitJarAll);
     }
 
     @Override
-    public Variant shadowMaot() throws IOException {
-        return shadowJar(SHADOW_MAOT, SHADOW_MAOT_DESCRIPTION, "optimizedJitJarAll", optimizedJitJarAll);
-    }
-
-    @Override
-    public Variant runnerMaot() throws IOException {
-        return optimizedRunnerJar(artifacts, RUNNER_MAOT, mainClass, optimizedJitJar, dependencies);
+    public Variant runnerMaot(VariantSpec spec) throws IOException {
+        return optimizedRunnerJar(artifacts, spec, mainClass, optimizedJitJar, dependencies);
     }
 
     /**
@@ -672,14 +604,14 @@ final class SampleBuild implements SampleSteps {
      * difference between the two rows, and whatever Runner's packaging defaults are apply to both.
      *
      * @param artifacts       where the variants' artifacts are written
-     * @param name            the variant
+     * @param spec            the row
      * @param mainClass       the application's main class
      * @param optimizedJitJar the archive the metadata names, or {@code null} when the sample has no such task
      * @param dependencies    the dependency jars, in class path order
      * @return the variant
      * @throws IOException if the sample declares no such task, it produced no jar, or packaging fails
      */
-    static Variant optimizedRunnerJar(Path artifacts, String name, String mainClass, Path optimizedJitJar,
+    static Variant optimizedRunnerJar(Path artifacts, VariantSpec spec, String mainClass, Path optimizedJitJar,
                                       List<Path> dependencies) throws IOException {
         if (optimizedJitJar == null) {
             throw new IOException("The sample's build declares no optimizedJitJar task (it does not apply"
@@ -689,23 +621,19 @@ final class SampleBuild implements SampleSteps {
             throw new IOException("Micronaut AOT produced no " + optimizedJitJar);
         }
         // Copied like every sample output a row uses, so that nothing measured is read from the sample's build.
-        Path directory = recreate(artifacts.resolve(name + "-application"));
+        Path directory = recreate(artifacts.resolve(spec.name() + "-application"));
         Path copy = LaunchInputs.copy(optimizedJitJar, directory.resolve(optimizedJitJar.getFileName().toString()));
-        Variant variant = runnerJar(artifacts, name, mainClass, List.of(copy), dependencies, Compression.STORED,
-                EntryMode.STUB);
-        // The fixed text keeps whether the static service table applied: it composes with Micronaut AOT 3's output
-        // and stands down by itself for an AOT version that optimizes service loading.
-        return variant.describedAs(RUNNER_MAOT_DESCRIPTION + staticServicesNote(variant.description()));
+        return runnerJar(artifacts, spec, mainClass, List.of(copy), dependencies, Compression.STORED,
+                RunnerJarOptions.DEFAULTS);
     }
 
     @Override
-    public Variant aotCache(Variant source, String name, List<String> trainingJvmArgs)
-            throws IOException, InterruptedException {
-        return AotCache.prepare(source, name, aotRequest(artifacts, mainClass, cpuLimit, log), trainingJvmArgs);
+    public Variant aotCache(Variant source, VariantSpec spec) throws IOException, InterruptedException {
+        return AotCache.prepare(harness, source, spec, aotRequest(artifacts, mainClass, cpuLimit, log));
     }
 
     @Override
-    public Variant explodedClasspath() throws IOException {
+    public Variant explodedClasspath(VariantSpec spec) throws IOException {
         Path directory = recreate(artifacts.resolve("exploded"));
         List<Path> application = new ArrayList<>(applicationOutput.size());
         List<String> classPath = new ArrayList<>(applicationOutput.size() + dependencies.size());
@@ -729,13 +657,12 @@ final class SampleBuild implements SampleSteps {
                 DeploymentSize.input("dependencies", dependencyCopies));
         List<Path> launchInputs = new ArrayList<>(application);
         launchInputs.addAll(dependencyCopies);
-        return Variant.available(EXPLODED_CLASSPATH,
-                "Class files and dependency jars on an explicit, ordered -cp",
-                command, directory, directory, deploymentSize, launchInputs);
+        return Variant.available(spec, command, directory, directory, deploymentSize, EntryMode.STANDARD_LOADER,
+                null, launchInputs);
     }
 
     @Override
-    public Variant thinJar() throws IOException {
+    public Variant thinJar(VariantSpec spec) throws IOException {
         Path directory = recreate(artifacts.resolve("thin"));
         List<String> classPath = new ArrayList<>(dependencies.size());
         List<Path> dependencyCopies = copyDependenciesTo(directory.resolve("lib"));
@@ -767,34 +694,33 @@ final class SampleBuild implements SampleSteps {
         List<Path> launchInputs = new ArrayList<>();
         launchInputs.add(jar);
         launchInputs.addAll(dependencyCopies);
-        return Variant.available(THIN_JAR,
-                "Application jar with a Class-Path manifest pointing at lib/",
-                command, directory, jar, deploymentSize, launchInputs);
+        return Variant.available(spec, command, directory, jar, deploymentSize, EntryMode.STANDARD_LOADER, null,
+                launchInputs);
     }
 
     /**
      * Copies a jar that one of the sample's Shadow tasks built into {@code <artifacts>/<name>/}.
      *
-     * @param name        the variant, which also names its directory
-     * @param description what the variant is, for the report
-     * @param task        the sample task that should have built the jar
-     * @param jar         the jar the metadata names, or {@code null} when the sample has no such task
+     * @param spec the row, whose name also names the directory
+     * @param task the sample task that should have built the jar
+     * @param jar  the jar the metadata names, or {@code null} when the sample has no such task
      * @return the variant
      * @throws IOException if the sample declares no such task, it produced no jar, or the copy fails
      */
-    private Variant shadowJar(String name, String description, String task, Path jar) throws IOException {
+    private Variant shadowJar(VariantSpec spec, String task, Path jar) throws IOException {
         if (jar == null) {
             throw new IOException("The sample's build declares no " + task + " task");
         }
         if (!Files.isRegularFile(jar)) {
             throw new IOException("The Shadow plugin produced no " + jar);
         }
-        Path directory = recreate(artifacts.resolve(name));
+        Path directory = recreate(artifacts.resolve(spec.name()));
         Path copy = LaunchInputs.copy(jar, directory.resolve(jar.getFileName().toString()));
         List<String> command = List.of(javaExecutable().toString(), "-jar",
                 copy.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", copy));
-        return Variant.available(name, description, command, directory, copy, deploymentSize);
+        return Variant.available(spec, command, directory, copy, deploymentSize, EntryMode.STANDARD_LOADER, null,
+                List.of(copy));
     }
 
     /**
@@ -814,12 +740,13 @@ final class SampleBuild implements SampleSteps {
      * pool to parallelism 0, and the row is timed under the limit like every other.</p>
      *
      * @param stored the list-free STORED runner jar
+     * @param spec   the preloading row
      * @return the preloading variant
      * @throws IOException          if the recording launch fails, or the jar embeds no startup class
      * @throws InterruptedException if the recording launch is interrupted
      */
     @Override
-    public Variant preloadingRunnerJar(Variant stored) throws IOException, InterruptedException {
+    public Variant preloadingRunnerJar(Variant stored, VariantSpec spec) throws IOException, InterruptedException {
         if (!stored.available()) {
             throw new IOException("there is no runner jar to record the startup classes from: "
                     + stored.unavailableReason());
@@ -829,7 +756,7 @@ final class SampleBuild implements SampleSteps {
         TrainingSettings settings = TrainingSettings.builder()
                 .readinessPath(HELLO)
                 .workloadPaths(List.of(HELLO))
-                .readinessTimeout(java.time.Duration.ofSeconds(CACHE_TIMEOUT_SECONDS))
+                .readinessTimeout(harness.startupTimeout())
                 .build();
         try {
             // Recreated: the recorder refuses a directory with content no recording of its own left there.
@@ -839,15 +766,13 @@ final class SampleBuild implements SampleSteps {
         } catch (IOException e) {
             throw new IOException("recording the startup classes failed: " + e.getMessage(), e);
         }
-        return runnerJar(RUNNER_STORED_PRELOAD, Compression.STORED, EntryMode.STUB,
-                RunnerJarOptions.DEFAULTS.withStartupClasses(profile));
+        return runnerJar(spec, Compression.STORED, RunnerJarOptions.DEFAULTS.withStartupClasses(profile));
     }
 
     @Override
-    public Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode,
-                             RunnerJarOptions options) throws IOException {
-        return runnerJar(artifacts, name, mainClass, applicationOutput, dependencies,
-                compression, requestedEntryMode, options);
+    public Variant runnerJar(VariantSpec spec, Compression compression, RunnerJarOptions options)
+            throws IOException {
+        return runnerJar(artifacts, spec, mainClass, applicationOutput, dependencies, compression, options);
     }
 
     /**
@@ -855,17 +780,17 @@ final class SampleBuild implements SampleSteps {
      * control while {@code runner-stored} really carries the generated configurator and this archive does not.
      *
      * @param stored the {@code runner-stored} row
+     * @param spec   the control row
      * @return the control row
      * @throws IOException if either archive is not what the comparison needs
      */
     @Override
-    public Variant joranControl(Variant stored) throws IOException {
+    public Variant joranControl(Variant stored, VariantSpec spec) throws IOException {
         if (!stored.available() || !logbackPrecompiled(stored.artifact())) {
             throw new IOException("runner-stored carries no " + GENERATED_LOGBACK_CONFIGURATOR
                     + ", so there is no precompiled Logback configuration to compare Joran with");
         }
-        Variant joran = runnerJar(artifacts, RUNNER_STORED_JORAN, mainClass, applicationOutput, dependencies,
-                Compression.STORED, EntryMode.STUB, RunnerJarOptions.DEFAULTS.withPrecompileLogback(false));
+        Variant joran = runnerJar(spec, Compression.STORED, RunnerJarOptions.DEFAULTS.withPrecompileLogback(false));
         if (logbackPrecompiled(joran.artifact())) {
             throw new IOException(joran.artifact() + " carries " + GENERATED_LOGBACK_CONFIGURATOR
                     + " although precompileLogback=false");
@@ -893,17 +818,17 @@ final class SampleBuild implements SampleSteps {
      * identical jars against each other.
      *
      * @param stored the {@code runner-stored} row
+     * @param spec   the candidate row
      * @return the candidate row
      * @throws IOException if either archive is not what the comparison needs
      */
     @Override
-    public Variant prefetchCandidate(Variant stored) throws IOException {
+    public Variant prefetchCandidate(Variant stored, VariantSpec spec) throws IOException {
         if (!stored.available() || definitionPrefetch(stored.artifact())) {
             throw new IOException("runner-stored is unavailable or already carries " + PREFETCH_CONFIGURER
                     + ", so there is no start without the bean definition prefetch to compare it with");
         }
-        Variant candidate = runnerJar(artifacts, RUNNER_STORED_PREFETCH, mainClass, applicationOutput, dependencies,
-                Compression.STORED, EntryMode.STUB, RunnerJarOptions.DEFAULTS.withDefinitionPrefetch(true));
+        Variant candidate = runnerJar(spec, Compression.STORED, RunnerJarOptions.DEFAULTS.withDefinitionPrefetch(true));
         if (!definitionPrefetch(candidate.artifact())) {
             throw new IOException("the packager left the bean definition prefetch out of " + candidate.artifact()
                     + " although definitionPrefetch=true, so it is the runner-stored archive");
@@ -925,31 +850,24 @@ final class SampleBuild implements SampleSteps {
         }
     }
 
-    static Variant runnerJar(Path artifacts,
-                             String name,
-                             String mainClass,
-                             List<Path> applicationOutput,
-                             List<Path> dependencies,
-                             Compression compression,
-                             EntryMode requestedEntryMode) throws IOException {
-        return runnerJar(artifacts, name, mainClass, applicationOutput, dependencies, compression,
-                requestedEntryMode, RunnerJarOptions.DEFAULTS);
-    }
-
     /**
-     * Builds a runner jar straight from the packaging library, as the plugins would.
+     * Builds a runner jar straight from the packaging library, as the plugins would, entered as the row asks.
+     * The jar is checked against what the row claims: its entry mode, archive read mode, preload list and service
+     * table. Its build note says whether it carries a static service table and how many startup classes it
+     * preloads, so that a jar whose table silently stood down is not measured under the name of a row that has
+     * one.
      *
+     * @param spec    the row, which names the jar and its entry mode
      * @param options the packaging options a row sets on top of the builder defaults
      */
     static Variant runnerJar(Path artifacts,
-                             String name,
+                             VariantSpec spec,
                              String mainClass,
                              List<Path> applicationOutput,
                              List<Path> dependencies,
                              Compression compression,
-                             EntryMode requestedEntryMode,
                              RunnerJarOptions options) throws IOException {
-        Path output = artifacts.resolve(name + ".jar");
+        Path output = artifacts.resolve(spec.name() + ".jar");
         Files.deleteIfExists(output);
         RunnerJarSpec.Builder builder = RunnerJarSpec.builder()
                 .mainClass(mainClass)
@@ -957,7 +875,7 @@ final class SampleBuild implements SampleSteps {
                 .dependencies(dependencies.stream().map(Dependency::of).toList())
                 .output(output)
                 .compression(compression)
-                .entryStub(requestedEntryMode == EntryMode.STUB);
+                .entryStub(spec.entryMode() == EntryMode.STUB);
         if (options.archiveReads() != null) {
             builder.archiveReads(options.archiveReads());
         }
@@ -977,69 +895,25 @@ final class SampleBuild implements SampleSteps {
         if (options.definitionPrefetch() != null) {
             builder.definitionPrefetch(options.definitionPrefetch());
         }
-        RunnerJarSpec spec = builder.build();
-        RunnerJarResult result = RunnerJarBuilder.build(spec, BuildLogger.noOp());
+        RunnerJarSpec jarSpec = builder.build();
+        RunnerJarResult result = RunnerJarBuilder.build(jarSpec, BuildLogger.noOp());
         if (Boolean.FALSE.equals(options.staticServices()) && result.staticServiceSlots() != 0) {
             throw new IOException("staticServices false was requested, but " + output + " carries a table of "
                     + result.staticServiceSlots() + " slots");
         }
         // Rebuilt in every run with the same bytes; the pin keeps the time a trained cache recorded.
         LaunchInputs.pin(output);
-        EntryMode effectiveEntryMode = inspectEntryMode(output, requestedEntryMode);
-        inspectArchiveReads(output, spec.archiveReads());
+        EntryMode effectiveEntryMode = inspectEntryMode(output, spec.entryMode());
+        inspectArchiveReads(output, jarSpec.archiveReads());
         int preloaded = inspectPreload(output, options.startupClasses());
-        List<String> command = List.of(javaExecutable().toString(), "-jar",
-                output.toAbsolutePath().toString());
+        List<String> command = List.of(javaExecutable().toString(), "-jar", output.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", output));
-        return Variant.available(name,
-                (compression == Compression.STORED
-                        ? "Runner jar, nested dependencies re-packed uncompressed"
-                        : "Runner jar, nested dependencies copied byte for byte")
-                        + (requestedEntryMode == EntryMode.STUB
-                        ? "; plugin-default entry stub" : "; reflection ablation")
-                        + (options.archiveReads() == null ? ""
-                        : "; archiveReads " + options.archiveReads().name())
-                        + (Boolean.FALSE.equals(options.precompileLogback()) ? "; logback.xml left to Joran" : "")
-                        + staticServicesNote(result)
-                        + (spec.stripLocalVariables() ? "" : "; local-variable tables kept")
-                        + (options.startupClasses() == null ? ""
-                        : "; " + preloaded + " recorded startup classes preloaded")
-                        + (spec.desugarLambdas() ? "" : "; dependency lambdas kept")
-                        + (spec.definitionPrefetch() ? "; bean definition prefetch requested" : ""),
-                command, artifacts, output, deploymentSize, requestedEntryMode, effectiveEntryMode);
-    }
-
-    /**
-     * What a Runner row's description says about service discovery, so that a jar whose table silently stood
-     * down is not measured under the name of a row that has one.
-     *
-     * @param result the build of the row's jar
-     * @return {@code ; static services: N slots (core V)}, or {@code ; dynamic service scan}
-     */
-    static String staticServicesNote(RunnerJarResult result) {
-        if (result.staticServiceSlots() == 0) {
-            return DYNAMIC_SERVICE_SCAN;
-        }
-        return STATIC_SERVICES + result.staticServiceSlots() + " slots (core "
-                + result.staticServicesCoreVersion().orElse("unknown") + ")";
-    }
-
-    /**
-     * The service discovery part of a Runner row's description, for a row derived from that jar.
-     *
-     * @param description the description of the row the jar was built for
-     * @return the part {@link #staticServicesNote(RunnerJarResult)} added, or the empty string
-     */
-    static String staticServicesNote(String description) {
-        if (description.contains(DYNAMIC_SERVICE_SCAN)) {
-            return DYNAMIC_SERVICE_SCAN;
-        }
-        int start = description.indexOf(STATIC_SERVICES);
-        if (start < 0) {
-            return "";
-        }
-        int end = description.indexOf(';', start + 1);
-        return end < 0 ? description.substring(start) : description.substring(start, end);
+        String buildNote = (result.staticServiceSlots() == 0 ? "dynamic service scan"
+                : "static services: " + result.staticServiceSlots() + " slots (core "
+                        + result.staticServicesCoreVersion().orElse("unknown") + ")")
+                + (options.startupClasses() == null ? "" : "; " + preloaded + " recorded startup classes preloaded");
+        return Variant.available(spec, command, artifacts, output, deploymentSize, effectiveEntryMode, buildNote,
+                List.of(output));
     }
 
     /**
@@ -1200,31 +1074,27 @@ final class SampleBuild implements SampleSteps {
     }
 
     @Override
-    public Variant extracted(Variant stored) throws IOException, InterruptedException {
-        return extractedRunner(artifacts, stored, RUNNER_EXTRACTED);
-    }
-
-    @Override
-    public Variant extractedLambdas(Variant lambdas) throws IOException, InterruptedException {
-        return extractedRunner(artifacts, lambdas, EXTRACTED_LAMBDAS_LAYOUT, EXTRACTED_LAMBDAS_DIRECTORY);
-    }
-
-    static Variant extractedRunner(Path artifacts, Variant stored, String name)
-            throws IOException, InterruptedException {
-        return extractedRunner(artifacts, stored, name, "extracted");
+    public Variant extracted(Variant stored, VariantSpec spec) throws IOException, InterruptedException {
+        return extractedRunner(artifacts, stored, spec);
     }
 
     /**
-     * Unpacks a runner jar into a directory of the artifacts directory and describes that layout as a variant.
+     * Unpacks a runner jar into {@code <artifacts>/<name>} and describes that layout as a variant, which carries
+     * the build note of the jar it was extracted from.
      *
-     * @param directory the name of the directory the layout is unpacked into: one per unpacked runner jar
+     * @param artifacts where the variants' artifacts are written
+     * @param stored    the runner jar
+     * @param spec      the layout's row
+     * @return the variant
+     * @throws IOException          if there is no jar or the extraction fails
+     * @throws InterruptedException if the extraction is interrupted
      */
-    static Variant extractedRunner(Path artifacts, Variant stored, String name, String directory)
+    static Variant extractedRunner(Path artifacts, Variant stored, VariantSpec spec)
             throws IOException, InterruptedException {
         if (!stored.available()) {
             throw new IOException("there is no runner jar to extract: " + stored.unavailableReason());
         }
-        Path destination = artifacts.resolve(directory);
+        Path destination = artifacts.resolve(spec.name());
         deleteRecursively(destination);
         // The plugins' layout, checks included: Class-Path in index order and the fixed modification times.
         AotLayout.Result layout = AotLayout.write(javaExecutable(), stored.artifact(), destination,
@@ -1239,10 +1109,8 @@ final class SampleBuild implements SampleSteps {
         launchInputs.addAll(layout.libraries());
         // Extraction already writes this instant; pinning states it rather than relying on it.
         LaunchInputs.pin(launchInputs);
-        return Variant.available(name,
-                "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader"
-                        + staticServicesNote(stored.description()),
-                run, destination, destination, deploymentSize, launchInputs);
+        return Variant.available(spec, run, destination, destination, deploymentSize, EntryMode.STANDARD_LOADER,
+                stored.buildNote(), launchInputs);
     }
 
     /**

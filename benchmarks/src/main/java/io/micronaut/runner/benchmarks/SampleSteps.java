@@ -17,135 +17,130 @@ package io.micronaut.runner.benchmarks;
 
 import io.micronaut.runner.build.Compression;
 
-import java.util.List;
-
 /**
  * The build steps {@link SampleBuild}'s row table is made of. {@link SampleBuild} performs them on the sample; a
- * unit test fakes them to check which rows a selection builds.
+ * unit test fakes them to check which rows a selection builds. Every step builds the variant of the row its
+ * {@link SampleBuild.VariantSpec} names.
  */
 interface SampleSteps {
 
     /**
      * Copies the class files and dependency jars into an explicit class path.
      *
-     * @return the {@code exploded-cp} variant
+     * @param spec the {@code exploded-cp} row
+     * @return the variant
      * @throws Exception if it cannot be built
      */
-    Variant explodedClasspath() throws Exception;
+    Variant explodedClasspath(SampleBuild.VariantSpec spec) throws Exception;
 
     /**
      * Writes the application jar with a {@code Class-Path} manifest.
      *
-     * @return the {@code thin-jar} variant
+     * @param spec the {@code thin-jar} row
+     * @return the variant
      * @throws Exception if it cannot be built
      */
-    Variant thinJar() throws Exception;
+    Variant thinJar(SampleBuild.VariantSpec spec) throws Exception;
 
     /**
      * Copies the sample's default Shadow jar.
      *
-     * @return the {@code shadow} variant
+     * @param spec the {@code shadow} row
+     * @return the variant
      * @throws Exception if it cannot be built
      */
-    Variant shadow() throws Exception;
+    Variant shadow(SampleBuild.VariantSpec spec) throws Exception;
 
     /**
      * Copies the sample's STORED Shadow jar.
      *
-     * @return the {@code shadow-stored} variant
+     * @param spec the {@code shadow-stored} row
+     * @return the variant
      * @throws Exception if it cannot be built
      */
-    Variant shadowStored() throws Exception;
+    Variant shadowStored(SampleBuild.VariantSpec spec) throws Exception;
 
     /**
      * Copies the sample's {@code optimizedJitJarAll}: Micronaut AOT's Shadow jar of the optimized application.
      *
-     * @return the {@code shadow-maot} variant
+     * @param spec the {@code shadow-maot} row
+     * @return the variant
      * @throws Exception if it cannot be built, for example because the sample does not apply
      *                   {@code io.micronaut.aot}
      */
-    Variant shadowMaot() throws Exception;
+    Variant shadowMaot(SampleBuild.VariantSpec spec) throws Exception;
 
     /**
      * Builds the Runner jar of the Micronaut AOT-optimized application: {@code runner-stored} with the sample's
      * {@code optimizedJitJar} as its application layer.
      *
-     * @return the {@code runner-maot} variant
+     * @param spec the {@code runner-maot} row
+     * @return the variant
      * @throws Exception if it cannot be built, for example because the sample does not apply
      *                   {@code io.micronaut.aot}
      */
-    Variant runnerMaot() throws Exception;
+    Variant runnerMaot(SampleBuild.VariantSpec spec) throws Exception;
 
     /**
-     * Builds a Runner jar.
+     * Builds a Runner jar, entered as the row's entry mode asks.
      *
-     * @param name               the row
-     * @param compression        how nested dependencies are written
-     * @param requestedEntryMode how the application is entered
-     * @param options            the packaging options the row sets on top of the builder defaults
+     * @param spec        the row
+     * @param compression how nested dependencies are written
+     * @param options     the packaging options the row sets on top of the builder defaults
      * @return the variant
      * @throws Exception if it cannot be built
      */
-    Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode,
-                      SampleBuild.RunnerJarOptions options) throws Exception;
+    Variant runnerJar(SampleBuild.VariantSpec spec, Compression compression, SampleBuild.RunnerJarOptions options)
+            throws Exception;
 
     /**
      * Records the startup class list from the list-free {@code runner-stored} jar and packages the same inputs
      * again with it.
      *
      * @param stored the {@code runner-stored} row, which the recording launch runs
-     * @return the {@code runner-stored-preload} variant
+     * @param spec   the {@code runner-stored-preload} row
+     * @return the variant
      * @throws Exception if the recording launch fails, or the jar embeds no startup class
      */
-    Variant preloadingRunnerJar(Variant stored) throws Exception;
+    Variant preloadingRunnerJar(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
 
     /**
      * Builds the Joran control: the {@code runner-stored} inputs with {@code logback.xml} left to Joran.
      *
      * @param stored the {@code runner-stored} row, which must carry the precompiled Logback configuration
-     * @return the {@code runner-stored-joran} variant
+     * @param spec   the {@code runner-stored-joran} row
+     * @return the variant
      * @throws Exception if it cannot be built, or if either archive is not what the comparison needs
      */
-    Variant joranControl(Variant stored) throws Exception;
+    Variant joranControl(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
 
     /**
      * Builds the bean definition prefetch candidate: the {@code runner-stored} inputs with the prefetch packaged.
      *
      * @param stored the {@code runner-stored} row, which must not carry the prefetch
-     * @return the {@code runner-stored-prefetch} variant
+     * @param spec   the {@code runner-stored-prefetch} row
+     * @return the variant
      * @throws Exception if it cannot be built, or if either archive is not what the comparison needs
      */
-    Variant prefetchCandidate(Variant stored) throws Exception;
+    Variant prefetchCandidate(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
 
     /**
      * Trains, or reuses, and verifies a JDK AOT cache for another row.
      *
-     * @param source          the row the cache is trained on
-     * @param name            the cached row
-     * @param trainingJvmArgs what only the training command adds: {@link AotCache#RUNNER_SINGLE_JAR_TRAINING} when
-     *                        the source is a Runner single JAR, else {@link AotCache#NO_TRAINING_ARGUMENTS}. The row
-     *                        table decides, since it knows the source
+     * @param source the variant the cache is trained on
+     * @param spec   the cached row
      * @return the variant
      * @throws Exception if it cannot be built
      */
-    Variant aotCache(Variant source, String name, List<String> trainingJvmArgs) throws Exception;
+    Variant aotCache(Variant source, SampleBuild.VariantSpec spec) throws Exception;
 
     /**
-     * Extracts a Runner jar.
+     * Extracts a Runner jar into the directory the spec names.
      *
-     * @param stored the Runner row to extract
-     * @return the {@code runner-extracted} variant
+     * @param stored the Runner variant to extract
+     * @param spec   the extracted layout
+     * @return the variant
      * @throws Exception if it cannot be built
      */
-    Variant extracted(Variant stored) throws Exception;
-
-    /**
-     * Extracts the lambda control, {@code runner-stored-lambdas}, into a directory of its own. The layout is
-     * trained, but it is not a row.
-     *
-     * @param lambdas the {@code runner-stored-lambdas} row
-     * @return the extracted layout
-     * @throws Exception if it cannot be built
-     */
-    Variant extractedLambdas(Variant lambdas) throws Exception;
+    Variant extracted(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
 }

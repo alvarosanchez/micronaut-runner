@@ -139,24 +139,29 @@ public final class StartupBenchmark {
         Files.createDirectories(artifacts);
 
         List<String> selection = options.selection();
-        List<Variant> variants;
-        String buildFailure = null;
-        try {
-            SampleBuild build = SampleBuild.prepare(options.sample(), options.repository(),
-                    options.runnerVersion(), options.micronautCore(), artifacts, cpuLimit, log);
-            variants = build.variants(selection);
-        } catch (IOException | InterruptedException e) {
-            buildFailure = e.getMessage();
-            log.println("[startup-benchmark] the sample could not be built: " + buildFailure);
-            String reason = "the sample's Gradle build failed: " + oneLine(buildFailure);
-            variants = SampleBuild.unavailableVariants(reason, selection);
-        }
+        List<VariantResult> results;
+        List<StartupHarness.DiagnosticRun> diagnostics = new ArrayList<>();
+        BenchmarkProvenance provenance;
+        RunConditions conditions;
+        // One harness prepares and measures: the cache training and verification launches get the timed runs'
+        // command prefix, environment and readiness polling, and never the page-cache hook.
+        try (StartupHarness harness = new StartupHarness(options.readinessPath(), options.timeout(),
+                cpuLimit == null ? List.of() : cpuLimit.commandPrefix(),
+                PageCacheEviction.forMode(options.pageCache(), osName))) {
+            List<Variant> variants;
+            try {
+                SampleBuild build = SampleBuild.prepare(options.sample(), options.repository(),
+                        options.runnerVersion(), options.micronautCore(), artifacts, cpuLimit, log);
+                variants = build.variants(harness, selection);
+            } catch (IOException | InterruptedException e) {
+                log.println("[startup-benchmark] the sample could not be built: " + e.getMessage());
+                variants = SampleBuild.unavailableVariants("the sample's Gradle build failed: "
+                        + oneLine(e.getMessage()), selection);
+            }
 
-        // Captured before pinning: afterwards this JVM would report the harness's CPUs, not the machine's.
-        BenchmarkProvenance provenance = BenchmarkProvenance.capture(
-                configuredRunnerSource(), options.sample(), System.getenv());
-        RunConditions conditions = RunConditions.capture(cpuLimit, probe, options.pageCache(), artifacts);
-        try {
+            // Captured before pinning: afterwards this JVM would report the harness's CPUs, not the machine's.
+            provenance = BenchmarkProvenance.capture(configuredRunnerSource(), options.sample());
+            conditions = RunConditions.capture(cpuLimit, probe, options.pageCache(), artifacts);
             if (options.pageCache() == PageCacheMode.EVICT_ARTIFACTS) {
                 // POSIX_FADV_DONTNEED cannot drop dirty pages, and every artifact was just written.
                 PageCacheEviction.sync();
@@ -166,28 +171,18 @@ public final class StartupBenchmark {
                 log.println("[startup-benchmark] pinned the harness to CPUs " + conditions.harnessCpus()
                         + "; children run on CPUs " + conditions.childCpus());
             }
-        } catch (IOException e) {
-            fail(e.getMessage());
-            return;
-        }
 
-        List<VariantResult> results;
-        List<StartupHarness.DiagnosticRun> diagnostics = new ArrayList<>();
-        try (StartupHarness harness = new StartupHarness(options.readinessPath(), options.timeout(),
-                cpuLimit == null ? List.of() : cpuLimit.commandPrefix(),
-                PageCacheEviction.forMode(options.pageCache(), osName))) {
             results = measure(harness, variants, options, log);
             if (options.diagnostics()) {
                 diagnostics.addAll(collectDiagnostics(harness, variants, options, log));
             }
-        } catch (StartupHarness.LaunchPreparationFailure e) {
+        } catch (IOException | StartupHarness.LaunchPreparationFailure e) {
             fail(e.getMessage());
             return;
         }
 
-        RunContext context = new RunContext(options.sample(), options.repository(),
-                options.runnerVersion(), options.outputDirectory(), options.iterations(),
-                options.warmupIterations(), options.seed(), options.readinessPath(),
+        RunContext context = new RunContext(options.sample(), options.runnerVersion(), options.outputDirectory(),
+                artifacts, options.iterations(), options.warmupIterations(), options.seed(), options.readinessPath(),
                 options.diagnostics(), Instant.now().toString(), options.requiredVariants(),
                 options.completenessPolicy(), provenance, conditions);
         int exitCode = finish(context, results, diagnostics, log);
@@ -286,11 +281,8 @@ public final class StartupBenchmark {
 
         List<VariantResult> results = new ArrayList<>(variants.size());
         for (int i = 0; i < variants.size(); i++) {
-            Variant variant = variants.get(i);
-            DeploymentSize deploymentSize = variant.deploymentSize();
-            long deploymentBytes = deploymentSize == null ? -1 : deploymentSize.totalBytes();
-            results.add(VariantResult.summarize(variant, deploymentBytes,
-                    attempts.get(i), options.warmupIterations(), options.iterations(), options.seed()));
+            results.add(VariantResult.summarize(variants.get(i), attempts.get(i), options.warmupIterations(),
+                    options.iterations(), options.seed()));
         }
         return results;
     }

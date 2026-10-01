@@ -143,7 +143,7 @@ public final class PackagingComparison {
             Path archive = marker(run(copy, common, arguments(variant, true)), ":" + task(variant)).archive();
             sizes.put(variant, DeploymentSize.measure(DeploymentSize.input("archive", archive)));
         }
-        BenchmarkProvenance machine = BenchmarkProvenance.capture(root, sample, Map.of());
+        BenchmarkProvenance machine = BenchmarkProvenance.capture(root, sample);
         BenchmarkProvenance.SourceState state = machine.runnerSource();
         String os = machine.osName() + " " + machine.osVersion();
         Files.writeString(out.resolve("summary.md"), summary(String.format(Locale.ROOT, "Source `%s` (%s) on %s / %s,"

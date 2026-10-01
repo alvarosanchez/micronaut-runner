@@ -30,24 +30,4 @@ enum EntryMode {
     String externalName() {
         return externalName;
     }
-
-    static EntryMode requestedBy(String variantName) {
-        if (variantName.endsWith("-reflection")) {
-            return REFLECTION;
-        }
-        if (variantName.equals("runner-stored") || variantName.equals("runner-stored-aot")
-                || variantName.equals("runner-stored-preload") || variantName.equals("runner-stored-preload-aot")
-                || variantName.equals("runner-stored-positional") || variantName.equals("runner-stored-positional-aot")
-                || variantName.equals("runner-stored-keepdebug") || variantName.equals("runner-stored-keepdebug-aot")
-                || variantName.equals("runner-stored-lambdas") || variantName.equals("runner-stored-lambdas-aot")
-                || variantName.equals("runner-preserve") || variantName.equals("runner-stored-joran")
-                || variantName.equals("runner-stored-joran-aot")
-                || variantName.equals("runner-stored-dynamic-services")
-                || variantName.equals("runner-stored-dynamic-services-aot")
-                || variantName.equals("runner-maot") || variantName.equals("runner-maot-aot")
-                || variantName.equals("runner-stored-prefetch") || variantName.equals("runner-stored-prefetch-aot")) {
-            return STUB;
-        }
-        return STANDARD_LOADER;
-    }
 }

@@ -39,6 +39,10 @@ public final class StartupHarnessFixture {
         if (mode.equals("early-exit")) {
             System.exit(7);
         }
+        if (mode.equals("halt-on-stop")) {
+            // Serves like "success", but ends a stop with status 3 instead of 143.
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> Runtime.getRuntime().halt(3)));
+        }
         if (mode.equals("hang")) {
             Thread.sleep(60_000);
             return;
@@ -80,9 +84,7 @@ public final class StartupHarnessFixture {
                 socket.getOutputStream().write(body);
                 socket.getOutputStream().flush();
             } catch (IOException e) {
-                if (!server.isClosed()) {
-                    throw new RuntimeException(e);
-                }
+                // A client that gave up on its request closed the connection; serve the next one.
             }
         }
     }

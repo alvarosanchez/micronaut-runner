@@ -22,7 +22,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -30,23 +32,20 @@ class BenchmarkClaimsTest {
 
     @Test
     void reportsStateTheUncontrolledCacheConditions(@TempDir Path output) throws Exception {
-        Path sample = output.resolve("sample");
-        Files.createDirectory(sample);
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
-                1, 0, 1, "/hello", false, "2026-09-22T00:00:00Z");
-        Variant variant = Variant.unavailable("exploded-cp", "test", "not built");
-        Variant unavailableAot = Variant.unavailable("runner-extracted-aot", "test", "training failed");
-        Reports.write(output, context,
-                List.of(
-                        new VariantResult(variant, -1, List.of(), null, null, null, List.of()),
-                        new VariantResult(unavailableAot, -1, List.of(), null, null, null, List.of())),
+        List<Variant> unavailable = SampleBuild.unavailableVariants("not built",
+                List.of("exploded-cp", "runner-extracted-aot"));
+        Reports.write(output, BenchmarkFixtures.context(output, 1, List.of(), CompletenessPolicy.REQUIRED,
+                        BenchmarkProvenance.unavailable()),
+                unavailable.stream().map(BenchmarkFixtures::result).toList(),
                 List.of(new StartupHarness.DiagnosticRun("exploded-cp", 42.0,
                         List.of("${java}", "-Xlog:class+load=info:file=${diagnostic-log}", "-jar", "${input:0}"))));
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
-        assertTrue(json.contains("\"jvmProcessState\": \"fresh per sample\""));
+        String policy = json.substring(json.indexOf("\"policy\": {"), json.indexOf("\"provenance\": {"));
+        assertTrue(policy.contains("\"jvmProcessState\": \"fresh per sample\""), policy);
+        assertTrue(policy.contains("\"applicationCacheMode\": \"per-variant\""), policy);
         assertTrue(json.contains("\"osPageCacheState\": \"uncontrolled\""));
-        assertTrue(json.contains("\"applicationCacheMode\": \"per-variant\""));
+        assertTrue(json.contains("\"applicationCacheMode\": \"aot\""));
         assertTrue(json.contains("aggregate shared counts do not prove trained application-class reuse"));
         assertTrue(json.contains("-Xlog:class+load=info:file=${diagnostic-log}"));
 
@@ -59,23 +58,22 @@ class BenchmarkClaimsTest {
 
     @Test
     void reportsAttributeEveryCachedRowToOneTraining(@TempDir Path output) throws Exception {
-        Path sample = Files.createDirectory(output.resolve("sample"));
         Path artifact = Files.writeString(output.resolve("app.jar"), "application", StandardCharsets.UTF_8);
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
-                1, 0, 1, "/hello", false, "2026-09-25T00:00:00Z");
         String reusedSha = "a".repeat(64);
         String trainedSha = "0123456789ab" + "c".repeat(52);
-        Variant shadowAot = cached("shadow-aot", artifact, new CacheInfo("aot", "1".repeat(64), 1024, reusedSha,
-                900, -1, true, "lifecycle", "verification"));
-        Variant storedAot = cached("runner-stored-aot", artifact, new CacheInfo("aot", "2".repeat(64), 2048,
-                trainedSha, 9400, 8500, false, "lifecycle", "verification"));
-        Variant extractedAot = Variant.unavailable("runner-extracted-aot", "test", "training failed");
-        Variant uncached = Variant.unavailable("runner-stored", "test", "not built");
-        Reports.write(output, context,
-                List.of(result(uncached), result(shadowAot), result(storedAot), result(extractedAot)), List.of());
+        Variant shadowAot = cached("shadow-aot", artifact, new CacheInfo("1".repeat(64), 1024, reusedSha, 900, -1,
+                true));
+        Variant storedAot = cached("runner-stored-aot", artifact, new CacheInfo("2".repeat(64), 2048, trainedSha,
+                9400, 8500, false));
+        List<Variant> unavailable = SampleBuild.unavailableVariants("not built",
+                List.of("runner-stored", "runner-extracted-aot"));
+        Reports.write(output, BenchmarkFixtures.context(output, 1, List.of(), CompletenessPolicy.REQUIRED,
+                BenchmarkProvenance.unavailable()), Stream.of(unavailable.get(0), shadowAot, storedAot,
+                unavailable.get(1)).map(BenchmarkFixtures::result).toList(), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
-        assertTrue(json.contains("\"schemaVersion\": 7"), json);
+        assertEquals(8, Reports.SCHEMA_VERSION);
+        assertTrue(json.contains("\"schemaVersion\": 8"), json);
         assertTrue(json.contains("\"cacheBytes\": 1024,\n      \"cacheSha256\": \"" + reusedSha + "\""), json);
         assertTrue(json.contains("\"cacheBytes\": 2048,\n      \"cacheSha256\": \"" + trainedSha + "\""), json);
         assertTrue(json.contains("\"cacheBytes\": null,\n      \"cacheSha256\": null"), json);
@@ -96,13 +94,8 @@ class BenchmarkClaimsTest {
     }
 
     private static Variant cached(String name, Path artifact, CacheInfo cache) {
-        return new Variant(name, "test", List.of("java", "-jar", artifact.toString()), artifact.getParent(),
-                artifact, null, EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER, true, null,
-                List.of(artifact), cache);
-    }
-
-    private static VariantResult result(Variant variant) {
-        return new VariantResult(variant, -1, List.of(), null, null, null, List.of());
+        return new Variant(SampleBuild.spec(name), List.of("java", "-jar", artifact.toString()), artifact.getParent(),
+                artifact, null, EntryMode.STANDARD_LOADER, null, List.of(artifact), cache, null);
     }
 
     @Test

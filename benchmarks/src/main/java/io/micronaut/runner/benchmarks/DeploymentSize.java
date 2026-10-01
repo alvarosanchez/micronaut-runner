@@ -43,9 +43,8 @@ import java.util.zip.GZIPOutputStream;
  * prepared and never while launches are timed.</p>
  *
  * @param components component byte totals in declaration order
- * @param totalBytes the sum of all component byte totals
  */
-record DeploymentSize(List<Component> components, long totalBytes) {
+record DeploymentSize(List<Component> components) {
 
     static final String BOUNDARY = "required regular files";
     static final String UNIT = "bytes";
@@ -57,18 +56,13 @@ record DeploymentSize(List<Component> components, long totalBytes) {
 
     DeploymentSize {
         components = List.copyOf(components);
-        long componentTotal = components.stream().mapToLong(Component::bytes).sum();
-        if (componentTotal != totalBytes) {
-            throw new IllegalArgumentException("component bytes " + componentTotal
-                    + " do not reconcile with total bytes " + totalBytes);
-        }
     }
 
     /**
      * Measures deployment inputs, de-duplicating repeated paths across all components.
      *
      * @param inputs ordered deployment components
-     * @return reconciled component and total byte counts
+     * @return the component byte counts
      * @throws IOException if an input is missing or cannot be read
      */
     static DeploymentSize measure(Input... inputs) throws IOException {
@@ -101,12 +95,7 @@ record DeploymentSize(List<Component> components, long totalBytes) {
             }
             byName.put(input.name(), component);
         }
-        List<Component> components = new ArrayList<>(byName.values());
-        long total = 0;
-        for (Component component : components) {
-            total = Math.addExact(total, component.bytes());
-        }
-        return new DeploymentSize(components, total);
+        return new DeploymentSize(new ArrayList<>(byName.values()));
     }
 
     static Input input(String name, Path path) {
@@ -123,9 +112,9 @@ record DeploymentSize(List<Component> components, long totalBytes) {
      * <p>Unlike {@link #measure(Input...)}, a symbolic link is an error rather than something to skip: the
      * caller names this file because the launch cannot start without it.</p>
      *
-     * @param component the new component's name, distinct from every existing component
+     * @param component the new component's name
      * @param file      a regular file that is not a symbolic link
-     * @return the existing components followed by the new one, with the total increased to match
+     * @return the existing components followed by the new one
      * @throws IOException if the file is missing, is a symbolic link, is not a regular file or cannot be read
      */
     DeploymentSize withFile(String component, Path file) throws IOException {
@@ -139,16 +128,18 @@ record DeploymentSize(List<Component> components, long totalBytes) {
         if (!Files.isRegularFile(normalized, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("required deployment file is not a regular file: " + normalized);
         }
-        for (Component existing : components) {
-            if (existing.name().equals(component)) {
-                throw new IllegalArgumentException("the deployment already has a component named " + component);
-            }
-        }
-        Component added = new Component(component, Files.size(normalized), gzipBytes(normalized));
-        List<Component> extended = new ArrayList<>(components.size() + 1);
-        extended.addAll(components);
-        extended.add(added);
-        return new DeploymentSize(extended, Math.addExact(totalBytes, added.bytes()));
+        List<Component> extended = new ArrayList<>(components);
+        extended.add(new Component(component, Files.size(normalized), gzipBytes(normalized)));
+        return new DeploymentSize(extended);
+    }
+
+    /**
+     * The complete deployment's logical size.
+     *
+     * @return the sum of every component's bytes
+     */
+    long totalBytes() {
+        return components.stream().mapToLong(Component::bytes).sum();
     }
 
     /**
@@ -157,19 +148,15 @@ record DeploymentSize(List<Component> components, long totalBytes) {
      * @return the sum of every component's gzip bytes
      */
     long totalGzipBytes() {
-        long total = 0;
-        for (Component component : components) {
-            total = Math.addExact(total, component.gzipBytes());
-        }
-        return total;
+        return components.stream().mapToLong(Component::gzipBytes).sum();
     }
 
     private static Component addIfDistinct(Path file, Set<Path> counted, Component component) throws IOException {
         if (!counted.add(file)) {
             return component;
         }
-        return new Component(component.name(), Math.addExact(component.bytes(), Files.size(file)),
-                Math.addExact(component.gzipBytes(), gzipBytes(file)));
+        return new Component(component.name(), component.bytes() + Files.size(file),
+                component.gzipBytes() + gzipBytes(file));
     }
 
     /**
@@ -201,27 +188,12 @@ record DeploymentSize(List<Component> components, long totalBytes) {
      * @param gzipBytes the sum of its files' gzip -6 lengths
      */
     record Component(String name, long bytes, long gzipBytes) {
-
-        Component {
-            if (name == null || name.isBlank()) {
-                throw new IllegalArgumentException("component name must not be blank");
-            }
-            if (bytes < 0) {
-                throw new IllegalArgumentException("component bytes must not be negative");
-            }
-            if (gzipBytes < 0) {
-                throw new IllegalArgumentException("component gzip bytes must not be negative");
-            }
-        }
     }
 
     /** One named group of files or directory trees required by a deployment. */
     record Input(String name, List<Path> paths) {
 
         Input {
-            if (name == null || name.isBlank()) {
-                throw new IllegalArgumentException("input name must not be blank");
-            }
             paths = List.copyOf(paths);
         }
     }

@@ -82,10 +82,31 @@ class BenchmarkEntryModeTest {
             "runner-stored-prefetch",
             "runner-stored-prefetch-aot");
 
+    /**
+     * The table pins the core rows and, row by row, the entry mode a row asks for, whether it launches with a JDK
+     * AOT cache and the row it is built from.
+     */
     @Test
     void matrixNamesPluginDefaults() {
         assertEquals(CORE_ROWS, SampleBuild.variantNames());
         assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.endsWith("-reflection")));
+        for (String name : SampleBuild.allVariantNames()) {
+            SampleBuild.VariantSpec spec = SampleBuild.spec(name);
+            EntryMode expected = name.endsWith("-reflection") ? EntryMode.REFLECTION
+                    : name.startsWith("runner-") && !name.startsWith("runner-extracted") ? EntryMode.STUB
+                    : EntryMode.STANDARD_LOADER;
+            assertEquals(expected, spec.entryMode(), name);
+            assertEquals(name.endsWith("-aot"), spec.aotCache(), name);
+            assertEquals(!CORE_ROWS.contains(name), spec.optIn(), name);
+            if (spec.aotCache() && !name.equals("runner-extracted-lambdas-aot")) {
+                assertEquals(name.substring(0, name.length() - "-aot".length()), spec.source(), name);
+            }
+        }
+        assertEquals("shadow", SampleBuild.spec("shadow-aot").source());
+        assertEquals("runner-stored", SampleBuild.spec("runner-extracted").source());
+        assertEquals("runner-stored", SampleBuild.spec("runner-stored-preload").source());
+        assertEquals("runner-stored-lambdas", SampleBuild.spec("runner-extracted-lambdas-aot").source());
+        assertNull(SampleBuild.spec("runner-stored").source());
     }
 
     @Test
@@ -108,47 +129,20 @@ class BenchmarkEntryModeTest {
         assertEquals(expected, withOptIn);
         assertEquals(CORE_ROWS.size() + OPT_IN_ROWS.size() + 2, withOptIn.size());
         assertTrue(core.stream().noneMatch(name -> name.endsWith("-maot-aot")), core.toString());
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-maot"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-maot-aot"));
-        assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-maot"));
-        assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-maot-aot"));
         assertTrue(core.stream().noneMatch(name -> name.contains("joran")), core.toString());
-        assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("joran")));
-        assertEquals(EntryMode.REFLECTION, EntryMode.requestedBy("runner-stored-reflection"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-preload"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-preload-aot"));
         assertEquals(List.of("runner-stored-preload", "runner-stored-preload-aot"),
                 withOptIn.subList(withOptIn.indexOf("runner-stored-reflection") + 1,
                         withOptIn.indexOf("runner-stored-reflection") + 3),
                 "both preload rows come right after the reflection row");
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-positional-aot"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-joran-aot"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-keepdebug"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-keepdebug-aot"));
-        assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("keepdebug")));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-dynamic-services"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-dynamic-services-aot"));
         assertEquals(List.of("runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot"),
                 withOptIn.stream().filter(name -> name.contains("lambdas")).toList(),
                 "the lambda controls, in this order, after the runner-stored group");
         assertTrue(withOptIn.indexOf("runner-stored-lambdas") > withOptIn.indexOf("runner-stored-dynamic-services-aot")
                 && withOptIn.indexOf("runner-extracted-lambdas-aot") < withOptIn.indexOf("runner-preserve"));
-        assertTrue(core.stream().noneMatch(name -> name.contains("lambdas")), core.toString());
-        assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("lambdas")));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-lambdas"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-lambdas-aot"));
-        assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("runner-extracted-lambdas-aot"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-prefetch"));
-        assertEquals(EntryMode.STUB, EntryMode.requestedBy("runner-stored-prefetch-aot"));
-        assertTrue(core.stream().noneMatch(name -> name.contains("prefetch")), core.toString());
-        assertTrue(SampleBuild.variantNames().stream().noneMatch(name -> name.contains("prefetch")));
         assertEquals(List.of("runner-stored-prefetch", "runner-stored-prefetch-aot"),
                 withOptIn.subList(withOptIn.indexOf("runner-extracted-lambdas-aot") + 1,
                         withOptIn.indexOf("runner-preserve")),
                 "the prefetch candidates close the runner-stored group");
-        assertEquals(EntryMode.STANDARD_LOADER, EntryMode.requestedBy("shadow-stored"));
         assertTrue(core.stream().noneMatch(OPT_IN_ROWS::contains), "opt-in rows never gate: " + core);
     }
 
@@ -190,12 +184,11 @@ class BenchmarkEntryModeTest {
         Path artifacts = Files.createDirectories(output.resolve("artifacts"));
         Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
 
-        Variant maot = SampleBuild.optimizedRunnerJar(artifacts, "runner-maot", "fixture.MaotMain",
+        Variant maot = SampleBuild.optimizedRunnerJar(artifacts, SampleBuild.spec("runner-maot"), "fixture.MaotMain",
                 optimizedJitJar, List.of(core));
 
-        // Its fixed text, plus what every Runner row says about its static service table.
-        assertEquals("Runner jar of the Micronaut AOT-optimized application (optimizedJitJar);"
-                + " plugin-default entry stub; static services: 1 slots (core 5.1.15)", maot.description());
+        // What every Runner row says about its static service table.
+        assertEquals("static services: 1 slots (core 5.1.15)", maot.buildNote());
         assertEquals(artifacts.resolve("runner-maot.jar"), maot.artifact());
         assertEquals(EntryMode.STUB, maot.requestedEntryMode());
         assertEquals(EntryMode.STUB, maot.effectiveEntryMode());
@@ -206,7 +199,7 @@ class BenchmarkEntryModeTest {
         assertTrue(Files.isRegularFile(artifacts.resolve("runner-maot-application/sample-0.1-jit.jar")));
 
         IOException noTask = assertThrows(IOException.class, () -> SampleBuild.optimizedRunnerJar(artifacts,
-                "runner-maot", "fixture.MaotMain", null, List.of()));
+                SampleBuild.spec("runner-maot"), "fixture.MaotMain", null, List.of()));
         assertEquals("The sample's build declares no optimizedJitJar task (it does not apply io.micronaut.aot)",
                 noTask.getMessage());
     }
@@ -263,20 +256,20 @@ class BenchmarkEntryModeTest {
                 [0.050s][info][class,load] fixture.PreloadMain source: shared objects file
                 """);
 
-        Variant preload = SampleBuild.runnerJar(output, "runner-stored-preload", "fixture.PreloadMain",
+        Variant preload = runnerJar(output, "runner-stored-preload", "fixture.PreloadMain",
                 List.of(classes), List.of(), Compression.STORED, EntryMode.STUB,
                 SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(list));
-        Variant plain = SampleBuild.runnerJar(output, "runner-stored", "fixture.PreloadMain",
+        Variant plain = runnerJar(output, "runner-stored", "fixture.PreloadMain",
                 List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
 
-        assertTrue(preload.description().contains("1 recorded startup classes preloaded"), preload.description());
+        assertTrue(preload.buildNote().endsWith("; 1 recorded startup classes preloaded"), preload.buildNote());
         try (RunnerJarReader reader = RunnerJarReader.open(preload.artifact())) {
             assertEquals(1, reader.index().preloadCount());
         }
         try (RunnerJarReader reader = RunnerJarReader.open(plain.artifact())) {
             assertEquals(0, reader.index().preloadCount(), "a row that sets no list preloads nothing");
         }
-        IOException failure = assertThrows(IOException.class, () -> SampleBuild.runnerJar(output,
+        IOException failure = assertThrows(IOException.class, () -> runnerJar(output,
                 "runner-stored-preload", "fixture.PreloadMain", List.of(classes), List.of(), Compression.STORED,
                 EntryMode.STUB, SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(cached)));
         assertTrue(failure.getMessage().contains("embeds no class"), failure.getMessage());
@@ -302,19 +295,19 @@ class BenchmarkEntryModeTest {
                 """);
         Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
 
-        Variant table = SampleBuild.runnerJar(output, "runner-stored", "fixture.ServicesMain",
+        Variant table = runnerJar(output, "runner-stored", "fixture.ServicesMain",
                 List.of(classes), List.of(core), Compression.STORED, EntryMode.STUB);
-        Variant dynamic = SampleBuild.runnerJar(output, "runner-stored-dynamic-services", "fixture.ServicesMain",
+        Variant dynamic = runnerJar(output, "runner-stored-dynamic-services", "fixture.ServicesMain",
                 List.of(classes), List.of(core), Compression.STORED, EntryMode.STUB,
                 SampleBuild.RunnerJarOptions.DEFAULTS.withStaticServices(false));
-        Variant noCore = SampleBuild.runnerJar(output, "runner-preserve", "fixture.ServicesMain",
+        Variant noCore = runnerJar(output, "runner-preserve", "fixture.ServicesMain",
                 List.of(classes), List.of(), Compression.PRESERVE, EntryMode.STUB);
 
         // The one slot is the table's own registration, which its closed world includes.
+        assertEquals("static services: 1 slots (core 5.1.15)", table.buildNote());
         assertTrue(table.description().endsWith("; static services: 1 slots (core 5.1.15)"), table.description());
-        assertTrue(dynamic.description().endsWith("; dynamic service scan"), dynamic.description());
-        assertTrue(noCore.description().endsWith("; dynamic service scan"),
-                "a table that stood down shows in the report: " + noCore.description());
+        assertEquals("dynamic service scan", dynamic.buildNote());
+        assertEquals("dynamic service scan", noCore.buildNote(), "a table that stood down shows in the report");
         String tableEntry = IndexFormat.CLASSES_PREFIX + "io/micronaut/runner/generated/services/RunnerServiceTable.class";
         try (JarFile jar = new JarFile(table.artifact().toFile())) {
             assertTrue(jar.getEntry(tableEntry) != null);
@@ -323,15 +316,9 @@ class BenchmarkEntryModeTest {
             assertNull(jar.getEntry(tableEntry));
         }
 
-        assertEquals("; static services: 1 slots (core 5.1.15)", SampleBuild.staticServicesNote(table.description()));
-        assertEquals("; static services: 489 slots (core 5.1.15)", SampleBuild.staticServicesNote(
-                "Runner jar; plugin-default entry stub; static services: 489 slots (core 5.1.15); verified JDK AOT cache"));
-        assertEquals("; dynamic service scan", SampleBuild.staticServicesNote(dynamic.description()));
-        assertEquals("", SampleBuild.staticServicesNote("Everything flattened into one jar by the Shadow plugin"));
-
-        Variant extracted = SampleBuild.extractedRunner(output, table, "runner-extracted");
-        assertTrue(extracted.description().endsWith("; static services: 1 slots (core 5.1.15)"),
-                "the extracted layout carries the table of the jar it was extracted from: " + extracted.description());
+        Variant extracted = SampleBuild.extractedRunner(output, table, SampleBuild.spec("runner-extracted"));
+        assertEquals(table.buildNote(), extracted.buildNote(),
+                "the extracted layout carries the table of the jar it was extracted from");
     }
 
     /**
@@ -408,13 +395,12 @@ class BenchmarkEntryModeTest {
                 }
                 """);
 
-        Variant positional = SampleBuild.runnerJar(output, "runner-stored-positional", "fixture.PositionalMain",
+        Variant positional = runnerJar(output, "runner-stored-positional", "fixture.PositionalMain",
                 List.of(classes), List.of(), Compression.STORED, EntryMode.STUB,
                 SampleBuild.RunnerJarOptions.DEFAULTS.withArchiveReads(ArchiveReads.POSITIONAL));
-        Variant mapped = SampleBuild.runnerJar(output, "runner-stored", "fixture.PositionalMain",
+        Variant mapped = runnerJar(output, "runner-stored", "fixture.PositionalMain",
                 List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
 
-        assertTrue(positional.description().contains("archiveReads POSITIONAL"), positional.description());
         try (RunnerJarReader reader = RunnerJarReader.open(positional.artifact())) {
             assertTrue(reader.index().positionalReads());
             assertTrue(reader.index().largestStoredClass() > 0);
@@ -467,16 +453,13 @@ class BenchmarkEntryModeTest {
                 """, StandardCharsets.UTF_8);
         List<Path> logback = logbackFixture();
 
-        Variant precompiled = SampleBuild.runnerJar(output, "runner-stored", "fixture.JoranMain",
+        Variant precompiled = runnerJar(output, "runner-stored", "fixture.JoranMain",
                 List.of(classes), logback, Compression.STORED, EntryMode.STUB);
-        Variant joran = SampleBuild.runnerJar(output, "runner-stored-joran", "fixture.JoranMain",
+        Variant joran = runnerJar(output, "runner-stored-joran", "fixture.JoranMain",
                 List.of(classes), logback, Compression.STORED, EntryMode.STUB, control);
 
         assertTrue(SampleBuild.logbackPrecompiled(precompiled.artifact()),
                 "the builder default precompiles this fixture, so the control has something to differ from");
-        assertFalse(precompiled.description().contains("Joran"), precompiled.description());
-        assertTrue(joran.description().contains("logback.xml left to Joran"), joran.description());
-        assertFalse(joran.description().contains("archiveReads"), joran.description());
         assertFalse(SampleBuild.logbackPrecompiled(joran.artifact()),
                 "the control's option reached the packaging library");
         assertEquals(LaunchInputs.PINNED_MODIFICATION_TIME, Files.getLastModifiedTime(joran.artifact()),
@@ -488,19 +471,11 @@ class BenchmarkEntryModeTest {
 
     @Test
     void reportsRequestedAndEffectiveEntryModes(@TempDir Path output) throws Exception {
-        List<Variant> variants = List.of(
-                Variant.unavailable("runner-stored", "plugin-default fixture", "not built"),
-                Variant.unavailable("runner-stored-aot", "AOT fixture", "not trained"),
-                Variant.unavailable("runner-stored-reflection", "reflection fixture", "not built"),
-                Variant.unavailable("runner-extracted", "standard loader fixture", "not built"));
-        RunContext context = new RunContext(output, "file:/repo", "1.0", output,
-                1, 0, 1, "/hello", false, "2026-09-22T00:00:00Z",
-                variants.stream().map(Variant::name).toList(), CompletenessPolicy.REQUIRED);
-        List<VariantResult> results = variants.stream()
-                .map(variant -> new VariantResult(variant, -1, List.of(), null, null, null, List.of()))
-                .toList();
-
-        Reports.write(output, context, results, List.of());
+        List<String> names = List.of("runner-stored", "runner-stored-aot", "runner-stored-reflection",
+                "runner-extracted");
+        Reports.write(output, BenchmarkFixtures.context(output, 1, names, CompletenessPolicy.REQUIRED,
+                BenchmarkProvenance.unavailable()), SampleBuild.unavailableVariants("not built", names).stream()
+                .map(BenchmarkFixtures::result).toList(), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"requestedEntryMode\": \"stub\""));
@@ -511,10 +486,12 @@ class BenchmarkEntryModeTest {
 
         String markdown = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
         assertTrue(markdown.contains("| Variant | Requested entry | Effective entry | Packaging |"));
-        assertTrue(markdown.contains("| `runner-stored` | stub | unavailable | plugin-default fixture |"));
-        assertTrue(markdown.contains("| `runner-stored-aot` | stub | unavailable | AOT fixture |"));
-        assertTrue(markdown.contains("| `runner-stored-reflection` | reflection | unavailable | reflection fixture |"));
-        assertTrue(markdown.contains("| `runner-extracted` | standard-loader | unavailable | standard loader fixture |"));
+        for (String row : List.of("`runner-stored` | stub", "`runner-stored-aot` | stub",
+                "`runner-stored-reflection` | reflection", "`runner-extracted` | standard-loader")) {
+            String name = row.substring(1, row.indexOf('`', 1));
+            assertTrue(markdown.contains("| " + row + " | unavailable | " + SampleBuild.spec(name).description()
+                    + " |"), row);
+        }
     }
 
     @Test
@@ -528,9 +505,9 @@ class BenchmarkEntryModeTest {
 
         for (Compression compression : Compression.values()) {
             String suffix = compression.name().toLowerCase(java.util.Locale.ROOT);
-            Variant stub = SampleBuild.runnerJar(output, "runner-" + suffix,
+            Variant stub = runnerJar(output, "runner-" + suffix,
                     "fixture.EligibleMain", List.of(classes), List.of(), compression, EntryMode.STUB);
-            Variant reflection = SampleBuild.runnerJar(output, "runner-" + suffix + "-reflection",
+            Variant reflection = runnerJar(output, "runner-" + suffix + "-reflection",
                     "fixture.EligibleMain", List.of(classes), List.of(), compression, EntryMode.REFLECTION);
 
             assertEquals(EntryMode.STUB, stub.requestedEntryMode());
@@ -560,16 +537,14 @@ class BenchmarkEntryModeTest {
             jar.closeEntry();
         }
 
-        Variant stripped = SampleBuild.runnerJar(output, "runner-stored", "fixture.EligibleMain",
+        Variant stripped = runnerJar(output, "runner-stored", "fixture.EligibleMain",
                 List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB);
-        Variant kept = SampleBuild.runnerJar(output, "runner-stored-keepdebug", "fixture.EligibleMain",
+        Variant kept = runnerJar(output, "runner-stored-keepdebug", "fixture.EligibleMain",
                 List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB,
                 SampleBuild.RunnerJarOptions.DEFAULTS.withStripLocalVariables(false));
 
         assertNull(SampleBuild.RunnerJarOptions.DEFAULTS.stripLocalVariables(),
                 "a row that sets nothing follows the builder default");
-        assertTrue(kept.description().endsWith("; local-variable tables kept"), kept.description());
-        assertFalse(stripped.description().contains("local-variable"), stripped.description());
         assertTrue(entryNames(stripped.artifact()).contains("MICRONAUT-INF/transforms.txt"),
                 "the default strips the -g compiled dependency");
         assertFalse(entryNames(kept.artifact()).contains("MICRONAUT-INF/transforms.txt"));
@@ -596,16 +571,14 @@ class BenchmarkEntryModeTest {
             jar.closeEntry();
         }
 
-        Variant desugared = SampleBuild.runnerJar(output, "runner-stored", "fixture.LambdaMain",
+        Variant desugared = runnerJar(output, "runner-stored", "fixture.LambdaMain",
                 List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB);
-        Variant kept = SampleBuild.runnerJar(output, "runner-stored-lambdas", "fixture.LambdaMain",
+        Variant kept = runnerJar(output, "runner-stored-lambdas", "fixture.LambdaMain",
                 List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB,
                 SampleBuild.RunnerJarOptions.DEFAULTS.withDesugarLambdas(false));
 
         assertNull(SampleBuild.RunnerJarOptions.DEFAULTS.desugarLambdas(),
                 "a row that sets nothing follows the builder default");
-        assertTrue(kept.description().endsWith("; dependency lambdas kept"), kept.description());
-        assertFalse(desugared.description().contains("lambdas"), desugared.description());
         assertTrue(entryNames(desugared.artifact()).contains("MICRONAUT-INF/classes/fixture/LambdaMain$$Lambda$R0.class"),
                 "the default desugars the application's lambda");
         assertTrue(entryNames(kept.artifact()).stream().noneMatch(name -> name.contains("$$Lambda$R")));
@@ -687,17 +660,15 @@ class BenchmarkEntryModeTest {
         assertEquals(Boolean.FALSE, SampleBuild.RunnerJarOptions.DEFAULTS.withStripLocalVariables(false)
                 .withDefinitionPrefetch(true).stripLocalVariables());
 
-        Variant left = SampleBuild.runnerJar(output, "runner-stored", "fixture.PrefetchMain",
+        Variant left = runnerJar(output, "runner-stored", "fixture.PrefetchMain",
                 List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB);
-        Variant packaged = SampleBuild.runnerJar(output, "runner-stored-prefetch", "fixture.PrefetchMain",
+        Variant packaged = runnerJar(output, "runner-stored-prefetch", "fixture.PrefetchMain",
                 List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB, candidate);
 
         assertFalse(SampleBuild.definitionPrefetch(left.artifact()),
                 "the builder default leaves the prefetch out, so the candidate differs from it");
-        assertFalse(left.description().contains("prefetch"), left.description());
         assertTrue(SampleBuild.definitionPrefetch(packaged.artifact()),
                 "the candidate's option reached the packaging library");
-        assertTrue(packaged.description().endsWith("; bean definition prefetch requested"), packaged.description());
         assertEquals(EntryMode.STUB, packaged.effectiveEntryMode(), "the candidate keeps the entry stub");
         assertFalse(entryNames(left.artifact()).stream().anyMatch(name -> name.contains("generated/prefetch/")));
         assertTrue(entryNames(packaged.artifact()).contains(
@@ -721,7 +692,7 @@ class BenchmarkEntryModeTest {
                 }
                 """);
 
-        IOException failure = assertThrows(IOException.class, () -> SampleBuild.runnerJar(output,
+        IOException failure = assertThrows(IOException.class, () -> runnerJar(output,
                 "runner-stored", "fixture.IneligibleMain", List.of(classes), List.of(),
                 Compression.STORED, EntryMode.STUB));
 
@@ -739,10 +710,10 @@ class BenchmarkEntryModeTest {
                 """);
         Path dependencyOne = emptyJar(output.resolve("first dependency.jar"));
         Path dependencyTwo = emptyJar(output.resolve("second.jar"));
-        Variant runner = SampleBuild.runnerJar(output, "extract-source", "fixture.ExtractedMain",
+        Variant runner = runnerJar(output, "extract-source", "fixture.ExtractedMain",
                 List.of(classes), List.of(dependencyOne, dependencyTwo), Compression.STORED, EntryMode.STUB);
 
-        Variant extracted = SampleBuild.extractedRunner(output, runner, "runner-extracted");
+        Variant extracted = SampleBuild.extractedRunner(output, runner, SampleBuild.spec("runner-extracted"));
 
         assertEquals(EntryMode.STANDARD_LOADER, extracted.effectiveEntryMode());
         assertEquals("-jar", extracted.command().get(1));
@@ -752,7 +723,17 @@ class BenchmarkEntryModeTest {
         assertEquals("second.jar", extracted.launchInputs().get(2).getFileName().toString());
     }
 
+    /** Packages a Runner jar for a fixture row of that name and entry mode, with the options or the defaults. */
+    private static Variant runnerJar(Path output, String name, String mainClass, List<Path> classes,
+                                     List<Path> dependencies, Compression compression, EntryMode entryMode,
+                                     SampleBuild.RunnerJarOptions... options) throws IOException {
+        return SampleBuild.runnerJar(output, new SampleBuild.VariantSpec(name, "fixture", entryMode, false, false,
+                null), mainClass, classes, dependencies, compression,
+                options.length == 0 ? SampleBuild.RunnerJarOptions.DEFAULTS : options[0]);
+    }
+
     private static Path compile(Path fixture, String className, String source) throws IOException {
+
         Path sources = fixture.resolve("src");
         Path classes = fixture.resolve("classes");
         Path sourceFile = sources.resolve(className.replace('.', '/') + ".java");

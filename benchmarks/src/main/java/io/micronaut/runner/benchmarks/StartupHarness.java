@@ -32,13 +32,18 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.IntSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Starts one packaged application and times how long it takes to answer.
+ * Starts one packaged application and times how long it takes to answer. It is the only code that spawns and polls
+ * an application: {@link #exercise} runs the AOT-cache training and verification launches through the same
+ * spawn and readiness code as the timed runs.
  *
  * <h2>The rules this class exists to enforce</h2>
  * <ul>
@@ -114,6 +119,9 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
 
     /** How long a destroyed process is given to die before it is killed. */
     private static final Duration SHUTDOWN_GRACE = Duration.ofSeconds(10);
+
+    /** The exit status of a JVM ended by SIGTERM: 128 + 15. */
+    private static final int SIGTERM_EXIT_STATUS = 143;
 
     /**
      * How long an application that <em>is</em> answering, but with the wrong status, is given before the
@@ -284,6 +292,24 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
     }
 
     /**
+     * The path polled for readiness, which is also part of an AOT cache's identity.
+     *
+     * @return the path, for example {@code /hello}
+     */
+    String readinessPath() {
+        return readinessPath;
+    }
+
+    /**
+     * How long an application may take to answer; it also bounds a training launch's exit.
+     *
+     * @return the startup timeout
+     */
+    Duration startupTimeout() {
+        return startupTimeout;
+    }
+
+    /**
      * Runs one variant once and times it.
      *
      * @param variant   the variant to start
@@ -306,7 +332,7 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
      *
      * @param variant the variant to start
      * @param logFile where the unified log is written
-     * @return the run's readiness with logging and its relocatable command
+     * @return the run's readiness with logging and its effective command, which the report relocates
      * @throws IOException          if the run fails
      * @throws InterruptedException if the wait is interrupted
      */
@@ -315,13 +341,116 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
         List<String> diagnosticArguments = List.of("-Xlog:class+load=info:file=" + logFile.toAbsolutePath());
         StartupSample sample = run(variant, -1, true, diagnosticArguments);
         return new DiagnosticRun(variant.name(), sample.readinessMillis(),
-                BenchmarkProvenance.relocatableCommand(variant,
-                        List.of("-Xlog:class+load=info:file=${diagnostic-log}")));
+                processCommand(List.of(), variant.command(), diagnosticArguments));
+    }
+
+    /**
+     * Training and verification launch. Never a timing run.
+     *
+     * <p>The child is spawned and polled for readiness by the same code as {@link #run}, so it gets the same
+     * environment, the same command prefix and the same failures. Each workload path must then answer HTTP 200.
+     * There is no wait for the startup line, no readiness snapshot and no {@link BeforeLaunch} hook, so nothing is
+     * evicted. The child is sent SIGTERM once, an orderly shutdown in which the JVM writes an AOT cache, and must
+     * exit with status 0 or 143 within the startup timeout, because assembling a cache takes seconds. It is
+     * killed only when a failure left it alive.</p>
+     *
+     * @param variant       the variant to start
+     * @param extraJvmArgs  JVM arguments for this launch only, placed directly after the variant's {@code java}
+     * @param workloadPaths the paths requested once the child is ready
+     * @throws RunFailure           if the child fails to answer, a workload request fails, or the child does not
+     *                              exit with 0 or 143 in time
+     * @throws IOException          if the child cannot be started
+     * @throws InterruptedException if a wait is interrupted
+     */
+    void exercise(Variant variant, List<String> extraJvmArgs, List<String> workloadPaths)
+            throws IOException, InterruptedException {
+        int port = settings.portSupplier().getAsInt();
+        ProcessBuilder builder = processBuilder(variant, extraJvmArgs, port);
+        Launch launch = new Launch(URI.create("http://127.0.0.1:" + port + readinessPath), settings.pollTimeout());
+        try {
+            awaitReadiness(variant, builder, launch);
+            for (String path : workloadPaths) {
+                URI uri = URI.create("http://127.0.0.1:" + port + path);
+                CompletableFuture<HttpResponse<String>> call = client.sendAsync(
+                        HttpRequest.newBuilder(uri).timeout(startupTimeout).GET().build(),
+                        HttpResponse.BodyHandlers.ofString());
+                int status;
+                try {
+                    status = call.get(startupTimeout.toMillis(), TimeUnit.MILLISECONDS).statusCode();
+                } catch (ExecutionException | TimeoutException e) {
+                    call.cancel(true);
+                    throw new RunFailure(variant.name() + " did not answer the workload request " + uri + ": " + e
+                            + tail(launch.capture), null);
+                }
+                if (status != 200) {
+                    throw new RunFailure(variant.name() + " answered the workload request " + uri + " with HTTP "
+                            + status + tail(launch.capture), null);
+                }
+            }
+            // On Linux and macOS this is SIGTERM. ProcessHandle.destroy(), not Process.destroy(): the latter also
+            // closes the output pipe, and a training JVM whose output pipe is closed before SIGTERM still exits 143
+            // but writes no cache (JDK 25.0.4.1).
+            launch.process.toHandle().destroy();
+            if (!launch.process.waitFor(startupTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
+                throw new RunFailure(variant.name() + " did not exit within " + startupTimeout + " of SIGTERM"
+                        + tail(launch.capture), null);
+            }
+            int exitCode = launch.process.exitValue();
+            if (exitCode != 0 && exitCode != SIGTERM_EXIT_STATUS) {
+                throw new RunFailure(variant.name() + " exited with status " + exitCode + " after SIGTERM"
+                        + tail(launch.capture), exitCode);
+            }
+            launch.drain.join(settings.shutdownGrace().toMillis());
+        } finally {
+            if (launch.process != null && launch.process.isAlive()) {
+                launch.process.destroyForcibly().waitFor(settings.shutdownGrace().toMillis(), TimeUnit.MILLISECONDS);
+            }
+        }
     }
 
     private StartupSample run(Variant variant, int iteration, boolean warmup, List<String> extraJvmArgs)
             throws IOException, InterruptedException {
         int port = settings.portSupplier().getAsInt();
+        ProcessBuilder builder = processBuilder(variant, extraJvmArgs, port);
+        Launch launch = new Launch(URI.create("http://127.0.0.1:" + port + readinessPath), settings.pollTimeout());
+        try {
+            try {
+                settings.beforeLaunch().run(variant);
+            } catch (IOException e) {
+                throw new LaunchPreparationFailure("could not prepare the launch of " + variant.name() + ": "
+                        + e.getMessage(), e);
+            }
+            awaitReadiness(variant, builder, launch);
+
+            // start, ready and lastFailureEnd are final and the child is alive: the one place where a probe can
+            // neither move readinessMillis nor miss the process.
+            ReadinessSnapshot atReadiness = probe(launch.process, Path.of(variant.command().get(0)), launch.ready);
+            awaitStartupLine(launch.capture, settings.logLineGrace());
+            // Read before destroy(), as when destroy() was the sample's last argument: a startup line the drain
+            // thread hands over after the grace has ended stays unrecorded instead of getting a late timestamp.
+            double logLineMillis = launch.capture.logLineMillis();
+            double frameworkMillis = launch.capture.reportedMillis();
+            int exitCode = requireGone(variant.name(), destroy(launch.process, launch.drain, settings.shutdownGrace()),
+                    settings.beforeLaunch());
+            return new StartupSample(iteration, warmup, port,
+                    (launch.ready - launch.start) / 1_000_000.0,
+                    logLineMillis,
+                    frameworkMillis,
+                    (launch.ready - launch.lastFailureEnd) / 1_000_000.0,
+                    exitCode,
+                    atReadiness);
+        } finally {
+            if (launch.process != null && launch.process.isAlive()) {
+                destroy(launch.process, launch.drain, settings.shutdownGrace());
+            }
+        }
+    }
+
+    /**
+     * The child process of a run: the command with the prefix and the extra JVM arguments, the settings'
+     * environment without the ambient JVM options, and the port.
+     */
+    private ProcessBuilder processBuilder(Variant variant, List<String> extraJvmArgs, int port) {
         ProcessBuilder builder = new ProcessBuilder(processCommand(settings.commandPrefix(), variant.command(),
                 extraJvmArgs))
                 .directory(variant.workingDirectory().toFile())
@@ -330,90 +459,85 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
         builder.environment().putAll(settings.environment());
         removeInheritedJvmOptions(builder);
         builder.environment().put("SERVER_PORT", Integer.toString(port));
+        return builder;
+    }
 
-        URI readiness = URI.create("http://127.0.0.1:" + port + readinessPath);
-        HttpRequest request = HttpRequest.newBuilder(readiness).timeout(settings.pollTimeout()).GET().build();
+    /**
+     * Spawns the child and polls it until it answers HTTP 200: the timed block of {@link #run}, which
+     * {@link #exercise} shares. The clock starts immediately before {@link ProcessBuilder#start()}, and nothing
+     * but polling happens between the spawn and the first 200. Each poll is bounded by the poll timeout on its
+     * own, because the client's request timeout has been seen not to fire.
+     *
+     * @param variant the variant, for failure messages
+     * @param builder the child process
+     * @param launch  the readiness request, which receives the process, its output and the instants on the run's
+     *                clock
+     * @throws RunFailure           if the child exits first, serves another status, or never answers
+     * @throws IOException          if the process cannot be started
+     * @throws InterruptedException if the wait is interrupted
+     */
+    private void awaitReadiness(Variant variant, ProcessBuilder builder, Launch launch)
+            throws IOException, InterruptedException {
+        URI readiness = launch.readiness;
+        HttpRequest request = launch.request;
+        long pollBound = launch.pollBound;
+        long start = System.nanoTime();
+        Process process = builder.start();
+        launch.process = process;
+        Capture capture = new Capture(start);
+        launch.capture = capture;
+        launch.drain = drain(process, capture);
 
-        Process process = null;
-        Thread drain = null;
-        Capture capture = null;
-        try {
+        long deadline = start + startupTimeout.toNanos();
+        long lastFailureEnd = start;
+        long ready = -1;
+        long firstResponse = -1;
+        int lastStatus = -1;
+        String lastBody = "";
+        while (System.nanoTime() < deadline) {
+            if (!process.isAlive()) {
+                int exitCode = process.exitValue();
+                throw new RunFailure(variant.name() + " exited with status " + exitCode
+                        + " before answering " + readiness + tail(capture), exitCode);
+            }
+            CompletableFuture<HttpResponse<String>> poll =
+                    client.sendAsync(request, HttpResponse.BodyHandlers.ofString());
             try {
-                settings.beforeLaunch().run(variant);
-            } catch (IOException e) {
-                throw new LaunchPreparationFailure("could not prepare the launch of " + variant.name() + ": "
-                        + e.getMessage(), e);
-            }
-            long start = System.nanoTime();
-            process = builder.start();
-            capture = new Capture(start);
-            drain = drain(process, capture);
-
-            long deadline = start + startupTimeout.toNanos();
-            long lastFailureEnd = start;
-            long ready = -1;
-            long firstResponse = -1;
-            int lastStatus = -1;
-            String lastBody = "";
-            while (System.nanoTime() < deadline) {
-                if (!process.isAlive()) {
-                    int exitCode = process.exitValue();
-                    throw new RunFailure(variant.name() + " exited with status " + exitCode
-                            + " before answering " + readiness + tail(capture), exitCode);
+                HttpResponse<String> response = poll.get(pollBound, TimeUnit.NANOSECONDS);
+                if (response.statusCode() == 200) {
+                    ready = System.nanoTime();
+                    break;
                 }
-                try {
-                    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-                    if (response.statusCode() == 200) {
-                        ready = System.nanoTime();
-                        break;
-                    }
-                    if (firstResponse < 0) {
-                        firstResponse = System.nanoTime();
-                    }
-                    lastStatus = response.statusCode();
-                    lastBody = response.body();
-                } catch (IOException e) {
-                    // Connection refused for most of the poll, because the server is not listening yet;
-                    // once in a while a connection that was accepted and then dropped mid-handshake.
-                    // Both mean the same thing here: not ready, try again.
+                if (firstResponse < 0) {
+                    firstResponse = System.nanoTime();
                 }
-                if (firstResponse > 0 && System.nanoTime() - firstResponse > settings.servingGrace().toNanos()) {
-                    throw new RunFailure(variant.name() + " is serving " + readiness + " with HTTP "
-                            + lastStatus + " and has been for " + settings.servingGrace().toMillis() + "ms."
-                            + " The application started; it is not serving the readiness endpoint, which"
-                            + " points at the packaging rather than at a slow start. Response body: "
-                            + snippet(lastBody) + tail(capture), null);
-                }
-                lastFailureEnd = System.nanoTime();
-                Thread.sleep(settings.pollInterval().toMillis());
+                lastStatus = response.statusCode();
+                lastBody = response.body();
+            } catch (ExecutionException e) {
+                // Connection refused for most of the poll, because the server is not listening yet;
+                // once in a while a connection that was accepted and then dropped mid-handshake.
+                // Both mean the same thing here: not ready, try again.
+            } catch (TimeoutException e) {
+                // Something accepted the connection and never answered; the next poll tries again.
+                poll.cancel(true);
             }
-            if (ready < 0) {
-                throw new RunFailure(variant.name() + " did not answer " + readiness + " within "
-                        + startupTimeout + tail(capture), null);
+            if (firstResponse > 0 && System.nanoTime() - firstResponse > settings.servingGrace().toNanos()) {
+                throw new RunFailure(variant.name() + " is serving " + readiness + " with HTTP "
+                        + lastStatus + " and has been for " + settings.servingGrace().toMillis() + "ms."
+                        + " The application started; it is not serving the readiness endpoint, which"
+                        + " points at the packaging rather than at a slow start. Response body: "
+                        + snippet(lastBody) + tail(capture), null);
             }
-
-            // start, ready and lastFailureEnd are final and the child is alive: the one place where a probe can
-            // neither move readinessMillis nor miss the process.
-            ReadinessSnapshot atReadiness = probe(process, Path.of(variant.command().get(0)), ready);
-            awaitStartupLine(capture, settings.logLineGrace());
-            // Read before destroy(), as when destroy() was the sample's last argument: a startup line the drain
-            // thread hands over after the grace has ended stays unrecorded instead of getting a late timestamp.
-            double logLineMillis = capture.logLineMillis();
-            double frameworkMillis = capture.reportedMillis();
-            int exitCode = requireGone(variant.name(), destroy(process, drain, settings.shutdownGrace()),
-                    settings.beforeLaunch());
-            return new StartupSample(iteration, warmup, port,
-                    (ready - start) / 1_000_000.0,
-                    logLineMillis,
-                    frameworkMillis,
-                    (ready - lastFailureEnd) / 1_000_000.0,
-                    exitCode,
-                    atReadiness);
-        } finally {
-            if (process != null && process.isAlive()) {
-                destroy(process, drain, settings.shutdownGrace());
-            }
+            lastFailureEnd = System.nanoTime();
+            Thread.sleep(settings.pollInterval().toMillis());
         }
+        if (ready < 0) {
+            throw new RunFailure(variant.name() + " did not answer " + readiness + " within "
+                    + startupTimeout + tail(capture), null);
+        }
+        launch.start = start;
+        launch.ready = ready;
+        launch.lastFailureEnd = lastFailureEnd;
     }
 
     /**
@@ -675,12 +799,36 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
     }
 
     /**
+     * One spawned child: its readiness request, built before the launch is prepared, then its process and output,
+     * and the instants its readiness poll read on the run's clock.
+     */
+    private static final class Launch {
+
+        private final URI readiness;
+        private final HttpRequest request;
+        private final long pollBound;
+        private Process process;
+        private Thread drain;
+        private Capture capture;
+        private long start;
+        private long ready;
+        private long lastFailureEnd;
+
+        Launch(URI readiness, Duration pollTimeout) {
+            this.readiness = readiness;
+            this.request = HttpRequest.newBuilder(readiness).timeout(pollTimeout).GET().build();
+            this.pollBound = pollTimeout.toNanos();
+        }
+    }
+
+
+    /**
      * The result of a diagnostic run. Never mixed into the timing statistics.
      *
      * @param variant         the variant that was run
      * @param readinessMillis the readiness time of this run, which is slower than a timing run because of the
      *                        logging and is reported only so the slowdown is visible
-     * @param command         the effective relocatable diagnostic command
+     * @param command         the effective diagnostic command, without the command prefix
      */
     record DiagnosticRun(String variant, double readinessMillis, List<String> command) {
 
