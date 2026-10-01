@@ -18,19 +18,19 @@ the harness works is in https://github.com/{githubSlug}/blob/master/benchmarks/R
 |`shadow-aot` |`shadow` with a trained JDK AOT cache
 |`runner-stored` |Runner JAR: dependencies re-packed uncompressed (`STORED`), entered through the entry stub
 |`runner-stored-aot` |`runner-stored` with a trained JDK AOT cache: the single-file option
-|`runner-stored-reflection`* |`runner-stored` entered by reflection instead of the entry stub
-|`runner-stored-preload`*, `-aot`* |With the startup classes recorded from `runner-stored` in the same run
-|`runner-stored-positional`*, `-aot`* |`archiveReads=POSITIONAL`: only the index is mapped
-|`runner-stored-prefetch`*, `-aot`* |`definitionPrefetch=true`
-|`runner-stored-joran`*, `-aot`* |Control: `precompileLogback=false`
-|`runner-stored-keepdebug`*, `-aot`* |Control: `stripLocalVariables=false`
-|`runner-stored-dynamic-services`*, `-aot`* |Control: `staticServices=false`
-|`runner-stored-lambdas`*, `-aot`*, `runner-extracted-lambdas-aot`* |Control: `desugarLambdas=false`; the last extracted
+|`runner-stored-reflection`{asterisk} |`runner-stored` entered by reflection instead of the entry stub
+|`runner-stored-preload`{asterisk}, `-aot`{asterisk} |With the startup classes recorded from `runner-stored` in the same run
+|`runner-stored-positional`{asterisk}, `-aot`{asterisk} |`archiveReads=POSITIONAL`: only the index is mapped
+|`runner-stored-prefetch`{asterisk}, `-aot`{asterisk} |`definitionPrefetch=true`
+|`runner-stored-joran`{asterisk}, `-aot`{asterisk} |Control: `precompileLogback=false`
+|`runner-stored-keepdebug`{asterisk}, `-aot`{asterisk} |Control: `stripLocalVariables=false`
+|`runner-stored-dynamic-services`{asterisk}, `-aot`{asterisk} |Control: `staticServices=false`
+|`runner-stored-lambdas`{asterisk}, `-aot`{asterisk}, `runner-extracted-lambdas-aot`{asterisk} |Control: `desugarLambdas=false`; the last extracted
 |`runner-preserve` |Runner JAR with the dependencies copied byte for byte (`PRESERVE`)
 |`runner-extracted` |`runner-stored` extracted into the plugins' layout, run by the JDK's own loader
 |`runner-extracted-aot` |That layout with a trained cache: the AOT layout the plugins generate, the cached headline
-|`shadow-maot`, `shadow-maot-aot`* |Micronaut AOT's `optimizedJitJarAll`, flattened by Shadow (`-aot`: with a cache)
-|`runner-maot`, `runner-maot-aot`* |Runner JAR of Micronaut AOT's `optimizedJitJar`, as `optimizedMicronautRunnerJar`
+|`shadow-maot`, `shadow-maot-aot`{asterisk} |Micronaut AOT's `optimizedJitJarAll`, flattened by Shadow (`-aot`: with a cache)
+|`runner-maot`, `runner-maot-aot`{asterisk} |Runner JAR of Micronaut AOT's `optimizedJitJar`, as `optimizedMicronautRunnerJar`
 |===
 
 * The Runner rows use the plugins' defaults of the day, build-time transforms included; the Shadow rows use the
@@ -179,7 +179,9 @@ The definition prefetch's intervals include zero on these 4 vCPUs.
 * *Trained caches*: the cached headline is ahead, `runner-extracted-aot` − `shadow-aot` -27.1 ms (-30.7 to -16.9),
 with 8.8 MiB less private memory, but it is a directory of JARs plus a cache file. The single-file
 `runner-stored-aot`, already desugared, still loses on JDK 25: +17.4 ms (+12.1 to +22.5). On JDK 27 the layout stays
-ahead and the single JAR trails by 76.0 ms; <<cdsAndAot,Class Data Sharing and the AOT Cache>> explains both.
+ahead and the single JAR trails by 76.0 ms. <<cdsAndAot,Class Data Sharing and the AOT Cache>> has the JDK 27
+code-source rule and where the single JAR's remaining cached gap goes. There, measured in local Apple Silicon sessions,
+the desugared single JAR led Shadow's cache on JDK 25 and was level on JDK 27; on these runners it trails on both.
 * [[micronautAotResults]]*Micronaut AOT*: `runner-maot` − `shadow-maot` -381.3 ms (-394.6 to -373.6); `runner-stored`
 − `shadow-maot` -348.6 ms (-354.1 to -321.0), so dropping Micronaut Launch's default Micronaut AOT for Runner still
 starts sooner. With a JDK cache on both, Runner loses: `runner-maot-aot` − `shadow-maot-aot` +36.4 ms (+28.1 to
