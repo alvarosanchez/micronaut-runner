@@ -59,8 +59,10 @@ With a startup class list (`startupClasses`, which the recorded startup profile 
 each nested JAR's startup classes first, in the order they were recorded, after `META-INF/` and the manifest. The
 bytes startup reads are then contiguous instead of scattered through every dependency. Nested JARs keep their
 places in the outer archive and class path order, so lookups and duplicate precedence do not change. On
-benchmark-large on Linux this left 10.7 MB less of the mapped archive resident at readiness, and with the page cache
-evicted it read 9.5 MB less and was ready 33 ms (95% CI 21 to 46 ms) sooner, without the preloader.
+benchmark-large, without the preloader, this left 10.7 MB less of the mapped archive resident at readiness in the CI
+run named below the table; in https://github.com/alvarosanchez/micronaut-runner/actions/runs/36844059936[a CI run]
+of the same commit on the same kind of runner with the page cache evicted before each launch, it read 9.5 MB less
+and was ready 33 ms (95% CI 21 to 46 ms) sooner.
 
 The `HYBRID` option re-packs as `STORED` does, startup classes first, but keeps the other classes compressed. An
 unlisted class that no build-time transform changed keeps its original compressed bytes, and one a transform
