@@ -324,17 +324,24 @@ class RunnerJarBuilderTest {
         // pipelines. The index keys on the record, so the two entries become a same-name chain.
         Path dependency = fixtures.resolve("libs/dup-dep.jar");
         Files.createDirectories(dependency.getParent());
+        byte[] firstClass = sameClass("first");
+        byte[] secondClass = sameClass("second");
         try (OutputStream out = Files.newOutputStream(dependency);
              ZipWriter writer = new ZipWriter(out, ZipWriter.DEFAULT_TIMESTAMP, false)) {
             writer.writeEntry("dup/same.txt", "first".getBytes(StandardCharsets.UTF_8));
+            writer.writeEntry("dup/Same.class", firstClass);
             writer.writeEntry("dup/same.txt", "second".getBytes(StandardCharsets.UTF_8));
+            writer.writeEntry("dup/Same.class", secondClass);
         }
+        // The listed class is duplicated: hot-first order moves both copies and keeps their relative order.
+        Path list = startupClasses("dup.Same\n");
 
-        for (Compression compression : new Compression[] {Compression.STORED, Compression.PRESERVE}) {
+        for (Compression compression : Compression.values()) {
             Path output = output();
             RunnerJarBuilder.build(spec(output)
                     .dependencies(List.of(Dependency.of(dependency)))
                     .compression(compression)
+                    .startupClasses(list)
                     .build(), BuildLogger.noOp());
 
             try (RunnerJarReader reader = RunnerJarReader.open(output)) {
@@ -342,16 +349,33 @@ class RunnerJarBuilderTest {
                 List<String> names = logicalNames(index, 1);
                 assertEquals(2, names.stream().filter("dup/same.txt"::equals).count(),
                         compression + ": both records survive");
-                List<String> physicalContents = new ArrayList<>();
+                assertEquals(2, names.stream().filter("dup/Same.class"::equals).count(),
+                        compression + ": both class records survive");
                 int firstRecord = RunnerBuildTestAccess.jarFirstEntry(index, 1);
                 int limit = firstRecord + RunnerBuildTestAccess.jarEntryCount(index, 1);
+                List<String> physicalNames = new ArrayList<>();
+                List<String> physicalContents = new ArrayList<>();
+                List<byte[]> physicalClasses = new ArrayList<>();
                 for (int physical = firstRecord; physical < limit; physical++) {
-                    if (index.entryPhysical(physical) && "dup/same.txt".equals(index.entryName(physical))) {
+                    if (!index.entryPhysical(physical)) {
+                        continue;
+                    }
+                    physicalNames.add(index.entryName(physical));
+                    if ("dup/same.txt".equals(index.entryName(physical))) {
                         physicalContents.add(new String(reader.read(physical), StandardCharsets.UTF_8));
+                    } else if ("dup/Same.class".equals(index.entryName(physical))) {
+                        physicalClasses.add(reader.read(physical));
                     }
                 }
+                assertEquals(compression == Compression.PRESERVE
+                                ? List.of("dup/same.txt", "dup/Same.class", "dup/same.txt", "dup/Same.class")
+                                : List.of("dup/Same.class", "dup/Same.class", "dup/same.txt", "dup/same.txt"),
+                        physicalNames, compression + ": the listed class first, except in PRESERVE");
                 assertEquals(List.of("first", "second"), physicalContents,
                         compression + ": physical enumeration keeps central-directory order and content");
+                assertEquals(2, physicalClasses.size());
+                assertArrayEquals(firstClass, physicalClasses.get(0), compression + ": the first copy first");
+                assertArrayEquals(secondClass, physicalClasses.get(1), compression + ": the second copy second");
 
                 List<String> lookupContents = new ArrayList<>();
                 int record = index.find("dup/same.txt");
@@ -361,8 +385,29 @@ class RunnerJarBuilderTest {
                 }
                 assertEquals(List.of("second", "first"), lookupContents,
                         compression + ": lookup chain starts with the JDK-compatible last duplicate");
+                List<byte[]> lookupClasses = new ArrayList<>();
+                record = index.find("dup/Same.class");
+                while (record != IndexFormat.NO_INDEX) {
+                    lookupClasses.add(reader.read(record));
+                    record = RunnerBuildTestAccess.next(index, record);
+                }
+                assertEquals(2, lookupClasses.size());
+                assertArrayEquals(secondClass, lookupClasses.get(0),
+                        compression + ": the listed class's chain starts with the JDK-compatible last duplicate");
+                assertArrayEquals(firstClass, lookupClasses.get(1));
             }
         }
+    }
+
+    /** A class {@code dup.Same} whose static {@code value()} returns the given text. */
+    private static byte[] sameClass(String value) {
+        return java.lang.classfile.ClassFile.of().build(java.lang.constant.ClassDesc.of("dup.Same"),
+                type -> type.withFlags(java.lang.classfile.ClassFile.ACC_PUBLIC)
+                        .withSuperclass(java.lang.constant.ConstantDescs.CD_Object)
+                        .withMethodBody("value", java.lang.constant.MethodTypeDesc.of(
+                                        java.lang.constant.ConstantDescs.CD_String),
+                                java.lang.classfile.ClassFile.ACC_PUBLIC | java.lang.classfile.ClassFile.ACC_STATIC,
+                                code -> code.ldc(value).areturn()));
     }
 
     @Test
@@ -432,7 +477,8 @@ class RunnerJarBuilderTest {
         Files.createDirectories(empty.getParent());
         Files.write(empty, endOfCentralDirectory);
 
-        for (Compression compression : Compression.values()) {
+        // HYBRID without a startup class list is STORED with one warning; see the HYBRID tests.
+        for (Compression compression : new Compression[] {Compression.STORED, Compression.PRESERVE}) {
             Path output = output();
             RunnerJarResult result = RunnerJarBuilder.build(spec(output)
                     .dependencies(List.of(Dependency.of(empty)))
@@ -603,6 +649,10 @@ class RunnerJarBuilderTest {
                 .map(Dependency::of)
                 .toList();
 
+        // A startup class list in every mode: STORED orders the listed classes first, HYBRID also deflates the
+        // others, afresh where a transform rewrote them, and PRESERVE ignores it.
+        Path list = startupClasses("com.example.caller.Caller\ncom.example.dep.Dep\ncom.example.debug.Debug\n");
+
         for (Compression compression : Compression.values()) {
             Path sequential = output();
             Path parallel = output();
@@ -610,11 +660,12 @@ class RunnerJarBuilderTest {
             StagingLogger inline = new StagingLogger();
             StagingLogger pooled = new StagingLogger();
             RunnerJarResult sequentialResult = RunnerJarBuilder.build(spec(sequential)
-                    .dependencies(dependencies).compression(compression).build(), inline, 1);
+                    .dependencies(dependencies).compression(compression).startupClasses(list).build(), inline, 1);
             RunnerJarResult parallelResult = RunnerJarBuilder.build(spec(parallel)
-                    .dependencies(dependencies).compression(compression).build(), pooled, 4);
+                    .dependencies(dependencies).compression(compression).startupClasses(list).build(), pooled, 4);
             RunnerJarResult widerResult = RunnerJarBuilder.build(spec(wider)
-                    .dependencies(dependencies).compression(compression).build(), BuildLogger.noOp(), 8);
+                    .dependencies(dependencies).compression(compression).startupClasses(list).build(),
+                    BuildLogger.noOp(), 8);
 
             assertEquals(-1, Files.mismatch(sequential, parallel), compression + ": the same bytes");
             assertEquals(-1, Files.mismatch(sequential, wider), compression + ": the same bytes on 8 threads");
@@ -622,7 +673,11 @@ class RunnerJarBuilderTest {
                     compression + ": the same transform reports");
             assertEquals(sequentialResult.transforms(), widerResult.transforms(),
                     compression + ": the same transform reports on 8 threads");
-            if (compression == Compression.STORED) {
+            if (compression == Compression.HYBRID) {
+                assertTrue(inspectHeader(parallel, "Nested compression").matches("\\d+ stored, [1-9]\\d* deflated"),
+                        "HYBRID compressed the cold classes");
+            }
+            if (compression != Compression.PRESERVE) {
                 assertEquals(List.of(LambdaDesugarer.NAME, LocalVariableStripper.NAME),
                         parallelResult.transforms().stream().map(TransformReport::step).toList(),
                         "the steps in the order they run");
@@ -2875,7 +2930,7 @@ class RunnerJarBuilderTest {
      * repacked copy in STORED and the dependency itself in PRESERVE, and the log names the dependency.
      */
     @ParameterizedTest
-    @EnumSource(Compression.class)
+    @EnumSource(value = Compression.class, names = {"STORED", "PRESERVE"})
     void precompilesALogbackXmlThatOnlyADependencyCarries(Compression compression) throws IOException {
         Path resources = logbackResources("dependency-only-" + compression, Map.of());
         Path configuration = fixtures.resolve("libs/logging-configuration.jar");
@@ -3350,6 +3405,435 @@ class RunnerJarBuilderTest {
         return file;
     }
 
+    @Test
+    void aStartupClassListOrdersEachNestedJarReproducibly() throws IOException {
+        Path list = startupClasses("com.example.api.Api\ncom.example.mr.Feature\n");
+        Path first = output();
+        RunnerJarBuilder.build(spec(first).startupClasses(list).build(), BuildLogger.noOp());
+        Path again = output();
+        RunnerJarBuilder.build(spec(again).startupClasses(list).build(), BuildLogger.noOp());
+        assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(again), "the same list builds the same bytes");
+        try (RunnerJarReader reader = RunnerJarReader.open(first)) {
+            List<String> physical = physicalNames(reader.index(), 1);
+            assertEquals(List.of("META-INF/MANIFEST.MF", "com/example/api/Api.class", "com/example/dep/Dep.class"),
+                    physical.subList(0, 3), "the manifest, then the listed class, then the jar's own order");
+            assertTrue(RunnerBuildTestAccess.nestedStored(reader.index()), "ordering compresses nothing");
+        }
+
+        Path absent = startupClasses("com.example.Absent\n");
+        Path withAbsent = output();
+        RunnerJarBuilder.build(spec(withAbsent).startupClasses(absent).build(), BuildLogger.noOp());
+        Path plain = output();
+        RunnerJarBuilder.build(spec(plain).build(), BuildLogger.noOp());
+        assertArrayEquals(Files.readAllBytes(plain), Files.readAllBytes(withAbsent),
+                "a list of classes the archive does not hold changes no byte");
+
+        // The lists differ in dep-lib's class only: every other nested jar is the same file.
+        Path other = startupClasses("com.example.dep.Dep\ncom.example.mr.Feature\n");
+        Path otherOutput = output();
+        RunnerJarBuilder.build(spec(otherOutput).startupClasses(other).build(), BuildLogger.noOp());
+        Map<String, ZipEntry> before = libEntries(first);
+        Map<String, ZipEntry> after = libEntries(otherOutput);
+        assertEquals(before.keySet(), after.keySet());
+        assertEquals(3, before.size(), before::toString);
+        for (String name : before.keySet()) {
+            assertEquals(before.get(name).getSize(), after.get(name).getSize(), name + ": reordering keeps the length");
+            if (name.endsWith("/dep-lib.jar")) {
+                assertNotEquals(before.get(name).getCrc(), after.get(name).getCrc(), name);
+            } else {
+                assertEquals(before.get(name).getCrc(), after.get(name).getCrc(), name);
+            }
+        }
+    }
+
+    @Test
+    void hybridStoresTheListedClassesAndCompressesTheOthers() throws Exception {
+        HybridFixture fixture = hybridFixture();
+        Path list = startupClasses("hyapp.Main\nhy.Listed\n");
+        Path output = output();
+        RecordingLogger logger = new RecordingLogger();
+        RunnerJarBuilder.build(fixture.spec(output, Compression.HYBRID).startupClasses(list).build(), logger);
+        assertEquals(List.of(), logger.warnings);
+
+        Map<String, byte[]> raw = rawRegions(fixture.dependency());
+        byte[] debugSource = fixture.classes().get("hy/Debug.class");
+        assertTrue(hasLocalVariableTable(debugSource), "the fixture class was compiled with -g");
+        long debugCrc;
+        long plainCrc;
+        Map<String, Long> nestedCrcs = new TreeMap<>();
+        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            Index index = reader.index();
+            assertFalse(RunnerBuildTestAccess.nestedStored(index), "an archive with deflated nested entries does not claim to be stored");
+            assertEquals(List.of("META-INF/MANIFEST.MF", "hy/Listed.class"), physicalNames(index, 1).subList(0, 2));
+            assertEquals(IndexFormat.METHOD_STORED, index.entryMethod(physicalRecord(index, "hy/Listed.class")));
+            assertEquals(IndexFormat.METHOD_STORED, index.entryMethod(physicalRecord(index, "hy/data.txt")));
+            for (String cold : List.of("hy/Debug.class", "hy/Plain.class", "hy/Versioned.class",
+                    "META-INF/versions/17/hy/Versioned.class")) {
+                assertEquals(IndexFormat.METHOD_DEFLATED, index.entryMethod(physicalRecord(index, cold)), cold);
+            }
+            int debug = physicalRecord(index, "hy/Debug.class");
+            assertFalse(Arrays.equals(raw.get("hy/Debug.class"), region(output, index, debug)),
+                    "the stripped class was deflated afresh");
+            byte[] stripped = reader.read(debug);
+            assertFalse(hasLocalVariableTable(stripped), "and it inflates to the stripped class");
+            debugCrc = index.entryCrc32(debug);
+            int plain = physicalRecord(index, "hy/Plain.class");
+            assertArrayEquals(raw.get("hy/Plain.class"), region(output, index, plain),
+                    "a class with nothing to strip keeps the source entry's compressed bytes exactly");
+            plainCrc = index.entryCrc32(plain);
+            int first = RunnerBuildTestAccess.jarFirstEntry(index, 1);
+            for (int record = first; record < first + RunnerBuildTestAccess.jarEntryCount(index, 1); record++) {
+                if (index.entryPhysical(record) && !index.entryDirectory(record)) {
+                    nestedCrcs.put(index.entryName(record), index.entryCrc32(record));
+                }
+            }
+        }
+        assertEquals("3 stored, 4 deflated", inspectHeader(output, "Nested compression"));
+
+        Path keep = output();
+        RunnerJarBuilder.build(fixture.spec(keep, Compression.HYBRID).startupClasses(list).stripLocalVariables(false)
+                .build(), BuildLogger.noOp());
+        try (RunnerJarReader reader = RunnerJarReader.open(keep)) {
+            assertArrayEquals(raw.get("hy/Debug.class"),
+                    region(keep, reader.index(), physicalRecord(reader.index(), "hy/Debug.class")),
+                    "without stripping the -g class keeps its compressed bytes too");
+        }
+
+        // The launcher defines all three classes, serves the bytes the pipeline wrote, streams them through
+        // jar: URLs, opens the nested jar as a JarFile and picks the right version of the unlisted class.
+        Forked run = fork(output, List.of("-Dmicronaut.runner.verify=true"));
+        assertEquals(0, run.status(), run::output);
+        List<String> lines = run.output().lines().toList();
+        assertTrue(lines.containsAll(List.of("listed=listed", "debug=debug012", "plain=plain", "versioned=seventeen")),
+                run::output);
+        assertTrue(lines.contains("resource hy/Debug.class " + debugCrc + " " + debugCrc), run::output);
+        assertTrue(lines.contains("resource hy/Plain.class " + plainCrc + " " + plainCrc), run::output);
+        Map<String, Long> streamed = new TreeMap<>();
+        for (String line : lines) {
+            if (line.startsWith("nested ")) {
+                String[] fields = line.split(" ");
+                streamed.put(fields[1], Long.parseLong(fields[2]));
+            }
+        }
+        assertEquals(nestedCrcs, streamed, "the nested JarFile enumerates and reads every entry");
+    }
+
+    @Test
+    void hybridWithoutAStartupClassListOrWithoutAHotEntryWritesWhatStoredWrites() throws IOException {
+        HybridFixture fixture = hybridFixture();
+        Path stored = output();
+        RunnerJarBuilder.build(fixture.spec(stored, Compression.STORED).build(), BuildLogger.noOp());
+        Path hybrid = output();
+        RecordingLogger logger = new RecordingLogger();
+        RunnerJarBuilder.build(fixture.spec(hybrid, Compression.HYBRID).build(), logger);
+        assertEquals(List.of(DependencyStage.HYBRID_WITHOUT_LIST), logger.warnings);
+        assertArrayEquals(Files.readAllBytes(stored), Files.readAllBytes(hybrid));
+
+        // A list that names no class of any dependency: one warning, and the STORED output with that list.
+        Path list = startupClasses("hyapp.Main\n");
+        Path storedWithList = output();
+        RunnerJarBuilder.build(fixture.spec(storedWithList, Compression.STORED).startupClasses(list).build(),
+                BuildLogger.noOp());
+        Path hybridWithList = output();
+        RecordingLogger listLogger = new RecordingLogger();
+        RunnerJarBuilder.build(fixture.spec(hybridWithList, Compression.HYBRID).startupClasses(list).build(),
+                listLogger);
+        assertEquals(List.of(DependencyStage.HYBRID_WITHOUT_HOT_ENTRY), listLogger.warnings);
+        assertArrayEquals(Files.readAllBytes(storedWithList), Files.readAllBytes(hybridWithList));
+        try (RunnerJarReader reader = RunnerJarReader.open(hybridWithList)) {
+            assertTrue(RunnerBuildTestAccess.nestedStored(reader.index()), "a HYBRID build that compressed nothing is a STORED one");
+            assertEquals(1, reader.index().preloadCount(), "and it embeds the list");
+        }
+        assertEquals("7 stored, 0 deflated", inspectHeader(hybridWithList, "Nested compression"));
+
+        Path preserve = output();
+        RunnerJarBuilder.build(fixture.spec(preserve, Compression.PRESERVE).startupClasses(list).build(),
+                BuildLogger.noOp());
+        try (RunnerJarReader reader = RunnerJarReader.open(stored)) {
+            assertTrue(RunnerBuildTestAccess.nestedStored(reader.index()));
+        }
+        try (RunnerJarReader reader = RunnerJarReader.open(preserve)) {
+            assertFalse(RunnerBuildTestAccess.nestedStored(reader.index()));
+        }
+        assertEquals("0 stored, 7 deflated", inspectHeader(preserve, "Nested compression"),
+                "PRESERVE keeps each entry's own method");
+    }
+
+    @ParameterizedTest(name = "transforms on: {0}")
+    @ValueSource(booleans = {false, true})
+    void aHybridBuildFailsOnABrokenColdClassAsAStoredBuildDoes(boolean transforms) throws IOException {
+        Path trailing = deflatedWithTrailingByte(fixtures.resolve("libs/hybrid-trailing.jar"), "x/Cold.class",
+                ZipReaderTest.repeat("a-cold-class-", 40));
+        Path overproduced = ZipReaderTest.deflatedWithRecordedContent(fixtures.resolve("libs/hybrid-over.jar"),
+                "x/Cold.class", ZipReaderTest.repeat("a-cold-class-", 40), ZipReaderTest.repeat("a-cold-class-", 20));
+        Path list = startupClasses("x.Hot\n");
+        for (Path dependency : List.of(trailing, overproduced)) {
+            List<String> messages = new ArrayList<>();
+            for (Compression compression : new Compression[] {Compression.STORED, Compression.HYBRID}) {
+                IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output())
+                        .dependencies(List.of(Dependency.of(dependency)))
+                        .compression(compression)
+                        .startupClasses(list)
+                        .desugarLambdas(transforms)
+                        .stripLocalVariables(transforms)
+                        .build(), BuildLogger.noOp()));
+                messages.add(failure.getMessage());
+            }
+            assertEquals(messages.get(0), messages.get(1), dependency::toString);
+            assertTrue(messages.get(0).contains("x/Cold.class"), messages.get(0));
+        }
+    }
+
+    /** The physical entry names of one jar of the index, in the order the nested jar holds them. */
+    private static List<String> physicalNames(Index index, int jarId) {
+        List<String> names = new ArrayList<>();
+        int first = RunnerBuildTestAccess.jarFirstEntry(index, jarId);
+        for (int record = first; record < first + RunnerBuildTestAccess.jarEntryCount(index, jarId); record++) {
+            if (index.entryPhysical(record)) {
+                names.add(index.entryName(record));
+            }
+        }
+        return names;
+    }
+
+    /** The physical record of a name in jar 1. */
+    private static int physicalRecord(Index index, String name) {
+        int first = RunnerBuildTestAccess.jarFirstEntry(index, 1);
+        for (int record = first; record < first + RunnerBuildTestAccess.jarEntryCount(index, 1); record++) {
+            if (index.entryPhysical(record) && index.entryName(record).equals(name)) {
+                return record;
+            }
+        }
+        throw new AssertionError("no physical record " + name);
+    }
+
+    /** A record's data as the outer archive holds it: its compressed bytes when it is deflated. */
+    private static byte[] region(Path archive, Index index, int record) throws IOException {
+        return ZipReaderTest.bytesAt(archive, index.entryDataOffset(record), (int) index.entryCompressedSize(record));
+    }
+
+    /** Every entry's compressed region, by name. */
+    private static Map<String, byte[]> rawRegions(Path jar) throws IOException {
+        Map<String, byte[]> regions = new LinkedHashMap<>();
+        try (ZipReader reader = ZipReader.open(jar)) {
+            for (ZipEntryInfo entry : reader.entries()) {
+                regions.put(entry.name(), reader.readRaw(entry));
+            }
+        }
+        return regions;
+    }
+
+    private static boolean hasLocalVariableTable(byte[] bytes) {
+        for (java.lang.classfile.MethodModel method : java.lang.classfile.ClassFile.of().parse(bytes).methods()) {
+            if (method.code().isPresent() && method.code().get()
+                    .findAttribute(java.lang.classfile.Attributes.localVariableTable()).isPresent()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The nested jars of an archive, by entry name. */
+    private static Map<String, ZipEntry> libEntries(Path archive) throws IOException {
+        Map<String, ZipEntry> entries = new TreeMap<>();
+        try (ZipFile zip = new ZipFile(archive.toFile())) {
+            zip.stream().filter(entry -> entry.getName().startsWith(IndexFormat.LIB_PREFIX) && !entry.isDirectory())
+                    .forEach(entry -> entries.put(entry.getName(), entry));
+        }
+        return entries;
+    }
+
+    /** One header value of the archive's {@code inspect} output. */
+    private static String inspectHeader(Path archive, String label) throws IOException {
+        String inspected;
+        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+            java.io.PrintStream original = System.out;
+            java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+            System.setOut(new java.io.PrintStream(captured, true, StandardCharsets.UTF_8));
+            try {
+                RunnerBuildTestAccess.inspect(archive.toFile(), reader.index(), reader.source());
+            } finally {
+                System.setOut(original);
+            }
+            inspected = captured.toString(StandardCharsets.UTF_8);
+        }
+        for (String line : inspected.lines().toList()) {
+            if (line.startsWith(label + " ")) {
+                return line.substring(label.length()).strip();
+            }
+        }
+        throw new AssertionError("no " + label + " in\n" + inspected);
+    }
+
+    private static Forked fork(Path archive, List<String> jvmArguments) throws IOException, InterruptedException {
+        List<String> command = new ArrayList<>();
+        command.add(javaExecutable().toString());
+        command.addAll(jvmArguments);
+        command.add("-jar");
+        command.add(archive.toString());
+        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        String output;
+        try (InputStream in = process.getInputStream()) {
+            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        return new Forked(process.waitFor(), output);
+    }
+
+    private record Forked(int status, String output) {
+    }
+
+    private static HybridFixture hybrid;
+
+    /**
+     * A dependency whose entries are all DEFLATED: a class to list, an unlisted class compiled with {@code -g}, an
+     * unlisted one compiled without, a resource and a multi-release class; and an application whose main checks
+     * what the launcher serves from it.
+     */
+    private static synchronized HybridFixture hybridFixture() throws IOException {
+        if (hybrid != null) {
+            return hybrid;
+        }
+        Path root = fixtures.resolve("hybrid");
+        Path debugClasses = ClassFixtures.compile(root.resolve("src-g"), root.resolve("classes-g"), List.of("-g"),
+                Map.of("hy/Listed.java", """
+                                package hy;
+                                public class Listed {
+                                    public static String hello() {
+                                        String greeting = "listed";
+                                        return greeting;
+                                    }
+                                }
+                                """,
+                        "hy/Debug.java", """
+                                package hy;
+                                public class Debug {
+                                    public static String hello() {
+                                        StringBuilder text = new StringBuilder("debug");
+                                        for (int index = 0; index < 3; index++) {
+                                            text.append(index);
+                                        }
+                                        return text.toString();
+                                    }
+                                }
+                                """));
+        Path plainClasses = ClassFixtures.compile(root.resolve("src"), root.resolve("classes"), List.of(), Map.of(
+                "hy/Plain.java", """
+                        package hy;
+                        public class Plain {
+                            public static String hello() {
+                                StringBuilder text = new StringBuilder("plain");
+                                return text.toString();
+                            }
+                        }
+                        """,
+                "hy/Versioned.java", versionedSource("base")));
+        Path seventeen = ClassFixtures.compile(root.resolve("src-17"), root.resolve("classes-17"), List.of(),
+                Map.of("hy/Versioned.java", versionedSource("seventeen")));
+        Map<String, byte[]> classes = new LinkedHashMap<>();
+        classes.putAll(ClassFixtures.classes(debugClasses));
+        classes.putAll(ClassFixtures.classes(plainClasses));
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("hy/Debug.class", classes.get("hy/Debug.class"));
+        entries.put("hy/Listed.class", classes.get("hy/Listed.class"));
+        entries.put("hy/Plain.class", classes.get("hy/Plain.class"));
+        entries.put("hy/data.txt", ZipReaderTest.repeat("a resource of the hybrid fixture\n", 20));
+        entries.put("hy/Versioned.class", classes.get("hy/Versioned.class"));
+        entries.put("META-INF/versions/17/hy/Versioned.class",
+                ClassFixtures.classes(seventeen).get("hy/Versioned.class"));
+        Path dependency = root.resolve("hy-lib.jar");
+        writeJar(dependency, manifest(attributes -> attributes.putValue("Multi-Release", "true")), entries);
+        Path application = ClassFixtures.compile(root.resolve("app-src"), root.resolve("app-classes"),
+                List.of("-cp", debugClasses + java.io.File.pathSeparator + plainClasses), Map.of(
+                        "hyapp/Main.java", """
+                                package hyapp;
+
+                                import java.io.InputStream;
+                                import java.net.JarURLConnection;
+                                import java.net.URI;
+                                import java.net.URL;
+                                import java.util.Enumeration;
+                                import java.util.jar.JarEntry;
+                                import java.util.jar.JarFile;
+                                import java.util.zip.CRC32;
+
+                                public class Main {
+                                    public static void main(String[] args) throws Exception {
+                                        System.out.println("listed=" + hy.Listed.hello());
+                                        System.out.println("debug=" + hy.Debug.hello());
+                                        System.out.println("plain=" + hy.Plain.hello());
+                                        System.out.println("versioned=" + hy.Versioned.which());
+                                        ClassLoader loader = Main.class.getClassLoader();
+                                        for (String name : new String[] {"hy/Debug.class", "hy/Plain.class"}) {
+                                            long direct;
+                                            try (InputStream in = loader.getResourceAsStream(name)) {
+                                                direct = crc(in.readAllBytes());
+                                            }
+                                            URL url = new URI(loader.getResource(name).toString()).toURL();
+                                            long streamed;
+                                            try (InputStream in = url.openStream()) {
+                                                streamed = crc(in.readAllBytes());
+                                            }
+                                            System.out.println("resource " + name + " " + direct + " " + streamed);
+                                        }
+                                        URL data = new URI(loader.getResource("hy/data.txt").toString()).toURL();
+                                        JarURLConnection connection = (JarURLConnection) data.openConnection();
+                                        connection.setUseCaches(false);
+                                        try (JarFile nested = connection.getJarFile()) {
+                                            Enumeration<JarEntry> entries = nested.entries();
+                                            while (entries.hasMoreElements()) {
+                                                JarEntry entry = entries.nextElement();
+                                                if (entry.isDirectory()) {
+                                                    continue;
+                                                }
+                                                try (InputStream in = nested.getInputStream(entry)) {
+                                                    System.out.println("nested " + entry.getName() + " "
+                                                            + crc(in.readAllBytes()));
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    private static long crc(byte[] bytes) {
+                                        CRC32 crc = new CRC32();
+                                        crc.update(bytes);
+                                        return crc.getValue();
+                                    }
+                                }
+                                """));
+        hybrid = new HybridFixture(dependency, application, Map.copyOf(classes));
+        return hybrid;
+    }
+
+    private static String versionedSource(String answer) {
+        return """
+                package hy;
+                public class Versioned {
+                    public static String which() {
+                        return "%s";
+                    }
+                }
+                """.formatted(answer);
+    }
+
+    /**
+     * The HYBRID fixture.
+     *
+     * @param dependency  the dependency jar, every entry DEFLATED
+     * @param application the application's classes
+     * @param classes     the dependency's classes as compiled, by entry name
+     */
+    private record HybridFixture(Path dependency, Path application, Map<String, byte[]> classes) {
+
+        RunnerJarSpec.Builder spec(Path output, Compression compression) {
+            return RunnerJarSpec.builder()
+                    .mainClass("hyapp.Main")
+                    .applicationOutput(List.of(application))
+                    .dependencies(List.of(Dependency.of(dependency)))
+                    .compression(compression)
+                    .output(output);
+        }
+    }
+
     /** Keeps every line the builder logs, by level. */
     private static final class RecordingLogger implements BuildLogger {
 
@@ -3383,7 +3867,7 @@ class RunnerJarBuilderTest {
     }
 
     @ParameterizedTest
-    @EnumSource(Compression.class)
+    @EnumSource(value = Compression.class, names = {"STORED", "PRESERVE"})
     void generatesAStaticServiceTableForAnApplicationWithMicronautCore(Compression compression)
             throws IOException {
         List<String> info = new ArrayList<>();

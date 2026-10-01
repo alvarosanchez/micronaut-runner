@@ -33,8 +33,9 @@ import java.util.zip.ZipEntry;
  * <p>Selected with {@code -Dmicronaut.runner.mode=inspect}, it answers the questions that come up when an
  * archive does not behave: which main class will be entered, whether the packager could generate an entry
  * stub, which version of the packaging library produced the archive, how many records the index holds and
- * how well they hash, what the build-time class transforms did to the dependency classes, and which dependency
- * is at which position of the class path with which flags.</p>
+ * how well they hash, how many of the nested jars' file entries are stored and how many deflated, what the
+ * build-time class transforms did to the dependency classes, and which dependency is at which position of the
+ * class path with which flags.</p>
  *
  * <p>Nothing here is on any hot path. This class is loaded only when the mode selects it, so it is written
  * in ordinary Java: the rules that keep the launcher's start path free of lambdas, streams and
@@ -135,7 +136,7 @@ final class Inspect {
         label(out, "Hash slots", Integer.toString(index.hashSlots()));
         label(out, "Maximum probe", Integer.toString(index.maxProbe()));
         label(out, "Outer file length", index.outerFileLength() + " bytes");
-        label(out, "Nested compression", index.nestedStored() ? "stored" : "preserved from the original");
+        label(out, "Nested compression", nestedCompression(index));
         label(out, "Application layer", index.applicationMultiRelease() ? "multi-release" : "single release");
         label(out, "Archive reads", index.positionalReads() ? "positional" : "mapped");
         int preload = index.preloadCount();
@@ -144,6 +145,31 @@ final class Inspect {
         label(out, "Preload JDK classes", jdkPreload == 0 ? "none" : Integer.toString(jdkPreload));
         label(out, "Read through", source.mapped() ? "a memory mapping"
                 : source.indexOnly() ? "positional reads, index mapped" : "positional reads");
+    }
+
+    /**
+     * Counts the file entries the nested jars physically hold by compression method, from the index: a STORED
+     * archive's are all stored, a PRESERVE archive keeps each dependency's own methods, and a HYBRID archive
+     * stores its startup classes and resources and deflates its other classes.
+     *
+     * @param index the index
+     * @return for example {@code 8405 stored, 0 deflated}
+     */
+    private static String nestedCompression(Index index) {
+        int stored = 0;
+        int deflated = 0;
+        for (int record = 0; record < index.entryCount(); record++) {
+            if (index.entryJarId(record) == IndexFormat.APPLICATION_JAR_ID || !index.entryPhysical(record)
+                    || index.entryDirectory(record)) {
+                continue;
+            }
+            if (index.entryMethod(record) == IndexFormat.METHOD_STORED) {
+                stored++;
+            } else {
+                deflated++;
+            }
+        }
+        return stored + " stored, " + deflated + " deflated";
     }
 
     /**

@@ -37,14 +37,16 @@ import java.util.Set;
 import java.util.zip.CRC32;
 
 /**
- * A minimal ZIP writer that only ever writes {@code STORED} entries and reports the absolute offset of
- * every entry's data as it goes.
+ * A minimal ZIP writer that writes {@code STORED} entries, and {@code DEFLATED} entries whose bytes are already
+ * compressed, and reports the absolute offset of every entry's data as it goes.
  *
- * <p>Both properties are what the runner jar format is built on. Because nothing is deflated, an entry's
- * bytes lie contiguously in the outer file and the launcher can define a class straight from a
- * memory-mapped slice, or hand out a nested jar's bytes without copying them. Because the offset of the
+ * <p>Both properties are what the runner jar format is built on. Because the writer never deflates anything
+ * itself, an entry's bytes lie contiguously in the outer file and the launcher can define a class straight
+ * from a memory-mapped slice, or hand out a nested jar's bytes without copying them. Because the offset of the
  * data is returned by the write call itself, the packager never has to parse back what it just wrote to
- * fill in {@link IndexFormat#E_DATA_OFFSET}.</p>
+ * fill in {@link IndexFormat#E_DATA_OFFSET}. The outer archive is always written {@code STORED}; only a nested
+ * jar written for {@link Compression#HYBRID} carries {@code DEFLATED} entries, through
+ * {@link #writeDeflatedEntry(String, byte[], int, int, long, long, int)}.</p>
  *
  * <p>Timestamps are fixed: every entry gets the MS-DOS time derived from the {@link Instant} handed to the
  * constructor, converted in UTC so that the same inputs produce a byte-identical archive on any machine.
@@ -97,6 +99,9 @@ final class ZipWriter implements Closeable {
 
     /** Version needed to extract a stored entry, as {@link java.util.zip.ZipOutputStream} writes it. */
     private static final int VERSION_STORED = 10;
+
+    /** Version needed to extract a deflated entry, as {@link java.util.zip.ZipOutputStream} writes it. */
+    private static final int VERSION_DEFLATED = 20;
 
     /** Version needed to extract an entry that carries ZIP64 information. */
     private static final int VERSION_ZIP64 = 45;
@@ -321,6 +326,43 @@ final class ZipWriter implements Closeable {
         Objects.requireNonNull(data, "data");
         Objects.checkFromIndexSize(offset, length, data.length);
         long dataOffset = writeHeader(name, length, crc32, dosTime, false);
+        writeBytes(data, offset, length);
+        return dataOffset;
+    }
+
+    /**
+     * Writes a {@code DEFLATED} file entry from bytes that are already deflated: a raw DEFLATE stream, either an
+     * entry's original compressed region or a fresh deflate of new content. The writer neither inflates nor
+     * checks them; the caller has verified that they inflate to {@code uncompressedSize} bytes with the given
+     * CRC-32.
+     *
+     * <p>Both headers carry version 20, method 8, the CRC-32 and the two sizes, and no general purpose flag but
+     * the UTF-8 bit: the sizes are known, so there is no data descriptor. Sizes that would need ZIP64 are
+     * rejected, because no class comes close and the repacker keeps such an entry {@code STORED}; a ZIP64
+     * local header offset is handled in the central record as it is for a stored entry.</p>
+     *
+     * @param name             the entry name, which must be safe and must not end with {@code '/'}
+     * @param data             the array holding the compressed bytes
+     * @param offset           the first compressed byte
+     * @param length           the number of compressed bytes
+     * @param crc32            the CRC-32 of the uncompressed content, as an unsigned 32-bit value
+     * @param uncompressedSize the size of the uncompressed content
+     * @param dosTime          the MS-DOS date and time to store
+     * @return the absolute offset of the entry's first compressed byte
+     * @throws IOException if the name is unsafe or duplicated, a size needs ZIP64, or the stream cannot be
+     *                     written
+     */
+    long writeDeflatedEntry(String name, byte[] data, int offset, int length, long crc32, long uncompressedSize,
+                            int dosTime) throws IOException {
+        Objects.requireNonNull(data, "data");
+        Objects.checkFromIndexSize(offset, length, data.length);
+        if (uncompressedSize < 0 || needsZip64(uncompressedSize) || needsZip64(length)) {
+            throw new IOException("The deflated entry '" + name + "' has a size that needs ZIP64 (" + length
+                    + " compressed, " + uncompressedSize + " uncompressed bytes); only a stored entry may be that"
+                    + " large");
+        }
+        long dataOffset = writeHeader(name, IndexFormat.METHOD_DEFLATED, length, uncompressedSize, crc32, dosTime,
+                false);
         writeBytes(data, offset, length);
         return dataOffset;
     }
@@ -569,10 +611,20 @@ final class ZipWriter implements Closeable {
     }
 
     /**
-     * Registers an entry, writes its local file header and returns the offset of its first data byte.
+     * Registers a {@code STORED} entry, writes its local file header and returns the offset of its first data
+     * byte.
      */
     private long writeHeader(String name, long size, long crc32, int dosTime, boolean directory)
             throws IOException {
+        return writeHeader(name, IndexFormat.METHOD_STORED, size, size, crc32, dosTime, directory);
+    }
+
+    /**
+     * Registers an entry, writes its local file header and returns the offset of its first data byte. Only a
+     * {@code STORED} entry can need ZIP64 sizes: {@link #writeDeflatedEntry} rejects them.
+     */
+    private long writeHeader(String name, int method, long compressedSize, long size, long crc32, int dosTime,
+                             boolean directory) throws IOException {
         if (finished) {
             throw new IOException("The archive is already finished; entry '" + name + "' cannot be added");
         }
@@ -601,22 +653,24 @@ final class ZipWriter implements Closeable {
         boolean sizeNeedsZip64 = needsZip64(size);
         int extraLength = zip64ExtraLength(sizeNeedsZip64, false);
         boolean utf8 = !isAscii(name);
+        boolean deflated = method == IndexFormat.METHOD_DEFLATED;
         byte[] header = scratch;
         putInt(header, 0, IndexFormat.LOCAL_HEADER_SIGNATURE);
-        putShort(header, 4, sizeNeedsZip64 ? VERSION_ZIP64 : VERSION_STORED);
+        putShort(header, 4, sizeNeedsZip64 ? VERSION_ZIP64 : deflated ? VERSION_DEFLATED : VERSION_STORED);
         putShort(header, 6, utf8 ? FLAG_UTF8 : 0);
-        putShort(header, 8, IndexFormat.METHOD_STORED);
+        putShort(header, 8, method);
         putShort(header, 10, dosTime & ZIP64_MARKER_16);
         putShort(header, 12, dosTime >>> 16);
         putInt(header, 14, crc32);
-        putInt(header, 18, sizeNeedsZip64 ? IndexFormat.ZIP64_MARKER : size);
+        putInt(header, 18, sizeNeedsZip64 ? IndexFormat.ZIP64_MARKER : compressedSize);
         putInt(header, 22, sizeNeedsZip64 ? IndexFormat.ZIP64_MARKER : size);
         putShort(header, 26, nameBytes.length);
         putShort(header, 28, extraLength);
         writeBytes(header, 0, LOCAL_HEADER_SIZE);
         writeBytes(nameBytes, 0, nameBytes.length);
         writeZip64Extra(size, localHeaderOffset, sizeNeedsZip64, false);
-        records.add(new CentralRecord(nameBytes, utf8, dosTime, crc32, size, localHeaderOffset, directory));
+        records.add(new CentralRecord(nameBytes, utf8, dosTime, crc32, method, compressedSize, size,
+                localHeaderOffset, directory));
         return written;
     }
 
@@ -624,16 +678,18 @@ final class ZipWriter implements Closeable {
         boolean sizeNeedsZip64 = needsZip64(record.size());
         boolean offsetNeedsZip64 = needsZip64(record.localHeaderOffset());
         int extraLength = zip64ExtraLength(sizeNeedsZip64, offsetNeedsZip64);
+        int version = extraLength != 0 ? VERSION_ZIP64
+                : record.method() == IndexFormat.METHOD_DEFLATED ? VERSION_DEFLATED : VERSION_STORED;
         byte[] header = scratch;
         putInt(header, 0, IndexFormat.CENTRAL_HEADER_SIGNATURE);
-        putShort(header, 4, extraLength == 0 ? VERSION_STORED : VERSION_ZIP64);
-        putShort(header, 6, extraLength == 0 ? VERSION_STORED : VERSION_ZIP64);
+        putShort(header, 4, version);
+        putShort(header, 6, version);
         putShort(header, 8, record.utf8() ? FLAG_UTF8 : 0);
-        putShort(header, 10, IndexFormat.METHOD_STORED);
+        putShort(header, 10, record.method());
         putShort(header, 12, record.dosTime() & ZIP64_MARKER_16);
         putShort(header, 14, record.dosTime() >>> 16);
         putInt(header, 16, record.crc32());
-        putInt(header, 20, sizeNeedsZip64 ? IndexFormat.ZIP64_MARKER : record.size());
+        putInt(header, 20, sizeNeedsZip64 ? IndexFormat.ZIP64_MARKER : record.compressedSize());
         putInt(header, 24, sizeNeedsZip64 ? IndexFormat.ZIP64_MARKER : record.size());
         putShort(header, 28, record.name().length);
         putShort(header, 30, extraLength);
@@ -716,7 +772,10 @@ final class ZipWriter implements Closeable {
      * @param utf8              whether the name needs the UTF-8 general purpose bit
      * @param dosTime           the MS-DOS date and time
      * @param crc32             the CRC-32 of the content, as an unsigned 32-bit value
-     * @param size              the content length, which is both the compressed and the uncompressed size
+     * @param method            {@link IndexFormat#METHOD_STORED} or {@link IndexFormat#METHOD_DEFLATED}
+     * @param compressedSize    the length of the data as written, which for a stored entry is {@code size}
+     * @param size              the content length, the uncompressed size; only a stored entry's can need ZIP64,
+     *                          and its compressed size is the same
      * @param localHeaderOffset the offset of the entry's local file header
      * @param directory         whether the entry is a directory
      */
@@ -725,6 +784,8 @@ final class ZipWriter implements Closeable {
             boolean utf8,
             int dosTime,
             long crc32,
+            int method,
+            long compressedSize,
             long size,
             long localHeaderOffset,
             boolean directory) {

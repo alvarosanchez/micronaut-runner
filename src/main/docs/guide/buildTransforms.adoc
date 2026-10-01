@@ -87,8 +87,8 @@ In Maven, pass `-Dmicronaut.runner.precompileLogback=false`, or add `<precompile
 [[classTransforms]]
 == Class transforms
 
-A runner JAR re-packs every dependency, and with the default `STORED` compression it can also rewrite classes on
-the way: whatever a class carries that the application never needs at run time, or has to work out again at every
+A runner JAR re-packs every dependency, and with the default `STORED` compression, or `HYBRID`, it can also rewrite
+classes on the way: whatever a class carries that the application never needs at run time, or has to work out again at every
 start, is paid for on every start. This section lists what Runner changes in classes at build time, the default and
 the opt-out of each change, and what an application can observe as a result.
 
@@ -124,7 +124,7 @@ java -Dmicronaut.runner.mode=inspect -jar build/libs/my-app-0.1-all.jar
 [[desugaredLambdas]]
 === Desugared lambdas
 
-On by default with `STORED` compression. A lambda or a method reference compiles to an `invokedynamic` call site,
+On by default with `STORED` and `HYBRID` compression. A lambda or a method reference compiles to an `invokedynamic` call site,
 and the first time the site runs, the JDK spins a hidden class for it. A CDS archive or an AOT cache keeps such a
 class only when the calling class was defined by one of the JDK's built-in class loaders, and the classes of a
 runner JAR are defined by Runner's own. So every lambda that runs before the application is ready is linked again

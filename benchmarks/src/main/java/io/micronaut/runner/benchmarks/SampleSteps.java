@@ -94,8 +94,8 @@ interface SampleSteps {
             throws Exception;
 
     /**
-     * Records the startup class list from the list-free {@code runner-stored} jar and packages the same inputs
-     * again with it.
+     * Packages the {@code runner-stored} inputs again with the run's startup class list, which is recorded once
+     * per run from the list-free {@code runner-stored} jar.
      *
      * @param stored the {@code runner-stored} row, which the recording launch runs
      * @param spec   the {@code runner-stored-preload} row
@@ -103,6 +103,29 @@ interface SampleSteps {
      * @throws Exception if the recording launch fails, or the jar embeds no startup class
      */
     Variant preloadingRunnerJar(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
+
+    /**
+     * Packages the {@code runner-stored} inputs with the run's startup class list, so each nested jar holds its
+     * startup classes first, and launches the jar with the preloader off.
+     *
+     * @param stored the {@code runner-stored} row, which the recording launch runs
+     * @param spec   the {@code runner-stored-ordered} row
+     * @return the variant
+     * @throws Exception if the recording launch fails, or the jar embeds no startup class
+     */
+    Variant orderedRunnerJar(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
+
+    /**
+     * Packages the {@code runner-stored} inputs as {@code HYBRID} with the run's startup class list, and launches
+     * the jar with the preloader off.
+     *
+     * @param stored the {@code runner-stored} row, which the recording launch runs
+     * @param spec   the {@code runner-stored-hybrid} row
+     * @return the variant
+     * @throws Exception if the recording launch fails, the jar embeds no startup class, or it holds no deflated
+     *                   nested entry
+     */
+    Variant hybridRunnerJar(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
 
     /**
      * Builds the Joran control: the {@code runner-stored} inputs with {@code logback.xml} left to Joran.

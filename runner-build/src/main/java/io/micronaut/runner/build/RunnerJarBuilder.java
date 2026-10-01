@@ -33,7 +33,6 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -78,8 +77,10 @@ import java.util.zip.CRC32;
  * reaches the bytes. Building the same inputs twice, in different time zones, produces identical files.</p>
  *
  * <h2>Dependency staging</h2>
- * <p>Each dependency is staged on up to {@code min(availableProcessors(), 8)} daemon threads. In STORED its
- * stage repacks it into a nested jar in the work directory. In PRESERVE the dependency is nested as it is:
+ * <p>Each dependency is staged on up to {@code min(availableProcessors(), 8)} daemon threads. In STORED and
+ * HYBRID its stage repacks it into a nested jar in the work directory, with the startup classes of the build's
+ * startup class list first, and in HYBRID with its cold classes compressed. In PRESERVE the dependency is nested
+ * as it is:
  * its stage writes nothing and only checksums the file, and the archive is written from the dependency
  * itself, through a read that fails the build if the file no longer matches that checksum. The threads are
  * created for each build and have stopped before {@code build} returns; with one processor, or at most one
@@ -93,7 +94,8 @@ import java.util.zip.CRC32;
  * starts, warnings are emitted in that order afterwards, and the outer archive is written on one thread.</p>
  *
  * <h2>Class transforms</h2>
- * <p>In STORED, each stage also runs the {@link ClassTransforms} of the build over its dependency's classes, by
+ * <p>In STORED and HYBRID, each stage also runs the {@link ClassTransforms} of the build over its dependency's
+ * classes, by
  * default {@link RunnerJarSpec#desugarLambdas()} and then {@link RunnerJarSpec#stripLocalVariables()}. Before
  * staging, one scan task per dependency runs on the same threads, with its own {@code ZipReader}, into a
  * read-only {@link ClassPathModel} that every stage shares and that is discarded when {@code build} returns. A
@@ -368,7 +370,7 @@ public final class RunnerJarBuilder {
             requireMainClass();
             generateEntryStub();
             readApplicationManifest();
-            collectDependencies(work);
+            collectDependencies(work, startupClasses);
             precompileLogback(work);
             loadLauncher(work);
             List<TransformReport> transformReports = transforms.report(logger);
@@ -824,50 +826,59 @@ public final class RunnerJarBuilder {
     /**
      * Prepares every dependency as a nested jar and reads what the index has to know about it: its manifest
      * attributes, its per-package sections, whether it was signed and where each of its entries ends up
-     * inside it. In STORED a dependency is repacked into a nested jar in the work directory, through the class
-     * transform pipeline when a transform is enabled; in PRESERVE the dependency itself is the nested jar, and
-     * is only checksummed.
+     * inside it. In STORED and HYBRID a dependency is repacked into a nested jar in the work directory, through
+     * the class transform pipeline when a transform, a startup class list or HYBRID needs it; in PRESERVE the
+     * dependency itself is the nested jar, and is only checksummed.
      *
      * <p>When {@link #parallelism} and the number of dependencies are both above one, a pool is created for
      * this build and stopped before this method returns. The class path is scanned first, when a transform is
      * enabled: one scan task per dependency on the pool, while the calling thread scans the application layer.
      * Every nested jar's entry name and work file are then fixed in class-path order, so neither depends on
      * which dependency is staged first, and the stages run on the pool, largest dependency first, or on the
-     * calling thread one after the other. Either way each stage is joined in class-path order on the calling
-     * thread, which is the only thread that emits a warning or touches the builder.</p>
+     * calling thread one after the other. Either way the stages are collected in class-path order on the calling
+     * thread, and joined once every one has finished: the calling thread is the only thread that emits a warning
+     * or touches the builder.</p>
      *
-     * @param work the directory the repacked nested jars are built in
+     * <p>The startup class list's rank map is built here, once, on the calling thread, and reaches every stage
+     * through the pipeline's options: in STORED and HYBRID each nested jar holds its startup classes first. HYBRID
+     * needs the list: without one, the dependencies are staged as STORED, with one warning. A HYBRID staging that
+     * found no startup class in any dependency is staged again as STORED, with one warning, so a list that names
+     * none of them compresses nothing by accident; the output is then the STORED output with the same list.</p>
+     *
+     * @param work           the directory the repacked nested jars are built in
+     * @param startupClasses the startup class list, read once at the start of the build
      * @throws IOException if a dependency cannot be read or its nested jar cannot be written; when several
      *                     cannot, the failure of the first one on the class path
      */
-    private void collectDependencies(Path work) throws IOException {
+    private void collectDependencies(Path work, StartupClassList startupClasses) throws IOException {
+        Compression compression = spec.compression();
+        ClassTransformPipeline.Options options = ClassTransformPipeline.Options.NONE;
+        if (compression != Compression.PRESERVE) {
+            List<String> classes = startupClasses.classes();
+            if (compression == Compression.HYBRID && classes.isEmpty()) {
+                warn(DependencyStage.HYBRID_WITHOUT_LIST);
+                compression = Compression.STORED;
+            }
+            options = ClassTransformPipeline.Options.of(classes, compression == Compression.HYBRID);
+        }
         int threads = Math.min(parallelism, dependencies.size());
         StageThreads factory = threads > 1 ? new StageThreads() : null;
         ExecutorService pool = factory == null ? null : Executors.newFixedThreadPool(threads, factory);
         Throwable failure = null;
         try {
-            transforms = ClassTransforms.prepare(spec, dependencies, pool, this::scanApplication, logger, this::warn);
-            List<DependencyStage> stages = new ArrayList<>(dependencies.size());
-            Set<String> taken = new HashSet<>();
-            for (int position = 0; position < dependencies.size(); position++) {
-                Dependency dependency = dependencies.get(position);
-                stages.add(new DependencyStage(dependency, position + 1,
-                        IndexFormat.LIB_PREFIX + uniqueName(taken, fileName(dependency.path())),
-                        work.resolve("lib-" + position + ".jar"), spec.compression(), transforms.pipeline()));
+            transforms = ClassTransforms.prepare(spec, dependencies, pool, this::scanApplication, logger, this::warn,
+                    options);
+            // The application layer is transformed on this thread while the pool stages the dependencies.
+            List<DependencyStage.Staged> staged = DependencyStage.stageAll(
+                    DependencyStage.of(dependencies, work, compression, transforms.pipeline()), pool,
+                    this::transformApplication);
+            if (compression == Compression.HYBRID && DependencyStage.hotEntries(staged) == 0) {
+                warn(DependencyStage.HYBRID_WITHOUT_HOT_ENTRY);
+                transforms.storeColdClasses();
+                staged = DependencyStage.stageAll(DependencyStage.of(dependencies, work, Compression.STORED,
+                        transforms.pipeline()), pool, () -> { });
             }
-            if (pool == null) {
-                transformApplication();
-                for (DependencyStage stage : stages) {
-                    join(stage.call());
-                }
-            } else {
-                // The application layer is transformed on this thread while the pool stages the dependencies.
-                List<Future<DependencyStage.Staged>> futures = submitStages(stages, pool);
-                transformApplication();
-                for (Future<DependencyStage.Staged> future : futures) {
-                    join(awaitStage(future));
-                }
-            }
+            staged.forEach(this::join);
         } catch (Throwable e) {
             failure = e;
             throw e;
@@ -948,21 +959,6 @@ public final class RunnerJarBuilder {
         }
         application.clear();
         application.putAll(rebuilt);
-    }
-
-    /**
-     * Submits the stages to the build's pool, largest dependency first.
-     *
-     * @param stages every stage, in class-path order
-     * @param pool   the pool created for this build, which the caller stops
-     * @return the submitted stages, in class-path order
-     */
-    private List<Future<DependencyStage.Staged>> submitStages(List<DependencyStage> stages, ExecutorService pool) {
-        List<Future<DependencyStage.Staged>> futures = new ArrayList<>(Collections.nCopies(stages.size(), null));
-        for (int position : largestFirst(dependencies)) {
-            futures.set(position, pool.submit(stages.get(position)));
-        }
-        return futures;
     }
 
     /**
@@ -1087,19 +1083,6 @@ public final class RunnerJarBuilder {
         nested.add(staged.jar());
     }
 
-    private static String uniqueName(Set<String> taken, String fileName) {
-        String candidate = fileName;
-        int suffix = 1;
-        while (!taken.add(candidate.toLowerCase(Locale.ROOT))) {
-            int dot = fileName.lastIndexOf('.');
-            String base = dot < 0 ? fileName : fileName.substring(0, dot);
-            String extension = dot < 0 ? "" : fileName.substring(dot);
-            candidate = base + "-" + suffix + extension;
-            suffix++;
-        }
-        return candidate;
-    }
-
     /** Precompiles {@code logback.xml} once the dependencies, whose Logback decides, are staged. */
     private void precompileLogback(Path work) {
         List<LogbackPrecompiler.Layer> layers = new ArrayList<>(nested.size() + 1);
@@ -1159,7 +1142,7 @@ public final class RunnerJarBuilder {
         writer.startClass(spec.mainClass())
                 .entryStubClass(entryStubClass)
                 .launcherVersion(launcherVersion)
-                .headerFlags((spec.compression() == Compression.STORED
+                .headerFlags((spec.compression() != Compression.PRESERVE && nestedStored()
                         ? IndexFormat.HEADER_FLAG_NESTED_STORED : 0)
                         | (spec.multiRelease() ? IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE : 0)
                         | (spec.archiveReads() == ArchiveReads.POSITIONAL
@@ -1172,6 +1155,23 @@ public final class RunnerJarBuilder {
             applicationJar.addFlags(IndexFormat.JAR_FLAG_HAS_MANIFEST);
         }
         describeManifest(applicationJar, applicationManifest);
+    }
+
+    /**
+     * Whether every file entry of every nested jar is {@code STORED}: always in STORED, and in a HYBRID build only
+     * when it wrote nothing compressed.
+     *
+     * @return whether the index may say that the nested entries are stored
+     */
+    private boolean nestedStored() {
+        for (NestedJar jar : nested) {
+            for (ZipEntryInfo entry : jar.result.entries()) {
+                if (!entry.directory() && !entry.stored()) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /**

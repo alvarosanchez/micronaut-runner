@@ -91,6 +91,12 @@ import java.util.zip.CRC32;
  * its {@link JarReport} back with its result, and the calling thread reports them in class-path order. The
  * output does not depend on the thread count, and a pipeline is safe to share between stage tasks: it holds
  * immutable ClassFile contexts and the class path model, and all per-jar state lives in the jar's run.</p>
+ *
+ * <h2>Options</h2>
+ * <p>The pipeline also carries the build's {@link Options}: the rank of every startup class, which puts each
+ * nested jar's startup classes first, and whether the build is {@link Compression#HYBRID}, which decides how each
+ * entry is compressed. Neither changes a class, so neither needs a step: a pipeline without a step
+ * ({@link #ordering(Options)}) only orders entries and chooses their methods, and builds no class path model.</p>
  */
 final class ClassTransformPipeline {
 
@@ -113,18 +119,31 @@ final class ClassTransformPipeline {
     /** The step that plans whole nests, and its position among the steps; {@code null} and -1 without one. */
     private final LambdaDesugarer desugarer;
     private final int desugarIndex;
+    /** The two ClassFile contexts; {@code null} in a pipeline without a step, which never parses a class. */
     private final ClassFile rebuilt;
     private final ClassFile shared;
     private final Function<byte[], List<String>> verifier;
+    private final Options options;
+
+    /**
+     * A pipeline that verifies against a class hierarchy, with no startup class list and not {@code HYBRID}.
+     *
+     * @param steps     the enabled steps, in the order they run
+     * @param hierarchy the class hierarchy of the runtime class path, normally the {@link ClassPathModel}
+     */
+    ClassTransformPipeline(List<Step> steps, ClassHierarchyResolver hierarchy) {
+        this(steps, hierarchy, Options.NONE);
+    }
 
     /**
      * A pipeline that verifies against a class hierarchy.
      *
      * @param steps     the enabled steps, in the order they run
      * @param hierarchy the class hierarchy of the runtime class path, normally the {@link ClassPathModel}
+     * @param options   the build's startup class ranks and compression
      */
-    ClassTransformPipeline(List<Step> steps, ClassHierarchyResolver hierarchy) {
-        this(steps, hierarchy, verifierOf(hierarchy));
+    ClassTransformPipeline(List<Step> steps, ClassHierarchyResolver hierarchy, Options options) {
+        this(steps, hierarchy, verifierOf(hierarchy), options);
     }
 
     /**
@@ -136,11 +155,44 @@ final class ClassTransformPipeline {
      */
     ClassTransformPipeline(List<Step> steps, ClassHierarchyResolver hierarchy,
                            Function<byte[], List<String>> verifier) {
-        this.steps = List.copyOf(steps);
-        if (this.steps.isEmpty()) {
+        this(steps, hierarchy, verifier, Options.NONE);
+    }
+
+    /**
+     * A pipeline with its own verifier and options.
+     *
+     * @param steps     the enabled steps, in the order they run
+     * @param hierarchy the class hierarchy of the runtime class path
+     * @param verifier  returns the verification errors of a class, as messages
+     * @param options   the build's startup class ranks and compression
+     */
+    ClassTransformPipeline(List<Step> steps, ClassHierarchyResolver hierarchy,
+                           Function<byte[], List<String>> verifier, Options options) {
+        this(List.copyOf(steps), Objects.requireNonNull(hierarchy, "hierarchy"),
+                Objects.requireNonNull(verifier, "verifier"), Objects.requireNonNull(options, "options"), true);
+    }
+
+    private ClassTransformPipeline(ClassTransformPipeline pipeline, Options options) {
+        this.steps = pipeline.steps;
+        this.desugarer = pipeline.desugarer;
+        this.desugarIndex = pipeline.desugarIndex;
+        this.rebuilt = pipeline.rebuilt;
+        this.shared = pipeline.shared;
+        this.verifier = pipeline.verifier;
+        this.options = options;
+        if (steps.isEmpty() && !options.any()) {
             throw new IllegalArgumentException("A class transform pipeline needs at least one step");
         }
-        this.verifier = Objects.requireNonNull(verifier, "verifier");
+    }
+
+    private ClassTransformPipeline(List<Step> steps, ClassHierarchyResolver hierarchy,
+                                   Function<byte[], List<String>> verifier, Options options, boolean needsStep) {
+        this.steps = steps;
+        if (needsStep && this.steps.isEmpty()) {
+            throw new IllegalArgumentException("A class transform pipeline needs at least one step");
+        }
+        this.options = options;
+        this.verifier = verifier;
         LambdaDesugarer planning = null;
         int planningIndex = -1;
         for (int i = 0; i < this.steps.size(); i++) {
@@ -151,6 +203,12 @@ final class ClassTransformPipeline {
         }
         this.desugarer = planning;
         this.desugarIndex = planningIndex;
+        if (hierarchy == null) {
+            // A pipeline without a step parses nothing.
+            this.rebuilt = null;
+            this.shared = null;
+            return;
+        }
         ClassFile.ClassHierarchyResolverOption resolver = ClassFile.ClassHierarchyResolverOption.of(hierarchy);
         List<ClassFile.Option> rebuiltOptions = new ArrayList<>(LocalVariableStripper.OPTIONS);
         rebuiltOptions.add(ClassFile.StackMapsOption.DROP_STACK_MAPS);
@@ -162,6 +220,35 @@ final class ClassTransformPipeline {
                 ClassFile.AttributesProcessingOption.PASS_ALL_ATTRIBUTES,
                 ClassFile.StackMapsOption.DROP_STACK_MAPS,
                 resolver);
+    }
+
+    /**
+     * A pipeline without a step: it reads no class, and its runs only order entries and choose their methods.
+     *
+     * @param options the build's startup class ranks and compression
+     * @return the pipeline
+     * @throws IllegalArgumentException if the options have no startup class and are not {@code HYBRID}, which
+     *                                  leaves such a pipeline nothing to do
+     */
+    static ClassTransformPipeline ordering(Options options) {
+        if (!options.any()) {
+            throw new IllegalArgumentException("A class transform pipeline without a step needs a startup class"
+                    + " list or HYBRID compression");
+        }
+        return new ClassTransformPipeline(List.of(), null, bytes -> List.of(), options, false);
+    }
+
+    /**
+     * The same pipeline with other options: the same steps, contexts and class path model.
+     *
+     * @param value the options
+     * @return the pipeline, or this one when the options are equal
+     */
+    ClassTransformPipeline withOptions(Options value) {
+        if (value.equals(options)) {
+            return this;
+        }
+        return new ClassTransformPipeline(this, value);
     }
 
     /**
@@ -224,6 +311,15 @@ final class ClassTransformPipeline {
      */
     List<Step> steps() {
         return steps;
+    }
+
+    /**
+     * The build's startup class ranks and compression, which every run reads.
+     *
+     * @return the options
+     */
+    Options options() {
+        return options;
     }
 
     /**
@@ -527,8 +623,80 @@ final class ClassTransformPipeline {
      *
      * @param bytes     the class's accepted bytes, the original array when nothing changed it
      * @param generated the classes written right after it, in order
+     * @param rewritten whether a step changed the class, so {@code bytes} are not the original's
      */
-    record Planned(byte[] bytes, List<Generated> generated) {
+    record Planned(byte[] bytes, List<Generated> generated, boolean rewritten) {
+    }
+
+    /**
+     * The options of a build that the pipeline carries to every run: the rank of each startup class, which
+     * orders each nested jar's entries hot-first, and whether the build is {@link Compression#HYBRID}, which
+     * keeps the cold classes compressed. Empty options, {@link #NONE}, leave every entry where it is and stored.
+     *
+     * @param ranks  each startup class's position in the recorded list, keyed by its entry name, such as
+     *               {@code a/b/C.class}
+     * @param hybrid whether cold classes are written {@code DEFLATED}
+     */
+    record Options(Map<String, Integer> ranks, boolean hybrid) {
+
+        /** No startup class and not {@code HYBRID}. */
+        static final Options NONE = new Options(Map.of(), false);
+
+        /** The prefix of a multi-release entry, whose rank is that of the class it versions. */
+        private static final String VERSIONS = "META-INF/versions/";
+
+        /**
+         * Makes the map immutable.
+         *
+         * @param ranks  the ranks
+         * @param hybrid whether the build is {@code HYBRID}
+         */
+        Options {
+            ranks = Map.copyOf(ranks);
+        }
+
+        /**
+         * The options of a startup class list.
+         *
+         * @param startupClasses the binary names of the startup classes, in the order they were recorded and
+         *                       once each, as {@link StartupClassList#classes()} gives them
+         * @param hybrid         whether the build is {@code HYBRID}
+         * @return the options
+         */
+        static Options of(List<String> startupClasses, boolean hybrid) {
+            Map<String, Integer> ranks = new HashMap<>(Math.max(16, startupClasses.size() * 2));
+            for (int rank = 0; rank < startupClasses.size(); rank++) {
+                ranks.putIfAbsent(startupClasses.get(rank).replace('.', '/') + CLASS_SUFFIX, rank);
+            }
+            return new Options(ranks, hybrid);
+        }
+
+        /**
+         * Whether the options do anything: there is a startup class, or the build is {@code HYBRID}.
+         *
+         * @return whether a run has to order entries or choose their methods
+         */
+        boolean any() {
+            return hybrid || !ranks.isEmpty();
+        }
+
+        /**
+         * The rank of an entry of a nested jar: its class's position in the startup class list, for the class
+         * itself and for each of its {@code META-INF/versions/N/} variants.
+         *
+         * @param entryName the entry name
+         * @return the rank, or {@code -1} when the entry is cold
+         */
+        int rank(String entryName) {
+            if (ranks.isEmpty()) {
+                return -1;
+            }
+            Integer rank = ranks.get(entryName);
+            if (rank == null && entryName.startsWith(VERSIONS) && IndexWriter.versionOf(entryName) != 0) {
+                rank = ranks.get(IndexWriter.pathOf(entryName));
+            }
+            return rank == null ? -1 : rank;
+        }
     }
 
     /**
@@ -658,6 +826,16 @@ final class ClassTransformPipeline {
             unchanged = new int[count];
             fallbacks = new int[count];
             saved = new long[count];
+        }
+
+        /**
+         * The build's startup class ranks and compression, which decide where each entry of this jar goes and
+         * how it is compressed.
+         *
+         * @return the pipeline's options
+         */
+        Options options() {
+            return options;
         }
 
         /**
@@ -848,7 +1026,7 @@ final class ClassTransformPipeline {
                     saved[desugarIndex] -= generatedClass.bytes().length;
                 }
                 generated += following.size();
-                planned.put(entryName, new Planned(output, following));
+                planned.put(entryName, new Planned(output, following, output != original));
             }
             if (accepted != null) {
                 sites += unit.sites();
