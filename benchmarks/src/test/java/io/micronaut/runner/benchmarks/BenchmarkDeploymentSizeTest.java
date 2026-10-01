@@ -135,18 +135,7 @@ class BenchmarkDeploymentSizeTest {
     }
 
     @Test
-    void variantResultsRejectADeploymentTotalThatDoesNotMatchItsComponents(@TempDir Path root) throws Exception {
-        Path archive = writeBytes(root.resolve("runner.jar"), 17);
-        DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", archive));
-        Variant variant = Variant.available("runner", "fixture", List.of("java"), root, archive, deploymentSize);
-
-        assertThrows(IllegalArgumentException.class,
-                () -> new VariantResult(variant, 16, List.of(), null, null, null, List.of()));
-    }
-
-    @Test
     void reportsExposeTheSameCompleteDeploymentBoundaryAndComponents(@TempDir Path output) throws Exception {
-        Path sample = Files.createDirectory(output.resolve("sample"));
         Path application = writeBytes(output.resolve("app.jar"), 10);
         Path dependencies = Files.createDirectory(output.resolve("lib"));
         writeBytes(dependencies.resolve("first.jar"), 20);
@@ -154,14 +143,11 @@ class BenchmarkDeploymentSizeTest {
         DeploymentSize deploymentSize = DeploymentSize.measure(
                 DeploymentSize.input("application", application),
                 DeploymentSize.input("dependencies", dependencies));
-        Variant variant = Variant.available("thin-jar", "fixture", List.of("java"), output, application,
-                deploymentSize);
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output,
-                1, 0, 1, "/hello", false, "2026-09-22T00:00:00Z",
-                List.of("thin-jar"), CompletenessPolicy.PARTIAL);
-        VariantResult result = new VariantResult(variant, 60, List.of(), null, null, null, List.of());
+        Variant variant = BenchmarkFixtures.variant("thin-jar", List.of("java"), output, deploymentSize, application);
 
-        Reports.write(output, context, List.of(result), List.of());
+        Reports.write(output, BenchmarkFixtures.context(output, 1, List.of("thin-jar"), CompletenessPolicy.PARTIAL,
+                BenchmarkProvenance.unavailable()), List.of(BenchmarkFixtures.result(variant)), List.of());
+
 
         long applicationGzip = gzip(10);
         long dependenciesGzip = gzip(20) + gzip(30);

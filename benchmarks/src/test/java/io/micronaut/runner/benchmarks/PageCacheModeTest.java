@@ -112,7 +112,7 @@ class PageCacheModeTest {
 
     @Test
     void dropAllSyncsAndThenDropsThroughSudoBeforeEveryLaunch() throws IOException {
-        Variant variant = Variant.available("shadow", "fixture", List.of("java"), Path.of("."), Path.of("app.jar"));
+        Variant variant = BenchmarkFixtures.variant("shadow", List.of("java"), Path.of("."), null, Path.of("app.jar"));
         List<String> sync = List.of("sync");
         List<String> dropCaches = List.of("sudo", "-n", "sh", "-c", "echo 3 > /proc/sys/vm/drop_caches");
         List<String> purge = List.of("sudo", "-n", "purge");
@@ -137,7 +137,7 @@ class PageCacheModeTest {
 
     @Test
     void aFailedDropAllCommandFailsTheLaunchPreparation() {
-        Variant variant = Variant.available("shadow", "fixture", List.of("java"), Path.of("."), Path.of("app.jar"));
+        Variant variant = BenchmarkFixtures.variant("shadow", List.of("java"), Path.of("."), null, Path.of("app.jar"));
 
         List<List<String>> afterFailedDrop = new ArrayList<>();
         IOException drop = assertThrows(IOException.class,
@@ -179,9 +179,11 @@ class PageCacheModeTest {
         } catch (IOException | UnsupportedOperationException e) {
             linked = false;
         }
-        Variant variant = new Variant("runner-extracted-aot", "fixture", List.of("java", "-jar", "app.jar"), work,
-                layout, null, EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER, true, null,
-                List.of(application, dependency, cache), null);
+        Variant variant = Variant.available(SampleBuild.spec("runner-extracted-aot"),
+                List.of("java", "-jar", "app.jar"), work, layout, null, EntryMode.STANDARD_LOADER, null,
+                List.of(application, dependency, cache));
+
+
 
         List<Path> files = PageCacheEviction.evictionSet(variant);
 

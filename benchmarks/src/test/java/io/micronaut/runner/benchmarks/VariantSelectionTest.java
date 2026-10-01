@@ -104,7 +104,7 @@ class VariantSelectionTest {
         assertEquals(List.of("runner-stored-lambdas-aot", "runner-extracted-lambdas-aot"), names(variants));
         assertEquals(Map.of("runnerJar:runner-stored-lambdas", 1,
                 "aotCache:runner-stored-lambdas->runner-stored-lambdas-aot", 1,
-                "extractedLambdas:runner-stored-lambdas", 1,
+                "extracted:runner-stored-lambdas", 1,
                 "aotCache:runner-extracted-lambdas->runner-extracted-lambdas-aot", 1), steps.calls);
     }
 
@@ -144,10 +144,10 @@ class VariantSelectionTest {
         List<SampleBuild.RunnerJarOptions> packaged = new ArrayList<>();
         FakeSteps steps = new FakeSteps() {
             @Override
-            public Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode,
-                                     SampleBuild.RunnerJarOptions options) throws IOException {
+            public Variant runnerJar(SampleBuild.VariantSpec spec, Compression compression,
+                                     SampleBuild.RunnerJarOptions options) {
                 packaged.add(options);
-                return super.runnerJar(name, compression, requestedEntryMode, options);
+                return super.runnerJar(spec, compression, options);
             }
         };
 
@@ -236,13 +236,14 @@ class VariantSelectionTest {
     }
 
     /**
-     * The row table decides which caches train in the launcher's AOT training mode: every cache of a Runner single
-     * JAR, and none of a Shadow JAR or the extracted layout, whose classes the JDK's own loaders load.
+     * The table hands every cache of a Runner single JAR a source that trains in the launcher's AOT training mode,
+     * and none of a Shadow JAR or an extracted layout, whose classes the JDK's own loaders load.
      */
     @Test
     void onlyTheCachesOfRunnerSingleJarsTrainInTheLaunchersTrainingMode() {
         FakeSteps steps = new FakeSteps();
-        List<String> cached = SampleBuild.allVariantNames().stream().filter(name -> name.endsWith("-aot")).toList();
+        List<String> cached = SampleBuild.allVariantNames().stream()
+                .filter(name -> SampleBuild.spec(name).aotCache()).toList();
 
         SampleBuild.variants(steps, cached, log());
 
@@ -259,48 +260,36 @@ class VariantSelectionTest {
 
     @Test
     void aCachedMicronautAotRowBuildsItsUncachedTwinWithoutReportingIt() {
-        FakeSteps steps = new FakeSteps() {
-            @Override
-            public Variant runnerMaot() {
-                return super.runnerMaot().describedAs(
-                        "Runner jar of the Micronaut AOT-optimized application (optimizedJitJar); plugin-default"
-                                + " entry stub; static services: 489 slots (core 5.1.15)");
-            }
-        };
+        FakeSteps steps = new FakeSteps();
 
         List<Variant> variants = SampleBuild.variants(steps, List.of("shadow-maot-aot", "runner-maot-aot"), log());
 
         assertEquals(List.of("shadow-maot-aot", "runner-maot-aot"), names(variants));
         assertEquals(List.of("shadowMaot", "aotCache:shadow-maot->shadow-maot-aot", "runnerMaot",
                 "aotCache:runner-maot->runner-maot-aot"), List.copyOf(steps.calls.keySet()));
-        // The report line of a cached Micronaut AOT row is fixed, not derived from its source's, except that the
-        // Runner row keeps whether its jar carries a static service table.
-        assertEquals("The same optimizedJitJarAll with a verified JDK AOT cache", variants.get(0).description());
-        assertEquals("The same Micronaut AOT Runner jar with a verified JDK AOT cache; static services: 489 slots"
-                + " (core 5.1.15)", variants.get(1).description());
     }
 
     @Test
     void aFailedPrerequisiteMakesTheDerivedRowUnavailableAndIsNotRetried() {
         FakeSteps steps = new FakeSteps() {
             @Override
-            public Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode,
-                                     SampleBuild.RunnerJarOptions options) throws IOException {
-                note("runnerJar:" + name);
-                throw new IOException("no runner jar for " + name);
+            public Variant runnerJar(SampleBuild.VariantSpec spec, Compression compression,
+                                     SampleBuild.RunnerJarOptions options) {
+                note("runnerJar:" + spec.name());
+                throw new IllegalStateException("no runner jar for " + spec.name());
             }
 
             @Override
-            public Variant aotCache(Variant source, String name, List<String> trainingJvmArgs) throws IOException {
+            public Variant aotCache(Variant source, SampleBuild.VariantSpec spec) throws IOException {
                 if (!source.available()) {
-                    note("aotCache:" + source.name() + "->" + name);
+                    note("aotCache:" + source.name() + "->" + spec.name());
                     throw new IOException("cannot train AOT cache because " + source.name() + " is unavailable");
                 }
-                return super.aotCache(source, name, trainingJvmArgs);
+                return super.aotCache(source, spec);
             }
 
             @Override
-            public Variant extracted(Variant stored) {
+            public Variant extracted(Variant stored, SampleBuild.VariantSpec spec) {
                 note("extracted:" + stored.name());
                 throw new IllegalStateException("there is no runner jar to extract: " + stored.unavailableReason());
             }
@@ -329,43 +318,43 @@ class VariantSelectionTest {
         assertTrue(variants.stream().allMatch(variant -> variant.unavailableReason().equals("sample build failed")));
     }
 
+    /** A row's source comes from its spec alone, and each row is built once however many rows derive from it. */
     @Test
     void theRowHelperMemoizesFakeFactories() {
         Map<String, Integer> built = new LinkedHashMap<>();
-        VariantRows.Factory<Map<String, Integer>> leaf = (calls, rows) -> fake(calls, "base");
+        VariantRows.Factory<Map<String, Integer>> factory = (calls, spec, source) -> {
+            assertTrue(spec.source() == null ? source == null : source.name().equals(spec.source()), spec.name());
+            calls.merge(spec.name(), 1, Integer::sum);
+            return BenchmarkFixtures.variant(spec.name());
+        };
         List<VariantRows.Row<Map<String, Integer>>> table = List.of(
-                new VariantRows.Row<>("base", "base row", true, leaf),
-                new VariantRows.Row<>("left", "derived", true, (calls, rows) -> derived(calls, rows.get("base"), "left")),
-                new VariantRows.Row<>("right", "derived", false,
-                        (calls, rows) -> derived(calls, rows.get("left"), "right")));
-
-        List<Variant> variants = VariantRows.build(table, built, List.of("right"), (name, description, create) -> {
+                new VariantRows.Row<>(new SampleBuild.VariantSpec("base", "base", EntryMode.STUB, false, false, null),
+                        factory),
+                new VariantRows.Row<>(new SampleBuild.VariantSpec("left", "left", EntryMode.STUB, false, false,
+                        "base"), factory),
+                new VariantRows.Row<>(new SampleBuild.VariantSpec("right", "right", EntryMode.STUB, true, true,
+                        "left"), factory));
+        VariantRows.Attempt attempt = (spec, create) -> {
             try {
                 return create.create();
             } catch (Exception e) {
-                return Variant.unavailable(name, description, e.getMessage());
+                return Variant.unavailable(spec, e.getMessage());
             }
-        });
+        };
 
-        assertEquals(List.of("right"), names(variants));
+        assertEquals(List.of("left", "right"), names(VariantRows.build(table, built, List.of("right", "left"),
+                attempt)));
         assertEquals(Map.of("base", 1, "left", 1, "right", 1), built);
-        assertEquals(List.of("base", "left", "right"), VariantRows.names(table));
-        assertEquals(List.of("base", "left"), VariantRows.coreNames(table));
         assertThrows(IllegalArgumentException.class, () -> VariantRows.build(table, built, List.of("missing"),
-                (name, description, create) -> Variant.unavailable(name, description, "unused")));
+                attempt));
     }
 
     @Test
     void comparisonsNeedBothSelectedVariants(@TempDir Path output) throws Exception {
-        Path sample = Files.createDirectories(output.resolve("sample"));
         List<String> selection = List.of("shadow", "runner-stored", "runner-extracted-aot");
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output, 1, 0, 1, "/hello", false,
-                "2026-09-25T00:00:00Z", selection, CompletenessPolicy.REQUIRED);
-        List<VariantResult> results = SampleBuild.unavailableVariants("not built", selection).stream()
-                .map(variant -> new VariantResult(variant, -1, List.of(), null, null, null, List.of()))
-                .toList();
-
-        Reports.write(output, context, results, List.of());
+        Reports.write(output, BenchmarkFixtures.context(output, 1, selection, CompletenessPolicy.REQUIRED,
+                BenchmarkProvenance.unavailable()), SampleBuild.unavailableVariants("not built", selection).stream()
+                .map(BenchmarkFixtures::result).toList(), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         String comparisons = json.substring(json.indexOf("\"comparisons\": ["), json.indexOf("\"attempts\": ["));
@@ -390,22 +379,13 @@ class VariantSelectionTest {
         return new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
     }
 
-    private static Variant fake(Map<String, Integer> calls, String name) {
-        calls.merge(name, 1, Integer::sum);
-        return Variant.available(name, "fake " + name, List.of("java"), Path.of("."), Path.of(name + ".jar"));
-    }
-
-    private static Variant derived(Map<String, Integer> calls, Variant source, String name) {
-        assertTrue(source.available(), source.name());
-        return fake(calls, name);
-    }
 
     /** Records every build step instead of building anything. */
     private static class FakeSteps implements SampleSteps {
 
         final Map<String, Integer> calls = new LinkedHashMap<>();
 
-        /** The training-only arguments each cached row was trained with. */
+        /** The training-only arguments of each cached row's source. */
         final Map<String, List<String>> trainingArguments = new LinkedHashMap<>();
 
         void note(String call) {
@@ -416,89 +396,73 @@ class VariantSelectionTest {
             return calls.getOrDefault(call, 0);
         }
 
-        private Variant variant(String name) {
-            return Variant.available(name, "fake " + name, List.of("java", "-jar", name + ".jar"), Path.of("."),
-                    Path.of(name + ".jar"));
+        private Variant variant(String call, SampleBuild.VariantSpec spec) {
+            note(call);
+            return Variant.available(spec, List.of("java", "-jar", spec.name() + ".jar"), Path.of("."),
+                    Path.of(spec.name() + ".jar"), null, spec.entryMode(), null, List.of());
         }
 
         @Override
-        public Variant explodedClasspath() {
-            note("explodedClasspath");
-            return variant("exploded-cp");
+        public Variant explodedClasspath(SampleBuild.VariantSpec spec) {
+            return variant("explodedClasspath", spec);
         }
 
         @Override
-        public Variant thinJar() {
-            note("thinJar");
-            return variant("thin-jar");
+        public Variant thinJar(SampleBuild.VariantSpec spec) {
+            return variant("thinJar", spec);
         }
 
         @Override
-        public Variant shadow() {
-            note("shadow");
-            return variant("shadow");
+        public Variant shadow(SampleBuild.VariantSpec spec) {
+            return variant("shadow", spec);
         }
 
         @Override
-        public Variant shadowStored() {
-            note("shadowStored");
-            return variant("shadow-stored");
+        public Variant shadowStored(SampleBuild.VariantSpec spec) {
+            return variant("shadowStored", spec);
         }
 
         @Override
-        public Variant shadowMaot() {
-            note("shadowMaot");
-            return variant("shadow-maot");
+        public Variant shadowMaot(SampleBuild.VariantSpec spec) {
+            return variant("shadowMaot", spec);
         }
 
         @Override
-        public Variant runnerMaot() {
-            note("runnerMaot");
-            return variant("runner-maot");
+        public Variant runnerMaot(SampleBuild.VariantSpec spec) {
+            return variant("runnerMaot", spec);
         }
 
         @Override
-        public Variant runnerJar(String name, Compression compression, EntryMode requestedEntryMode,
-                                 SampleBuild.RunnerJarOptions options) throws IOException {
-            note("runnerJar:" + name);
-            return variant(name);
+        public Variant runnerJar(SampleBuild.VariantSpec spec, Compression compression,
+                                 SampleBuild.RunnerJarOptions options) {
+            return variant("runnerJar:" + spec.name(), spec);
         }
 
         @Override
-        public Variant aotCache(Variant source, String name, List<String> trainingJvmArgs) throws IOException {
-            note("aotCache:" + source.name() + "->" + name);
-            trainingArguments.put(name, trainingJvmArgs);
-            return variant(name);
+        public Variant aotCache(Variant source, SampleBuild.VariantSpec spec) throws IOException {
+            trainingArguments.put(spec.name(), AotCache.trainingArguments(source));
+            return variant("aotCache:" + source.name() + "->" + spec.name(), spec);
         }
 
         @Override
-        public Variant preloadingRunnerJar(Variant stored) {
-            note("preloadingRunnerJar:" + stored.name());
-            return variant("runner-stored-preload");
+        public Variant preloadingRunnerJar(Variant stored, SampleBuild.VariantSpec spec) {
+            return variant("preloadingRunnerJar:" + stored.name(), spec);
         }
 
         @Override
-        public Variant joranControl(Variant stored) {
-            note("joranControl:" + stored.name());
-            return variant("runner-stored-joran");
+        public Variant joranControl(Variant stored, SampleBuild.VariantSpec spec) {
+            return variant("joranControl:" + stored.name(), spec);
         }
 
         @Override
-        public Variant prefetchCandidate(Variant stored) {
-            note("prefetchCandidate:" + stored.name());
-            return variant("runner-stored-prefetch");
+        public Variant prefetchCandidate(Variant stored, SampleBuild.VariantSpec spec) {
+            return variant("prefetchCandidate:" + stored.name(), spec);
         }
 
         @Override
-        public Variant extracted(Variant stored) {
-            note("extracted:" + stored.name());
-            return variant("runner-extracted");
-        }
-
-        @Override
-        public Variant extractedLambdas(Variant lambdas) {
-            note("extractedLambdas:" + lambdas.name());
-            return variant("runner-extracted-lambdas");
+        public Variant extracted(Variant stored, SampleBuild.VariantSpec spec) {
+            return variant("extracted:" + stored.name(), spec);
         }
     }
+
 }

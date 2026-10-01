@@ -32,7 +32,6 @@ class RunConditionsReportTest {
 
     @Test
     void aOneCpuEvictedRunRecordsItsConditionsInBothReports(@TempDir Path output) throws Exception {
-        Path sample = Files.createDirectory(output.resolve("sample"));
         // Deliberately not this JVM's count: the Machine line must show what was captured before pinning.
         int machineCpus = Runtime.getRuntime().availableProcessors() + 61;
         RunConditions conditions = new RunConditions(1, machineCpus, "0-3", "0", "1-3", Map.of(0, "0,2"),
@@ -40,13 +39,12 @@ class RunConditionsReportTest {
                 "-XX:ConcGCThreads=1 -XX:+UseCompressedOops -XX:+UseSerialGC", PageCacheMode.EVICT_ARTIFACTS,
                 PageCacheMode.EVICT_ARTIFACTS.evictionMethod("Linux"), "6.8.0-1021-azure", "/dev/root ext4",
                 "root 0 Virtual Disk\n└─sda 0 Virtual Disk");
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output, 1, 0, 1, "/hello", false,
-                "2026-09-25T00:00:00Z", List.of("runner-stored"), CompletenessPolicy.REQUIRED,
+        RunContext context = new RunContext(output.resolve("sample"), "1.0", output, output.resolve("work"), 1, 0, 1,
+                "/hello", false, "2026-09-25T00:00:00Z", List.of("runner-stored"), CompletenessPolicy.REQUIRED,
                 BenchmarkProvenance.unavailable(), conditions);
-        Variant variant = Variant.unavailable("runner-stored", "fixture", "not built");
 
-        Reports.write(output, context, List.of(new VariantResult(variant, -1, List.of(), null, null, null,
-                List.of())), List.of());
+        Reports.write(output, context, SampleBuild.unavailableVariants("not built", List.of("runner-stored")).stream()
+                .map(BenchmarkFixtures::result).toList(), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("  \"osPageCacheState\": \"evict-artifacts\",\n"), json);
@@ -79,11 +77,9 @@ class RunConditionsReportTest {
 
     @Test
     void theDefaultConditionsAreUnlimitedAndUncontrolled(@TempDir Path output) throws Exception {
-        Path sample = Files.createDirectory(output.resolve("sample"));
-        RunContext context = new RunContext(sample, "file:/repo", "1.0", output, 1, 0, 1, "/hello", false,
-                "2026-09-25T00:00:00Z");
+        Reports.write(output, BenchmarkFixtures.context(output, 1, List.of(), CompletenessPolicy.REQUIRED,
+                BenchmarkProvenance.unavailable()), List.of(), List.of());
 
-        Reports.write(output, context, List.of(), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         assertTrue(json.contains("\"cpuLimit\": null,"), json);

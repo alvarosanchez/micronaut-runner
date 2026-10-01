@@ -71,12 +71,14 @@ class LaunchInputsTest {
     void rebuiltRunnerJarKeepsItsBytesAndItsJdkVisibleSizeAndTime(@TempDir Path directory) throws Exception {
         Path classes = Path.of(AotCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
 
-        Variant first = SampleBuild.runnerJar(directory, "runner-stored", AotCacheFixture.class.getName(),
-                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
+        Variant first = SampleBuild.runnerJar(directory, SampleBuild.spec("runner-stored"),
+                AotCacheFixture.class.getName(), List.of(classes), List.of(), Compression.STORED,
+                SampleBuild.RunnerJarOptions.DEFAULTS);
         byte[] firstBytes = Files.readAllBytes(first.artifact());
         LaunchInputs.JdkView firstView = LaunchInputs.jdkView(first.artifact());
-        Variant second = SampleBuild.runnerJar(directory, "runner-stored", AotCacheFixture.class.getName(),
-                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
+        Variant second = SampleBuild.runnerJar(directory, SampleBuild.spec("runner-stored"),
+                AotCacheFixture.class.getName(), List.of(classes), List.of(), Compression.STORED,
+                SampleBuild.RunnerJarOptions.DEFAULTS);
 
         assertArrayEquals(firstBytes, Files.readAllBytes(second.artifact()),
                 "the harness rebuilds runner-stored.jar in every run; reuse needs the same bytes");
@@ -91,13 +93,10 @@ class LaunchInputsTest {
                 StandardCharsets.UTF_8);
         Path changed = Files.writeString(sources.resolve("changed.jar"), "class-v1", StandardCharsets.UTF_8);
         Path stable = Files.writeString(sources.resolve("stable.jar"), "stable", StandardCharsets.UTF_8);
-        Path cacheRoot = directory.resolve("managed-aot");
 
         Run firstRun = prepare(directory.resolve("first"), application, changed, stable);
         String affected = AotCache.identity(firstRun.affectedRow(), JDK, VM, ARCH, FLAGS);
         String unaffected = AotCache.identity(firstRun.unaffectedRow(), JDK, VM, ARCH, FLAGS);
-        train(AotCache.cacheFile(cacheRoot, affected));
-        train(AotCache.cacheFile(cacheRoot, unaffected));
 
         // A rebuilt sample with one class changed: same length, different bytes.
         Files.writeString(changed, "class-v2", StandardCharsets.UTF_8);
@@ -106,15 +105,10 @@ class LaunchInputsTest {
 
         assertEquals(LaunchInputs.jdkView(firstRun.changedCopy()), LaunchInputs.jdkView(secondRun.changedCopy()),
                 "size and pinned time cannot tell the two contents apart; the content identity must");
-        String affectedAgain = AotCache.identity(secondRun.affectedRow(), JDK, VM, ARCH, FLAGS);
-        String unaffectedAgain = AotCache.identity(secondRun.unaffectedRow(), JDK, VM, ARCH, FLAGS);
-        assertNotEquals(affected, affectedAgain);
-        assertFalse(AotCache.hasCandidate(AotCache.cacheFile(cacheRoot, affectedAgain)),
-                "the row that launches the changed dependency finds no cache under its new identity and trains");
-        assertTrue(AotCache.hasCandidate(AotCache.cacheFile(cacheRoot, affected)),
-                "the old training stays in its own directory, never selected for the new bytes");
-        assertEquals(unaffected, unaffectedAgain);
-        assertTrue(AotCache.hasCandidate(AotCache.cacheFile(cacheRoot, unaffectedAgain)),
+        // The identity names the cache's directory: a new one trains there, the old training stays where it was.
+        assertNotEquals(affected, AotCache.identity(secondRun.affectedRow(), JDK, VM, ARCH, FLAGS),
+                "the row that launches the changed dependency trains under a new identity");
+        assertEquals(unaffected, AotCache.identity(secondRun.unaffectedRow(), JDK, VM, ARCH, FLAGS),
                 "the row that does not launch it keeps its identity and reuses its cache");
     }
 
@@ -163,10 +157,6 @@ class LaunchInputsTest {
         return new Run(changedCopy, List.of(applicationCopy, changedCopy), List.of(applicationCopy, stableCopy));
     }
 
-    private static void train(Path cache) throws IOException {
-        Files.createDirectories(cache.getParent());
-        Files.writeString(cache, "trained", StandardCharsets.UTF_8);
-    }
 
     private static FileTime now() {
         return FileTime.from(Instant.now().truncatedTo(ChronoUnit.SECONDS));

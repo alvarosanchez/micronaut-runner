@@ -88,11 +88,9 @@ class BenchmarkCompletenessTest {
         Path artifact = Files.writeString(output.resolve("fixture.jar"), "fixture");
         List<Variant> variants = new ArrayList<>();
         for (String name : SampleBuild.variantNames()) {
-            variants.add(Variant.available(name, "fixture " + name, List.of("java"), output, artifact,
-                    List.of(artifact)));
+            variants.add(BenchmarkFixtures.variant(name, List.of("java"), output, null, artifact));
         }
-        variants.add(Variant.available(optIn, "fixture " + optIn, List.of("java"), output, artifact,
-                List.of(artifact)));
+        variants.add(BenchmarkFixtures.variant(optIn, List.of("java"), output, null, artifact));
         StartupBenchmark.Options options = options(output, 2, 0, CompletenessPolicy.REQUIRED);
         List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
             if (variant.name().equals(optIn) && !warmup) {
@@ -100,10 +98,8 @@ class BenchmarkCompletenessTest {
             }
             return sample(iteration, warmup);
         }), variants, options, log());
-        RunContext context = new RunContext(output, "file:/repo", "1.0", output,
-                options.iterations(), options.warmupIterations(), options.seed(), options.readinessPath(),
-                options.diagnostics(), "2026-09-22T00:00:00Z", SampleBuild.variantNames(),
-                CompletenessPolicy.REQUIRED);
+        RunContext context = BenchmarkFixtures.context(output, options.iterations(), SampleBuild.variantNames(),
+                CompletenessPolicy.REQUIRED, BenchmarkProvenance.unavailable());
 
         BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
 
@@ -153,9 +149,8 @@ class BenchmarkCompletenessTest {
             List<String> selection = options.selection();
             assertEquals(List.of("runner-stored-positional", "runner-stored-positional-aot"), selection);
             assertEquals(List.of(), options.requiredVariants());
-            RunContext context = new RunContext(sample, "file:/repo", "1.0", options.outputDirectory(),
-                    options.iterations(), options.warmupIterations(), options.seed(), options.readinessPath(),
-                    options.diagnostics(), "2026-09-30T00:00:00Z", options.requiredVariants(), policy);
+            RunContext context = BenchmarkFixtures.context(options.outputDirectory(), options.iterations(),
+                    options.requiredVariants(), policy, BenchmarkProvenance.unavailable());
 
             List<VariantResult> unbuilt = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
                 throw new AssertionError("an unavailable variant must not reach the runner");
@@ -214,11 +209,10 @@ class BenchmarkCompletenessTest {
 
     @Test
     void failureTextKeepsVariantPathsUnderTheHomeDirectoryTokenised(@TempDir Path output) throws Exception {
-        Path fixture = Path.of(System.getProperty("user.home")).resolve("runner-redaction-fixture");
+        Path fixture = Path.of(System.getProperty("user.home")).resolve("runner-relocation-fixture");
         Path work = fixture.resolve("work");
         Path jar = fixture.resolve("lib").resolve("runner.jar");
-        List<Variant> variants = List.of(
-                Variant.available("a", "fixture a", List.of("java"), work, jar, List.of(jar)),
+        List<Variant> variants = List.of(BenchmarkFixtures.variant("a", List.of("java"), work, null, jar),
                 available("b"));
         StartupBenchmark.Options options = options(output, 1, 0, CompletenessPolicy.PARTIAL);
         List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
@@ -311,9 +305,7 @@ class BenchmarkCompletenessTest {
     @Test
     void unavailableVariantIsSkippedRatherThanMisreportedAsAttempted(@TempDir Path output) throws Exception {
         StartupBenchmark.Options options = options(output, 2, 1, CompletenessPolicy.REQUIRED);
-        List<Variant> variants = List.of(
-                available("a"),
-                Variant.unavailable("b", "fixture b", "build failed"));
+        List<Variant> variants = List.of(available("a"), Variant.unavailable(BenchmarkFixtures.spec("b"), "build failed"));
         List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) ->
                 sample(iteration, warmup)), variants, options, log());
 
@@ -336,9 +328,8 @@ class BenchmarkCompletenessTest {
         List<VariantResult> results = StartupBenchmark.measure(scriptedRunner((variant, iteration, warmup) -> {
             throw new AssertionError("an unavailable variant must not reach the runner");
         }), variants, options, log());
-        RunContext context = new RunContext(output, "file:/repo", "1.0", output,
-                2, 1, 1234L, "/hello", false, "2026-09-22T00:00:00Z",
-                SampleBuild.variantNames(), CompletenessPolicy.REQUIRED);
+        RunContext context = BenchmarkFixtures.context(output, 2, SampleBuild.variantNames(),
+                CompletenessPolicy.REQUIRED, BenchmarkProvenance.unavailable());
 
         assertEquals(SampleBuild.variantNames(), variants.stream().map(Variant::name).toList());
         assertTrue(results.stream().allMatch(result -> !result.variant().available()));
@@ -418,9 +409,8 @@ class BenchmarkCompletenessTest {
     }
 
     private static RunContext context(Path output, StartupBenchmark.Options options) {
-        return new RunContext(output, "file:/repo", "1.0", output,
-                options.iterations(), options.warmupIterations(), options.seed(), options.readinessPath(),
-                options.diagnostics(), "2026-09-22T00:00:00Z", List.of("a", "b"), options.completenessPolicy());
+        return BenchmarkFixtures.context(output, options.iterations(), List.of("a", "b"),
+                options.completenessPolicy(), BenchmarkProvenance.unavailable());
     }
 
     private static StartupBenchmark.Options options(Path output,
@@ -458,8 +448,9 @@ class BenchmarkCompletenessTest {
     }
 
     private static Variant available(String name) {
-        return Variant.available(name, "fixture " + name, List.of("java"), Path.of("."), Path.of("."));
+        return BenchmarkFixtures.variant(name);
     }
+
 
     private static StartupSample sample(int iteration, boolean warmup) {
         return new StartupSample(iteration, warmup, 8080, 10 + iteration, 9 + iteration,

@@ -21,6 +21,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.locks.LockSupport;
 
 /** Forked HTTP fixture for {@link StartupHarnessTest}. */
 public final class StartupHarnessFixture {
@@ -38,6 +39,10 @@ public final class StartupHarnessFixture {
         }
         if (mode.equals("early-exit")) {
             System.exit(7);
+        }
+        if (mode.equals("halt-on-stop")) {
+            // Serves like "success", but ends a stop with status 3 instead of 143.
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> Runtime.getRuntime().halt(3)));
         }
         if (mode.equals("hang")) {
             Thread.sleep(60_000);
@@ -67,9 +72,20 @@ public final class StartupHarnessFixture {
     }
 
     private static void serve(ServerSocket server, String mode) {
+        int answered = 0;
         while (!server.isClosed()) {
             try (Socket socket = server.accept()) {
                 socket.getInputStream().readNBytes(1);
+                if (mode.equals("stall") || mode.equals("stall-after-ready") && answered > 0) {
+                    // The headers and part of the body, then nothing: a request timeout no longer applies.
+                    socket.getOutputStream().write("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nabc"
+                            .getBytes(StandardCharsets.US_ASCII));
+                    socket.getOutputStream().flush();
+                    while (true) {
+                        LockSupport.park();
+                    }
+                }
+                answered++;
                 boolean injected = System.getProperty("fixture.injected") != null;
                 int status = mode.equals("non-200") || injected ? 503 : 200;
                 byte[] body = (injected ? "inherited option reached child" : "ready")
@@ -80,9 +96,7 @@ public final class StartupHarnessFixture {
                 socket.getOutputStream().write(body);
                 socket.getOutputStream().flush();
             } catch (IOException e) {
-                if (!server.isClosed()) {
-                    throw new RuntimeException(e);
-                }
+                // A client that gave up on its request closed the connection; serve the next one.
             }
         }
     }

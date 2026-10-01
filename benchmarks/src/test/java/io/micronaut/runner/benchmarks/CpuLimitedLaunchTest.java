@@ -16,22 +16,14 @@
 package io.micronaut.runner.benchmarks;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
- * Where a CPU limit's command prefix goes, in timing runs and in AOT-cache training and verification, and what it
- * does to the cache identity. Nothing here spawns a process.
+ * Where a CPU limit's command prefix goes in the one command every launch spawns, timed or not: training and
+ * verification launches go through the same {@link StartupHarness}. Nothing here spawns a process.
  */
 class CpuLimitedLaunchTest {
 
@@ -50,76 +42,8 @@ class CpuLimitedLaunchTest {
     void jvmArgumentsGoAfterJavaNotAfterTaskset() {
         assertEquals(List.of("taskset", "-c", "0", "/jdk/bin/java", "-jar", "/work/runner-stored.jar"),
                 StartupHarness.processCommand(TASKSET, COMMAND, List.of()));
-        assertEquals(List.of("taskset", "-c", "0", "/jdk/bin/java", "-Xlog:class+load=info:file=/logs/x.log",
+        assertEquals(List.of("taskset", "-c", "0", "/jdk/bin/java", "-XX:AOTCacheOutput=/work/app.training.aot",
                         "-jar", "/work/runner-stored.jar"),
-                StartupHarness.processCommand(TASKSET, COMMAND, List.of("-Xlog:class+load=info:file=/logs/x.log")));
-    }
-
-    @Test
-    void trainingAndVerificationRunUnderThePrefixWithTheirFlagsAfterJava(@TempDir Path directory) {
-        Path jar = directory.resolve("runner-stored.jar");
-        Variant source = Variant.available("runner-stored", "fixture", List.of("/jdk/bin/java", "-jar", jar.toString()),
-                directory, jar);
-        Path temporary = directory.resolve("app.training.aot");
-        Path cache = directory.resolve("app.aot");
-        Path classLog = directory.resolve("verification.log");
-        AotCache.Request limited = request(directory, CpuLimit.validate(1, "Linux", "0-3", true));
-
-        List<String> training = AotCache.lifecycleCommand(limited, AotCache.trainingCommand(source, temporary,
-                List.of("-XX:+UnlockDiagnosticVMOptions"), AotCache.RUNNER_SINGLE_JAR_TRAINING));
-        assertEquals(List.of("taskset", "-c", "0", "/jdk/bin/java", "-XX:+UnlockDiagnosticVMOptions",
-                "-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize(),
-                "-Dmicronaut.runner.aot.training=true", "-jar", jar.toString()), training);
-
-        List<String> verification = AotCache.lifecycleCommand(limited,
-                AotCache.verificationCommand(source, cache, classLog));
-        assertEquals(List.of("taskset", "-c", "0", "/jdk/bin/java",
-                "-Xlog:class+load=info:file=" + classLog.toAbsolutePath().normalize(), "-XX:AOTMode=on",
-                "-XX:AOTCache=" + cache.toAbsolutePath().normalize(), "-jar", jar.toString()), verification);
-
-        AotCache.Request unlimited = request(directory, null);
-        assertEquals(AotCache.trainingCommand(source, temporary, List.of(), List.of()),
-                AotCache.lifecycleCommand(unlimited, AotCache.trainingCommand(source, temporary, List.of(), List.of())));
-        // The measured command itself never carries the prefix.
-        assertEquals("/jdk/bin/java", AotCache.launchCommand(source, cache).get(0));
-    }
-
-    @Test
-    void aLimitedCacheHasItsOwnIdentityAndAnUnlimitedOneKeepsTodays(@TempDir Path directory) throws Exception {
-        Path jar = Files.writeString(directory.resolve("runner-stored.jar"), "application bytes",
-                StandardCharsets.UTF_8);
-        Variant source = Variant.available("runner-stored", "fixture",
-                List.of(SampleBuild.javaExecutable().toString(), "-jar", jar.toString()), directory, jar);
-        List<String> creationFlags = List.of("-XX:+UnlockDiagnosticVMOptions", "-XX:+AOTCompatibleOopCompression");
-
-        AotCache.Request unlimitedRequest = request(directory, null);
-        AotCache.Request oneCpu = request(directory, CpuLimit.validate(1, "Linux", "0-3", true));
-        AotCache.Request twoCpus = request(directory, CpuLimit.validate(2, "Linux", "0-3", true));
-        List<String> none = AotCache.NO_TRAINING_ARGUMENTS;
-        String unlimited = AotCache.identity(source, unlimitedRequest, creationFlags, none);
-
-        assertEquals(List.of(), unlimitedRequest.relevantJvmFlags());
-        assertEquals(List.of(), unlimitedRequest.commandPrefix());
-        assertEquals(List.of("cpus=1"), oneCpu.relevantJvmFlags());
-        assertEquals(TASKSET, oneCpu.commandPrefix());
-        assertNotEquals(unlimited, AotCache.identity(source, oneCpu, creationFlags, none));
-        assertNotEquals(AotCache.identity(source, oneCpu, creationFlags, none),
-                AotCache.identity(source, twoCpus, creationFlags, none));
-
-        // What the identity hashed before CPU limits existed: the cache flags, the creation flags, no relevant
-        // flags, the command's arguments after java, the readiness path and the workload.
-        List<String> before = new ArrayList<>(List.of("AOTCacheOutput", "AOTCache"));
-        before.addAll(creationFlags);
-        before.addAll(List.of("-jar", jar.toString(), "readiness=/hello", "workload=/hello"));
-        assertEquals(AotCache.identity(List.of(jar),
-                System.getProperty("java.runtime.version", "<unavailable>") + "|"
-                        + System.getProperty("java.vm.version", "<unavailable>"),
-                System.getProperty("java.vm.name", "<unavailable>"),
-                System.getProperty("os.arch", "<unavailable>"), before), unlimited);
-    }
-
-    private static AotCache.Request request(Path directory, CpuLimit limit) {
-        return SampleBuild.aotRequest(directory, "com.example.Application", limit,
-                new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+                StartupHarness.processCommand(TASKSET, COMMAND, List.of("-XX:AOTCacheOutput=/work/app.training.aot")));
     }
 }

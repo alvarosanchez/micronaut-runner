@@ -327,8 +327,8 @@ class DefinitionPrefetchParityTest {
         String definitions = null;
         try {
             if (serves) {
-                hello = application.awaitBody(URI.create("http://localhost:" + port + "/hello"), STARTUP_TIMEOUT);
-                definitions = application.awaitBody(URI.create("http://localhost:" + port + "/definitions"),
+                hello = application.awaitBody(URI.create(Samples.loopback(port) + "/hello"), STARTUP_TIMEOUT);
+                definitions = application.awaitBody(URI.create(Samples.loopback(port) + "/definitions"),
                         STARTUP_TIMEOUT);
             } else {
                 application.awaitExit(STARTUP_TIMEOUT);

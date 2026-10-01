@@ -18,13 +18,12 @@ package io.micronaut.runner.benchmarks;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -35,34 +34,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BenchmarkProvenanceTest {
 
     @Test
-    void savedBundleIsRelocatableAndIdentifiesOrderedInputBytes(@TempDir Path temporary) throws Exception {
-        Path first = fixtureTree(temporary.resolve("private-a"));
-        Path second = fixtureTree(temporary.resolve("private-b"));
+    void reportsOfTheSameBytesInTwoPlacesAreIdenticalAndIdentifyTheOrderedInputs(@TempDir Path temporary)
+            throws Exception {
         Path firstOutput = temporary.resolve("report-a");
         Path secondOutput = temporary.resolve("report-b");
 
-        writeReport(firstOutput, first);
-        writeReport(secondOutput, second);
+        writeReport(firstOutput, fixtureTree(temporary.resolve("checkout-a")));
+        writeReport(secondOutput, fixtureTree(temporary.resolve("checkout-b")));
 
         String left = Files.readString(firstOutput.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
-        String right = Files.readString(secondOutput.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
-        assertEquals(left, right);
-        assertTrue(left.contains("\"schemaVersion\": 7"));
-        assertTrue(left.contains("\"id\": \"input:0\""));
-        assertTrue(left.contains("\"id\": \"input:1\""));
-        assertTrue(left.indexOf("\"id\": \"input:0\"") < left.indexOf("\"id\": \"input:1\""));
-        assertTrue(left.contains("\"sha256\":"));
-        assertTrue(left.contains("${input:0}"));
-        assertTrue(left.contains("${input:1}"));
-        assertFalse(left.contains(temporary.toString()));
-        assertFalse(left.contains(System.getProperty("user.home")));
-        assertFalse(left.contains("top-secret"));
-        assertFalse(left.contains("second-secret"));
-        assertTrue(left.contains("--password"));
-        assertTrue(left.contains("<redacted:command-value>"));
-        assertTrue(left.contains("\"globalOrder\": 0"));
-        assertTrue(left.contains("\"outcome\": \"failed\""));
-        assertTrue(left.contains("\"exitCode\": 17"));
+        assertEquals(left, Files.readString(secondOutput.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8));
+        assertTrue(left.indexOf("\"id\": \"input:0\"") < left.indexOf("\"id\": \"input:1\""), left);
+        assertTrue(left.contains("\"command\": [\"${java}\", \"-cp\", \"${input:0}" + File.pathSeparator
+                + "${input:1}\", \"example.Main\"]"), left);
+        assertTrue(left.contains("\"failureReason\": \"failed while launching ${input:0} in ${workdir}\""), left);
+        assertFalse(left.contains(temporary.toString()), left);
     }
 
     @Test
@@ -79,14 +65,52 @@ class BenchmarkProvenanceTest {
         assertNotEquals(before, after);
     }
 
+    /**
+     * One relocation for commands, the diagnostic runs' commands and failure text: the same file gets the same token,
+     * and no home path is left.
+     */
     @Test
-    void sourceRevisionCaptureDistinguishesCleanAndDirtyTreesWithoutPaths(@TempDir Path repository) throws Exception {
-        run(repository, "git", "init", "-q");
-        run(repository, "git", "config", "user.email", "fixture@example.invalid");
-        run(repository, "git", "config", "user.name", "Fixture");
+    void commandsAndFailureTextUseTheSameTokensAndNoHomePath(@TempDir Path written) throws Exception {
+        String home = System.getProperty("user.home");
+        RunContext context = BenchmarkFixtures.context(Path.of(home, "runner-relocation-fixture", "reports"), 1,
+                List.of(), CompletenessPolicy.REQUIRED, BenchmarkProvenance.unavailable());
+        Path workdir = context.workDirectory().resolve("thin");
+        Path jar = workdir.resolve("app-thin.jar");
+        Path dependency = workdir.resolve("lib").resolve("dependency.jar");
+        Variant variant = BenchmarkFixtures.variant("thin-jar",
+                List.of(SampleBuild.javaExecutable().toString(), "-jar", jar.toString()), workdir, null, jar,
+                dependency);
+
+        String failure = BenchmarkProvenance.relocate("cannot open " + dependency + " from " + jar + " in " + workdir
+                + "; see " + context.sample().resolve("build.gradle") + ", "
+                + context.outputDirectory().resolve("summary.md") + ", "
+                + context.workDirectory().resolve("managed-aot") + " and " + Path.of(home, ".gradle"), context, variant);
+
+
+        assertEquals(List.of("${java}", "-jar", "${input:0}"),
+                BenchmarkProvenance.relocate(variant.command(), context, variant));
+        String separator = File.separator;
+        assertEquals("cannot open ${input:1} from ${input:0} in ${workdir}; see ${sample}" + separator + "build.gradle,"
+                + " ${output}" + separator + "summary.md, ${work}" + separator + "managed-aot and ${user-home}"
+                + separator + ".gradle", failure);
+        assertNull(BenchmarkProvenance.relocate((String) null, context, variant));
+
+        Path log = context.outputDirectory().resolve("diagnostics").resolve("thin-jar-class-load.log");
+        Reports.write(written, context, List.of(BenchmarkFixtures.result(variant)), List.of(
+                new StartupHarness.DiagnosticRun("thin-jar", 42.0, StartupHarness.processCommand(List.of(),
+                        variant.command(), List.of("-Xlog:class+load=info:file=" + log)))));
+        String json = Files.readString(written.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
+        String escaped = separator.replace("\\", "\\\\");
+        assertTrue(json.contains("\"command\": [\"${java}\", \"-Xlog:class+load=info:file=${output}" + escaped
+                + "diagnostics" + escaped + "thin-jar-class-load.log\", \"-jar\", \"${input:0}\"]"), json);
+        assertFalse(json.contains(home.replace("\\", "\\\\")), json);
+    }
+
+    @Test
+    void revisionCaptureDistinguishesCleanAndDirtyTreesWithoutPaths(@TempDir Path repository) throws Exception {
+        init(repository);
         Files.writeString(repository.resolve("tracked.txt"), "one", StandardCharsets.UTF_8);
-        run(repository, "git", "add", "tracked.txt");
-        run(repository, "git", "commit", "-q", "-m", "fixture");
+        commit(repository);
 
         BenchmarkProvenance.SourceState clean = BenchmarkProvenance.SourceState.capture(repository);
         Files.writeString(repository.resolve("tracked.txt"), "two", StandardCharsets.UTF_8);
@@ -103,101 +127,40 @@ class BenchmarkProvenanceTest {
         assertFalse(clean.toString().contains(repository.toString()));
     }
 
+    /**
+     * The sample's state covers its own tree; the Runner's covers its whole repository, and is unavailable rather
+     * than attributed to the working directory when no checkout is configured.
+     */
     @Test
-    void sourceDirtyStateIsScopedToTheRequestedTree(@TempDir Path repository) throws Exception {
-        run(repository, "git", "init", "-q");
-        run(repository, "git", "config", "user.email", "fixture@example.invalid");
-        run(repository, "git", "config", "user.name", "Fixture");
-        Path runner = Files.createDirectory(repository.resolve("runner"));
-        Path sample = Files.createDirectory(repository.resolve("sample"));
-        Files.writeString(runner.resolve("Runner.java"), "class Runner {}", StandardCharsets.UTF_8);
-        Files.writeString(sample.resolve("Sample.java"), "class Sample {}", StandardCharsets.UTF_8);
-        run(repository, "git", "add", ".");
-        run(repository, "git", "commit", "-q", "-m", "fixture");
-        Files.writeString(runner.resolve("Runner.java"), "class Runner { int changed; }", StandardCharsets.UTF_8);
-
-        assertEquals("dirty", BenchmarkProvenance.SourceState.capture(runner).state());
-        assertEquals("clean", BenchmarkProvenance.SourceState.capture(sample).state());
-    }
-
-    @Test
-    void capturedRunnerStateCoversTheWholeRepositoryWhileSampleStateStaysScoped(@TempDir Path repository)
-            throws Exception {
-        run(repository, "git", "init", "-q");
-        run(repository, "git", "config", "user.email", "fixture@example.invalid");
-        run(repository, "git", "config", "user.name", "Fixture");
+    void sampleStateIsScopedToItsTreeAndRunnerStateCoversTheRepository(@TempDir Path repository) throws Exception {
+        init(repository);
         Path runner = Files.createDirectory(repository.resolve("benchmarks"));
         Path sample = Files.createDirectories(repository.resolve("test-suite/samples/hello"));
         Files.writeString(runner.resolve("Harness.java"), "class Harness {}", StandardCharsets.UTF_8);
         Files.writeString(sample.resolve("Sample.java"), "class Sample {}", StandardCharsets.UTF_8);
-        run(repository, "git", "add", ".");
-        run(repository, "git", "commit", "-q", "-m", "fixture");
+        commit(repository);
         Files.writeString(repository.resolve("outside.txt"), "untracked", StandardCharsets.UTF_8);
 
-        BenchmarkProvenance provenance = BenchmarkProvenance.capture(runner, sample, Map.of());
+        BenchmarkProvenance provenance = BenchmarkProvenance.capture(runner, sample);
 
         assertEquals("dirty", provenance.runnerSource().state());
         assertEquals("clean", provenance.sampleSource().state());
+        assertEquals("clean", BenchmarkProvenance.SourceState.capture(runner).state());
+        assertEquals("unavailable", BenchmarkProvenance.capture(null, sample).runnerSource().state());
     }
 
     @Test
-    void missingRunnerSourceIsUnavailableRatherThanAttributedToTheWorkingDirectory(@TempDir Path repository)
-            throws Exception {
-        run(repository, "git", "init", "-q");
-        run(repository, "git", "config", "user.email", "fixture@example.invalid");
-        run(repository, "git", "config", "user.name", "Fixture");
-        Path sample = Files.createDirectory(repository.resolve("sample"));
-        Files.writeString(sample.resolve("Sample.java"), "class Sample {}", StandardCharsets.UTF_8);
-        run(repository, "git", "add", ".");
-        run(repository, "git", "commit", "-q", "-m", "fixture");
-
-        BenchmarkProvenance provenance = BenchmarkProvenance.capture(null, sample, Map.of());
-
-        assertEquals("unavailable", provenance.runnerSource().state());
-        assertEquals("clean", provenance.sampleSource().state());
-    }
-
-    @Test
-    void provenanceCommandTimeoutDoesNotWaitForOutputEof(@TempDir Path temporary) {
-        Path lifecycle = temporary.resolve("lifecycle");
-        List<String> command = List.of(
-                SampleBuild.javaExecutable().toString(),
-                "-cp",
-                System.getProperty("java.class.path"),
-                StartupHarnessFixture.class.getName(),
-                "hang",
-                lifecycle.toString());
+    void revisionCaptureDoesNotWaitForTheOutputOfACommandThatTimedOut(@TempDir Path temporary) {
+        List<String> command = List.of(SampleBuild.javaExecutable().toString(), "-cp",
+                System.getProperty("java.class.path"), StartupHarnessFixture.class.getName(), "hang",
+                temporary.resolve("lifecycle").toString());
 
         long started = System.nanoTime();
-        String result = BenchmarkProvenance.SourceState.runCommand(
-                temporary, command, Duration.ofMillis(150));
+        String result = BenchmarkProvenance.SourceState.runCommand(temporary, command, Duration.ofMillis(150));
         long elapsedMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
 
         assertNull(result);
         assertTrue(elapsedMillis < 2_000, "command timeout took " + elapsedMillis + " ms");
-    }
-
-    @Test
-    void environmentPolicyRecordsPresenceButRedactsInjectedValues(@TempDir Path output) throws Exception {
-        Map<String, String> environment = new HashMap<>();
-        environment.put("JAVA_TOOL_OPTIONS", "-Dpassword=top-secret");
-        environment.put("JDK_AOT_VM_OPTIONS", "-Dpassword=aot-secret");
-        BenchmarkProvenance provenance = BenchmarkProvenance.capture(output, output, environment);
-        RunContext context = context(output, provenance);
-        Variant unavailable = Variant.unavailable("fixture", "fixture", "not built");
-
-        Reports.write(output, context,
-                List.of(new VariantResult(unavailable, -1, List.of(), null, null, null, List.of())), List.of());
-
-        String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
-        assertTrue(json.contains("\"JAVA_TOOL_OPTIONS\": {\"present\": true, \"action\": \"removed\","));
-        assertTrue(json.contains("\"value\": \"<redacted:ambient-jvm-options>\""));
-        assertTrue(json.contains("\"JDK_JAVA_OPTIONS\": {\"present\": false, \"action\": \"removed\""));
-        assertTrue(json.contains("\"JDK_AOT_VM_OPTIONS\": {\"present\": true, \"action\": \"removed\""));
-        assertFalse(json.contains("top-secret"));
-        assertFalse(json.contains("aot-secret"));
-        assertTrue(json.contains("\"totalMemoryBytes\":"));
-        assertTrue(json.contains("\"javaRuntimeVersion\":"));
     }
 
     private static Path fixtureTree(Path root) throws Exception {
@@ -210,22 +173,24 @@ class BenchmarkProvenanceTest {
     private static void writeReport(Path output, Path root) throws Exception {
         Path application = root.resolve("application.jar");
         Path dependency = root.resolve("dependency.jar");
-        Variant variant = Variant.available("fixture", "fixture", List.of(
-                SampleBuild.javaExecutable().toString(), "-Dapi.token=top-secret",
-                "--password", "second-secret", "-cp",
-                application + java.io.File.pathSeparator + dependency, "example.Main"),
-                root, application, List.of(application, dependency));
-        RunContext context = context(output, BenchmarkProvenance.unavailable());
+        Variant variant = BenchmarkFixtures.variant("fixture", List.of(SampleBuild.javaExecutable().toString(), "-cp",
+                application + File.pathSeparator + dependency, "example.Main"), root, null, application, dependency);
         RunAttempt failure = RunAttempt.failure("fixture", 0, 0, 0, false,
-                "failed while launching " + root.resolve("application.jar"), 17);
-        VariantResult result = VariantResult.summarize(variant, -1, List.of(failure), 0, 1, 17L);
-        Reports.write(output, context, List.of(result), List.of());
+                "failed while launching " + application + " in " + root, 17);
+        Reports.write(output, BenchmarkFixtures.context(output, 1, List.of("fixture"), CompletenessPolicy.REQUIRED,
+                BenchmarkProvenance.unavailable()), List.of(VariantResult.summarize(variant, List.of(failure), 0, 1,
+                17L)), List.of());
     }
 
-    private static RunContext context(Path output, BenchmarkProvenance provenance) {
-        return new RunContext(output.resolve("sample"), "file:/private/repository?token=top-secret", "1.0", output,
-                1, 0, 17, "/ready", false, "2026-09-22T00:00:00Z", List.of("fixture"),
-                CompletenessPolicy.REQUIRED, provenance);
+    private static void init(Path repository) throws Exception {
+        run(repository, "git", "init", "-q");
+        run(repository, "git", "config", "user.email", "fixture@example.invalid");
+        run(repository, "git", "config", "user.name", "Fixture");
+    }
+
+    private static void commit(Path repository) throws Exception {
+        run(repository, "git", "add", ".");
+        run(repository, "git", "commit", "-q", "-m", "fixture");
     }
 
     private static void run(Path directory, String... command) throws Exception {

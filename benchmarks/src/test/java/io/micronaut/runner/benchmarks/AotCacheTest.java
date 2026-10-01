@@ -42,12 +42,14 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 class AotCacheTest {
 
+    private static final SampleBuild.VariantSpec CACHED = SampleBuild.spec("runner-stored-aot");
+
     @Test
-    void identityChangesWithOrderedArtifactsJdkArchitectureAndFlags(@TempDir Path directory) throws Exception {
-        Path application = directory.resolve("app.jar");
-        Path dependency = directory.resolve("dependency.jar");
-        Files.writeString(application, "application-one", StandardCharsets.UTF_8);
-        Files.writeString(dependency, "dependency-one", StandardCharsets.UTF_8);
+    void identityChangesWithOrderedInputsJdkArchitectureCommandReadinessCpuLimitAndTrainingMode(
+            @TempDir Path directory) throws Exception {
+        Path application = Files.writeString(directory.resolve("app.jar"), "application-one", StandardCharsets.UTF_8);
+        Path dependency = Files.writeString(directory.resolve("dependency.jar"), "dependency-one",
+                StandardCharsets.UTF_8);
 
         String original = AotCache.identity(List.of(application, dependency),
                 "25.0.3+9", "HotSpot", "aarch64", List.of("-Xmx128m"));
@@ -65,166 +67,139 @@ class AotCacheTest {
                 "25.0.3+9", "HotSpot", "x86_64", List.of("-Xmx128m")));
         assertNotEquals(original, AotCache.identity(List.of(application, dependency),
                 "25.0.3+9", "HotSpot", "aarch64", List.of("-Xmx256m")));
+
+        // The variant's command and the readiness path enter the identity, and so does a CPU limit, through the
+        // request's relevant flags: the CPU count sets the VM's ergonomics, while an unlimited run adds nothing.
+        Variant source = BenchmarkFixtures.variant("runner-stored", List.of("java", "-jar", application.toString()),
+                directory, null, application);
+        PrintStream log = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+        AotCache.Request unlimited = SampleBuild.aotRequest(directory, "app.Main", null, log);
+        AotCache.Request oneCpu = SampleBuild.aotRequest(directory, "app.Main",
+                CpuLimit.validate(1, "Linux", "0-3", true), log);
+        assertEquals(List.of(), unlimited.relevantJvmFlags());
+        assertEquals(List.of("cpus=1"), oneCpu.relevantJvmFlags());
+        String plain = AotCache.identity(source, "/hello", unlimited, List.of());
+        assertNotEquals(plain, AotCache.identity(source, "/hello", oneCpu, List.of()));
+        assertNotEquals(plain, AotCache.identity(source, "/ready", unlimited, List.of()));
+
+        // A Runner single JAR trains in the launcher's AOT training mode, which enters the identity; a source the
+        // JDK's own loaders run trains without it, and the measured launch never carries it.
+        Variant shadow = BenchmarkFixtures.variant("shadow", source.command(), directory, null, application);
+        assertEquals(List.of("-Dmicronaut.runner.aot.training=true"), AotCache.trainingArguments(source));
+        assertEquals(List.of(), AotCache.trainingArguments(shadow));
+        assertNotEquals(plain, AotCache.identity(shadow, "/hello", unlimited, List.of()));
+        assertTrue(AotCache.launchCommand(source, application).stream()
+                .noneMatch(argument -> argument.contains("micronaut.runner.aot.training")));
     }
 
     /**
-     * A Runner single-JAR row trains in the launcher's AOT training mode, which enters its identity so that caches
-     * trained without it are trained again once; the measured and verified launches never carry it, and the rows of
-     * a Shadow JAR or the extracted layout train and are identified exactly as before.
+     * Trains a cache, reuses it, reports it, and then retrains it once its file is overwritten with garbage: a cache
+     * that does not verify is trained again rather than reused or timed without.
      */
-    @Test
-    void onlyTheTrainingCommandOfARunnerSingleJarRowCarriesTheTrainingProperty(@TempDir Path directory)
-            throws Exception {
-        String java = SampleBuild.javaExecutable().toString();
-        Path runnerJar = Files.writeString(directory.resolve("runner-stored.jar"), "runner", StandardCharsets.UTF_8);
-        Path shadowJar = Files.writeString(directory.resolve("shadow.jar"), "shadow", StandardCharsets.UTF_8);
-        Variant runner = Variant.available("runner-stored", "fixture", List.of(java, "-jar", runnerJar.toString()),
-                directory, runnerJar);
-        Variant shadow = Variant.available("shadow", "fixture", List.of(java, "-jar", shadowJar.toString()),
-                directory, shadowJar);
-        AotCache.Request request = request(directory, new ByteArrayOutputStream());
-        List<String> creation = List.of("-XX:+UnlockDiagnosticVMOptions", "-XX:+AOTCompatibleOopCompression");
-        Path temporary = directory.resolve("app.training.aot");
-        Path cache = directory.resolve("app.aot");
-        Path classLog = directory.resolve("verification.log");
-        String property = "-Dmicronaut.runner.aot.training=true";
-        List<String> training = AotCache.RUNNER_SINGLE_JAR_TRAINING;
-        List<String> none = AotCache.NO_TRAINING_ARGUMENTS;
-
-        assertEquals(List.of(property), training);
-        List<String> trainingCommand = AotCache.trainingCommand(runner, temporary, creation, training);
-        assertEquals(List.of(java, creation.get(0), creation.get(1),
-                "-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize(), property, "-jar",
-                runnerJar.toString()), trainingCommand);
-        assertNotEquals(AotCache.identity(runner, request, creation, none),
-                AotCache.identity(runner, request, creation, training));
-        List<String> flags = new ArrayList<>(AotCache.identityFlags(runner, request, creation, none));
-        flags.add("training=" + property);
-        assertEquals(flags, AotCache.identityFlags(runner, request, creation, training));
-        for (List<String> command : List.of(AotCache.launchCommand(runner, cache),
-                AotCache.verificationCommand(runner, cache, classLog))) {
-            assertTrue(command.stream().noneMatch(argument -> argument.contains("micronaut.runner.aot.training")),
-                    command::toString);
-        }
-
-        // What a Shadow or extracted row hashed and ran before the training mode existed.
-        List<String> before = new ArrayList<>(List.of("AOTCacheOutput", "AOTCache"));
-        before.addAll(creation);
-        before.addAll(List.of("-jar", shadowJar.toString(), "readiness=/ready", "workload=/work"));
-        assertEquals(before, AotCache.identityFlags(shadow, request, creation, none));
-        assertEquals(List.of(java, creation.get(0), creation.get(1),
-                "-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize(), "-jar", shadowJar.toString()),
-                AotCache.trainingCommand(shadow, temporary, creation, none));
-    }
-
     @Test
     @Tag("benchmark-integration")
     void forkedLifecycleTrainsReusesAndProvesAnApplicationClassIsShared(@TempDir Path directory)
             throws Exception {
-        Path classes = Path.of(AotCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-        Variant plain = SampleBuild.runnerJar(directory, "runner-stored", AotCacheFixture.class.getName(),
-                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
+        Variant plain = storedJar(directory);
         ByteArrayOutputStream console = new ByteArrayOutputStream();
         AotCache.Request request = request(directory, console);
 
-        Variant cached = AotCache.prepare(plain, "runner-stored-aot", request, AotCache.RUNNER_SINGLE_JAR_TRAINING);
-        Path archive = cached.launchInputs().get(cached.launchInputs().size() - 1);
-        long modified = Files.getLastModifiedTime(archive).toMillis();
-        Variant reused = AotCache.prepare(plain, "runner-stored-aot", request, AotCache.RUNNER_SINGLE_JAR_TRAINING);
+        try (StartupHarness harness = new StartupHarness("/ready", Duration.ofSeconds(30))) {
+            Variant cached = AotCache.prepare(harness, plain, CACHED, request);
+            Path archive = cached.launchInputs().getLast();
+            long modified = Files.getLastModifiedTime(archive).toMillis();
+            Variant reused = AotCache.prepare(harness, plain, CACHED, request);
 
-        assertTrue(cached.available());
-        assertEquals(EntryMode.STUB, cached.effectiveEntryMode());
-        DeploymentSize plainSize = plain.deploymentSize();
-        DeploymentSize cachedSize = cached.deploymentSize();
-        int sourceComponents = plainSize.components().size();
-        assertEquals(sourceComponents + 1, cachedSize.components().size());
-        assertEquals(plainSize.components(), cachedSize.components().subList(0, sourceComponents),
-                "the cache row keeps its source's components");
-        DeploymentSize.Component cacheComponent = cachedSize.components().getLast();
-        assertEquals("cache", cacheComponent.name());
-        assertEquals(cached.cache().bytes(), cacheComponent.bytes(),
-                "the launch needs the cache, so it is part of the complete deployment");
-        assertTrue(cacheComponent.gzipBytes() > 0);
-        assertEquals(plainSize.totalBytes() + cached.cache().bytes(), cachedSize.totalBytes());
-        assertEquals(plainSize.totalGzipBytes() + cacheComponent.gzipBytes(), cachedSize.totalGzipBytes());
-        assertEquals(archive, reused.launchInputs().get(reused.launchInputs().size() - 1));
-        assertEquals(modified, Files.getLastModifiedTime(archive).toMillis());
-        assertTrue(Files.size(archive) > 0);
-        assertTrue(cached.command().contains("-XX:AOTMode=on"), cached.command().toString());
-        assertTrue(cached.command().stream().anyMatch(argument -> argument.startsWith("-XX:AOTCache=")));
-        List<String> withoutCache = new ArrayList<>(cached.command());
-        withoutCache.removeIf(argument -> argument.equals("-XX:AOTMode=on") || argument.startsWith("-XX:AOTCache="));
-        assertEquals(plain.command(), withoutCache,
-                "paired launches must differ only by the strict AOT cache selection");
-        assertEquals("aot", cached.cache().mode());
-        assertEquals(Files.size(archive), cached.cache().bytes());
-        assertTrue(cached.cache().trainingMillis() >= 0);
-        assertFalse(cached.cache().reused());
-        assertTrue(reused.cache().reused());
-        String output = console.toString(StandardCharsets.UTF_8);
-        assertTrue(output.contains("trained AOT cache"), output);
-        assertTrue(output.contains("verified application class " + AotCacheFixture.class.getName()), output);
-        assertTrue(output.contains("reusing AOT cache"), output);
+            assertTrue(cached.available());
+            assertEquals(EntryMode.STUB, cached.effectiveEntryMode());
+            assertEquals(plain.buildNote(), cached.buildNote(), "the cached row reports what its jar carries");
+            DeploymentSize plainSize = plain.deploymentSize();
+            DeploymentSize cachedSize = cached.deploymentSize();
+            int sourceComponents = plainSize.components().size();
+            assertEquals(plainSize.components(), cachedSize.components().subList(0, sourceComponents),
+                    "the cache row keeps its source's components");
+            DeploymentSize.Component cacheComponent = cachedSize.components().getLast();
+            assertEquals(new DeploymentSize.Component("cache", cached.cache().bytes(), cacheComponent.gzipBytes()),
+                    cacheComponent, "the launch needs the cache, so it is part of the complete deployment");
+            assertTrue(cacheComponent.gzipBytes() > 0);
+            assertEquals(sourceComponents + 1, cachedSize.components().size());
+            assertEquals(archive, reused.launchInputs().getLast());
+            assertEquals(modified, Files.getLastModifiedTime(archive).toMillis());
+            assertTrue(cached.command().contains("-XX:AOTMode=on"), cached.command().toString());
+            List<String> withoutCache = new ArrayList<>(cached.command());
+            withoutCache.removeIf(argument -> argument.equals("-XX:AOTMode=on")
+                    || argument.startsWith("-XX:AOTCache="));
+            assertEquals(plain.command(), withoutCache,
+                    "paired launches must differ only by the strict AOT cache selection");
+            assertEquals(Files.size(archive), cached.cache().bytes());
+            assertTrue(cached.cache().trainingMillis() >= 0);
+            assertFalse(cached.cache().reused());
+            assertTrue(reused.cache().reused());
+            assertEquals(AotCache.sha256(archive), cached.cache().sha256());
+            assertEquals(cached.cache().sha256(), reused.cache().sha256());
+            String output = console.toString(StandardCharsets.UTF_8);
+            assertTrue(output.contains("trained AOT cache"), output);
+            assertTrue(output.contains("verified application class " + AotCacheFixture.class.getName()), output);
+            assertTrue(output.contains("reusing AOT cache"), output);
 
-        Path report = directory.resolve("report");
-        RunContext context = new RunContext(directory, "file:/repo", "1.0", report,
-                1, 0, 1, "/ready", false, "2026-09-23T00:00:00Z",
-                List.of(cached.name()), CompletenessPolicy.REQUIRED);
-        Reports.write(report, context,
-                List.of(new VariantResult(cached, cached.deploymentSize().totalBytes(), List.of(),
-                        null, null, null, List.of())), List.of());
-        String json = Files.readString(report.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
-        assertTrue(json.contains("\"cacheBytes\": " + Files.size(archive)), json);
-        assertTrue(json.contains("\"cacheSha256\": \"" + AotCache.sha256(archive) + "\""), json);
-        assertEquals(AotCache.sha256(archive), cached.cache().sha256());
-        assertEquals(cached.cache().sha256(), reused.cache().sha256());
-        assertTrue(json.contains("\"cacheReused\": false"), json);
-        assertTrue(json.contains("\"trainingMillis\":"), json);
-        assertTrue(json.contains("\"deploymentSize\":")
-                && json.contains("\"totalBytes\": " + (plainSize.totalBytes() + Files.size(archive))), json);
-        assertTrue(json.contains("{\"name\": \"cache\", \"bytes\": " + Files.size(archive)
-                + ", \"gzipBytes\": " + cacheComponent.gzipBytes() + "}"), json);
-        String summary = Files.readString(report.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
-        assertTrue(summary.contains("## Application-cache preparation"), summary);
-        assertTrue(summary.contains("Training cost"), summary);
-        assertTrue(summary.contains("Cache bytes"), summary);
+            Path report = directory.resolve("report");
+            Reports.write(report, BenchmarkFixtures.context(report, 1, List.of(cached.name()),
+                    CompletenessPolicy.REQUIRED, BenchmarkProvenance.unavailable()),
+                    List.of(BenchmarkFixtures.result(cached)), List.of());
+            String json = Files.readString(report.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
+            assertTrue(json.contains("\"cacheBytes\": " + Files.size(archive) + ",\n      \"cacheSha256\": \""
+                    + cached.cache().sha256() + "\""), json);
+            assertTrue(json.contains("\"cacheReused\": false"), json);
+            assertTrue(json.contains("\"totalBytes\": " + (plainSize.totalBytes() + Files.size(archive))), json);
+            assertTrue(json.contains("{\"name\": \"cache\", \"bytes\": " + Files.size(archive)
+                    + ", \"gzipBytes\": " + cacheComponent.gzipBytes() + "}"), json);
+
+            Files.writeString(archive, "not an AOT cache", StandardCharsets.UTF_8);
+            Variant retrained = AotCache.prepare(harness, plain, CACHED, request);
+
+            assertFalse(retrained.cache().reused());
+            assertTrue(retrained.cache().trainingMillis() >= 0);
+            assertEquals(AotCache.sha256(archive), retrained.cache().sha256());
+            output = console.toString(StandardCharsets.UTF_8);
+            assertTrue(output.contains("invalid cached AOT cache " + cached.cache().identity()), output);
+            assertEquals(3, output.split("verified application class", -1).length - 1,
+                    "each training and the reuse verified: " + output);
+        }
     }
 
     @Test
     @Tag("benchmark-integration")
     void rebuiltInputWithUnchangedBytesReusesTheTrainedCache(@TempDir Path directory) throws Exception {
-        Path classes = Path.of(AotCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-        Variant plain = SampleBuild.runnerJar(directory, "runner-stored", AotCacheFixture.class.getName(),
-                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
+        Variant plain = storedJar(directory);
         ByteArrayOutputStream console = new ByteArrayOutputStream();
         AotCache.Request request = request(directory, console);
-        Variant trained = AotCache.prepare(plain, "runner-stored-aot", request, AotCache.RUNNER_SINGLE_JAR_TRAINING);
-        Path archive = trained.launchInputs().getLast();
-        FileTime trainedAt = Files.getLastModifiedTime(archive);
+        try (StartupHarness harness = new StartupHarness("/ready", Duration.ofSeconds(30))) {
+            Variant trained = AotCache.prepare(harness, plain, CACHED, request);
+            Path archive = trained.launchInputs().getLast();
+            FileTime trainedAt = Files.getLastModifiedTime(archive);
 
-        // The premise: the JDK checks the class-path JAR's time, so moving only the time breaks a strict launch.
-        Files.setLastModifiedTime(plain.artifact(), FileTime.from(Instant.now()));
-        Launch moved = launch(AotCache.launchCommand(plain, archive), directory.resolve("moved.log"));
-        assertNotEquals(0, moved.exit(), moved.output());
-        assertTrue(moved.output().contains("Unable to use AOT cache"), moved.output());
-        assertTrue(moved.output().contains("timestamp"), moved.output());
+            // The premise: the JDK checks the class-path JAR's time, so moving only the time breaks a strict launch.
+            Files.setLastModifiedTime(plain.artifact(), FileTime.from(Instant.now()));
+            Launch moved = launch(AotCache.launchCommand(plain, archive), directory.resolve("moved.log"));
+            assertNotEquals(0, moved.exit(), moved.output());
+            assertTrue(moved.output().contains("Unable to use AOT cache"), moved.output());
+            assertTrue(moved.output().contains("timestamp"), moved.output());
 
-        // The next run rebuilds the same bytes: the pinned time makes the earlier training valid again.
-        Variant rebuilt = SampleBuild.runnerJar(directory, "runner-stored", AotCacheFixture.class.getName(),
-                List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
-        Variant reused = AotCache.prepare(rebuilt, "runner-stored-aot", request, AotCache.RUNNER_SINGLE_JAR_TRAINING);
+            // The next run rebuilds the same bytes: the pinned time makes the earlier training valid again.
+            Variant rebuilt = storedJar(directory);
+            Variant reused = AotCache.prepare(harness, rebuilt, CACHED, request);
 
-        String output = console.toString(StandardCharsets.UTF_8);
-        assertTrue(output.contains("reusing AOT cache " + trained.cache().identity() + " for runner-stored-aot"),
-                output);
-        assertFalse(output.contains("invalid cached AOT cache"), output);
-        assertTrue(reused.cache().reused());
-        assertEquals(trained.cache().identity(), reused.cache().identity());
-        assertEquals(trained.cache().sha256(), reused.cache().sha256(),
-                "a reused cache is the same training, byte for byte");
-        assertEquals(AotCache.sha256(archive), reused.cache().sha256());
-        assertEquals(trainedAt, Files.getLastModifiedTime(archive), "the cache file was not rewritten");
-        assertEquals(LaunchInputs.PINNED_MODIFICATION_TIME, Files.getLastModifiedTime(rebuilt.artifact()));
+            String output = console.toString(StandardCharsets.UTF_8);
+            assertTrue(output.contains("reusing AOT cache " + trained.cache().identity() + " for runner-stored-aot"),
+                    output);
+            assertFalse(output.contains("invalid cached AOT cache"), output);
+            assertTrue(reused.cache().reused());
+            assertEquals(trained.cache().identity(), reused.cache().identity());
+            assertEquals(trained.cache().sha256(), reused.cache().sha256(),
+                    "a reused cache is the same training, byte for byte");
+            assertEquals(trainedAt, Files.getLastModifiedTime(archive), "the cache file was not rewritten");
+            assertEquals(LaunchInputs.PINNED_MODIFICATION_TIME, Files.getLastModifiedTime(rebuilt.artifact()));
+        }
     }
 
     @Test
@@ -237,19 +212,22 @@ class AotCacheTest {
         IOException invalid = assertThrows(IOException.class, () -> AotCache.requireUsableCache(empty));
         assertTrue(invalid.getMessage().contains("empty"));
 
-        Variant exitsEarly = Variant.available("early", "exits before readiness",
-                List.of(SampleBuild.javaExecutable().toString(), "-version"), directory, empty);
-        IOException failed = assertThrows(IOException.class,
-                () -> AotCache.prepare(exitsEarly, "early-aot", request(directory, new ByteArrayOutputStream()),
-                        AotCache.NO_TRAINING_ARGUMENTS));
-        assertTrue(failed.getMessage().contains("before readiness"), failed.getMessage());
+        Variant exitsEarly = BenchmarkFixtures.variant("early",
+                List.of(SampleBuild.javaExecutable().toString(), "-version"), directory, null, empty);
+        try (StartupHarness harness = new StartupHarness("/ready", Duration.ofSeconds(30))) {
+            StartupHarness.RunFailure failed = assertThrows(StartupHarness.RunFailure.class,
+                    () -> AotCache.prepare(harness, exitsEarly, BenchmarkFixtures.spec("early-aot"),
+                            request(directory, new ByteArrayOutputStream())));
+            assertTrue(failed.getMessage().contains("early exited with status 0 before answering"),
+                    failed.getMessage());
+        }
     }
 
     @Test
     void strictLaunchRejectsAnUnusableCache(@TempDir Path directory) throws Exception {
         Path artifact = Files.writeString(directory.resolve("artifact.txt"), "fixture", StandardCharsets.UTF_8);
         String java = SampleBuild.javaExecutable().toString();
-        Variant plain = Variant.available("plain", "fixture", List.of(java, "-version"), directory, artifact);
+        Variant plain = BenchmarkFixtures.variant("plain", List.of(java, "-version"), directory, null, artifact);
         Path corrupt = Files.writeString(directory.resolve("corrupt.aot"), "not an AOT cache", StandardCharsets.UTF_8);
 
         List<String> strict = AotCache.launchCommand(plain, corrupt);
@@ -265,10 +243,15 @@ class AotCacheTest {
         assertEquals(0, uncached.exit(), "without -XX:AOTMode=on the JVM runs uncached: " + uncached.output());
     }
 
+    private static Variant storedJar(Path directory) throws Exception {
+        Path classes = Path.of(AotCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        return SampleBuild.runnerJar(directory, SampleBuild.spec("runner-stored"), AotCacheFixture.class.getName(),
+                List.of(classes), List.of(), Compression.STORED, SampleBuild.RunnerJarOptions.DEFAULTS);
+    }
+
     private static AotCache.Request request(Path directory, ByteArrayOutputStream console) {
-        return new AotCache.Request(directory.resolve("managed-aot"), "/ready", List.of("/work"),
-                Duration.ofSeconds(30), AotCacheFixture.class.getName(), List.of(), List.of(),
-                new PrintStream(console, true, StandardCharsets.UTF_8));
+        return new AotCache.Request(directory.resolve("managed-aot"), List.of("/work"),
+                AotCacheFixture.class.getName(), List.of(), new PrintStream(console, true, StandardCharsets.UTF_8));
     }
 
     private record Launch(int exit, String output) {

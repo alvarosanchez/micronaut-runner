@@ -296,9 +296,13 @@ caching is not GraalVM Native Image.
 
 Training and verification are bounded build-time operations outside all timing samples. Training reaches
 HTTP readiness, exercises `/hello`, sends SIGTERM for an orderly shutdown, accepts exit status 0 or 143, requires a
-nonempty cache, then performs a strict diagnostic launch. The managed cache identity hashes the immutable
-final JAR (and therefore its embedded application and dependency bytes), exact JDK/VM build, architecture,
-launch options and workload paths. A changed input selects a different cache. Trained caches are reused across
+nonempty cache, then performs a strict diagnostic launch. Both launches go through the same harness code as the
+timed runs. The managed cache identity is a SHA-256 over a schema salt, the exact JDK runtime and VM build, the VM
+name, the architecture, the JDK's AOT creation flags, the CPU count under `-Pbenchmarks.cpus`, the launch command
+after `java`, the readiness and workload paths, the training-only `-Dmicronaut.runner.aot.training=true` of a Runner
+single JAR, and each ordered launch input's position, file name and content digest: for a Runner row that is the
+immutable final JAR, and therefore its embedded application and dependency bytes. A changed input selects a
+different cache. Trained caches are reused across
 runs while the inputs' bytes are unchanged, because the harness pins every launch input's modification time,
 which the JDK also checks; `rm -rf benchmarks/build/tmp/startupBenchmark/managed-aot` forces a retrain.
 `results.json` records each cache's `cacheSha256` and whether this run reused it (`cacheReused`), and
@@ -372,13 +376,17 @@ matrix. Opt-in rows are built only with `-Pbenchmarks.optionalRows=true` or when
 has no required variant: both reports say so instead of calling the run complete, and the task exits zero only
 when at least one measured attempt succeeded.
 
-`results.json` uses a versioned, relocatable provenance schema. It records runner and sample revisions plus
-clean/dirty state, exact JDK and platform identity, logical processor count and physical memory, cache policy,
-the seed and actual attempt order, relocatable effective command arrays, and SHA-256 identities for ordered
-launch inputs. The four ambient JVM-option variables (`JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and
-`JDK_AOT_VM_OPTIONS`) are recorded only as present/absent and removed; their values are explicitly redacted. Full
-environments, repository locations, Java homes and private absolute paths are never serialized. A reader can therefore identify the exact launched bytes and reconstruct successes and
-failures without depending on the original checkout location.
+`results.json` has a versioned schema. It records the runner and sample revisions with their clean/dirty state, the
+JDK version, runtime version, vendor and VM name, the OS name and version, the architecture, the logical processor
+count (captured before `-Pbenchmarks.cpus` pins the harness) and the physical memory, the seed and the actual
+attempt order, each variant's effective command, and the SHA-256 of every ordered launch input. Each attempt is
+recorded once, under `attempts`, and the constants every run shares are written once, under `policy`. The harness
+removes `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_AOT_VM_OPTIONS` from every child launch,
+AOT-cache training and verification included; nothing about them is recorded or redacted. Paths appear as tokens,
+the same ones in commands and in failure messages: `${java}`, `${input:N}` for a launch input, `${workdir}`,
+`${sample}`, `${work}`, `${output}` and `${user-home}`. A reader can therefore identify the exact launched bytes and
+reconstruct successes and failures without depending on the original checkout location.
+
 
 For investigation only, `-Pbenchmarks.allowPartial=true` selects the explicit partial policy. An incomplete
 partial run is labelled as such in both reports and exits zero only when at least one measured attempt

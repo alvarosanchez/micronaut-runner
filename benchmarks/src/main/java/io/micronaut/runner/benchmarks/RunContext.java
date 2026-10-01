@@ -21,12 +21,12 @@ import java.util.List;
 /**
  * Invocation metadata and the explicit completeness contract for one benchmark run. The required variants are
  * the selected core rows, which gate the exit code; the conditions are the CPU and page-cache conditions the run
- * measured under.
+ * measured under. The sample, output and work directories are what the report's paths are relocated against.
  */
 record RunContext(Path sample,
-                  String repository,
                   String runnerVersion,
                   Path outputDirectory,
+                  Path workDirectory,
                   int iterations,
                   int warmupIterations,
                   long seed,
@@ -40,55 +40,5 @@ record RunContext(Path sample,
 
     RunContext {
         requiredVariants = List.copyOf(requiredVariants);
-    }
-
-    RunContext(Path sample,
-               String repository,
-               String runnerVersion,
-               Path outputDirectory,
-               int iterations,
-               int warmupIterations,
-               long seed,
-               String readinessPath,
-               boolean diagnostics,
-               String generatedAt,
-               List<String> requiredVariants,
-               CompletenessPolicy completenessPolicy,
-               BenchmarkProvenance provenance) {
-        this(sample, repository, runnerVersion, outputDirectory, iterations, warmupIterations, seed,
-                readinessPath, diagnostics, generatedAt, requiredVariants, completenessPolicy, provenance,
-                RunConditions.defaults());
-    }
-
-    RunContext(Path sample,
-               String repository,
-               String runnerVersion,
-               Path outputDirectory,
-               int iterations,
-               int warmupIterations,
-               long seed,
-               String readinessPath,
-               boolean diagnostics,
-               String generatedAt,
-               List<String> requiredVariants,
-               CompletenessPolicy completenessPolicy) {
-        this(sample, repository, runnerVersion, outputDirectory, iterations, warmupIterations, seed,
-                readinessPath, diagnostics, generatedAt, requiredVariants, completenessPolicy,
-                BenchmarkProvenance.unavailable());
-    }
-
-    RunContext(Path sample,
-               String repository,
-               String runnerVersion,
-               Path outputDirectory,
-               int iterations,
-               int warmupIterations,
-               long seed,
-               String readinessPath,
-               boolean diagnostics,
-               String generatedAt) {
-        this(sample, repository, runnerVersion, outputDirectory, iterations, warmupIterations, seed,
-                readinessPath, diagnostics, generatedAt, SampleBuild.variantNames(), CompletenessPolicy.REQUIRED,
-                BenchmarkProvenance.unavailable());
     }
 }

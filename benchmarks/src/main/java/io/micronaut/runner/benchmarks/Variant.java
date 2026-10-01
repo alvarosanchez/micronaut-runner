@@ -26,31 +26,29 @@ import java.util.List;
  * to tell. {@link #available()} is {@code false} and {@link #unavailableReason()} says what happened; the
  * report prints both.</p>
  *
- * @param name              the short identifier used in the report, for example {@code runner-stored}
- * @param description       one line explaining what the format is
- * @param command           the full command line, the {@code java} executable included
- * @param workingDirectory  the directory the process is started in
- * @param artifact          the file (or directory) the variant launches from
- * @param deploymentSize    the measured complete deployment, or {@code null} for test fixtures/unavailable variants
- * @param requestedEntryMode how the harness asked to enter the application
+ * @param spec               the row of {@link SampleBuild}'s table: name, description, requested entry mode and
+ *                           whether a trained JDK AOT cache is part of the launch
+ * @param command            the full command line, the {@code java} executable included
+ * @param workingDirectory   the directory the process is started in
+ * @param artifact           the file (or directory) the variant launches from
+ * @param deploymentSize     the measured complete deployment, or {@code null}
  * @param effectiveEntryMode how the built artifact enters the application, or {@code null} when unavailable
- * @param available         whether the variant could be built
- * @param unavailableReason why it could not, or {@code null} when it could
+ * @param buildNote          what the packaging reported about the built bytes, such as the static service
+ *                           table, appended to the description; {@code null} for nothing
  * @param launchInputs       ordered files/directories whose bytes define the launched application
- * @param cache              separately reported application-cache preparation, or {@code null}
+ * @param cache              the trained JDK AOT cache, or {@code null}
+ * @param unavailableReason  why the variant could not be built, or {@code null} when it could
  */
-record Variant(String name,
-               String description,
+record Variant(SampleBuild.VariantSpec spec,
                List<String> command,
                Path workingDirectory,
                Path artifact,
                DeploymentSize deploymentSize,
-               EntryMode requestedEntryMode,
                EntryMode effectiveEntryMode,
-               boolean available,
-               String unavailableReason,
+               String buildNote,
                List<Path> launchInputs,
-               CacheInfo cache) {
+               CacheInfo cache,
+               String unavailableReason) {
 
     Variant {
         command = List.copyOf(command);
@@ -58,105 +56,59 @@ record Variant(String name,
     }
 
     /**
-     * This variant under another description, for a row whose report line is fixed rather than derived from how
-     * it was built.
-     *
-     * @param newDescription the one-line explanation
-     * @return the same variant with that description
-     */
-    Variant describedAs(String newDescription) {
-        return new Variant(name, newDescription, command, workingDirectory, artifact, deploymentSize,
-                requestedEntryMode, effectiveEntryMode, available, unavailableReason, launchInputs, cache);
-    }
-
-    /**
      * A variant that was built and can be measured.
      *
-     * @param name             the identifier
-     * @param description      the one-line explanation
-     * @param command          the command line
-     * @param workingDirectory where to start it
-     * @param artifact         the file or directory it runs from
+     * @param spec               its row
+     * @param command            the command line
+     * @param workingDirectory   where to start it
+     * @param artifact           the file or directory it runs from
+     * @param deploymentSize     the complete deployment, or {@code null}
+     * @param effectiveEntryMode how the built artifact enters the application
+     * @param buildNote          what the packaging reported about the built bytes, or {@code null}
+     * @param launchInputs       the ordered launch inputs
      * @return the variant
      */
-    static Variant available(String name,
-                             String description,
-                             List<String> command,
-                             Path workingDirectory,
-                             Path artifact) {
-        return available(name, description, command, workingDirectory, artifact, null,
-                EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER);
-    }
-
-    static Variant available(String name,
-                             String description,
-                             List<String> command,
-                             Path workingDirectory,
-                             Path artifact,
-                             DeploymentSize deploymentSize) {
-        return available(name, description, command, workingDirectory, artifact, deploymentSize,
-                EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER);
-    }
-
-    static Variant available(String name,
-                             String description,
-                             List<String> command,
-                             Path workingDirectory,
-                             Path artifact,
-                             EntryMode requestedEntryMode,
-                             EntryMode effectiveEntryMode) {
-        return available(name, description, command, workingDirectory, artifact, null,
-                requestedEntryMode, effectiveEntryMode);
-    }
-
-    static Variant available(String name,
-                             String description,
+    static Variant available(SampleBuild.VariantSpec spec,
                              List<String> command,
                              Path workingDirectory,
                              Path artifact,
                              DeploymentSize deploymentSize,
-                             EntryMode requestedEntryMode,
-                             EntryMode effectiveEntryMode) {
-        return new Variant(name, description, List.copyOf(command), workingDirectory, artifact, deploymentSize,
-                requestedEntryMode, effectiveEntryMode, true, null,
-                artifact == null ? List.of() : List.of(artifact), null);
-    }
-
-    static Variant available(String name,
-                             String description,
-                             List<String> command,
-                             Path workingDirectory,
-                             Path artifact,
+                             EntryMode effectiveEntryMode,
+                             String buildNote,
                              List<Path> launchInputs) {
-        return new Variant(name, description, command, workingDirectory, artifact, null,
-                EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER, true, null, launchInputs, null);
-    }
-
-    static Variant available(String name,
-                             String description,
-                             List<String> command,
-                             Path workingDirectory,
-                             Path artifact,
-                             DeploymentSize deploymentSize,
-                             List<Path> launchInputs) {
-        return new Variant(name, description, command, workingDirectory, artifact, deploymentSize,
-                EntryMode.STANDARD_LOADER, EntryMode.STANDARD_LOADER, true, null, launchInputs, null);
+        return new Variant(spec, command, workingDirectory, artifact, deploymentSize, effectiveEntryMode, buildNote,
+                launchInputs, null, null);
     }
 
     /**
      * A variant that could not be built.
      *
-     * @param name        the identifier
-     * @param description the one-line explanation
-     * @param reason      what went wrong, in a form a reader can act on
+     * @param spec   its row
+     * @param reason what went wrong, in a form a reader can act on
      * @return the variant
      */
-    static Variant unavailable(String name, String description, String reason) {
-        return unavailable(name, description, EntryMode.requestedBy(name), reason);
+    static Variant unavailable(SampleBuild.VariantSpec spec, String reason) {
+        return new Variant(spec, List.of(), null, null, null, null, null, List.of(), null, reason);
     }
 
-    static Variant unavailable(String name, String description, EntryMode requestedEntryMode, String reason) {
-        return new Variant(name, description, List.of(), null, null, null,
-                requestedEntryMode, null, false, reason, List.of(), null);
+    String name() {
+        return spec.name();
+    }
+
+    /**
+     * The row's description, followed by what the packaging reported about the bytes that were built.
+     *
+     * @return the one-line explanation
+     */
+    String description() {
+        return buildNote == null ? spec.description() : spec.description() + "; " + buildNote;
+    }
+
+    EntryMode requestedEntryMode() {
+        return spec.entryMode();
+    }
+
+    boolean available() {
+        return unavailableReason == null;
     }
 }

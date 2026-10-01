@@ -41,6 +41,9 @@ final class Reports {
     /** The file every raw sample goes to. */
     static final String RESULTS_FILE = "results.json";
 
+    /** The version of {@code results.json}'s layout; a change of fields bumps it by one. */
+    static final int SCHEMA_VERSION = 8;
+
     /** How many leading hex digits of a cache's SHA-256 the summary shows. */
     private static final int SHORT_DIGEST_LENGTH = 12;
 
@@ -81,10 +84,9 @@ final class Reports {
         StringBuilder out = new StringBuilder(64 * 1024);
         BenchmarkStatus status = BenchmarkStatus.evaluate(context, results);
         out.append("{\n");
-        out.append("  \"schemaVersion\": ").append(BenchmarkProvenance.SCHEMA_VERSION).append(",\n");
+        out.append("  \"schemaVersion\": ").append(SCHEMA_VERSION).append(",\n");
         out.append("  \"generatedAt\": ").append(quote(context.generatedAt())).append(",\n");
         out.append("  \"sample\": \"sample\",\n");
-        out.append("  \"repository\": \"<redacted:repository-location>\",\n");
         out.append("  \"runnerVersion\": ").append(quote(context.runnerVersion())).append(",\n");
         out.append("  \"readinessPath\": ").append(quote(context.readinessPath())).append(",\n");
         out.append("  \"measuredIterations\": ").append(context.iterations()).append(",\n");
@@ -99,14 +101,15 @@ final class Reports {
         }
         out.append("],\n");
         out.append("  \"seed\": ").append(context.seed()).append(",\n");
-        out.append("  \"interleaved\": true,\n");
-        out.append("  \"timingRunsCarryLoggingFlags\": false,\n");
-        out.append("  \"jvmProcessState\": \"fresh per sample\",\n");
         out.append("  \"osPageCacheState\": ")
                 .append(quote(context.conditions().pageCache().externalName())).append(",\n");
-        out.append("  \"applicationCacheMode\": \"per-variant\",\n");
-        appendProvenance(out, context.provenance());
+        appendPolicy(out);
         out.append(",\n");
+        out.append("  \"provenance\": {\n");
+        appendSource(out, "runnerSource", context.provenance().runnerSource());
+        out.append(",\n");
+        appendSource(out, "sampleSource", context.provenance().sampleSource());
+        out.append("\n  },\n");
         out.append("  \"environment\": {\n");
         BenchmarkProvenance provenance = context.provenance();
         out.append("    \"javaVersion\": ").append(quote(provenance.javaVersion())).append(",\n");
@@ -127,8 +130,6 @@ final class Reports {
             out.append(i == results.size() - 1 ? "\n" : ",\n");
         }
         out.append("  ],\n");
-        appendComparisonMethod(out);
-        out.append(",\n");
         appendComparisons(out, comparisons);
         out.append(",\n");
         appendAttempts(out, context, results);
@@ -143,11 +144,9 @@ final class Reports {
             StartupHarness.DiagnosticRun run = diagnostics.get(i);
             out.append("      {\"variant\": ").append(quote(run.variant()))
                     .append(", \"readinessMillisWithLogging\": ").append(number(run.readinessMillis()))
-                    .append(", \"command\": [");
-            for (int argument = 0; argument < run.command().size(); argument++) {
-                out.append(argument == 0 ? "" : ", ").append(quote(run.command().get(argument)));
-            }
-            out.append("]}").append(i == diagnostics.size() - 1 ? "\n" : ",\n");
+                    .append(", \"command\": ");
+            appendStrings(out, BenchmarkProvenance.relocate(run.command(), context, variant(results, run.variant())));
+            out.append('}').append(i == diagnostics.size() - 1 ? "\n" : ",\n");
         }
         out.append("    ]\n");
         out.append("  }\n");
@@ -191,23 +190,47 @@ final class Reports {
         return value == null ? "null" : value.toString();
     }
 
-    private static void appendProvenance(StringBuilder out, BenchmarkProvenance provenance) {
-        out.append("  \"provenance\": {\n");
-        appendSource(out, "runnerSource", provenance.runnerSource());
-        out.append(",\n");
-        appendSource(out, "sampleSource", provenance.sampleSource());
-        out.append(",\n");
-        out.append("    \"jvmOptionEnvironment\": {\n");
-        int index = 0;
-        for (var entry : provenance.optionEnvironmentPresence().entrySet()) {
-            out.append("      ").append(quote(entry.getKey())).append(": {\"present\": ")
-                    .append(entry.getValue()).append(", \"action\": \"removed\", \"value\": ")
-                    .append(quote(BenchmarkProvenance.REDACTED_JVM_OPTIONS)).append('}')
-                    .append(index++ == provenance.optionEnvironmentPresence().size() - 1 ? "\n" : ",\n");
-        }
-        out.append("    },\n");
-        out.append("    \"environmentScope\": \"allowlisted deltas only; full environment not recorded\"\n");
+    /**
+     * The constants every run shares, written once: how runs are scheduled, how deployment sizes are counted,
+     * the statistics' interval method and the comparisons' method. The bootstrap seed is the run's top-level seed.
+     */
+    private static void appendPolicy(StringBuilder out) {
+        out.append("  \"policy\": {\n");
+        out.append("    \"interleaved\": true,\n");
+        out.append("    \"timingRunsCarryLoggingFlags\": false,\n");
+        out.append("    \"jvmProcessState\": \"fresh per sample\",\n");
+        out.append("    \"applicationCacheMode\": \"per-variant\",\n");
+        out.append("    \"deploymentSize\": {\"boundary\": ").append(quote(DeploymentSize.BOUNDARY))
+                .append(", \"unit\": ").append(quote(DeploymentSize.UNIT))
+                .append(", \"symlinkPolicy\": ").append(quote(DeploymentSize.SYMLINK_POLICY))
+                .append(", \"hardLinkPolicy\": ").append(quote(DeploymentSize.HARD_LINK_POLICY)).append("},\n");
+        out.append("    \"statistics\": {\"ciConfidence\": ").append(number(Statistics.CONFIDENCE))
+                .append(", \"ciMethod\": \"percentile bootstrap of the median\"")
+                .append(", \"ciResamples\": ").append(Statistics.RESAMPLES)
+                .append(", \"ciMinimumSamples\": ").append(Statistics.MIN_CONFIDENCE_SAMPLES).append("},\n");
+        out.append("    \"comparisonMethod\": {")
+                .append("\"estimator\": ").append(quote(PairedComparison.ESTIMATOR))
+                .append(", \"relativeEstimator\": ").append(quote(PairedComparison.RELATIVE_ESTIMATOR))
+                .append(", \"resamplingUnit\": ").append(quote(PairedComparison.RESAMPLING_UNIT))
+                .append(", \"ciMethod\": ").append(quote(PairedComparison.CI_METHOD))
+                .append(", \"ciConfidence\": ").append(number(Statistics.CONFIDENCE))
+                .append(", \"ciResamples\": ").append(Statistics.RESAMPLES)
+                .append(", \"ciMinimumPairs\": ").append(Statistics.MIN_CONFIDENCE_SAMPLES)
+                .append("}\n");
         out.append("  }");
+    }
+
+    private static void appendStrings(StringBuilder out, List<String> values) {
+        out.append('[');
+        for (int i = 0; i < values.size(); i++) {
+            out.append(i == 0 ? "" : ", ").append(quote(values.get(i)));
+        }
+        out.append(']');
+    }
+
+    private static Variant variant(List<VariantResult> results, String name) {
+        return results.stream().map(VariantResult::variant).filter(variant -> variant.name().equals(name))
+                .findFirst().orElse(null);
     }
 
     private static void appendSource(StringBuilder out,
@@ -230,14 +253,9 @@ final class Reports {
                 .append(quote(variant.effectiveEntryMode() == null
                         ? null : variant.effectiveEntryMode().externalName())).append(",\n");
         CacheInfo cache = variant.cache();
-        String cacheMode = cacheMode(variant);
-        out.append("      \"applicationCacheMode\": ").append(quote(cacheMode)).append(",\n");
+        out.append("      \"applicationCacheMode\": ").append(quote(applicationCacheMode(variant))).append(",\n");
         out.append("      \"cacheIdentity\": ")
                 .append(quote(cache == null ? null : cache.identity())).append(",\n");
-        out.append("      \"cacheLifecycle\": ")
-                .append(quote(cache == null ? null : cache.lifecycle())).append(",\n");
-        out.append("      \"cacheVerification\": ")
-                .append(quote(cache == null ? null : cache.verification())).append(",\n");
         out.append("      \"cacheBytes\": ")
                 .append(cache == null ? "null" : cache.bytes()).append(",\n");
         out.append("      \"cacheSha256\": ")
@@ -253,18 +271,14 @@ final class Reports {
         out.append("      \"required\": ").append(context.requiredVariants().contains(variant.name()))
                 .append(",\n");
         out.append("      \"unavailableReason\": ")
-                .append(quote(redact(context, variant, variant.unavailableReason()))).append(",\n");
-        out.append("      \"artifact\": ")
-                .append(quote(variant.artifact() == null ? null : "artifact:" + variant.name())).append(",\n");
+                .append(quote(BenchmarkProvenance.relocate(variant.unavailableReason(), context, variant)))
+                .append(",\n");
         out.append("      \"deploymentSize\": ");
         appendDeploymentSize(out, variant.deploymentSize());
         out.append(",\n");
-        List<String> command = BenchmarkProvenance.relocatableCommand(variant);
-        out.append("      \"command\": [");
-        for (int i = 0; i < command.size(); i++) {
-            out.append(i == 0 ? "" : ", ").append(quote(command.get(i)));
-        }
-        out.append("],\n");
+        out.append("      \"command\": ");
+        appendStrings(out, BenchmarkProvenance.relocate(variant.command(), context, variant));
+        out.append(",\n");
         out.append("      \"orderedLaunchInputs\": [");
         List<BenchmarkProvenance.InputIdentity> identities = BenchmarkProvenance.inputIdentities(variant);
         for (int i = 0; i < identities.size(); i++) {
@@ -285,29 +299,7 @@ final class Reports {
         out.append(",\n");
         out.append("      \"measured\": ");
         appendCounts(out, result.measured());
-        out.append(",\n");
-        out.append("      \"failures\": [");
-        for (int i = 0; i < result.failures().size(); i++) {
-            out.append(i == 0 ? "" : ", ")
-                    .append(quote(redact(context, variant, result.failures().get(i))));
-        }
-        out.append("],\n");
-        out.append("      \"samples\": [\n");
-        for (int i = 0; i < result.samples().size(); i++) {
-            StartupSample sample = result.samples().get(i);
-            out.append("        {\"iteration\": ").append(sample.iteration())
-                    .append(", \"warmup\": ").append(sample.warmup())
-                    .append(", \"port\": ").append(sample.port())
-                    .append(", \"readinessMillis\": ").append(number(sample.readinessMillis()))
-                    .append(", \"logLineMillis\": ")
-                    .append(sample.logLineMillis() < 0 ? "null" : number(sample.logLineMillis()))
-                    .append(", \"frameworkMillis\": ")
-                    .append(sample.frameworkMillis() < 0 ? "null" : number(sample.frameworkMillis()))
-                    .append(", \"pollGapMillis\": ").append(number(sample.pollGapMillis()))
-                    .append(", \"exitCode\": ").append(sample.exitCode())
-                    .append('}').append(i == result.samples().size() - 1 ? "\n" : ",\n");
-        }
-        out.append("      ]\n");
+        out.append('\n');
         out.append("    }");
     }
 
@@ -316,11 +308,7 @@ final class Reports {
             out.append("null");
             return;
         }
-        out.append("{\"boundary\": ").append(quote(DeploymentSize.BOUNDARY))
-                .append(", \"unit\": ").append(quote(DeploymentSize.UNIT))
-                .append(", \"symlinkPolicy\": ").append(quote(DeploymentSize.SYMLINK_POLICY))
-                .append(", \"hardLinkPolicy\": ").append(quote(DeploymentSize.HARD_LINK_POLICY))
-                .append(", \"totalBytes\": ").append(deploymentSize.totalBytes())
+        out.append("{\"totalBytes\": ").append(deploymentSize.totalBytes())
                 .append(", \"totalGzipBytes\": ").append(deploymentSize.totalGzipBytes())
                 .append(", \"components\": [");
         for (int i = 0; i < deploymentSize.components().size(); i++) {
@@ -349,10 +337,7 @@ final class Reports {
         out.append("  \"attempts\": [\n");
         for (int i = 0; i < attempts.size(); i++) {
             RunAttempt attempt = attempts.get(i);
-            Variant variant = results.stream()
-                    .map(VariantResult::variant)
-                    .filter(candidate -> candidate.name().equals(attempt.variant()))
-                    .findFirst().orElse(null);
+            Variant variant = variant(results, attempt.variant());
             StartupSample sample = attempt.sample();
             out.append("    {\"variant\": ").append(quote(attempt.variant()))
                     .append(", \"iteration\": ").append(attempt.iteration())
@@ -361,7 +346,7 @@ final class Reports {
                     .append(", \"warmup\": ").append(attempt.warmup())
                     .append(", \"outcome\": ").append(quote(attempt.outcome().externalName()))
                     .append(", \"failureReason\": ")
-                    .append(quote(redact(context, variant, attempt.failureReason())))
+                    .append(quote(BenchmarkProvenance.relocate(attempt.failureReason(), context, variant)))
                     .append(", \"exitCode\": ")
                     .append(attempt.exitCode() == null ? "null" : attempt.exitCode())
                     .append(", \"timing\": ");
@@ -381,19 +366,6 @@ final class Reports {
             out.append('}').append(i == attempts.size() - 1 ? "\n" : ",\n");
         }
         out.append("  ]");
-    }
-
-    /** The method every comparison shares, written once; the bootstrap seed is the run's top-level seed. */
-    private static void appendComparisonMethod(StringBuilder out) {
-        out.append("  \"comparisonMethod\": {")
-                .append("\"estimator\": ").append(quote(PairedComparison.ESTIMATOR))
-                .append(", \"relativeEstimator\": ").append(quote(PairedComparison.RELATIVE_ESTIMATOR))
-                .append(", \"resamplingUnit\": ").append(quote(PairedComparison.RESAMPLING_UNIT))
-                .append(", \"ciMethod\": ").append(quote(PairedComparison.CI_METHOD))
-                .append(", \"ciConfidence\": ").append(number(Statistics.CONFIDENCE))
-                .append(", \"ciResamples\": ").append(Statistics.RESAMPLES)
-                .append(", \"ciMinimumPairs\": ").append(Statistics.MIN_CONFIDENCE_SAMPLES)
-                .append('}');
     }
 
     /**
@@ -480,10 +452,6 @@ final class Reports {
                 + ", \"descriptiveOnly\": " + !statistics.hasConfidenceInterval()
                 + ", \"ci95Low\": " + nullableNumber(statistics.ciLow())
                 + ", \"ci95High\": " + nullableNumber(statistics.ciHigh())
-                + ", \"ciConfidence\": " + number(Statistics.CONFIDENCE)
-                + ", \"ciMethod\": \"percentile bootstrap of the median\""
-                + ", \"ciResamples\": " + Statistics.RESAMPLES
-                + ", \"ciMinimumSamples\": " + Statistics.MIN_CONFIDENCE_SAMPLES
                 + ", \"ciReason\": " + quote(statistics.ciReason()) + "}";
     }
 
@@ -765,8 +733,8 @@ final class Reports {
                     .append(" | ").append(medians.majorFaults() < 0 ? "—" : medians.majorFaults())
                     .append(" | ").append(mebibytes(medians.readBytes()))
                     .append(" |\n");
-            for (StartupSample sample : result.samples()) {
-                if (!sample.warmup() && sample.atReadiness() != null && sample.atReadiness().probeMillis() >= 0) {
+            for (StartupSample sample : result.measuredSamples()) {
+                if (sample.atReadiness() != null && sample.atReadiness().probeMillis() >= 0) {
                     probes.add(sample.atReadiness().probeMillis());
                 }
             }
@@ -844,16 +812,15 @@ final class Reports {
                 .append("|---|---|---:|---|---:|---:|---|\n");
         for (VariantResult result : results) {
             CacheInfo cache = result.variant().cache();
+            String mode = applicationCacheMode(result.variant());
             if (cache == null) {
-                String mode = cacheMode(result.variant());
-                out.append("| `").append(result.variant().name()).append("` | ").append(mode);
-                if (!result.variant().available() && !"none".equals(mode)) {
-                    out.append(" (unavailable)");
-                }
-                out.append(" | — | — | — | — | — |\n");
+                out.append("| `").append(result.variant().name()).append("` | ").append(mode)
+                        .append(result.variant().spec().aotCache() ? " (unavailable)" : "")
+                        .append(" | — | — | — | — | — |\n");
                 continue;
             }
-            out.append("| `").append(result.variant().name()).append("` | ").append(cache.mode())
+            out.append("| `").append(result.variant().name()).append("` | ").append(mode)
+
                     .append(" | ").append(exactSize(cache.bytes()))
                     .append(" | ").append(shortDigest(cache.sha256()))
                     .append(" | ").append(cache.trainingMillis() < 0 ? "not trained (reused)"
@@ -887,7 +854,7 @@ final class Reports {
             CacheInfo cache = variant.cache();
             if (cache != null) {
                 (cache.reused() ? reused : trained).add(variant.name());
-            } else if (!"none".equals(cacheMode(variant))) {
+            } else if (variant.spec().aotCache()) {
                 unavailable.add(variant.name());
             }
         }
@@ -913,14 +880,9 @@ final class Reports {
         return list.toString();
     }
 
-    private static String cacheMode(Variant variant) {
-        if (variant.cache() != null) {
-            return variant.cache().mode();
-        }
-        if (variant.name().endsWith("-aot")) {
-            return "aot";
-        }
-        return "none";
+    /** {@code aot} for a row its spec launches with a trained JDK AOT cache, available or not; else {@code none}. */
+    private static String applicationCacheMode(Variant variant) {
+        return variant.spec().aotCache() ? "aot" : "none";
     }
 
     /**
@@ -1041,18 +1003,6 @@ final class Reports {
         return String.format(Locale.ROOT, "%.2f×", (double) candidate / baseline);
     }
 
-    /**
-     * Names every variant the table above has no number for, whether it could not be built or was built
-     * and never answered.
-     *
-     * <p>Both cases matter and they are different. A benchmark that quietly leaves a variant out reads as
-     * though it measured everything it listed, so this section exists to make the hole impossible to
-     * miss - and to say which kind of hole it is, because "the Shadow plugin produced no jar" and "the
-     * application came up and returned 404" lead to completely different investigations.</p>
-     *
-     * @param out     the report being built
-     * @param results every variant's result
-     */
     private static void appendCountRow(StringBuilder out, String variant, String phase, PhaseCounts counts) {
         out.append("| `").append(variant).append("` | ").append(phase)
                 .append(" | ").append(counts.requested())
@@ -1094,13 +1044,13 @@ final class Reports {
             } else if (result.measured().successful() < context.iterations()) {
                 what = result.measured().successful() + " of " + context.iterations()
                         + " measured runs succeeded";
-                detail = result.failures().isEmpty() ? "measured cells were skipped"
-                        : result.failures().get(0);
+                detail = result.firstFailure() == null ? "measured cells were skipped" : result.firstFailure();
             } else {
                 continue;
             }
             out.append("| `").append(required).append("` | ").append(what).append(" | ")
-                    .append(escapeCell(reason(redact(context, result == null ? null : result.variant(), detail))))
+                    .append(escapeCell(reason(BenchmarkProvenance.relocate(detail, context,
+                            result == null ? null : result.variant()))))
                     .append(" |\n");
         }
         out.append('\n');
@@ -1176,31 +1126,6 @@ final class Reports {
         }
         String single = value.replace('\n', ' ').replace('\r', ' ').replace("|", "\\|");
         return single.length() > 400 ? single.substring(0, 400) + " …" : single;
-    }
-
-    private static String redact(RunContext context, Variant variant, String value) {
-        if (value == null) {
-            return null;
-        }
-        String redacted = value.replace(context.repository(), "<redacted:repository-location>")
-                .replace(context.sample().toAbsolutePath().normalize().toString(), "${sample}")
-                .replace(context.outputDirectory().toAbsolutePath().normalize().toString(), "${output}");
-        if (variant != null) {
-            if (variant.workingDirectory() != null) {
-                redacted = redacted.replace(variant.workingDirectory().toAbsolutePath().normalize().toString(),
-                        "${workdir}");
-            }
-            for (int i = 0; i < variant.launchInputs().size(); i++) {
-                redacted = redacted.replace(variant.launchInputs().get(i).toAbsolutePath().normalize().toString(),
-                        "${input:" + i + "}");
-            }
-        }
-        // Last, as in BenchmarkProvenance.relocatableCommand: variant paths are usually under the home directory.
-        String home = System.getProperty("user.home", "");
-        if (!home.isEmpty()) {
-            redacted = redacted.replace(home, "${user-home-redacted}");
-        }
-        return redacted;
     }
 
     /** A JSON string literal, or {@code null}. {@link PackagingComparison} writes its report with it too. */

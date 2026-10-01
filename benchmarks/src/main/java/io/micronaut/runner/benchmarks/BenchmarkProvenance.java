@@ -26,114 +26,74 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** Reproducible, deliberately bounded provenance for one benchmark invocation. */
-final class BenchmarkProvenance {
+/**
+ * What a benchmark invocation ran on: the source revisions and the machine. Paths never enter a report as they
+ * are; {@link #relocate} turns them into tokens.
+ *
+ * @param runnerSource        the Runner checkout's revision and clean/dirty state
+ * @param sampleSource        the sample's revision and clean/dirty state
+ * @param javaVersion         {@code java.version}
+ * @param javaRuntimeVersion  {@code java.runtime.version}
+ * @param javaVendor          {@code java.vendor}
+ * @param javaVmName          {@code java.vm.name}
+ * @param osName              {@code os.name}
+ * @param osVersion           {@code os.version}
+ * @param osArch              {@code os.arch}
+ * @param availableProcessors the logical processors, captured before a CPU limit pins the harness
+ * @param totalMemoryBytes    the physical memory, or {@code -1}
+ */
+record BenchmarkProvenance(SourceState runnerSource,
+                           SourceState sampleSource,
+                           String javaVersion,
+                           String javaRuntimeVersion,
+                           String javaVendor,
+                           String javaVmName,
+                           String osName,
+                           String osVersion,
+                           String osArch,
+                           int availableProcessors,
+                           long totalMemoryBytes) {
 
-    static final int SCHEMA_VERSION = 7;
-    static final String REDACTED_JVM_OPTIONS = "<redacted:ambient-jvm-options>";
-    private static final List<String> JVM_OPTION_ENVIRONMENT = List.of(
-            "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "JDK_AOT_VM_OPTIONS");
-
-    private final SourceState runnerSource;
-    private final SourceState sampleSource;
-    private final Map<String, Boolean> optionEnvironmentPresence;
-    private final String javaVersion;
-    private final String javaRuntimeVersion;
-    private final String javaVendor;
-    private final String javaVmName;
-    private final String osName;
-    private final String osVersion;
-    private final String osArch;
-    private final int availableProcessors;
-    private final long totalMemoryBytes;
-
-    private BenchmarkProvenance(SourceState runnerSource,
-                                SourceState sampleSource,
-                                Map<String, Boolean> optionEnvironmentPresence) {
-        this.runnerSource = runnerSource;
-        this.sampleSource = sampleSource;
-        this.optionEnvironmentPresence = Collections.unmodifiableMap(new LinkedHashMap<>(optionEnvironmentPresence));
-        this.javaVersion = System.getProperty("java.version", "<unavailable>");
-        this.javaRuntimeVersion = System.getProperty("java.runtime.version", "<unavailable>");
-        this.javaVendor = System.getProperty("java.vendor", "<unavailable>");
-        this.javaVmName = System.getProperty("java.vm.name", "<unavailable>");
-        this.osName = System.getProperty("os.name", "<unavailable>");
-        this.osVersion = System.getProperty("os.version", "<unavailable>");
-        this.osArch = System.getProperty("os.arch", "<unavailable>");
-        this.availableProcessors = Runtime.getRuntime().availableProcessors();
-        this.totalMemoryBytes = detectTotalMemoryBytes();
+    /**
+     * Captures the provenance of this invocation.
+     *
+     * @param runnerSource the Runner checkout, or {@code null} when unknown
+     * @param sampleSource the sample's project directory
+     * @return the provenance
+     */
+    static BenchmarkProvenance capture(Path runnerSource, Path sampleSource) {
+        return machine(runnerSource == null ? SourceState.unavailable() : SourceState.captureRepository(runnerSource),
+                SourceState.capture(sampleSource));
     }
 
-    static BenchmarkProvenance capture(Path runnerSource, Path sampleSource, Map<String, String> environment) {
-        Map<String, Boolean> optionPresence = new LinkedHashMap<>();
-        for (String variable : JVM_OPTION_ENVIRONMENT) {
-            optionPresence.put(variable, environment.containsKey(variable));
-        }
-        SourceState runnerState = runnerSource == null
-                ? SourceState.unavailable() : SourceState.captureRepository(runnerSource);
-        return new BenchmarkProvenance(runnerState, SourceState.capture(sampleSource), optionPresence);
-    }
-
+    /**
+     * This machine, with no source revision.
+     *
+     * @return the provenance
+     */
     static BenchmarkProvenance unavailable() {
-        Map<String, Boolean> optionPresence = new LinkedHashMap<>();
-        JVM_OPTION_ENVIRONMENT.forEach(variable -> optionPresence.put(variable, false));
-        return new BenchmarkProvenance(SourceState.unavailable(), SourceState.unavailable(), optionPresence);
+        return machine(SourceState.unavailable(), SourceState.unavailable());
     }
 
-    SourceState runnerSource() {
-        return runnerSource;
+    private static BenchmarkProvenance machine(SourceState runnerSource, SourceState sampleSource) {
+        long totalMemory = ManagementFactory.getOperatingSystemMXBean()
+                instanceof com.sun.management.OperatingSystemMXBean extended ? extended.getTotalMemorySize() : -1;
+        return new BenchmarkProvenance(runnerSource, sampleSource, property("java.version"),
+                property("java.runtime.version"), property("java.vendor"), property("java.vm.name"),
+                property("os.name"), property("os.version"), property("os.arch"),
+                Runtime.getRuntime().availableProcessors(), totalMemory);
     }
 
-    SourceState sampleSource() {
-        return sampleSource;
-    }
-
-    Map<String, Boolean> optionEnvironmentPresence() {
-        return optionEnvironmentPresence;
-    }
-
-    String javaVersion() {
-        return javaVersion;
-    }
-
-    String javaRuntimeVersion() {
-        return javaRuntimeVersion;
-    }
-
-    String javaVendor() {
-        return javaVendor;
-    }
-
-    String javaVmName() {
-        return javaVmName;
-    }
-
-    String osName() {
-        return osName;
-    }
-
-    String osVersion() {
-        return osVersion;
-    }
-
-    String osArch() {
-        return osArch;
-    }
-
-    int availableProcessors() {
-        return availableProcessors;
-    }
-
-    long totalMemoryBytes() {
-        return totalMemoryBytes;
+    private static String property(String name) {
+        return System.getProperty(name, "<unavailable>");
     }
 
     static List<InputIdentity> inputIdentities(Variant variant) throws IOException {
@@ -144,79 +104,70 @@ final class BenchmarkProvenance {
         return List.copyOf(identities);
     }
 
-    static List<String> relocatableCommand(Variant variant) {
-        return relocatableCommand(variant, List.of());
-    }
-
-    static List<String> relocatableCommand(Variant variant, List<String> extraJvmArguments) {
-        List<Replacement> replacements = new ArrayList<>();
-        replacements.add(new Replacement(SampleBuild.javaExecutable().toAbsolutePath().normalize().toString(),
-                "${java}"));
-        for (int i = 0; i < variant.launchInputs().size(); i++) {
-            replacements.add(new Replacement(variant.launchInputs().get(i).toAbsolutePath().normalize().toString(),
-                    "${input:" + i + "}"));
+    /**
+     * Replaces every path the report knows of with its token, longest path first: {@code ${java}},
+     * {@code ${input:i}} and {@code ${workdir}} of the variant, then {@code ${sample}}, {@code ${work}},
+     * {@code ${output}} and {@code ${user-home}}. Commands and failure text go through this one function, so they
+     * name the same file the same way.
+     *
+     * @param text    a command argument or a failure message, or {@code null}
+     * @param context the run, whose sample, work and output directories are replaced
+     * @param variant the variant the text belongs to, or {@code null}
+     * @return the relocated text, or {@code null}
+     */
+    static String relocate(String text, RunContext context, Variant variant) {
+        if (text == null) {
+            return null;
         }
-        if (variant.workingDirectory() != null) {
-            replacements.add(new Replacement(variant.workingDirectory().toAbsolutePath().normalize().toString(),
-                    "${workdir}"));
+        Map<String, String> tokens = new LinkedHashMap<>();
+        tokens.put(absolute(SampleBuild.javaExecutable()), "${java}");
+        if (variant != null) {
+            for (int i = 0; i < variant.launchInputs().size(); i++) {
+                tokens.putIfAbsent(absolute(variant.launchInputs().get(i)), "${input:" + i + "}");
+            }
+            if (variant.workingDirectory() != null) {
+                tokens.putIfAbsent(absolute(variant.workingDirectory()), "${workdir}");
+            }
         }
-        replacements.sort(Comparator.comparingInt((Replacement replacement) -> replacement.value().length())
-                .reversed());
+        tokens.putIfAbsent(absolute(context.sample()), "${sample}");
+        tokens.putIfAbsent(absolute(context.workDirectory()), "${work}");
+        tokens.putIfAbsent(absolute(context.outputDirectory()), "${output}");
         String home = System.getProperty("user.home", "");
-        List<String> effective = new ArrayList<>(variant.command().size() + extraJvmArguments.size());
-        if (!variant.command().isEmpty()) {
-            effective.add(variant.command().get(0));
-            effective.addAll(extraJvmArguments);
-            effective.addAll(variant.command().subList(1, variant.command().size()));
+        if (home.length() > 1) {
+            tokens.putIfAbsent(absolute(Path.of(home)), "${user-home}");
         }
-        List<String> command = new ArrayList<>(effective.size());
-        boolean redactNextValue = false;
-        for (String original : effective) {
-            String relocated = original;
-            for (Replacement replacement : replacements) {
-                relocated = relocated.replace(replacement.value(), replacement.token());
-            }
-            if (!home.isEmpty()) {
-                relocated = relocated.replace(home, "${user-home-redacted}");
-            }
-            if (redactNextValue) {
-                command.add("<redacted:command-value>");
-                redactNextValue = false;
-            } else {
-                command.add(redactSensitiveArgument(relocated));
-                redactNextValue = relocated.indexOf('=') < 0
-                        && relocated.startsWith("--") && isSensitiveName(relocated);
-            }
+        String relocated = text;
+        for (Map.Entry<String, String> token : tokens.entrySet().stream()
+                .sorted(Comparator.comparingInt((Map.Entry<String, String> entry) -> entry.getKey().length())
+                        .reversed())
+                .toList()) {
+            relocated = relocated.replace(token.getKey(), token.getValue());
         }
-        return List.copyOf(command);
+        return relocated;
     }
 
-    private static String redactSensitiveArgument(String argument) {
-        int equals = argument.indexOf('=');
-        if (equals < 0) {
-            return argument;
-        }
-        if (isSensitiveName(argument.substring(0, equals))) {
-            return argument.substring(0, equals + 1) + "<redacted:command-value>";
-        }
-        return argument;
+    /**
+     * Relocates every argument of a command; see {@link #relocate(String, RunContext, Variant)}.
+     *
+     * @param command the command
+     * @param context the run
+     * @param variant the variant the command launches
+     * @return the relocated command
+     */
+    static List<String> relocate(List<String> command, RunContext context, Variant variant) {
+        return command.stream().map(argument -> relocate(argument, context, variant)).toList();
     }
 
-    private static boolean isSensitiveName(String argument) {
-        String name = argument.toLowerCase(java.util.Locale.ROOT);
-        return name.contains("password") || name.contains("secret") || name.contains("token")
-                || name.contains("credential") || name.contains("api_key") || name.contains("apikey");
+    private static String absolute(Path path) {
+        return path.toAbsolutePath().normalize().toString();
     }
 
-    private static long detectTotalMemoryBytes() {
-        java.lang.management.OperatingSystemMXBean bean = ManagementFactory.getOperatingSystemMXBean();
-        if (bean instanceof com.sun.management.OperatingSystemMXBean extended) {
-            return extended.getTotalMemorySize();
-        }
-        return -1;
-    }
-
-    /** Revision and dirty state only; source checkout paths are intentionally not retained. */
+    /**
+     * Revision and dirty state only; source checkout paths are intentionally not retained.
+     *
+     * @param revision the commit, or {@code <unavailable>}
+     * @param state    {@code clean}, {@code dirty} or {@code unavailable}
+     */
     record SourceState(String revision, String state) {
 
         static SourceState captureRepository(Path directory) {
@@ -305,7 +256,15 @@ final class BenchmarkProvenance {
         }
     }
 
-    /** Content identity with a relocatable ordinal rather than a filesystem path. */
+    /**
+     * Content identity with a relocatable ordinal rather than a filesystem path. A directory is hashed file by
+     * file, each relative path with its bytes, in sorted order.
+     *
+     * @param id     the ordinal, for example {@code input:0}
+     * @param kind   {@code file}, {@code directory} or {@code missing}
+     * @param bytes  the content length, {@code 0} for a directory, {@code -1} when missing
+     * @param sha256 the lowercase hexadecimal digest, or {@code <unavailable>}
+     */
     record InputIdentity(String id, String kind, long bytes, String sha256) {
 
         static InputIdentity capture(String id, Path path) throws IOException {
@@ -334,12 +293,12 @@ final class BenchmarkProvenance {
             } else {
                 return new InputIdentity(id, "missing", -1, "<unavailable>");
             }
-            return new InputIdentity(id, kind, bytes, hex(digest.digest()));
+            return new InputIdentity(id, kind, bytes, HexFormat.of().formatHex(digest.digest()));
         }
 
         private static long digestFile(MessageDigest digest, Path file) throws IOException {
             long total = 0;
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[64 * 1024];
             try (InputStream in = Files.newInputStream(file)) {
                 int read;
                 while ((read = in.read(buffer)) != -1) {
@@ -357,17 +316,5 @@ final class BenchmarkProvenance {
                 throw new AssertionError("Every Java runtime provides SHA-256", e);
             }
         }
-
-        private static String hex(byte[] bytes) {
-            StringBuilder output = new StringBuilder(bytes.length * 2);
-            for (byte value : bytes) {
-                output.append(Character.forDigit((value >>> 4) & 0xf, 16));
-                output.append(Character.forDigit(value & 0xf, 16));
-            }
-            return output.toString();
-        }
-    }
-
-    private record Replacement(String value, String token) {
     }
 }

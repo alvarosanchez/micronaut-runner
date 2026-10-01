@@ -25,81 +25,77 @@ import java.util.function.ToLongFunction;
  * Everything the report knows about one variant, including every successful and failed process attempt.
  *
  * @param variant     the variant, including its command line and why it may be unavailable
- * @param deploymentBytes the complete deployment size, or {@code -1} when it is unavailable
- * @param samples     successful runs, retained for machine-readable compatibility
  * @param readiness   the successful measured readiness distribution, or {@code null}
  * @param logLine     the successful measured startup-line distribution, or {@code null}
  * @param framework   the successful measured framework distribution, or {@code null}
- * @param failures    failure reasons, retained for machine-readable compatibility
- * @param attempts    every process attempt, with schedule identity and outcome
+ * @param attempts    every process attempt, with schedule identity and outcome: the only per-run record
  * @param warmup      warm-up requested/attempted/successful/failed/skipped counts
  * @param measured    measured requested/attempted/successful/failed/skipped counts
  * @param atReadiness per-field medians of the successful measured attempts' readiness snapshots, each
  *                    {@code -1} when no attempt had a value
  */
 record VariantResult(Variant variant,
-                     long deploymentBytes,
-                     List<StartupSample> samples,
                      Statistics readiness,
                      Statistics logLine,
                      Statistics framework,
-                     List<String> failures,
                      List<RunAttempt> attempts,
                      PhaseCounts warmup,
                      PhaseCounts measured,
                      ReadinessSnapshot atReadiness) {
 
     VariantResult {
-        DeploymentSize deploymentSize = variant.deploymentSize();
-        if (deploymentSize != null && deploymentBytes != deploymentSize.totalBytes()) {
-            throw new IllegalArgumentException("reported deployment bytes " + deploymentBytes
-                    + " do not reconcile with measured total " + deploymentSize.totalBytes());
-        }
-    }
-
-    VariantResult(Variant variant,
-                  long deploymentBytes,
-                  List<StartupSample> samples,
-                  Statistics readiness,
-                  Statistics logLine,
-                  Statistics framework,
-                  List<String> failures) {
-        this(variant, deploymentBytes, samples, readiness, logLine, framework, failures, List.of(),
-                new PhaseCounts(0, 0, 0, 0, 0), new PhaseCounts(0, 0, 0, 0, 0), ReadinessSnapshot.UNAVAILABLE);
+        attempts = List.copyOf(attempts);
     }
 
     static VariantResult summarize(Variant variant,
-                                   long deploymentBytes,
                                    List<RunAttempt> attempts,
                                    int warmupRequested,
                                    int measuredRequested,
                                    long seed) {
-        List<StartupSample> samples = attempts.stream()
-                .filter(attempt -> attempt.outcome() == AttemptOutcome.SUCCESS)
-                .map(RunAttempt::sample)
-                .toList();
-        List<String> failures = attempts.stream()
-                .filter(attempt -> attempt.outcome() == AttemptOutcome.FAILED)
-                .map(RunAttempt::failureReason)
-                .toList();
-        double[] readiness = samples.stream()
-                .filter(sample -> !sample.warmup())
+        List<StartupSample> measured = measuredSamples(attempts);
+        double[] readiness = measured.stream()
                 .mapToDouble(StartupSample::readinessMillis)
                 .toArray();
-        double[] logLine = samples.stream()
-                .filter(sample -> !sample.warmup() && sample.logLineMillis() >= 0)
+        double[] logLine = measured.stream()
+                .filter(sample -> sample.logLineMillis() >= 0)
                 .mapToDouble(StartupSample::logLineMillis)
                 .toArray();
-        double[] framework = samples.stream()
-                .filter(sample -> !sample.warmup() && sample.frameworkMillis() >= 0)
+        double[] framework = measured.stream()
+                .filter(sample -> sample.frameworkMillis() >= 0)
                 .mapToDouble(StartupSample::frameworkMillis)
                 .toArray();
-        return new VariantResult(variant, deploymentBytes, List.copyOf(samples),
+        return new VariantResult(variant,
                 Statistics.of(readiness, seed), Statistics.of(logLine, seed), Statistics.of(framework, seed),
-                List.copyOf(failures), List.copyOf(attempts),
+                attempts,
                 PhaseCounts.of(warmupRequested, true, attempts),
                 PhaseCounts.of(measuredRequested, false, attempts),
-                medianSnapshot(samples.stream().filter(sample -> !sample.warmup()).toList()));
+                medianSnapshot(measured));
+    }
+
+    /**
+     * The samples of the successful measured attempts.
+     *
+     * @return the samples, in attempt order
+     */
+    List<StartupSample> measuredSamples() {
+        return measuredSamples(attempts);
+    }
+
+    /**
+     * Why the first failed attempt failed.
+     *
+     * @return the reason, or {@code null} when no attempt failed
+     */
+    String firstFailure() {
+        return attempts.stream().filter(attempt -> attempt.outcome() == AttemptOutcome.FAILED)
+                .map(RunAttempt::failureReason).findFirst().orElse(null);
+    }
+
+    private static List<StartupSample> measuredSamples(List<RunAttempt> attempts) {
+        return attempts.stream()
+                .filter(attempt -> attempt.outcome() == AttemptOutcome.SUCCESS && !attempt.warmup())
+                .map(RunAttempt::sample)
+                .toList();
     }
 
     /**
