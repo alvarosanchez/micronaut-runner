@@ -292,7 +292,8 @@ runtime image rather than from the JDK's default CDS archive, which the launcher
 then on `micronautRunnerJar` and `mn-runner:package` embed it with no configuration, and
 `java -Dmicronaut.runner.mode=inspect -jar my-app-0.1-all.jar` prints `Preload classes N`, where N is the file's
 `classes:` line. Recording launches the application, so it is never part of `assemble`, `build`, `check` or
-`package`: it runs only when you ask for it.
+`package`: it runs only when you ask for it. The same profile also puts each nested JAR's startup classes first and
+is what `HYBRID` compression needs (see <<format,The Runner JAR Format>>); recording from a `HYBRID` JAR is fine.
 
 The recording launch runs the production JAR with the JDK of the project's toolchain (Gradle) or of the
 `maven-toolchains-plugin` (Maven), or else the one that runs the build. It passes a free port in

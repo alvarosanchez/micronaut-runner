@@ -75,6 +75,8 @@ class BenchmarkEntryModeTest {
             "runner-stored-reflection",
             "runner-stored-preload",
             "runner-stored-preload-aot",
+            "runner-stored-ordered",
+            "runner-stored-hybrid",
             "runner-stored-positional",
             "runner-stored-positional-aot",
             "runner-stored-joran",
@@ -112,6 +114,8 @@ class BenchmarkEntryModeTest {
         assertEquals("shadow", SampleBuild.spec("shadow-aot").source());
         assertEquals("runner-stored", SampleBuild.spec("runner-extracted").source());
         assertEquals("runner-stored", SampleBuild.spec("runner-stored-preload").source());
+        assertEquals("runner-stored", SampleBuild.spec("runner-stored-ordered").source());
+        assertEquals("runner-stored", SampleBuild.spec("runner-stored-hybrid").source());
         assertEquals("runner-stored-lambdas", SampleBuild.spec("runner-extracted-lambdas-aot").source());
         assertNull(SampleBuild.spec("runner-stored").source());
     }
@@ -137,10 +141,12 @@ class BenchmarkEntryModeTest {
         assertEquals(CORE_ROWS.size() + OPT_IN_ROWS.size() + 2, withOptIn.size());
         assertTrue(core.stream().noneMatch(name -> name.endsWith("-maot-aot")), core.toString());
         assertTrue(core.stream().noneMatch(name -> name.contains("joran")), core.toString());
-        assertEquals(List.of("runner-stored-preload", "runner-stored-preload-aot"),
+        assertEquals(List.of("runner-stored-preload", "runner-stored-preload-aot", "runner-stored-ordered",
+                        "runner-stored-hybrid"),
                 withOptIn.subList(withOptIn.indexOf("runner-stored-reflection") + 1,
-                        withOptIn.indexOf("runner-stored-reflection") + 3),
-                "both preload rows come right after the reflection row");
+                        withOptIn.indexOf("runner-stored-reflection") + 5),
+                "both preload rows come right after the reflection row, and the rows that reuse their recording"
+                        + " right after them");
         assertEquals(List.of("runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot"),
                 withOptIn.stream().filter(name -> name.contains("lambdas")).toList(),
                 "the lambda controls, in this order, after the runner-stored group");
@@ -280,6 +286,88 @@ class BenchmarkEntryModeTest {
                 "runner-stored-preload", "fixture.PreloadMain", List.of(classes), List.of(), Compression.STORED,
                 EntryMode.STUB, SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(cached)));
         assertTrue(failure.getMessage().contains("embeds no class"), failure.getMessage());
+    }
+
+    @Test
+    void theOrderedAndHybridRowsAreComparedWithStoredPreserveAndShadow() {
+        List<String> pairs = SampleBuild.comparisons().stream()
+                .map(spec -> spec.candidate() + " - " + spec.baseline())
+                .toList();
+        int first = pairs.indexOf("runner-stored-ordered - runner-stored");
+        assertTrue(first >= 0, pairs.toString());
+        assertEquals(List.of(
+                "runner-stored-ordered - runner-stored",
+                "runner-stored-hybrid - runner-stored",
+                "runner-stored-hybrid - runner-preserve",
+                "runner-stored-hybrid - shadow"), pairs.subList(first, first + 4));
+    }
+
+    @Test
+    void theOrderedAndHybridRowsPackageTheListAndLaunchWithoutThePreloader(@TempDir Path output) throws Exception {
+        Path classes = compile(output.resolve("hybrid"), "fixture.HybridMain", """
+                package fixture;
+                public final class HybridMain {
+                    public static void main(String[] args) { }
+                }
+                """);
+        Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
+        Path list = Files.writeString(output.resolve("startup-classes.txt"),
+                "fixture.HybridMain\nio.micronaut.core.io.service.SoftServiceLoader\n");
+        SampleBuild.RunnerJarOptions recorded = SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(list)
+                .withPreload(false);
+
+        Variant ordered = runnerJar(output, "runner-stored-ordered", "fixture.HybridMain", List.of(classes),
+                List.of(core), Compression.STORED, EntryMode.STUB, recorded);
+        Variant hybrid = runnerJar(output, "runner-stored-hybrid", "fixture.HybridMain", List.of(classes),
+                List.of(core), Compression.HYBRID, EntryMode.STUB, recorded);
+        Variant preload = runnerJar(output, "runner-stored-preload", "fixture.HybridMain", List.of(classes),
+                List.of(core), Compression.STORED, EntryMode.STUB,
+                SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(list));
+
+        assertEquals(List.of("-Dmicronaut.runner.preload=false", "-jar"), ordered.command().subList(1, 3));
+        assertEquals(List.of("-Dmicronaut.runner.preload=false", "-jar"), hybrid.command().subList(1, 3));
+        assertEquals("-jar", preload.command().get(1), "the preload row keeps the preloader on");
+        assertArrayEquals(Files.readAllBytes(preload.artifact()), Files.readAllBytes(ordered.artifact()),
+                "the ordered row is the preload row's jar");
+        assertTrue(ordered.buildNote().endsWith("; 2 recorded startup classes first, not preloaded"),
+                ordered.buildNote());
+        int[] methods = SampleBuild.nestedMethods(hybrid.artifact());
+        assertTrue(methods[1] > 0, "the cold classes of the dependency are deflated");
+        assertTrue(hybrid.buildNote().endsWith("; nested entries: " + methods[0] + " stored, " + methods[1]
+                + " deflated"), hybrid.buildNote());
+        assertEquals(0, SampleBuild.nestedMethods(ordered.artifact())[1]);
+
+        // A list without a class of any dependency: HYBRID falls back to STORED, and the row is unavailable.
+        Path applicationOnly = Files.writeString(output.resolve("application-only.txt"), "fixture.HybridMain\n");
+        IOException fellBack = assertThrows(IOException.class, () -> runnerJar(output, "runner-stored-hybrid",
+                "fixture.HybridMain", List.of(classes), List.of(core), Compression.HYBRID, EntryMode.STUB,
+                SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(applicationOnly).withPreload(false)));
+        assertTrue(fellBack.getMessage().contains("holds no deflated nested entry"), fellBack.getMessage());
+    }
+
+    @Test
+    void theRunRecordsItsStartupProfileOnceForEveryRowThatPackagesIt() throws Exception {
+        List<String> recordings = new ArrayList<>();
+        Path recorded = Path.of("startup-classes.txt");
+        StartupProfile profile = new StartupProfile(stored -> {
+            recordings.add(stored.name());
+            return recorded;
+        });
+        Variant stored = BenchmarkFixtures.variant("runner-stored");
+        assertEquals(recorded, profile.get(stored));
+        assertEquals(recorded, profile.get(stored));
+        assertEquals(recorded, profile.get(stored));
+        assertEquals(List.of("runner-stored"), recordings);
+
+        List<String> attempts = new ArrayList<>();
+        StartupProfile failing = new StartupProfile(source -> {
+            attempts.add(source.name());
+            throw new IOException("recording the startup classes failed: no readiness");
+        });
+        IOException first = assertThrows(IOException.class, () -> failing.get(stored));
+        IOException second = assertThrows(IOException.class, () -> failing.get(stored));
+        assertEquals(first.getMessage(), second.getMessage(), "every row reports the same reason");
+        assertEquals(List.of("runner-stored"), attempts, "and a failed recording is not retried");
     }
 
     @Test
@@ -534,7 +622,8 @@ class BenchmarkEntryModeTest {
                 }
                 """);
 
-        for (Compression compression : Compression.values()) {
+        // HYBRID without a startup class list writes what STORED writes, and a row refuses that.
+        for (Compression compression : new Compression[] {Compression.STORED, Compression.PRESERVE}) {
             String suffix = compression.name().toLowerCase(java.util.Locale.ROOT);
             Variant stub = runnerJar(output, "runner-" + suffix,
                     "fixture.EligibleMain", List.of(classes), List.of(), compression, EntryMode.STUB);
@@ -628,8 +717,12 @@ class BenchmarkEntryModeTest {
         List<String> pairs = SampleBuild.comparisons().stream()
                 .map(spec -> spec.candidate() + " - " + spec.baseline())
                 .toList();
+        int first = pairs.indexOf("runner-stored-prefetch - runner-stored");
+        assertTrue(first >= 0, pairs.toString());
         assertEquals(List.of("runner-stored-prefetch - runner-stored",
-                "runner-stored-prefetch-aot - runner-stored-aot"), pairs.subList(pairs.size() - 2, pairs.size()),
+                "runner-stored-prefetch-aot - runner-stored-aot"), pairs.subList(first, first + 2),
+                "the prefetch comparisons follow each other");
+        assertTrue(first > pairs.indexOf("runner-extracted-aot - runner-extracted-lambdas-aot"),
                 "a row added to the matrix appends its comparisons");
     }
 

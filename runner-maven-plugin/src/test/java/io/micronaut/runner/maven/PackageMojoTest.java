@@ -281,7 +281,8 @@ class PackageMojoTest {
     void anUnknownCompressionFailsWithThePackagingLibrarysMessage() {
         set("compression", "DEFLATED");
         MojoFailureException failure = assertThrows(MojoFailureException.class, this::spec);
-        assertEquals("Unknown compression 'DEFLATED'. Supported values are STORED, PRESERVE.", failure.getMessage());
+        assertEquals("Unknown compression 'DEFLATED'. Supported values are STORED, PRESERVE, HYBRID.",
+                failure.getMessage());
     }
 
     @Test

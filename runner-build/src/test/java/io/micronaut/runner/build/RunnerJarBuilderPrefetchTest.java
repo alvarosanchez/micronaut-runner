@@ -114,7 +114,7 @@ class RunnerJarBuilderPrefetchTest {
     }
 
     @ParameterizedTest
-    @EnumSource(Compression.class)
+    @EnumSource(value = Compression.class, names = {"STORED", "PRESERVE"})
     void packagesThePrefetchIntoTheApplicationLayer(Compression compression) throws IOException {
         Path without = output();
         Path with = output();

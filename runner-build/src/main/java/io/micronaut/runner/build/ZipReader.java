@@ -57,8 +57,10 @@ import java.util.zip.Inflater;
  * entry's first data byte, because the runner jar format indexes entry data by absolute offset and the
  * launcher reads it with no ZIP parsing at all; that offset is only knowable by reading each local file
  * header, whose name and extra field lengths may differ from the central directory record's. Second, the
- * central directory <em>order</em>, which must be preserved into the runner jar so that
- * {@link java.util.jar.JarFile#entries()} over a nested jar reports the original order.</p>
+ * central directory <em>order</em>, which the runner jar keeps for a dependency that holds no startup class,
+ * so that {@link java.util.jar.JarFile#entries()} over that nested jar reports the original order. With a
+ * startup class list, a nested jar that holds one of the listed classes starts with them, and its other entries
+ * keep this order ({@link ZipRepacker}).</p>
  *
  * <p>ZIP64 is handled explicitly: the end of central directory record is located by scanning back from the
  * end of the file, the ZIP64 end of central directory record is read whenever a locator precedes it or any
@@ -525,7 +527,7 @@ final class ZipReader implements Closeable {
                 return result;
             }
             byte[] input = new byte[(int) Math.min(TRANSFER_BUFFER_SIZE, entry.compressedSize())];
-            inflate(entry, input, true, result, null);
+            inflate(entry, input, Feed.MAPPING, result, null);
             return result;
         } catch (InternalError e) {
             // The JVM throws the fault of a truncated mapping later than the copy that caused it, after
@@ -535,6 +537,36 @@ final class ZipReader implements Closeable {
             // matched and throw the error in the caller.
             throw unreadable(e);
         }
+    }
+
+    /**
+     * Inflates a deflated entry's compressed region that the caller already holds, as {@link #readRaw(ZipEntryInfo)}
+     * returned it, with every check {@link #read(ZipEntryInfo)} and {@link #transfer(ZipEntryInfo, OutputStream)}
+     * apply: the stream must end exactly at the recorded uncompressed size, consume the whole region, need no
+     * preset dictionary and match the recorded CRC-32.
+     *
+     * <p>It lets a caller that keeps an entry's compressed bytes, as {@link Compression#HYBRID} keeps a cold class's,
+     * read the region once and still verify it, without inflating it twice.</p>
+     *
+     * @param entry      a {@code DEFLATED} entry of this archive
+     * @param compressed its compressed region, exactly {@link ZipEntryInfo#compressedSize()} bytes
+     * @return the verified uncompressed content, of length {@link ZipEntryInfo#uncompressedSize()}
+     * @throws IOException if the entry is not deflated, the region is not its recorded length, or the stream is
+     *                     truncated, corrupt, overproduces, leaves compressed bytes unused or fails its CRC-32
+     */
+    byte[] inflate(ZipEntryInfo entry, byte[] compressed) throws IOException {
+        Objects.requireNonNull(entry, "entry");
+        Objects.requireNonNull(compressed, "compressed");
+        if (entry.method() != IndexFormat.METHOD_DEFLATED) {
+            throw new IOException("Entry '" + entry.name() + "' of " + path + " is not deflated");
+        }
+        if (compressed.length != entry.compressedSize()) {
+            throw new IOException("Entry '" + entry.name() + "' of " + path + " records " + entry.compressedSize()
+                    + " compressed bytes, but " + compressed.length + " were given");
+        }
+        byte[] result = new byte[checkedArraySize(entry, entry.uncompressedSize())];
+        inflate(entry, compressed, Feed.ARRAY, result, null);
+        return result;
     }
 
     /**
@@ -554,7 +586,7 @@ final class ZipReader implements Closeable {
         if (entry.method() == IndexFormat.METHOD_STORED) {
             return transferStored(entry, target);
         }
-        return inflate(entry, transferInput(), false, transferOutput(), target);
+        return inflate(entry, transferInput(), Feed.CHANNEL, transferOutput(), target);
     }
 
     private void requirePayload(ZipEntryInfo entry) throws IOException {
@@ -590,20 +622,22 @@ final class ZipReader implements Closeable {
     /**
      * Inflates a deflated entry and checks how the stream is framed: it must end exactly at the recorded
      * uncompressed size, consume exactly the recorded compressed region, need no preset dictionary and match
-     * the recorded CRC-32. {@link #read(ZipEntryInfo)} and {@link #transfer(ZipEntryInfo, OutputStream)} differ
-     * only in where the compressed bytes come from and where the content goes.
+     * the recorded CRC-32. {@link #read(ZipEntryInfo)}, {@link #transfer(ZipEntryInfo, OutputStream)} and
+     * {@link #inflate(ZipEntryInfo, byte[])} differ only in where the compressed bytes come from and where the
+     * content goes.
      *
-     * @param entry  the entry, already checked by {@link #requirePayload(ZipEntryInfo)}
-     * @param input  the buffer each chunk of compressed bytes is staged in; its length is the chunk size
-     * @param mapped {@code true} to copy the chunks out of the mapping, {@code false} to read them through
-     *               the channel
+     * @param entry  the entry, already checked by {@link #requirePayload(ZipEntryInfo)}, or, for
+     *               {@link Feed#ARRAY}, known to be deflated with a region of {@code input}'s length
+     * @param input  the buffer each chunk of compressed bytes is staged in, whose length is the chunk size; for
+     *               {@link Feed#ARRAY}, the whole compressed region
+     * @param feed   where the compressed bytes come from
      * @param output with a {@code target}, the buffer every chunk of content is inflated into before it is
      *               written; without one, the result itself, of the entry's exact size, which is filled in
      *               place
      * @param target where the content is written, or {@code null} to leave it in {@code output}
      * @return the number of bytes inflated, which is the entry's uncompressed size
      */
-    private long inflate(ZipEntryInfo entry, byte[] input, boolean mapped, byte[] output, OutputStream target)
+    private long inflate(ZipEntryInfo entry, byte[] input, Feed feed, byte[] output, OutputStream target)
             throws IOException {
         CRC32 crc = new CRC32();
         Inflater inflater = new Inflater(true);
@@ -612,13 +646,18 @@ final class ZipReader implements Closeable {
         long position = entry.dataOffset();
         long total = 0;
         try {
+            if (feed == Feed.ARRAY) {
+                // The whole region is already in memory: it is the inflater's only input.
+                inflater.setInput(input, 0, input.length);
+                compressedRemaining = 0;
+            }
             while (!inflater.finished()) {
                 // An inflater that has consumed all of its input may still hold content that did not fit the
                 // output it was last given, so running out of compressed bytes here is not yet a truncation:
                 // only an inflate call that then returns nothing is, below.
                 if (inflater.needsInput() && compressedRemaining > 0) {
                     int count = (int) Math.min(input.length, compressedRemaining);
-                    if (mapped) {
+                    if (feed == Feed.MAPPING) {
                         copyFromMapping(position, input, 0, count);
                     } else {
                         readFully(position, input, 0, count);
@@ -1383,5 +1422,15 @@ final class ZipReader implements Closeable {
                     + " bytes; the in-memory metadata limit is " + MAX_MANIFEST_SIZE);
         }
         return Optional.of(new Manifest(new ByteArrayInputStream(read(entry))));
+    }
+
+    /** Where {@link #inflate(ZipEntryInfo, byte[], Feed, byte[], OutputStream)} takes the compressed bytes from. */
+    private enum Feed {
+        /** Chunks copied out of the mapping, which {@link #read(ZipEntryInfo)} uses. */
+        MAPPING,
+        /** Chunks read through the channel, which {@link #transfer(ZipEntryInfo, OutputStream)} uses. */
+        CHANNEL,
+        /** One array that holds the whole region, which {@link #inflate(ZipEntryInfo, byte[])} is given. */
+        ARRAY
     }
 }

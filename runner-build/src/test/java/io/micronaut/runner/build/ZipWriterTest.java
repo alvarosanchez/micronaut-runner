@@ -367,6 +367,138 @@ class ZipWriterTest {
     }
 
     @Test
+    void writesDeflatedEntriesFromAnOriginalRegionAndFromAFreshDeflate() throws IOException {
+        byte[] original = repeat("an-original-class-", 80);
+        byte[] fresh = repeat("a-rewritten-class-", 90);
+        byte[] stored = "stored next to them".getBytes(StandardCharsets.UTF_8);
+        // A source entry's raw region, exactly as a jar somebody else wrote carries it.
+        Path source = temp.resolve("source.jar");
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(Files.newOutputStream(source))) {
+            ZipReaderTest.deflated(zip, "a/Original.class", original);
+        }
+        byte[] region;
+        ZipEntryInfo sourceEntry;
+        try (ZipReader reader = ZipReader.open(source)) {
+            sourceEntry = reader.entry("a/Original.class").orElseThrow();
+            region = reader.readRaw(sourceEntry);
+        }
+        byte[] deflated = ZipReaderTest.rawDeflate(fresh);
+
+        Path jar = temp.resolve("deflated.jar");
+        long originalOffset;
+        long freshOffset;
+        try (ZipWriter writer = ZipWriter.create(jar, ZipWriter.DEFAULT_TIMESTAMP)) {
+            originalOffset = writer.writeDeflatedEntry("a/Original.class", region, 0, region.length,
+                    sourceEntry.crc32(), original.length, writer.dosTime());
+            writer.writeEntry("a/stored.txt", stored);
+            byte[] padded = new byte[deflated.length + 3];
+            System.arraycopy(deflated, 0, padded, 2, deflated.length);
+            freshOffset = writer.writeDeflatedEntry("b/Fresh.class", padded, 2, deflated.length, crc(fresh),
+                    fresh.length, writer.dosTime());
+        }
+
+        try (ZipFile oracle = new ZipFile(jar.toFile())) {
+            assertEquals(List.of("a/Original.class", "a/stored.txt", "b/Fresh.class"), names(oracle));
+            assertEquals(ZipEntry.DEFLATED, oracle.getEntry("a/Original.class").getMethod());
+            assertEquals(ZipEntry.DEFLATED, oracle.getEntry("b/Fresh.class").getMethod());
+            assertEquals(ZipEntry.STORED, oracle.getEntry("a/stored.txt").getMethod());
+            assertArrayEquals(original, readAll(oracle, oracle.getEntry("a/Original.class")));
+            assertArrayEquals(fresh, readAll(oracle, oracle.getEntry("b/Fresh.class")));
+            assertArrayEquals(stored, readAll(oracle, oracle.getEntry("a/stored.txt")));
+            assertEquals(region.length, oracle.getEntry("a/Original.class").getCompressedSize());
+            assertEquals(original.length, oracle.getEntry("a/Original.class").getSize());
+        }
+        // Read to the end, ZipInputStream checks each entry's CRC-32 and sizes against its local header.
+        Map<String, byte[]> streamed = new LinkedHashMap<>();
+        try (java.util.zip.ZipInputStream in = new java.util.zip.ZipInputStream(Files.newInputStream(jar))) {
+            for (ZipEntry entry = in.getNextEntry(); entry != null; entry = in.getNextEntry()) {
+                streamed.put(entry.getName(), in.readAllBytes());
+            }
+        }
+        assertArrayEquals(original, streamed.get("a/Original.class"));
+        assertArrayEquals(fresh, streamed.get("b/Fresh.class"));
+        assertArrayEquals(region, bytesAt(jar, originalOffset, region.length), "the region is copied verbatim");
+        assertArrayEquals(deflated, bytesAt(jar, freshOffset, deflated.length));
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            for (String name : List.of("a/Original.class", "b/Fresh.class")) {
+                ZipEntryInfo entry = reader.entry(name).orElseThrow();
+                byte[] local = bytesAt(jar, entry.localHeaderOffset(), 30);
+                assertEquals(20, local[4] & 0xFF, name + " local version needed");
+                assertEquals(0, local[6] & 0xFF, name + " carries no data descriptor flag");
+                assertEquals(IndexFormat.METHOD_DEFLATED, local[8] & 0xFF, name + " local method");
+                long compressed = intAt(local, 18) & 0xFFFFFFFFL;
+                long uncompressed = intAt(local, 22) & 0xFFFFFFFFL;
+                assertEquals(entry.compressedSize(), compressed, name);
+                assertEquals(entry.uncompressedSize(), uncompressed, name);
+                assertTrue(compressed < uncompressed, name + " has distinct sizes");
+                assertEquals(IndexFormat.METHOD_DEFLATED, entry.method(), name + " central method");
+            }
+        }
+        byte[] archive = Files.readAllBytes(jar);
+        int central = indexOfSignature(archive, IndexFormat.CENTRAL_HEADER_SIGNATURE);
+        assertEquals(20, unsignedShortAt(archive, central + 4), "central version made by");
+        assertEquals(20, unsignedShortAt(archive, central + 6), "central version needed");
+        assertEquals(0, unsignedShortAt(archive, central + 8), "no flag but UTF-8, which this name does not need");
+        assertEquals(IndexFormat.METHOD_DEFLATED, unsignedShortAt(archive, central + 10));
+        assertEquals(region.length, unsignedIntAt(archive, central + 20));
+        assertEquals(original.length, unsignedIntAt(archive, central + 24));
+    }
+
+    @Test
+    void aDeflatedEntryWhoseSizeNeedsZip64IsRejected() throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipWriter writer = new ZipWriter(bytes)) {
+            for (long size : new long[] {IndexFormat.ZIP64_MARKER, IndexFormat.ZIP64_MARKER + 1}) {
+                IOException failure = assertThrows(IOException.class, () -> writer.writeDeflatedEntry("big.class",
+                        new byte[] {3, 0}, 0, 2, 0, size, writer.dosTime()));
+                assertTrue(failure.getMessage().contains("ZIP64"), failure.getMessage());
+            }
+            assertEquals(0, writer.entryCount(), "nothing was registered");
+            assertEquals(0, writer.offset(), "nothing was written");
+        }
+    }
+
+    @Test
+    void aDeflatedEntryAtAZip64LocalHeaderOffsetHasAWellFormedCentralRecord() throws Exception {
+        byte[] content = repeat("deflated-at-a-large-offset-", 20);
+        byte[] deflated = ZipReaderTest.rawDeflate(content);
+        long[] offsets = {IndexFormat.ZIP64_MARKER - 1, IndexFormat.ZIP64_MARKER, IndexFormat.ZIP64_MARKER + 1};
+        for (long offset : offsets) {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            ZipWriter writer = new ZipWriter(bytes);
+            var written = ZipWriter.class.getDeclaredField("written");
+            written.setAccessible(true);
+            written.setLong(writer, offset);
+            String name = "boundary.class";
+            long dataOffset = writer.writeDeflatedEntry(name, deflated, 0, deflated.length, crc(content),
+                    content.length, writer.dosTime());
+            writer.finish();
+            byte[] archive = bytes.toByteArray();
+            assertEquals(offset + 30 + name.length(), dataOffset, "the data follows the local header");
+            assertEquals(0, unsignedShortAt(archive, 28), "an offset alone never changes the local header");
+            assertEquals(20, unsignedShortAt(archive, 4), "local version needed");
+
+            int central = indexOfSignature(archive, IndexFormat.CENTRAL_HEADER_SIGNATURE);
+            boolean zip64 = offset >= IndexFormat.ZIP64_MARKER;
+            int extraLength = unsignedShortAt(archive, central + 30);
+            assertEquals(zip64 ? 12 : 0, extraLength, "central extra length at offset " + offset);
+            assertEquals(zip64 ? 45 : 20, unsignedShortAt(archive, central + 4), "made by at " + offset);
+            assertEquals(zip64 ? 45 : 20, unsignedShortAt(archive, central + 6), "needed at " + offset);
+            assertEquals(IndexFormat.METHOD_DEFLATED, unsignedShortAt(archive, central + 10));
+            assertEquals(deflated.length, unsignedIntAt(archive, central + 20), "the sizes stay literal");
+            assertEquals(content.length, unsignedIntAt(archive, central + 24));
+            assertEquals(zip64 ? IndexFormat.ZIP64_MARKER : offset, unsignedIntAt(archive, central + 42));
+            if (zip64) {
+                int extra = central + 46 + name.length();
+                assertEquals(IndexFormat.ZIP64_EXTRA_FIELD_ID, unsignedShortAt(archive, extra));
+                assertEquals(8, unsignedShortAt(archive, extra + 2), "only the offset is in the extra field");
+                assertEquals(offset, longAt(archive, extra + 4));
+            }
+        }
+    }
+
+    @Test
     void simulatedCombinedSizeAndOffsetKeepRequiredZip64FieldOrder() throws Exception {
         long size = IndexFormat.ZIP64_MARKER;
         long offset = IndexFormat.ZIP64_MARKER;

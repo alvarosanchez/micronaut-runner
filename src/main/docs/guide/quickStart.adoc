@@ -58,6 +58,7 @@ micronaut {
         // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
         // PRESERVE copies each dependency byte for byte: smaller on disk only (its gzip size is about 1.55x
         // STORED's), and it loads more slowly.
+        // HYBRID stores the startupClasses and keeps other classes compressed: smaller on disk, larger gzipped.
         compression = 'STORED'
 
         // Enter main through a generated direct call instead of reflection.
@@ -93,7 +94,7 @@ micronaut {
         // On by default; false builds no static service table. See "Static service table".
         // options.put('staticServices', 'false')
 
-        // On by default for STORED; 'false' keeps lambdas as invokedynamic call sites. See Build-Time Transformations.
+        // On unless PRESERVE; 'false' keeps lambdas as invokedynamic call sites. See Build-Time Transformations.
         // options.put('desugarLambdas', 'false')
 
         // Off by default. Packages the bean definition prefetch, which can shorten a start without an AOT cache.
@@ -121,7 +122,7 @@ tool resolve the path against the project and, in Gradle, rebuild the archive wh
 |===
 |Option |Type |Default |Exposure |Since
 
-|`compression` |`STORED` or `PRESERVE` |`STORED` |typed |1.0
+|`compression` |`STORED`, `PRESERVE` or `HYBRID` |`STORED` |typed |1.0
 |`entryStub` |boolean |`true` |typed |1.0
 |`multiRelease` |boolean |`false` |typed |1.0
 |`enableNativeAccess` |boolean |`false` |typed |1.0

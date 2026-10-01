@@ -233,6 +233,8 @@ class ToolsTest {
         assertEquals(Integer.toString(index.hashSlots()), header(output, "Hash slots"), output);
         assertEquals(Integer.toString(index.maxProbe()), header(output, "Maximum probe"), output);
         assertEquals(archive.length() + " bytes", header(output, "Outer file length"), output);
+        // Counted from the index's records, not from its flag: the six file entries of the two nested jars.
+        assertEquals("6 stored, 0 deflated", header(output, "Nested compression"), output);
         assertEquals("mapped", header(output, "Archive reads"), output);
         assertEquals("a memory mapping", header(output, "Read through"), output);
         assertEquals("none", header(output, "Build transforms"), output);

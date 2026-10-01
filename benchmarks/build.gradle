@@ -154,6 +154,10 @@ tasks.register('packagingComparison', JavaExec) {
     outputs.dir(outDir)
     outputs.upToDateWhen { false }
     systemProperty 'runner.benchmark.sourceRoot', rootProject.layout.projectDirectory.asFile.absolutePath
+    // A relative path is resolved against the repository root.
+    def repositoryRoot = rootProject.layout.projectDirectory
+    def startupClasses = providers.gradleProperty('benchmarks.packagingComparisonStartupClasses')
+            .map { repositoryRoot.file(it).asFile.absolutePath }
     argumentProviders.add({ -> [
             '--sample', rootProject.file('test-suite/samples/benchmark-large').absolutePath,
             '--repo', layout.buildDirectory.dir('aggregated-repo').get().asFile.toURI().toASCIIString(),
@@ -161,7 +165,8 @@ tasks.register('packagingComparison', JavaExec) {
             '--iterations', providers.gradleProperty('benchmarks.packagingComparisonIterations').getOrElse('10'),
             '--out', outDir.get().asFile.absolutePath,
             '--work', layout.buildDirectory.dir('tmp/packagingComparison').get().asFile.absolutePath
-    ] } as CommandLineArgumentProvider)
+    ] + (startupClasses.isPresent() ? ['--startup-classes', startupClasses.get()] : []) }
+            as CommandLineArgumentProvider)
 }
 
 // org.gradle.parallel=true: never let forked test JVMs overlap a measurement

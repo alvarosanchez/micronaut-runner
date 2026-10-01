@@ -43,16 +43,25 @@ import java.util.stream.Stream;
  * runs an untimed {@code classes} settle, the {@code rerun} block ({@code <task> --rerun}: the cold packaging path)
  * and the {@code edit} block (a bytecode-changing edit, then {@code <task>}), each in a fresh seeded order. Task
  * time comes from the init script's {@value #MARKER} line, wall time spans {@code gradlew}; pairs match by round.
+ *
+ * <p>With {@code --startup-classes <file>} it also times {@value #HYBRID}: {@code micronautRunnerJar} with HYBRID
+ * compression and that startup class list. Without it, the variants and every invocation are the four below.</p>
  */
 public final class PackagingComparison {
 
     static final String MARKER = "PACKAGING_TASK";
     static final List<String> VARIANTS = List.of("runner-stored", "runner-preserve", "shadow", "shadow-stored");
+    /** The variant {@code --startup-classes} adds: HYBRID compression with that startup class list. */
+    static final String HYBRID = "runner-stored-hybrid";
     static final List<String> SCENARIOS = List.of("rerun", "edit");
     static final List<ComparisonSpec> COMPARISONS = List.of(
             new ComparisonSpec("runner-stored", "shadow", "Defaults"),
             new ComparisonSpec("runner-stored", "shadow-stored", "Compression-matched, neither deflated"),
             new ComparisonSpec("runner-preserve", "shadow", "Compression-matched, both deflated"));
+    /** The comparisons {@value #HYBRID} adds. */
+    static final List<ComparisonSpec> HYBRID_COMPARISONS = List.of(
+            new ComparisonSpec(HYBRID, "runner-stored", "HYBRID vs STORED"),
+            new ComparisonSpec(HYBRID, "shadow", "HYBRID vs Shadow"));
     static final int WARMUP_ROUNDS = 3;
     private static final String CATALOG = "'../../../gradle/libs.versions.toml'";
     private static final String ANCHOR = "public final class Application {";
@@ -71,7 +80,7 @@ public final class PackagingComparison {
 
     /**
      * Entry point of the {@code packagingComparison} task: {@code --sample --repo --version --out --work}, and
-     * optionally {@code --iterations --seed}. Fails if a nested build fails or prints no marker.
+     * optionally {@code --iterations --seed --startup-classes}. Fails if a nested build fails or prints no marker.
      */
     public static void main(String[] args) throws Exception {
         Map<String, String> options = new HashMap<>();
@@ -86,6 +95,12 @@ public final class PackagingComparison {
         if (iterations < 1) {
             throw new IllegalArgumentException("--iterations must be at least 1");
         }
+        Path startupClasses = options.containsKey("--startup-classes")
+                ? Path.of(options.get("--startup-classes")).toAbsolutePath().normalize() : null;
+        if (startupClasses != null && !Files.isRegularFile(startupClasses)) {
+            throw new IllegalArgumentException("--startup-classes names no file: " + startupClasses);
+        }
+        List<String> variants = variants(startupClasses);
         Path root = Path.of(System.getProperty("runner.benchmark.sourceRoot", sample.resolve("../../..").toString()))
                 .toAbsolutePath().normalize();
         Files.deleteIfExists(out.resolve("summary.md"));
@@ -112,7 +127,7 @@ public final class PackagingComparison {
             run(copy, common, List.of("classes"));
             for (String scenario : SCENARIOS) {
                 boolean edit = scenario.equals("edit");
-                List<String> order = new ArrayList<>(VARIANTS);
+                List<String> order = new ArrayList<>(variants);
                 Collections.shuffle(order, random);
                 for (String variant : order) {
                     int mark = ++invocation;
@@ -122,7 +137,7 @@ public final class PackagingComparison {
                     }
                     try {
                         long start = System.nanoTime();
-                        String output = run(copy, common, arguments(variant, !edit));
+                        String output = run(copy, common, arguments(variant, !edit, startupClasses));
                         double wall = (System.nanoTime() - start) / 1e6;
                         Marker marker = marker(output, ":" + task(variant));
                         Attempt attempt = new Attempt(round, round < WARMUP_ROUNDS, scenario, variant, marker.millis(),
@@ -139,8 +154,9 @@ public final class PackagingComparison {
         }
         // Gzip is never measured inside a timed invocation, and both Runner modes share one task's archive.
         Map<String, DeploymentSize> sizes = new LinkedHashMap<>();
-        for (String variant : VARIANTS) {
-            Path archive = marker(run(copy, common, arguments(variant, true)), ":" + task(variant)).archive();
+        for (String variant : variants) {
+            Path archive = marker(run(copy, common, arguments(variant, true, startupClasses)), ":" + task(variant))
+                    .archive();
             sizes.put(variant, DeploymentSize.measure(DeploymentSize.input("archive", archive)));
         }
         BenchmarkProvenance machine = BenchmarkProvenance.capture(root, sample);
@@ -203,9 +219,56 @@ public final class PackagingComparison {
     }
 
     static List<String> arguments(String variant, boolean rerun) {
-        String compression = variant.startsWith("runner-")
+        return arguments(variant, rerun, null);
+    }
+
+    /**
+     * The arguments of one timed invocation.
+     *
+     * @param variant        the variant
+     * @param rerun          whether the task runs with {@code --rerun}
+     * @param startupClasses the startup class list {@value #HYBRID} packages, or {@code null} without that variant
+     * @return the arguments after the common ones
+     */
+    static List<String> arguments(String variant, boolean rerun, Path startupClasses) {
+        String compression = variant.equals(HYBRID) ? "-PpackagingComparison.compression=HYBRID"
+                : variant.startsWith("runner-")
                 ? "-PpackagingComparison.compression=" + variant.substring(7).toUpperCase(Locale.ROOT) : null;
-        return Stream.of(compression, task(variant), rerun ? "--rerun" : null).filter(Objects::nonNull).toList();
+        String list = variant.equals(HYBRID)
+                ? "-PpackagingComparison.startupClasses=" + Objects.requireNonNull(startupClasses, "startupClasses")
+                : null;
+        return Stream.of(compression, list, task(variant), rerun ? "--rerun" : null).filter(Objects::nonNull)
+                .toList();
+    }
+
+    /**
+     * The variants of a comparison: the four, and {@value #HYBRID} when a startup class list is given.
+     *
+     * @param startupClasses the startup class list, or {@code null}
+     * @return the variants, in table order
+     */
+    static List<String> variants(Path startupClasses) {
+        if (startupClasses == null) {
+            return VARIANTS;
+        }
+        List<String> variants = new ArrayList<>(VARIANTS);
+        variants.add(1, HYBRID);
+        return List.copyOf(variants);
+    }
+
+    /**
+     * The comparisons of a set of variants: {@link #COMPARISONS}, and {@link #HYBRID_COMPARISONS} with
+     * {@value #HYBRID}.
+     *
+     * @param variants the variants
+     * @return the comparisons, in table order
+     */
+    static List<ComparisonSpec> comparisons(java.util.Collection<String> variants) {
+        List<ComparisonSpec> comparisons = new ArrayList<>(COMPARISONS);
+        if (variants.contains(HYBRID)) {
+            comparisons.addAll(HYBRID_COMPARISONS);
+        }
+        return List.copyOf(comparisons);
     }
 
     private static String run(Path copy, List<String> common, List<String> tasks) throws Exception {
@@ -264,12 +327,16 @@ public final class PackagingComparison {
                 + "- Task: first to last action of the packaging task. Wall: the whole `gradlew` process. Sizes: one"
                 + " untimed `--rerun` per variant.\n- Compression-matched: `runner-stored` − `shadow-stored` (neither"
                 + " archive deflated) and `runner-preserve` − `shadow` (both deflated).\n");
+        if (sizes.containsKey(HYBRID)) {
+            out.append("- `" + HYBRID + "`: `micronautRunnerJar` with HYBRID compression and the given startup class"
+                    + " list.\n");
+        }
         for (String scenario : SCENARIOS) {
             out.append("\n## `").append(scenario).append("`\n\n| Variant | n | Task ms, median (min–max) | Wall ms,"
                     + " median (min–max) | Raw bytes | Raw / `shadow` | gzip -6 bytes | gzip / `shadow` |\n"
                     + "|---|---:|---:|---:|---:|---:|---:|---:|\n");
             DeploymentSize shadow = sizes.get("shadow");
-            for (String name : VARIANTS) {
+            for (String name : sizes.keySet()) {
                 Statistics task = variant(attempts, scenario, name, Attempt::taskMillis, seed);
                 Statistics wall = variant(attempts, scenario, name, Attempt::wallMillis, seed);
                 DeploymentSize size = sizes.get(name);
@@ -281,7 +348,7 @@ public final class PackagingComparison {
             }
             out.append("\n| Comparison, candidate − baseline | Pairs | Task Δ ms, median [95% CI] (min to max) |"
                     + " Wall Δ ms, median [95% CI] (min to max) |\n|---|---:|---:|---:|\n");
-            for (ComparisonSpec spec : COMPARISONS) {
+            for (ComparisonSpec spec : comparisons(sizes.keySet())) {
                 Statistics task = comparison(attempts, scenario, spec, Attempt::taskMillis, seed);
                 Statistics wall = comparison(attempts, scenario, spec, Attempt::wallMillis, seed);
                 out.append(String.format(Locale.ROOT, "| %s: `%s` − `%s` | %d | %s | %s |\n", spec.label(),

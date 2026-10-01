@@ -30,6 +30,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -961,6 +962,71 @@ class ZipReaderTest {
             IOException failure = assertThrows(IOException.class, () -> reader.read(entry));
             assertTrue(failure.getMessage().contains("data.txt"), failure.getMessage());
             assertTrue(failure.getMessage().contains("produces more"), failure.getMessage());
+        }
+    }
+
+    @Test
+    void inflatingTheRawRegionGivesWhatReadingGives() throws IOException {
+        Path jar = temp.resolve("raw-region.jar");
+        byte[] small = repeat("small-", 3);
+        byte[] large = Payload.TEXT.bytes(ZipReader.TRANSFER_BUFFER_SIZE + 300);
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            deflated(zip, "a/Small.class", small);
+            deflated(zip, "a/Large.class", large);
+            deflated(zip, "a/empty.txt", new byte[0]);
+        }
+        try (ZipReader reader = ZipReader.open(jar)) {
+            for (ZipEntryInfo entry : reader.entries()) {
+                byte[] raw = reader.readRaw(entry);
+                assertEquals(entry.compressedSize(), raw.length, entry.name());
+                assertArrayEquals(reader.read(entry), reader.inflate(entry, raw), entry.name());
+            }
+            ZipEntryInfo small1 = reader.entry("a/Small.class").orElseThrow();
+            byte[] raw = reader.readRaw(small1);
+            IOException shorter = assertThrows(IOException.class,
+                    () -> reader.inflate(small1, Arrays.copyOf(raw, raw.length - 1)));
+            assertTrue(shorter.getMessage().contains("compressed bytes"), shorter.getMessage());
+        }
+        Path stored = temp.resolve("raw-stored.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(stored))) {
+            stored(zip, "a/Stored.class", small);
+        }
+        try (ZipReader reader = ZipReader.open(stored)) {
+            ZipEntryInfo entry = reader.entry("a/Stored.class").orElseThrow();
+            IOException notDeflated = assertThrows(IOException.class,
+                    () -> reader.inflate(entry, reader.readRaw(entry)));
+            assertTrue(notDeflated.getMessage().contains("is not deflated"), notDeflated.getMessage());
+        }
+    }
+
+    @Test
+    void inflatingTheRawRegionFailsAsTransferDoes() throws IOException {
+        byte[] content = repeat("make-room-for-the-fixture-", 20);
+        // A flipped payload byte: the stream still inflates, but not to the recorded CRC-32.
+        Path flipped = temp.resolve("inflate-flipped.jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(flipped))) {
+            zip.setLevel(Deflater.NO_COMPRESSION);
+            deflated(zip, "data.txt", "GOOD".getBytes(StandardCharsets.UTF_8));
+        }
+        replaceEntryBytes(flipped, "data.txt", "GOOD".getBytes(StandardCharsets.UTF_8),
+                "BOOD".getBytes(StandardCharsets.UTF_8));
+        // A wrong recorded size, everywhere the archive records it: only inflating can tell.
+        Path wrongSize = rawDeflatedArchive(temp.resolve("inflate-wrong-size.jar"), "data.txt", rawDeflate(content),
+                Arrays.copyOf(content, content.length + 1));
+        Path overproduced = deflatedWithRecordedContent(temp.resolve("inflate-overproduced.jar"), "data.txt",
+                "ABCDEF".getBytes(StandardCharsets.UTF_8), "AB".getBytes(StandardCharsets.UTF_8));
+        Path trailing = deflatedWithTrailingByte(temp.resolve("inflate-trailing.jar"), "data.txt",
+                "ABCDEF".getBytes(StandardCharsets.UTF_8));
+
+        for (Path jar : List.of(flipped, wrongSize, overproduced, trailing)) {
+            try (ZipReader reader = ZipReader.open(jar)) {
+                ZipEntryInfo entry = reader.entry("data.txt").orElseThrow();
+                IOException transferred = assertThrows(IOException.class,
+                        () -> reader.transfer(entry, OutputStream.nullOutputStream()), jar::toString);
+                IOException inflated = assertThrows(IOException.class,
+                        () -> reader.inflate(entry, reader.readRaw(entry)), jar::toString);
+                assertEquals(transferred.getMessage(), inflated.getMessage(), jar::toString);
+            }
         }
     }
 

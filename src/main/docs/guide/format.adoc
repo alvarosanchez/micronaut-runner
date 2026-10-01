@@ -55,6 +55,41 @@ generated `$$Lambda$R<n>` class after each host, so those entries get new CRC-32
 layer's lambdas are rewritten the same way; see <<desugaredLambdas,Desugared lambdas>>. The `PRESERVE` option
 copies each dependency byte for byte instead.
 
+With a startup class list (`startupClasses`, which the recorded startup profile provides), re-packing also writes
+each nested JAR's startup classes first, in the order they were recorded, after `META-INF/` and the manifest. The
+bytes startup reads are then contiguous instead of scattered through every dependency. Nested JARs keep their
+places in the outer archive and class path order, so lookups and duplicate precedence do not change. On
+benchmark-large, without the preloader, this left 10.7 MB less of the mapped archive resident at readiness in the CI
+run named below the table; in https://github.com/alvarosanchez/micronaut-runner/actions/runs/36844059936[a CI run]
+of the same commit on the same kind of runner with the page cache evicted before each launch, it read 9.5 MB less
+and was ready 33 ms (95% CI 21 to 46 ms) sooner.
+
+The `HYBRID` option re-packs as `STORED` does, startup classes first, but keeps the other classes compressed. An
+unlisted class that no build-time transform changed keeps its original compressed bytes, and one a transform
+rewrote or generated is deflated afresh. Listed classes, resources, and the few classes the dependency stored or
+that do not get smaller stay stored. On benchmark-large:
+
+[cols="2,1,1,2",options="header"]
+|===
+|Compression |Raw bytes |`gzip -6` bytes |Readiness minus `STORED`, median (95% CI)
+
+|`STORED` (default) |36,024,820 |8,782,001 |—
+|`PRESERVE` |17,709,783 |13,626,769 |+223.4 ms (+209.8 to +244.4)
+|`HYBRID` |26,646,740 |11,848,014 |−3.0 ms (−14.3 to +17.5)
+|===
+
+From https://github.com/alvarosanchez/micronaut-runner/actions/runs/36843944300[one CI run] of the change that added
+`HYBRID` (commit `0871050`): GitHub `ubuntu-latest` runner (4 vCPUs, AMD EPYC 7763), Temurin JDK 25.0.4.1, 20 paired
+iterations, page cache uncontrolled. The `HYBRID` JAR packages the startup profile recorded in the same run and starts
+with the preloader off.
+
+Use `HYBRID` only where on-disk or unpacked size matters more than transfer size: DEFLATE bytes do not compress
+again, so a `HYBRID` image layer is larger after gzip than a `STORED` one. It needs the startup profile (see
+<<preload,Preloading the startup classes>>). Without one, it writes the nested JARs `STORED`, with a warning, so
+the first build of a project, before it has recorded a profile, still succeeds. An unlisted class costs about 3 µs
+of inflation when it is loaded, so record the profile again after a dependency upgrade. Because the rewritten cold
+classes are deflated afresh, a `HYBRID` archive's bytes depend on the build JDK and the zlib it uses.
+
 Shadow can also write `STORED` entries (`entryCompression = ZipEntryCompression.STORED`), so the gain from not
 inflating is not specific to this format; <<benchmarks,Benchmarks>> measures the two effects separately.
 
@@ -73,7 +108,8 @@ The parts worth understanding:
 
 Entry records:: One per entry, per jar, carrying the entry's absolute offset in the outer file, its sizes,
 CRC-32, compression method and MS-DOS timestamp. Records for one jar are contiguous, with the physical
-entries first in their original central directory order, so `JarFile.entries()` can report them faithfully.
+entries first in the nested JAR's central directory order, which puts the startup classes first when a startup
+class list is given, so `JarFile.entries()` can report them faithfully.
 
 Hash table:: Maps a logical name to the first record with that name, using open addressing and linear
 probing. The maximum probe length actually needed is recorded at build time and validated when the index

@@ -38,6 +38,7 @@ import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -342,35 +343,6 @@ class ZipRepackerTest {
     }
 
     @Test
-    void copiesAJarByteForByteInPreserveMode() throws IOException {
-        Path source = multiReleaseJar("preserve.jar");
-        byte[] sourceBytes = Files.readAllBytes(source);
-
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        ZipRepacker.RepackResult streamed;
-        List<ZipEntryInfo> expected;
-        try (ZipReader reader = ZipReader.open(source)) {
-            expected = new ArrayList<>(reader.entries());
-            streamed = ZipRepacker.copy(reader, bytes);
-        }
-        assertArrayEquals(sourceBytes, bytes.toByteArray(), "PRESERVE copies the jar byte for byte");
-        assertEquals(sourceBytes.length, streamed.length());
-        assertEquals(expected, streamed.entries(), "the offsets of the source are already relative offsets");
-        assertEquals(List.of(), streamed.droppedEntries());
-
-        Path target = temp.resolve("preserved.jar");
-        ZipRepacker.RepackResult copied = ZipRepacker.copy(source, target);
-        assertArrayEquals(sourceBytes, Files.readAllBytes(target));
-        assertEquals(expected, copied.entries());
-        // The entries keep their original compression, so a deflated entry is still deflated.
-        ZipEntryInfo appClass = copied.entries().stream()
-                .filter(e -> e.name().equals("org/example/App.class")).findFirst().orElseThrow();
-        assertEquals(IndexFormat.METHOD_DEFLATED, appClass.method());
-        assertArrayEquals(bytesAt(source, appClass.dataOffset(), (int) appClass.compressedSize()),
-                bytesAt(target, appClass.dataOffset(), (int) appClass.compressedSize()));
-    }
-
-    @Test
     void reportsOffsetsThatAreCorrectOnceTheNestedJarIsInsideTheOuterArchive() throws IOException {
         Path source = multiReleaseJar("dependency.jar");
         Path nested = temp.resolve("dependency-stored.jar");
@@ -554,6 +526,250 @@ class ZipRepackerTest {
                 "desugaring counts each class the jar had once");
     }
 
+    /** The layer every run of these tests stages. */
+    private static final ClassTransformPipeline.Layer LAYER =
+            new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fixture.jar", 1, false, false, false);
+
+    @Test
+    void ordersAJarHotFirstAndKeepsEveryEntrysBytes() throws IOException {
+        Path source = temp.resolve("ordered-source.jar");
+        try (java.io.OutputStream out = Files.newOutputStream(source);
+             ZipWriter writer = new ZipWriter(out, ZipWriter.DEFAULT_TIMESTAMP, false)) {
+            writer.writeDirectoryEntry("META-INF/");
+            writer.writeEntry("META-INF/MANIFEST.MF", manifestBytes("Created-By", "test"));
+            deflatedEntry(writer, "a/A.class", repeat("class-a-", 40));
+            deflatedEntry(writer, "b/B.class", repeat("class-b-", 40));
+            writer.writeEntry("META-INF/versions/17/b/B.class", repeat("class-b17-", 40));
+            writer.writeEntry("r.txt", "a resource".getBytes(StandardCharsets.UTF_8));
+            writer.writeEntry("d/D.class", "the first D".getBytes(StandardCharsets.UTF_8));
+            deflatedEntry(writer, "d/D.class", repeat("the-second-D-", 40));
+        }
+        ClassTransformPipeline.JarRun run = ClassTransformPipeline.ordering(
+                ClassTransformPipeline.Options.of(List.of("b.B", "d.D"), false)).start(LAYER);
+        ByteArrayOutputStream ordered = new ByteArrayOutputStream();
+        ByteArrayOutputStream plain = new ByteArrayOutputStream();
+        ZipRepacker.RepackResult result;
+        try (ZipReader reader = ZipReader.open(source)) {
+            result = ZipRepacker.repack(reader, ordered, run);
+            ZipRepacker.repack(reader, plain);
+        }
+
+        assertEquals(List.of("META-INF/", "META-INF/MANIFEST.MF", "b/B.class", "META-INF/versions/17/b/B.class",
+                "d/D.class", "d/D.class", "a/A.class", "r.txt"), entryNames(result));
+        assertEquals(4, result.hotEntries(), "the listed classes, their versioned variant and both duplicates");
+        Path nested = temp.resolve("ordered-nested.jar");
+        Files.write(nested, ordered.toByteArray());
+        // Where each written entry came from: the duplicates keep their order, first then second.
+        int[] from = {0, 1, 3, 4, 6, 7, 2, 5};
+        try (ZipReader original = ZipReader.open(source); ZipReader written = ZipReader.open(nested)) {
+            assertEquals(result.entries(), written.entries(), "the reported entries describe the nested jar");
+            for (int i = 0; i < from.length; i++) {
+                ZipEntryInfo before = original.entries().get(from[i]);
+                ZipEntryInfo after = written.entries().get(i);
+                assertEquals(before.name(), after.name());
+                assertEquals(IndexFormat.METHOD_STORED, after.method(), after.name());
+                assertEquals(before.crc32(), after.crc32(), after.name() + " keeps its CRC-32");
+                assertEquals(before.dosTime(), after.dosTime(), after.name() + " keeps its time");
+                if (!before.directory()) {
+                    assertArrayEquals(original.read(before), written.read(after), after.name() + " keeps its bytes");
+                }
+            }
+        }
+        try (java.util.jar.JarInputStream jar = new java.util.jar.JarInputStream(
+                new java.io.ByteArrayInputStream(ordered.toByteArray()))) {
+            assertNotNull(jar.getManifest(), "JarInputStream still finds the manifest");
+            assertEquals("test", jar.getManifest().getMainAttributes().getValue("Created-By"));
+            List<String> streamed = new ArrayList<>();
+            for (ZipEntry entry = jar.getNextEntry(); entry != null; entry = jar.getNextEntry()) {
+                streamed.add(entry.getName());
+            }
+            assertEquals(entryNames(result).subList(2, from.length), streamed);
+        }
+
+        // A rank map that names no class of the jar orders nothing: the bytes of the list-free repack.
+        ByteArrayOutputStream unrelated = new ByteArrayOutputStream();
+        ZipRepacker.RepackResult none;
+        try (ZipReader reader = ZipReader.open(source)) {
+            none = ZipRepacker.repack(reader, unrelated, ClassTransformPipeline.ordering(
+                    ClassTransformPipeline.Options.of(List.of("x.Absent"), false)).start(LAYER));
+        }
+        assertArrayEquals(plain.toByteArray(), unrelated.toByteArray());
+        assertEquals(0, none.hotEntries());
+        assertEquals(ClassTransformPipeline.Options.NONE, ClassTransformPipeline.Options.of(List.of(), false));
+        assertFalse(ClassTransformPipeline.Options.NONE.any(), "empty options need no pipeline at all");
+    }
+
+    @Test
+    void emptyOptionsLeaveATransformingRepackAsItWas() throws Exception {
+        Map<String, byte[]> compiled = ClassFixtures.classes(ClassFixtures.compile(temp.resolve("empty-src"),
+                temp.resolve("empty-classes"), List.of("-g"), Map.of("org/example/Debug.java", """
+                        package org.example;
+                        public class Debug {
+                            public static int twice(int value) {
+                                int doubled = value * 2;
+                                return doubled;
+                            }
+                        }
+                        """)));
+        Path source = ClassFixtures.jar(temp.resolve("empty-options.jar"), compiled);
+        ClassPathModel model = modelOf(compiled);
+        byte[] none = repackBytes(source, new ClassTransformPipeline(List.of(new LocalVariableStripper()), model)
+                .start(LAYER));
+        byte[] unrelated = repackBytes(source, new ClassTransformPipeline(List.of(new LocalVariableStripper()),
+                model, ClassTransformPipeline.Options.of(List.of("x.Absent"), false)).start(LAYER));
+        assertArrayEquals(none, unrelated, "a list without a class of the jar changes nothing");
+    }
+
+    @Test
+    void aListedHostTakesItsGeneratedClassesAlongAndAListedGeneratedClassHasItsOwnRank() throws Exception {
+        List<LambdaFixtures.Layer> layers = LambdaFixtures.scenario(temp.resolve("hot-lambdas"), 25);
+        Path source = ClassFixtures.jar(temp.resolve("hot-lambdas/fix.jar"), layers.get(1).entries());
+        ClassPathModel model = LambdaFixtures.model(layers);
+        ZipRepacker.RepackResult listFree = repack(source, desugaring(model, ClassTransformPipeline.Options.NONE));
+        List<String> plain = entryNames(listFree);
+        String infix = LambdaDesugarer.GENERATED_INFIX;
+        String inner = "fix/Scenario$Inner.class";
+        List<String> innerGenerated = plain.stream().filter(name -> name.startsWith("fix/Scenario$Inner" + infix))
+                .toList();
+        String serGenerated = plain.stream().filter(name -> name.startsWith("fix/Ser" + infix)).findFirst()
+                .orElseThrow();
+        assertFalse(innerGenerated.isEmpty(), plain::toString);
+        assertTrue(plain.indexOf(serGenerated) > plain.indexOf(inner), "Ser comes after Scenario$Inner in the jar");
+
+        // First a generated class whose host is not listed, then a host whose generated classes are not.
+        String serBinary = serGenerated.substring(0, serGenerated.length() - ".class".length()).replace('/', '.');
+        ZipRepacker.RepackResult ordered = repack(source, desugaring(model,
+                ClassTransformPipeline.Options.of(List.of(serBinary, "fix.Scenario$Inner"), false)));
+        List<String> names = entryNames(ordered);
+
+        List<String> hot = new ArrayList<>();
+        hot.add("META-INF/MANIFEST.MF");
+        hot.add(serGenerated);
+        hot.add(inner);
+        hot.addAll(innerGenerated);
+        assertEquals(hot, names.subList(0, hot.size()), "the hot region: the listed generated class at its own"
+                + " rank, then the listed host with its unlisted generated classes right after it");
+        List<String> cold = new ArrayList<>(plain);
+        cold.removeAll(hot);
+        assertEquals(cold, names.subList(hot.size(), names.size()), "everything else keeps the list-free order");
+        assertTrue(names.indexOf("fix/Ser.class") >= hot.size(), "the generated class's host stays cold");
+        assertEquals(2, ordered.hotEntries());
+        Map<String, Long> crcs = new java.util.HashMap<>();
+        listFree.entries().forEach(entry -> crcs.put(entry.name(), entry.crc32()));
+        for (ZipEntryInfo entry : ordered.entries()) {
+            assertEquals(crcs.get(entry.name()), entry.crc32(), entry.name() + " has the bytes the list-free repack"
+                    + " wrote");
+        }
+    }
+
+    @Test
+    void hybridKeepsTheOriginalBytesOfAnUnchangedColdClassAndDeflatesEveryRewrittenOneAfresh() throws Exception {
+        String body = """
+                    public static String run() {
+                        return "a";
+                    }
+
+                    public static String more(String value) {
+                        return value + value.length() + value.trim() + value.strip() + value.toUpperCase();
+                    }
+                }
+                """;
+        Map<String, byte[]> compiled = ClassFixtures.classes(ClassFixtures.compile(temp.resolve("hybrid-src"),
+                temp.resolve("hybrid-classes"), List.of(), Map.of(
+                        "h/Hot.java", "package h;\npublic class Hot {\n" + body,
+                        "c/Cold.java", "package c;\npublic class Cold {\n" + body,
+                        "c/Fallback.java", "package c;\npublic class Fallback {\n" + body)));
+        Map<String, byte[]> entries = new java.util.LinkedHashMap<>(compiled);
+        entries.put("c/data.txt", repeat("a resource that compresses well ", 20));
+        Path source = ClassFixtures.jar(temp.resolve("hybrid.jar"), entries);
+        ClassTransformPipeline.Step step = new RewriteStep(Set.of("h/Hot.class", "c/Cold.class"),
+                Set.of("c/Fallback.class"));
+        ClassTransformPipeline.JarRun run = new ClassTransformPipeline(List.of(step), modelOf(compiled),
+                ClassTransformPipeline.Options.of(List.of("h.Hot"), true)).start(LAYER);
+
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        ZipRepacker.RepackResult result;
+        Map<String, ZipEntryInfo> before = new java.util.HashMap<>();
+        Map<String, byte[]> raw = new java.util.HashMap<>();
+        try (ZipReader reader = ZipReader.open(source)) {
+            for (ZipEntryInfo entry : reader.entries()) {
+                before.put(entry.name(), entry);
+                raw.put(entry.name(), reader.readRaw(entry));
+                assertTrue(entry.directory() || entry.method() == IndexFormat.METHOD_DEFLATED, entry.name());
+            }
+            result = ZipRepacker.repack(reader, bytes, run);
+        }
+        Path nested = temp.resolve("hybrid-nested.jar");
+        Files.write(nested, bytes.toByteArray());
+        Map<String, ZipEntryInfo> after = new java.util.HashMap<>();
+        result.entries().forEach(entry -> after.put(entry.name(), entry));
+        assertEquals(List.of("META-INF/MANIFEST.MF", "h/Hot.class"), entryNames(result).subList(0, 2));
+
+        try (ZipReader written = ZipReader.open(nested); ZipFile oracle = new ZipFile(nested.toFile())) {
+            assertEquals(result.entries(), written.entries(), "the reported entries describe the nested jar");
+            ZipEntryInfo hot = after.get("h/Hot.class");
+            assertEquals(IndexFormat.METHOD_STORED, hot.method(), "a listed class is stored, rewritten or not");
+            assertEquals("b", callRun(written.read(hot), "h.Hot"), "and it carries the rewritten bytes");
+
+            ZipEntryInfo cold = after.get("c/Cold.class");
+            assertEquals(IndexFormat.METHOD_DEFLATED, cold.method());
+            assertFalse(Arrays.equals(raw.get("c/Cold.class"), written.readRaw(cold)),
+                    "a rewritten cold class never keeps its original compressed bytes");
+            assertEquals("b", callRun(written.read(cold), "c.Cold"), "it inflates to the rewritten bytes");
+            assertTrue(cold.compressedSize() < cold.uncompressedSize());
+
+            ZipEntryInfo fallback = after.get("c/Fallback.class");
+            assertEquals(IndexFormat.METHOD_DEFLATED, fallback.method());
+            assertArrayEquals(raw.get("c/Fallback.class"), written.readRaw(fallback),
+                    "a class whose step fell back keeps its source entry's compressed bytes exactly");
+            assertEquals(before.get("c/Fallback.class").crc32(), fallback.crc32());
+            assertEquals("a", callRun(written.read(fallback), "c.Fallback"));
+
+            assertEquals(IndexFormat.METHOD_STORED, after.get("c/data.txt").method(), "a resource stays stored");
+            assertEquals(IndexFormat.METHOD_STORED, after.get("META-INF/MANIFEST.MF").method());
+            for (ZipEntryInfo entry : written.entries()) {
+                assertArrayEquals(written.read(entry), readAll(oracle, oracle.getEntry(entry.name())), entry.name());
+            }
+        }
+        ClassTransformPipeline.JarReport report = run.report();
+        assertEquals(new ClassTransformPipeline.StepCount("rewrite", 2, 0, 1,
+                        report.counts().get(0).bytesSaved()), report.counts().get(0),
+                "two classes rewritten and one fallback");
+    }
+
+    @ParameterizedTest(name = "a step applies: {0}")
+    @ValueSource(booleans = {true, false})
+    void hybridFailsOnABrokenColdClassExactlyAsTheStoredRepackDoes(boolean stepApplies) throws IOException {
+        // With a step, the pipeline reads the cold class's compressed region and inflates it for the step; without
+        // one, the class keeps its original bytes and is verified as it is written. Either way, a broken stream
+        // fails with the message the streaming STORED repack gives.
+        byte[] content = repeat("a-cold-class-", 40);
+        List<Path> broken = List.of(
+                deflatedWithTrailingByte(temp.resolve("trailing/cold.jar"), "x/Cold.class", content),
+                deflatedWithRecordedContent(temp.resolve("overproduced/cold.jar"), "x/Cold.class", content,
+                        repeat("a-cold-class-", 20)));
+        ClassTransformPipeline.Options options = ClassTransformPipeline.Options.of(List.of("x.Hot"), true);
+        for (Path source : broken) {
+            ClassTransformPipeline.JarRun run = stepApplies
+                    ? new ClassTransformPipeline(List.of(new RewriteStep(Set.of("x/Cold.class"), Set.of())),
+                            modelOf(Map.of()), options).start(LAYER)
+                    : ClassTransformPipeline.ordering(options).start(LAYER);
+            try (ZipReader reader = ZipReader.open(source)) {
+                ZipEntryInfo cold = reader.entries().get(0);
+                assertEquals(IndexFormat.METHOD_DEFLATED, cold.method());
+                assertTrue(cold.compressedSize() < cold.uncompressedSize(),
+                        "the class would keep its original bytes");
+                assertEquals(stepApplies, run.reads(cold.uncompressedSize()));
+                IOException stored = assertThrows(IOException.class,
+                        () -> ZipRepacker.repack(reader, new ByteArrayOutputStream()));
+                IOException hybrid = assertThrows(IOException.class,
+                        () -> ZipRepacker.repack(reader, new ByteArrayOutputStream(), run));
+                assertEquals(stored.getMessage(), hybrid.getMessage(), source::toString);
+                assertTrue(hybrid.getMessage().contains("x/Cold.class"), hybrid.getMessage());
+            }
+        }
+    }
+
     @ParameterizedTest(name = "deflated in the dependency: {0}")
     @ValueSource(booleans = {false, true})
     void aClassAboveTheSizeLimitIsStreamedAsItIsAndCountedUnchanged(boolean deflated) throws Exception {
@@ -638,6 +854,120 @@ class ZipRepackerTest {
         zip.putNextEntry(entry);
         zip.write(data);
         zip.closeEntry();
+    }
+
+    private static void deflatedEntry(ZipWriter writer, String name, byte[] content) throws IOException {
+        byte[] compressed = rawDeflate(content);
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(content);
+        writer.writeDeflatedEntry(name, compressed, 0, compressed.length, crc.getValue(), content.length,
+                writer.dosTime());
+    }
+
+    private static List<String> entryNames(ZipRepacker.RepackResult result) {
+        return result.entries().stream().map(ZipEntryInfo::name).toList();
+    }
+
+    private static ClassPathModel modelOf(Map<String, byte[]> classes) {
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "classes", false, false, name -> false,
+                new ClassPathModel.Interner());
+        classes.forEach((name, bytes) -> {
+            if (name.endsWith(".class")) {
+                scan.accept(name, bytes);
+            }
+        });
+        return ClassPathModel.merge(List.of(scan), false);
+    }
+
+    private static ClassTransformPipeline.JarRun desugaring(ClassPathModel model,
+                                                            ClassTransformPipeline.Options options) {
+        return new ClassTransformPipeline(List.of(new LambdaDesugarer(model), new LocalVariableStripper()), model,
+                options).start(LAYER);
+    }
+
+    private static ZipRepacker.RepackResult repack(Path source, ClassTransformPipeline.JarRun run)
+            throws IOException {
+        try (ZipReader reader = ZipReader.open(source)) {
+            return ZipRepacker.repack(reader, new ByteArrayOutputStream(), run);
+        }
+    }
+
+    private static byte[] repackBytes(Path source, ClassTransformPipeline.JarRun run) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipReader reader = ZipReader.open(source)) {
+            ZipRepacker.repack(reader, bytes, run);
+        }
+        return bytes.toByteArray();
+    }
+
+    /** Defines a class in a fresh loader and calls its static {@code run()}. */
+    private static String callRun(byte[] bytes, String name) throws Exception {
+        ClassLoader loader = new ClassLoader(null) {
+            @Override
+            protected Class<?> findClass(String className) throws ClassNotFoundException {
+                if (className.equals(name)) {
+                    return defineClass(className, bytes, 0, bytes.length);
+                }
+                throw new ClassNotFoundException(className);
+            }
+        };
+        return (String) loader.loadClass(name).getMethod("run").invoke(null);
+    }
+
+    /**
+     * A synthetic step: it rewrites the string constant {@code "a"} to {@code "b"} in the classes it is told to
+     * rewrite, and throws in the ones it is told to fail on, which makes them fall back to their original bytes.
+     */
+    private static final class RewriteStep implements ClassTransformPipeline.Step {
+
+        private final Set<String> rewrites;
+        private final Set<String> fails;
+
+        private RewriteStep(Set<String> rewrites, Set<String> fails) {
+            this.rewrites = rewrites;
+            this.fails = fails;
+        }
+
+        @Override
+        public String name() {
+            return "rewrite";
+        }
+
+        @Override
+        public boolean appliesTo(ClassTransformPipeline.Layer layer) {
+            return true;
+        }
+
+        @Override
+        public boolean matches(String entryName, byte[] bytes) {
+            return rewrites.contains(entryName) || fails.contains(entryName);
+        }
+
+        @Override
+        public boolean changes(java.lang.classfile.ClassModel model) {
+            return true;
+        }
+
+        @Override
+        public java.lang.classfile.ClassTransform transform(java.lang.classfile.ClassModel model) {
+            boolean fail = fails.contains(model.thisClass().asInternalName() + ".class");
+            return java.lang.classfile.ClassTransform.transformingMethodBodies((builder, element) -> {
+                if (fail) {
+                    throw new IllegalStateException("the synthetic step fails");
+                }
+                if (element instanceof java.lang.classfile.instruction.ConstantInstruction.LoadConstantInstruction load
+                        && "a".equals(load.constantValue())) {
+                    builder.ldc("b");
+                } else {
+                    builder.with(element);
+                }
+            });
+        }
+
+        @Override
+        public String summary(TransformReport report, List<ClassTransformPipeline.JarReport> reports) {
+            return "rewrite: " + report;
+        }
     }
 
     private static String sha256(byte[] bytes) throws NoSuchAlgorithmException {

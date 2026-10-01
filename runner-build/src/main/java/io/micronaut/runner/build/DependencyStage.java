@@ -15,14 +15,23 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.runner.IndexFormat;
+
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.zip.CRC32;
@@ -34,11 +43,24 @@ import java.util.zip.CheckedOutputStream;
  *
  * <p>A stage may run on a worker thread, so it reads nothing but its own fields and touches no builder
  * state. It opens, uses and closes its {@link ZipReader}, streams, {@link CRC32} and buffers on the
- * thread that runs it; only the {@link Staged} result it returns reaches another thread. When lambdas are
- * desugared, the repack plans the dependency's nests before it writes the first entry, and the stage holds
- * their accepted classes until the entry loop has written them.</p>
+ * thread that runs it, and in HYBRID the one {@link java.util.zip.Deflater} its repack creates and ends; only
+ * the {@link Staged} result it returns reaches another thread. When lambdas are desugared, the repack plans the
+ * dependency's nests before it writes the first entry, and the stage holds their accepted classes until the
+ * entry loop has written them.</p>
  */
 final class DependencyStage implements Callable<DependencyStage.Staged> {
+
+    /**
+     * The warning of a HYBRID build without a startup class list. It names no build tool: each plugin's docs name
+     * its own recording task.
+     */
+    static final String HYBRID_WITHOUT_LIST = "HYBRID compression needs a startup-class list; the nested jars were"
+            + " written STORED. Record the startup classes and build again";
+
+    /** The warning of a HYBRID build whose startup class list names no class of any dependency. */
+    static final String HYBRID_WITHOUT_HOT_ENTRY = "HYBRID compression found none of the listed startup classes in"
+            + " any dependency; the nested jars were written STORED. Record the startup classes again from a jar built"
+            + " with the same options and build again";
 
     /** The size of the nested jar's output buffer and of the buffer a preserved dependency is checksummed with. */
     private static final int BUFFER_SIZE = 64 * 1024;
@@ -50,7 +72,10 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
     /** The work file a repacked nested jar is written to; a preserved dependency leaves it unused. */
     private final Path target;
     private final Compression compression;
-    /** The class transforms a repack runs, shared and read-only; {@code null} when none runs. */
+    /**
+     * The class transforms a repack runs, with the startup class ranks and the HYBRID flag it applies, shared and
+     * read-only; {@code null} when there is nothing to transform, order or compress.
+     */
     private final ClassTransformPipeline pipeline;
 
     DependencyStage(Dependency dependency, int layer, String entryName, Path target, Compression compression,
@@ -61,6 +86,94 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
         this.target = target;
         this.compression = compression;
         this.pipeline = pipeline;
+    }
+
+    /**
+     * One stage per dependency, in class-path order. Each nested jar's entry name and work file are fixed here, in
+     * class-path order, so neither depends on which dependency is staged first: the entry name is the dependency's
+     * file name, made unique in the archive ignoring case.
+     *
+     * @param dependencies the dependencies that are nested, in class-path order
+     * @param work         the directory the repacked nested jars are built in
+     * @param compression  how the stages nest their dependencies
+     * @param pipeline     the class transforms, startup class ranks and HYBRID flag a repack applies, or {@code null}
+     * @return the stages, in class-path order
+     */
+    static List<DependencyStage> of(List<Dependency> dependencies, Path work, Compression compression,
+                                    ClassTransformPipeline pipeline) {
+        List<DependencyStage> stages = new ArrayList<>(dependencies.size());
+        Set<String> taken = new HashSet<>();
+        for (int position = 0; position < dependencies.size(); position++) {
+            Dependency dependency = dependencies.get(position);
+            stages.add(new DependencyStage(dependency, position + 1,
+                    IndexFormat.LIB_PREFIX + uniqueName(taken, dependency.fileName()),
+                    work.resolve("lib-" + position + ".jar"), compression, pipeline));
+        }
+        return stages;
+    }
+
+    /**
+     * Runs every stage once, on the build's pool, largest dependency first, or on the calling thread one after the
+     * other, and collects the results in class-path order. The calling thread runs {@code alongside} first: while
+     * the pool stages, or before the first stage without a pool.
+     *
+     * @param stages    the stages, in class-path order
+     * @param pool      the build's pool, or {@code null} to stage on the calling thread
+     * @param alongside what the calling thread does meanwhile
+     * @return what each stage produced, in class-path order
+     * @throws IOException if a dependency cannot be staged: the failure of the first one on the class path; or what
+     *                     {@code alongside} threw
+     */
+    static List<Staged> stageAll(List<DependencyStage> stages, ExecutorService pool, Alongside alongside)
+            throws IOException {
+        List<Staged> staged = new ArrayList<>(stages.size());
+        if (pool == null) {
+            alongside.run();
+            for (DependencyStage stage : stages) {
+                staged.add(stage.call());
+            }
+            return staged;
+        }
+        List<Dependency> dependencies = new ArrayList<>(stages.size());
+        for (DependencyStage stage : stages) {
+            dependencies.add(stage.dependency);
+        }
+        List<Future<Staged>> futures = new ArrayList<>(Collections.nCopies(stages.size(), null));
+        for (int position : RunnerJarBuilder.largestFirst(dependencies)) {
+            futures.set(position, pool.submit(stages.get(position)));
+        }
+        alongside.run();
+        for (Future<Staged> future : futures) {
+            staged.add(RunnerJarBuilder.awaitStage(future));
+        }
+        return staged;
+    }
+
+    /**
+     * How many hot entries the stages wrote, over every dependency.
+     *
+     * @param staged what the stages produced
+     * @return the number of startup classes, and their versioned variants, the nested jars hold first
+     */
+    static long hotEntries(List<Staged> staged) {
+        long hot = 0;
+        for (Staged result : staged) {
+            hot += result.hotEntries();
+        }
+        return hot;
+    }
+
+    private static String uniqueName(Set<String> taken, String fileName) {
+        String candidate = fileName;
+        int suffix = 1;
+        while (!taken.add(candidate.toLowerCase(Locale.ROOT))) {
+            int dot = fileName.lastIndexOf('.');
+            String base = dot < 0 ? fileName : fileName.substring(0, dot);
+            String extension = dot < 0 ? "" : fileName.substring(dot);
+            candidate = base + "-" + suffix + extension;
+            suffix++;
+        }
+        return candidate;
     }
 
     @Override
@@ -110,7 +223,8 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
                 new RunnerJarBuilder.NestedJar(dependency, entryName, file, result, manifest, hasManifest, crc32),
                 classPathWarning(dependency, manifest),
                 signatureWarning(dependency, compression, result),
-                transforms);
+                transforms,
+                result.hotEntries());
     }
 
     /**
@@ -174,7 +288,7 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
             return null;
         }
         return "The dependency " + dependency.path() + " is signed; its signature files "
-                + (compression == Compression.STORED
+                + (compression != Compression.PRESERVE
                     ? "were removed because a repacked jar cannot verify against them"
                     : "were kept but no longer verify, because the jar is nested")
                 + ". The classes it contains are not treated as signed code";
@@ -188,8 +302,21 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
      * @param classPathWarning the {@code Class-Path} warning, or {@code null}
      * @param signatureWarning the signed-dependency warning, or {@code null}
      * @param transforms       what the class transform pipeline did to it, or {@code null} when none ran
+     * @param hotEntries       how many startup classes, and versioned variants of them, its nested jar holds first
      */
     record Staged(RunnerJarBuilder.NestedJar jar, String classPathWarning, String signatureWarning,
-                  ClassTransformPipeline.JarReport transforms) {
+                  ClassTransformPipeline.JarReport transforms, int hotEntries) {
+    }
+
+    /** What the calling thread does while the stages run. */
+    @FunctionalInterface
+    interface Alongside {
+
+        /**
+         * Does it.
+         *
+         * @throws IOException if it fails
+         */
+        void run() throws IOException;
     }
 }
