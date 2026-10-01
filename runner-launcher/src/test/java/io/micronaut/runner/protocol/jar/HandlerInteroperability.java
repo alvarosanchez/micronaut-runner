@@ -19,6 +19,7 @@ import io.micronaut.runner.ArchiveSource;
 import io.micronaut.runner.Handlers;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
+import io.micronaut.runner.LauncherTestAccess;
 
 import java.io.File;
 import java.net.URI;
@@ -42,7 +43,7 @@ public final class HandlerInteroperability {
      * <p>An optional second argument selects another check instead:</p>
      * <ul>
      *   <li>{@code factory} installs a {@code URLStreamHandlerFactory} before registering, checks that the
-     *   URLs {@link Handlers#urlFor} builds still open as {@link RunnerJarURLConnection}, and prints
+     *   URLs {@code Handlers.urlFor} builds still open as {@link RunnerJarURLConnection}, and prints
      *   {@code FACTORY-REPORTED};</li>
      *   <li>{@code property} only registers and prints {@code PROPERTY-REGISTERED}, for a JVM started with
      *   another package in {@value Handlers#HANDLER_PACKAGES_PROPERTY}.</li>
@@ -123,7 +124,7 @@ public final class HandlerInteroperability {
         URL.setURLStreamHandlerFactory(protocol -> null);
         try (ArchiveSource source = ArchiveSource.open(archive)) {
             Handlers.register(archive, Index.open(source), source);
-            URL url = Handlers.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt");
+            URL url = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt");
             check(url.openConnection() instanceof RunnerJarURLConnection,
                     "a URL built by Handlers did not open with Runner's connection");
         } finally {

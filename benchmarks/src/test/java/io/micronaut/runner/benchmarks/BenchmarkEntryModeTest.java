@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.benchmarks;
 
+import io.micronaut.runner.BenchmarkTestAccess;
 import io.micronaut.runner.IndexFormat;
 import io.micronaut.runner.build.ArchiveReads;
 import io.micronaut.runner.build.Compression;
@@ -433,7 +434,7 @@ class BenchmarkEntryModeTest {
 
         try (RunnerJarReader reader = RunnerJarReader.open(positional.artifact())) {
             assertTrue(reader.index().positionalReads());
-            assertTrue(reader.index().largestStoredClass() > 0);
+            assertTrue(BenchmarkTestAccess.largestStoredClass(reader.index()) > 0);
         }
         try (RunnerJarReader reader = RunnerJarReader.open(mapped.artifact())) {
             assertFalse(reader.index().positionalReads(), "a row that sets nothing follows the builder default");

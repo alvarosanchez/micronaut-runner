@@ -13,19 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.tools;
-
-import io.micronaut.runner.ArchiveSource;
-import io.micronaut.runner.Index;
-import io.micronaut.runner.IndexFormat;
-import io.micronaut.runner.TestArchiveBuilder;
-import io.micronaut.runner.TestIndexBuilder;
+package io.micronaut.runner;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -1042,6 +1037,33 @@ class ToolsTest {
     }
 
     /**
+     * Starts each tool mode the way a user does, with {@code -Dmicronaut.runner.mode} and {@code java -jar}, from
+     * an archive that carries the launcher's own classes. The tools are package-private classes the launcher
+     * finds by name, so this is what proves that its reflective lookup still reaches them.
+     */
+    @Test
+    void everyModeRunsFromJavaJar() throws Exception {
+        Assumptions.assumeTrue(javaExecutable() != null, "no JDK to fork; set runner.test.javaHome");
+        Path launchable = writeArchive(workspace.resolve("launchable/app.jar"), Flavour.WITH_LAUNCHER).toPath();
+
+        Forked inspect = fork(List.of("-Dmicronaut.runner.mode=inspect"), launchable, List.of());
+        assertEquals(0, inspect.status(), inspect.output());
+        assertEquals(MAIN_CLASS, header(inspect.output(), "Main class"), inspect.output());
+
+        Forked list = fork(List.of("-Dmicronaut.runner.mode=list"), launchable, List.of("com/example/"));
+        assertEquals(0, list.status(), list.output());
+        assertTrue(list.output().contains("com/example/App.class"), list.output());
+
+        Path destination = workspace.resolve("launchable/extracted");
+        Forked extract = fork(List.of("-Dmicronaut.runner.mode=extract"), launchable,
+                List.of(Extract.OPTION_DESTINATION, destination.toString()));
+        assertEquals(0, extract.status(), extract.output());
+        assertTrue(Files.isRegularFile(destination.resolve("app.jar")), extract.output());
+        assertTrue(Files.isRegularFile(destination.resolve(Extract.LIBRARY_DIRECTORY).resolve("dep-one.jar")),
+                extract.output());
+    }
+
+    /**
      * Builds one runner archive: manifest, index, merged service directory, application layer, nested
      * jars, in the order the packager writes them.
      *
@@ -1069,6 +1091,9 @@ class ToolsTest {
         outer.stored("META-INF/MANIFEST.MF", RUNNER_MANIFEST);
         byte[] draft = buildIndex(null, one, two, flavour);
         outer.reserve(IndexFormat.INDEX_ENTRY_NAME, draft.length);
+        if (flavour == Flavour.WITH_LAUNCHER) {
+            addLauncherClasses(outer);
+        }
         outer.stored("META-INF/micronaut/", EMPTY);
         outer.stored("META-INF/micronaut/com.example.Svc/", EMPTY);
         outer.stored(APPLICATION_SERVICE, EMPTY);
@@ -1458,9 +1483,41 @@ class ToolsTest {
         }
     }
 
+    /**
+     * Adds the launcher's compiled classes to the root of an archive, right after the index, where the packager
+     * puts them.
+     *
+     * @param outer the archive being built
+     * @throws IOException if the classes cannot be read
+     */
+    private static void addLauncherClasses(TestArchiveBuilder outer) throws IOException {
+        Path classes;
+        try {
+            classes = Path.of(Launcher.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        } catch (URISyntaxException e) {
+            throw new IOException(e);
+        }
+        Assumptions.assumeTrue(Files.isDirectory(classes), "the launcher classes are not a directory: " + classes);
+        List<Path> files;
+        try (var walk = Files.walk(classes.resolve("io/micronaut/runner"))) {
+            files = walk.filter(file -> file.toString().endsWith(".class")).sorted().toList();
+        }
+        assertFalse(files.isEmpty(), "no launcher classes under " + classes);
+        for (Path file : files) {
+            outer.stored(classes.relativize(file).toString().replace(File.separatorChar, '/'),
+                    Files.readAllBytes(file));
+        }
+    }
+
     private static Forked fork(Path jar, List<String> arguments) throws IOException, InterruptedException {
+        return fork(List.of(), jar, arguments);
+    }
+
+    private static Forked fork(List<String> options, Path jar, List<String> arguments)
+            throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(javaExecutable().toString());
+        command.addAll(options);
         command.add("-jar");
         command.add(jar.toAbsolutePath().toString());
         command.addAll(arguments);
@@ -1543,7 +1600,10 @@ class ToolsTest {
         TRANSFORMS,
 
         /** A well-formed archive that carries a startup class list. */
-        PRELOAD
+        PRELOAD,
+
+        /** A well-formed archive that also carries the launcher's own classes, so that {@code java -jar} starts it. */
+        WITH_LAUNCHER
     }
 
     /**

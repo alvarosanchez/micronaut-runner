@@ -17,6 +17,7 @@ package io.micronaut.runner.build;
 
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
+import io.micronaut.runner.RunnerBuildTestAccess;
 import io.micronaut.runner.build.ZipReaderTest.Payload;
 
 import org.junit.jupiter.api.Assumptions;
@@ -342,8 +343,8 @@ class RunnerJarBuilderTest {
                 assertEquals(2, names.stream().filter("dup/same.txt"::equals).count(),
                         compression + ": both records survive");
                 List<String> physicalContents = new ArrayList<>();
-                int firstRecord = index.jarFirstEntry(1);
-                int limit = firstRecord + index.jarEntryCount(1);
+                int firstRecord = RunnerBuildTestAccess.jarFirstEntry(index, 1);
+                int limit = firstRecord + RunnerBuildTestAccess.jarEntryCount(index, 1);
                 for (int physical = firstRecord; physical < limit; physical++) {
                     if (index.entryPhysical(physical) && "dup/same.txt".equals(index.entryName(physical))) {
                         physicalContents.add(new String(reader.read(physical), StandardCharsets.UTF_8));
@@ -356,7 +357,7 @@ class RunnerJarBuilderTest {
                 int record = index.find("dup/same.txt");
                 while (record != IndexFormat.NO_INDEX) {
                     lookupContents.add(new String(reader.read(record), StandardCharsets.UTF_8));
-                    record = index.next(record);
+                    record = RunnerBuildTestAccess.next(index, record);
                 }
                 assertEquals(List.of("second", "first"), lookupContents,
                         compression + ": lookup chain starts with the JDK-compatible last duplicate");
@@ -442,7 +443,7 @@ class RunnerJarBuilderTest {
             assertTrue(result.warnings().isEmpty(), () -> compression + ": " + result.warnings());
             try (RunnerJarReader reader = RunnerJarReader.open(output)) {
                 assertEquals("MICRONAUT-INF/lib/empty.jar", reader.index().jarName(1), compression::toString);
-                assertEquals(0, reader.index().jarEntryCount(1), compression::toString);
+                assertEquals(0, RunnerBuildTestAccess.jarEntryCount(reader.index(), 1), compression::toString);
             }
         }
     }
@@ -886,7 +887,7 @@ class RunnerJarBuilderTest {
         Path nested = directory.resolve("nested.jar");
         try (RunnerJarReader reader = RunnerJarReader.open(output)) {
             Index index = reader.index();
-            assertTrue(index.nestedStored());
+            assertTrue(RunnerBuildTestAccess.nestedStored(index));
             int record = index.find(name);
             assertEquals(IndexFormat.METHOD_STORED, index.entryMethod(record));
             assertArrayEquals(content, reader.read(record), "the entry as the launcher reads it");
@@ -1850,10 +1851,10 @@ class RunnerJarBuilderTest {
 
         try (RunnerJarReader reader = RunnerJarReader.open(output)) {
             Index index = reader.index();
-            assertEquals("", index.jarImplTitle(1), "present but empty is not absent");
-            assertEquals("", index.jarSpecVersion(1));
-            assertEquals("3.0", index.jarImplVersion(1));
-            assertNull(index.jarSpecTitle(1), "an attribute that really is absent stays null");
+            assertEquals("", RunnerBuildTestAccess.jarImplTitle(index, 1), "present but empty is not absent");
+            assertEquals("", RunnerBuildTestAccess.jarSpecVersion(index, 1));
+            assertEquals("3.0", RunnerBuildTestAccess.jarImplVersion(index, 1));
+            assertNull(RunnerBuildTestAccess.jarSpecTitle(index, 1), "an attribute that really is absent stays null");
         }
     }
 
@@ -1901,7 +1902,7 @@ class RunnerJarBuilderTest {
     }
 
     private static String resolved(RunnerJarReader reader, Index index, String name) throws IOException {
-        int record = index.resolve(index.find(name), Index.effectiveMultiReleaseVersion());
+        int record = RunnerBuildTestAccess.resolve(index, index.find(name), Index.effectiveMultiReleaseVersion());
         assertNotEquals(IndexFormat.NO_INDEX, record, name + " should resolve");
         return new String(reader.read(record), StandardCharsets.UTF_8);
     }
@@ -2132,8 +2133,8 @@ class RunnerJarBuilderTest {
 
     private static List<String> logicalNames(Index index, int jarId) {
         List<String> names = new ArrayList<>();
-        int first = index.jarFirstEntry(jarId);
-        for (int i = first; i < first + index.jarEntryCount(jarId); i++) {
+        int first = RunnerBuildTestAccess.jarFirstEntry(index, jarId);
+        for (int i = first; i < first + RunnerBuildTestAccess.jarEntryCount(index, jarId); i++) {
             names.add(index.entryName(i));
         }
         return names;
@@ -2266,7 +2267,7 @@ class RunnerJarBuilderTest {
         try (RunnerJarReader reader = RunnerJarReader.open(positional)) {
             Index index = reader.index();
             assertTrue(index.positionalReads());
-            assertTrue(index.nestedStored(), "POSITIONAL leaves the compression alone");
+            assertTrue(RunnerBuildTestAccess.nestedStored(index), "POSITIONAL leaves the compression alone");
             long expected = 0;
             for (int record = 0; record < index.entryCount(); record++) {
                 if (index.entryMethod(record) == IndexFormat.METHOD_STORED
@@ -2274,36 +2275,28 @@ class RunnerJarBuilderTest {
                     expected = Math.max(expected, index.entryUncompressedSize(record));
                 }
             }
-            assertTrue(index.largestStoredClass() > 0, "the fixture has STORED classes");
-            assertEquals(expected, index.largestStoredClass());
+            assertTrue(RunnerBuildTestAccess.largestStoredClass(index) > 0, "the fixture has STORED classes");
+            assertEquals(expected, RunnerBuildTestAccess.largestStoredClass(index));
         }
         try (RunnerJarReader reader = RunnerJarReader.open(mapped)) {
             assertFalse(reader.index().positionalReads());
-            assertEquals(0, reader.index().largestStoredClass());
+            assertEquals(0, RunnerBuildTestAccess.largestStoredClass(reader.index()));
         }
     }
 
     @Test
-    void anArchiveReadsOptionSetByNameReachesTheLauncher() throws Throwable {
+    void anArchiveReadsOptionSetByNameReachesTheLauncher() throws IOException {
         Path output = output();
         RunnerJarBuilder.build(spec(output).option("archiveReads", "positional").build(), BuildLogger.noOp());
 
-        String inspected;
         try (RunnerJarReader reader = RunnerJarReader.open(output)) {
-            java.io.PrintStream original = System.out;
-            java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
-            System.setOut(new java.io.PrintStream(captured, true, StandardCharsets.UTF_8));
-            try {
-                io.micronaut.runner.tools.Inspect.run(new String[0], output.toFile(), reader.index(),
-                        reader.source());
-            } finally {
-                System.setOut(original);
-            }
-            inspected = captured.toString(StandardCharsets.UTF_8);
+            assertTrue(reader.index().positionalReads(), "the index header carries the positional-reads flag");
+            assertTrue(RunnerBuildTestAccess.largestStoredClass(reader.index()) > 0,
+                    "a positional archive records the largest STORED class");
+            // The launcher's reader of the archive followed the flag when it opened the index: only the index is
+            // mapped, and classes are read with positional reads.
+            assertTrue(RunnerBuildTestAccess.indexOnly(reader.source()), "the reader did not switch to the index mode");
         }
-        assertTrue(inspected.lines().anyMatch(line -> line.matches("Archive reads\\s+positional")), inspected);
-        assertTrue(inspected.lines().anyMatch(line -> line.matches("Read through\\s+positional reads, index mapped")),
-                inspected);
     }
 
     @Test
@@ -2361,24 +2354,24 @@ class RunnerJarBuilderTest {
             assertEquals(4, index.jarCount());
             assertEquals(result.entryCount(), index.entryCount());
             assertEquals("com.example.Application", index.startClass());
-            assertTrue(index.nestedStored());
+            assertTrue(RunnerBuildTestAccess.nestedStored(index));
             assertFalse(index.applicationMultiRelease());
             assertEquals(IndexFormat.CLASSES_PREFIX, index.jarName(0));
             assertEquals("MICRONAUT-INF/lib/dep-lib.jar", index.jarName(1));
-            assertEquals("com.example:dep-lib:2.0.1", index.jarCoordinates(1));
-            assertNull(index.jarCoordinates(3), "a dependency without coordinates records none");
+            assertEquals("com.example:dep-lib:2.0.1", RunnerBuildTestAccess.jarCoordinates(index, 1));
+            assertNull(RunnerBuildTestAccess.jarCoordinates(index, 3), "a dependency without coordinates records none");
             assertEquals(Files.size(output), index.jarDataLength(0), "jar 0 is the outer archive itself");
 
             // Logical names: the application layer drops the prefix, a nested jar keeps its own names.
             int application = index.find("com/example/Application.class");
             assertNotEquals(IndexFormat.NO_INDEX, application);
-            assertEquals(0, index.entryJarId(application));
+            assertEquals(0, RunnerBuildTestAccess.entryJarId(index, application));
             assertArrayEquals(
                     Files.readAllBytes(applicationClasses.resolve("com/example/Application.class")),
                     reader.read(application));
 
             int dependency = index.find("com/example/dep/Dep.class");
-            assertEquals(1, index.entryJarId(dependency));
+            assertEquals(1, RunnerBuildTestAccess.entryJarId(index, dependency));
             assertArrayEquals(
                     Files.readAllBytes(fixtures.resolve("lib/classes/com/example/dep/Dep.class")),
                     reader.read(dependency));
@@ -2419,14 +2412,16 @@ class RunnerJarBuilderTest {
             Index index = reader.index();
             int merged = index.find(SERVICE_DIRECTORY + "com.example.dep.DepBean");
             assertNotEquals(IndexFormat.NO_INDEX, merged);
-            assertEquals(0, index.entryJarId(merged), "the merged copy belongs to the outer archive");
+            assertEquals(0, RunnerBuildTestAccess.entryJarId(index, merged),
+                    "the merged copy belongs to the outer archive");
             int directory = index.find(IndexFormat.MICRONAUT_SERVICES_PREFIX);
             assertTrue(index.entryDirectory(directory));
-            assertFalse(index.entrySyntheticDirectory(directory), "it is stored, not synthesised");
+            assertFalse(RunnerBuildTestAccess.entrySyntheticDirectory(index, directory),
+                    "it is stored, not synthesised");
 
             // The application's own copy is still in its layer, behind the merged one in the chain.
             int chain = index.find(SERVICE_DIRECTORY + "com.example.$Application$Definition");
-            assertNotEquals(IndexFormat.NO_INDEX, index.entryNextSameName(chain));
+            assertNotEquals(IndexFormat.NO_INDEX, RunnerBuildTestAccess.entryNextSameName(index, chain));
         }
     }
 
@@ -2441,14 +2436,15 @@ class RunnerJarBuilderTest {
             assertFalse(index.jarMultiRelease(1));
 
             int feature = index.find("com/example/mr/Feature.class");
-            assertEquals(17, index.entryMrVersion(feature));
-            assertTrue(index.entryVersionedAlias(feature));
+            assertEquals(17, RunnerBuildTestAccess.entryMrVersion(index, feature));
+            assertTrue(RunnerBuildTestAccess.entryVersionedAlias(index, feature));
             assertEquals("seventeen", new String(reader.read(feature), StandardCharsets.UTF_8));
-            int base = index.entryNextSameName(feature);
-            assertEquals(0, index.entryMrVersion(base));
+            int base = RunnerBuildTestAccess.entryNextSameName(index, feature);
+            assertEquals(0, RunnerBuildTestAccess.entryMrVersion(index, base));
             assertEquals("base", new String(reader.read(base), StandardCharsets.UTF_8));
-            assertEquals(base, index.resolve(feature, 11), "an older runtime sees the base entry");
-            assertEquals(feature, index.resolve(feature, 21));
+            assertEquals(base, RunnerBuildTestAccess.resolve(index, feature, 11),
+                    "an older runtime sees the base entry");
+            assertEquals(feature, RunnerBuildTestAccess.resolve(index, feature, 21));
 
             assertEquals(IndexFormat.NO_INDEX, index.find("META-INF/extra.txt"),
                     "a versioned entry under META-INF is never aliased");
@@ -2478,7 +2474,7 @@ class RunnerJarBuilderTest {
                 assertNotEquals(IndexFormat.NO_INDEX, record, name + " should resolve");
                 assertTrue(index.entryDirectory(record), name + " should be a directory");
             }
-            assertTrue(index.entrySyntheticDirectory(index.find("com/example/")));
+            assertTrue(RunnerBuildTestAccess.entrySyntheticDirectory(index, index.find("com/example/")));
             assertFalse(index.entryPhysical(index.find("com/example/")));
         }
     }
@@ -2493,14 +2489,14 @@ class RunnerJarBuilderTest {
         try (RunnerJarReader reader = RunnerJarReader.open(output)) {
             Index index = reader.index();
             assertEquals("MICRONAUT-INF/lib/signed-lib.jar", index.jarName(3));
-            assertTrue((index.jarFlags(3) & IndexFormat.JAR_FLAG_SIGNED_ORIGINAL) != 0);
+            assertTrue((RunnerBuildTestAccess.jarFlags(index, 3) & IndexFormat.JAR_FLAG_SIGNED_ORIGINAL) != 0);
             List<String> names = logicalNames(index, 3);
             assertTrue(names.contains("com/example/signed/Signed.class"));
             assertFalse(names.contains("META-INF/MY.SF"));
             assertFalse(names.contains("META-INF/MY.RSA"));
             assertFalse(names.contains("META-INF/INDEX.LIST"));
             assertTrue(names.contains("META-INF/MANIFEST.MF"), "the manifest is kept verbatim");
-            assertTrue((index.jarFlags(3) & IndexFormat.JAR_FLAG_HAS_MANIFEST) != 0);
+            assertTrue((RunnerBuildTestAccess.jarFlags(index, 3) & IndexFormat.JAR_FLAG_HAS_MANIFEST) != 0);
         }
     }
 
@@ -2511,16 +2507,16 @@ class RunnerJarBuilderTest {
 
         try (RunnerJarReader reader = RunnerJarReader.open(output)) {
             Index index = reader.index();
-            assertEquals("dep-lib", index.jarImplTitle(1));
-            assertEquals("2.0.1", index.jarImplVersion(1));
-            assertFalse(index.jarSealedByDefault(1));
+            assertEquals("dep-lib", RunnerBuildTestAccess.jarImplTitle(index, 1));
+            assertEquals("2.0.1", RunnerBuildTestAccess.jarImplVersion(index, 1));
+            assertFalse(RunnerBuildTestAccess.jarSealedByDefault(index, 1));
 
             int record = index.findPackage(1, "com.example.api");
             assertNotEquals(IndexFormat.NO_INDEX, record);
-            assertEquals("Dep API", index.packageSpecTitle(record));
-            assertEquals("2.0.1", index.packageImplVersion(record));
-            assertTrue(index.packageSealedSpecified(record));
-            assertTrue(index.packageSealedValue(record));
+            assertEquals("Dep API", RunnerBuildTestAccess.packageSpecTitle(index, record));
+            assertEquals("2.0.1", RunnerBuildTestAccess.packageImplVersion(index, record));
+            assertTrue(RunnerBuildTestAccess.packageSealedSpecified(index, record));
+            assertTrue(RunnerBuildTestAccess.packageSealedValue(index, record));
             assertEquals(1, index.jarPackageCount(1),
                     "a section naming a class file is not a package section");
             assertEquals(IndexFormat.NO_INDEX, index.findPackage(1, "com.example.dep"));
@@ -2560,9 +2556,10 @@ class RunnerJarBuilderTest {
         }
         try (RunnerJarReader reader = RunnerJarReader.open(output)) {
             Index index = reader.index();
-            assertEquals("demo", index.jarImplTitle(0));
-            assertTrue(index.jarSealedByDefault(0));
-            assertEquals("Example", index.packageSpecVendor(index.findPackage(0, "com.example")));
+            assertEquals("demo", RunnerBuildTestAccess.jarImplTitle(index, 0));
+            assertTrue(RunnerBuildTestAccess.jarSealedByDefault(index, 0));
+            assertEquals("Example", RunnerBuildTestAccess.packageSpecVendor(index, index.findPackage(0,
+                    "com.example")));
         }
     }
 
@@ -2574,7 +2571,7 @@ class RunnerJarBuilderTest {
         try (RunnerJarReader reader = RunnerJarReader.open(output);
              ZipReader archive = ZipReader.open(output)) {
             Index index = reader.index();
-            assertEquals(Files.size(output), index.outerFileLength());
+            assertEquals(Files.size(output), RunnerBuildTestAccess.outerFileLength(index));
 
             // Every physical record of jar 0 has to name a real entry of the outer archive, at the very
             // offset the index sends the launcher to. The offset identifies the entry: an archive cannot
@@ -2583,8 +2580,8 @@ class RunnerJarBuilderTest {
             for (ZipEntryInfo entry : archive.entries()) {
                 byOffset.put(entry.dataOffset(), entry);
             }
-            int first = index.jarFirstEntry(0);
-            for (int record = first; record < first + index.jarEntryCount(0); record++) {
+            int first = RunnerBuildTestAccess.jarFirstEntry(index, 0);
+            for (int record = first; record < first + RunnerBuildTestAccess.jarEntryCount(index, 0); record++) {
                 if (!index.entryPhysical(record)) {
                     continue;
                 }
@@ -2603,7 +2600,7 @@ class RunnerJarBuilderTest {
             for (int jarId = 1; jarId < index.jarCount(); jarId++) {
                 ZipEntryInfo entry = archive.entry(index.jarName(jarId)).orElseThrow();
                 assertEquals(entry.dataOffset(), index.jarDataOffset(jarId));
-                assertEquals(entry.localHeaderOffset(), index.jarLocalHeaderOffset(jarId));
+                assertEquals(entry.localHeaderOffset(), RunnerBuildTestAccess.jarLocalHeaderOffset(index, jarId));
                 assertEquals(entry.uncompressedSize(), index.jarDataLength(jarId));
                 index.validateJar(jarId);
             }
@@ -2618,7 +2615,7 @@ class RunnerJarBuilderTest {
         byte[] original = Files.readAllBytes(plainDependency);
         try (RunnerJarReader reader = RunnerJarReader.open(output)) {
             Index index = reader.index();
-            assertFalse(index.nestedStored());
+            assertFalse(RunnerBuildTestAccess.nestedStored(index));
             assertEquals(original.length, index.jarDataLength(1));
             byte[] nested = reader.source().readFully(index.jarDataOffset(1), original.length);
             assertArrayEquals(original, nested, "PRESERVE copies a dependency byte for byte");
@@ -2900,11 +2897,13 @@ class RunnerJarBuilderTest {
             for (String name : GENERATED_LOGBACK_ENTRIES) {
                 int entry = index.find(name);
                 assertNotEquals(IndexFormat.NO_INDEX, entry, name);
-                assertEquals(0, index.entryJarId(entry), name + " belongs to the application layer");
+                assertEquals(0, RunnerBuildTestAccess.entryJarId(index, entry),
+                        name + " belongs to the application layer");
             }
             int logbackXml = index.find("logback.xml");
             assertNotEquals(IndexFormat.NO_INDEX, logbackXml);
-            assertNotEquals(0, index.entryJarId(logbackXml), "logback.xml stays in the dependency");
+            assertNotEquals(0, RunnerBuildTestAccess.entryJarId(index, logbackXml),
+                    "logback.xml stays in the dependency");
         }
     }
 
@@ -3213,12 +3212,14 @@ class RunnerJarBuilderTest {
                 assertEquals(name.replace('.', '/') + ".class", index.entryName(record));
             }
             int feature = index.preloadRecord(0);
-            assertTrue(index.entryVersionedAlias(feature) && index.entryMrVersion(feature) == 17,
+            assertTrue(RunnerBuildTestAccess.entryVersionedAlias(index, feature)
+                    && RunnerBuildTestAccess.entryMrVersion(index, feature) == 17,
                     "a multi-release class is listed by the head of its chain, which holds the versioned alias");
-            assertEquals("MICRONAUT-INF/lib/dep-lib.jar", index.jarName(index.entryJarId(index.preloadRecord(1))),
+            assertEquals("MICRONAUT-INF/lib/dep-lib.jar",
+                    index.jarName(RunnerBuildTestAccess.entryJarId(index, index.preloadRecord(1))),
                     "a class in two jars is listed from the jar that comes first on the class path");
             assertEquals(1, index.jdkPreloadCount());
-            assertEquals("java.util.zip.CRC32", index.jdkPreloadName(0));
+            assertEquals("java.util.zip.CRC32", RunnerBuildTestAccess.jdkPreloadName(index, 0));
         }
 
         List<String> dropped = logger.warnings.stream().filter(line -> line.contains("startup classes")).toList();
@@ -3258,8 +3259,8 @@ class RunnerJarBuilderTest {
             assertEquals(index.findClass("com.example.Greeter"), index.preloadRecord(1));
             assertEquals(index.findClass("com.example.dep.Dep"), index.preloadRecord(2));
             assertEquals(2, index.jdkPreloadCount(), "the JDK classes of the log are kept by name, in order");
-            assertEquals("java.util.zip.CRC32", index.jdkPreloadName(0));
-            assertEquals("java.sql.Timestamp", index.jdkPreloadName(1));
+            assertEquals("java.util.zip.CRC32", RunnerBuildTestAccess.jdkPreloadName(index, 0));
+            assertEquals("java.sql.Timestamp", RunnerBuildTestAccess.jdkPreloadName(index, 1));
         }
         assertTrue(logger.warnings.stream().noneMatch(line -> line.contains("startup class")),
                 () -> "the skipped sources are not reported: " + logger.warnings);

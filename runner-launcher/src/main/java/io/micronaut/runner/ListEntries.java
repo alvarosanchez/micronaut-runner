@@ -13,11 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.tools;
-
-import io.micronaut.runner.ArchiveSource;
-import io.micronaut.runner.Index;
-import io.micronaut.runner.IndexFormat;
+package io.micronaut.runner;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,12 +36,12 @@ import java.util.List;
  * {@code jdk.util.jar.version} prints the resolution that would happen there.</p>
  *
  * <p>This class is loaded only when the mode selects it, so it is written in ordinary Java: the rules
- * that keep {@code io.micronaut.runner} free of lambdas, streams and {@code String.format} do not apply
- * to {@code io.micronaut.runner.tools}.</p>
+ * that keep the launcher's start path free of lambdas, streams and {@code String.format} do not apply
+ * to it.</p>
  *
  * @since 1.0
  */
-public final class ListEntries {
+final class ListEntries {
 
     /** Column labels, also the first row of the table. */
     private static final String[] COLUMNS = {"NAME", "JAR", "NOTES"};
@@ -68,7 +64,7 @@ public final class ListEntries {
      * @param source  the archive's bytes; this mode reads none of them
      * @throws IOException if more than one argument is given
      */
-    public static void run(String[] args, File archive, Index index, ArchiveSource source)
+    static void run(String[] args, File archive, Index index, ArchiveSource source)
             throws IOException {
         if (args.length > 1) {
             throw new IOException("The list mode takes at most one argument, a name prefix, but got '"

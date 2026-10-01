@@ -15,8 +15,8 @@
  */
 package io.micronaut.runner;
 
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.runner.protocol.jar.Handler;
-import io.micronaut.runner.protocol.jar.RunnerJarURLConnection;
 
 import java.io.File;
 import java.io.IOException;
@@ -45,7 +45,7 @@ import java.util.jar.JarFile;
  * </pre>
  * <p>The last shape is the exception to "jar 0 lives under {@value IndexFormat#CLASSES_PREFIX}": the
  * packager merges the Micronaut service metadata of every jar into the root of the outer archive, and
- * those records are addressed where they really are. See {@link #urlFor}.</p>
+ * those records are addressed where they really are. See {@code urlFor}.</p>
  * <p>The nested form is the classic double separator Spring Boot's loader produced for a decade, which
  * micronaut-core's {@code IOUtils} already tolerates; inventing a protocol of our own would break service
  * scanning outright. Entry names are percent-encoded per UTF-8 byte, so a name containing a space,
@@ -62,7 +62,7 @@ import java.util.jar.JarFile;
  * factory, because by the time the launcher runs the JDK has usually resolved and cached its own jar
  * handler already.</p>
  *
- * <p>None of that is load bearing. {@link #urlFor} and {@link #codeSourceUrlFor} build their URLs from the
+ * <p>None of that is load bearing. {@code urlFor} and {@code codeSourceUrlFor} build their URLs from the
  * encoders' output with an explicit handler instance, so the URLs the class loader returns work whether or
  * not the property took effect. The property only matters for a URL that is re-parsed from its string form
  * by somebody else. The forked {@code HandlerInteroperability} test proves that string-parse path in a
@@ -79,8 +79,12 @@ import java.util.jar.JarFile;
  * {@code HandlerTest} checks that guarantee once, together with the fields of every URL shape against its
  * re-parsed string form, instead of every call paying for it.</p>
  *
+ * <p>The class is public because {@code io.micronaut.runner.protocol.jar} and the benchmarks call it; it is
+ * not API for applications.</p>
+ *
  * @since 1.0
  */
+@Internal
 public final class Handlers {
 
     /**
@@ -122,8 +126,12 @@ public final class Handlers {
      * opened, which a normal start never does before {@code main}.
      */
     private static JarFile outerJarFile;
-    /** The nested jar views, allocated on first use so that {@link NestedJarFile} does not load before main. */
-    private static NestedJarFile[] nestedJarFiles;
+    /**
+     * The nested jar views, allocated on first use. Like the outer handle above, they are kept as
+     * {@link JarFile} and created through a static method, {@link NestedJarFile#open}, so that neither
+     * verifying this class nor registering an archive loads {@link NestedJarFile} before main.
+     */
+    private static JarFile[] nestedJarFiles;
 
     /**
      * The URL form of the archive, {@code file:/abs/app.jar}. Written last and read first, so that a thread
@@ -206,7 +214,7 @@ public final class Handlers {
      * @return the URL, or {@code null} if no archive is registered, the jar does not exist, or the name
      *         cannot be expressed as a URL
      */
-    public static URL urlFor(int jarId, String logicalName) {
+    static URL urlFor(int jarId, String logicalName) {
         if (logicalName == null) {
             return null;
         }
@@ -234,7 +242,7 @@ public final class Handlers {
      * @return {@code jar:file:/abs/app.jar!/<name>}, or {@code null} when no archive is registered or the
      *         name cannot be expressed as a URL
      */
-    public static URL outerUrlFor(String outerEntryName) {
+    static URL outerUrlFor(String outerEntryName) {
         if (archiveUrl == null || outerEntryName == null) {
             return null;
         }
@@ -257,7 +265,7 @@ public final class Handlers {
      *         {@code jar:file:/abs/app.jar!/MICRONAUT-INF/lib/<dep>.jar!/} for a nested jar, or
      *         {@code null} when no archive is registered or the jar does not exist
      */
-    public static URL codeSourceUrlFor(int jarId) {
+    static URL codeSourceUrlFor(int jarId) {
         String prefix = prefixFor(jarId);
         if (prefix == null) {
             return null;
@@ -272,7 +280,7 @@ public final class Handlers {
     /**
      * The URL of the jar itself, as {@link java.net.JarURLConnection#getJarFileURL()} reports it: the file
      * URL of the outer archive for the application layer, and the {@code jar:} URL of the nested jar
-     * otherwise. Unlike {@link #codeSourceUrlFor} it does not end with a separator, because it names a jar
+     * otherwise. Unlike {@code codeSourceUrlFor} it does not end with a separator, because it names a jar
      * rather than the root inside it.
      *
      * @param jarId the jar, {@code 0} being the application layer
@@ -379,12 +387,12 @@ public final class Handlers {
     }
 
     /**
-     * The shared {@link NestedJarFile} view of one nested jar. Views are created once and cached, because
-     * they are immutable, because each one holds a handle on the outer file, and because a library that
-     * scans the classpath asks for the same jar over and over.
+     * The shared view of one nested jar, a package-private {@code NestedJarFile} served from the index. Views
+     * are created once and cached, because they are immutable, because each one holds a handle on the outer
+     * file, and because a library that scans the classpath asks for the same jar over and over.
      *
      * <p>The cache is allocated on first use rather than at registration, so that a normal start does not
-     * load {@link NestedJarFile} before {@code main}. Registration is checked under {@link #LOCK}, so a
+     * load {@code NestedJarFile} before {@code main}. Registration is checked under the class lock, so a
      * concurrent {@link #unregister()} yields the {@link IOException} rather than a
      * {@link NullPointerException}.</p>
      *
@@ -393,20 +401,20 @@ public final class Handlers {
      * @throws IOException if no archive is registered, the archive has no such nested jar, or the outer
      *                     archive cannot be opened
      */
-    public static NestedJarFile nestedJarFile(int jarId) throws IOException {
+    public static JarFile nestedJarFile(int jarId) throws IOException {
         synchronized (LOCK) {
             Index index = archiveIndex;
             if (archiveUrl == null || jarId <= IndexFormat.APPLICATION_JAR_ID || jarId >= index.jarCount()) {
                 throw new IOException("No nested jar " + jarId + " in the registered archive");
             }
-            NestedJarFile[] cache = nestedJarFiles;
+            JarFile[] cache = nestedJarFiles;
             if (cache == null) {
-                cache = new NestedJarFile[index.jarCount()];
+                cache = new JarFile[index.jarCount()];
                 nestedJarFiles = cache;
             }
-            NestedJarFile jar = cache[jarId];
+            JarFile jar = cache[jarId];
             if (jar == null) {
-                jar = new NestedJarFile(archiveFile, index, archiveSource, jarId);
+                jar = NestedJarFile.open(archiveFile, index, archiveSource, jarId);
                 cache[jarId] = jar;
             }
             return jar;
@@ -419,8 +427,9 @@ public final class Handlers {
      *
      * <p>This is the one process-lifetime handle on the outer archive, opened on demand because a normal
      * application start never needs it, and returned to every caller whatever its cache setting. Its
-     * {@code close()} is a no-op, like {@link NestedJarFile}'s, so a caller that closes the jar a connection
-     * handed it cannot break another connection; only {@link #unregister()} really closes it.</p>
+     * {@code close()} is a no-op, like that of a {@link #nestedJarFile(int)} view, so a caller that closes the
+     * jar a connection handed it cannot break another connection; only {@link #unregister()} really closes
+     * it.</p>
      *
      * @return the shared jar file
      * @throws IOException if no archive is registered or the archive cannot be opened
@@ -479,12 +488,13 @@ public final class Handlers {
             jarPrefixes = null;
             jarNames = null;
             canonicalPath = null;
-            NestedJarFile[] nested = nestedJarFiles;
+            JarFile[] nested = nestedJarFiles;
             nestedJarFiles = null;
             if (nested != null) {
                 for (int i = 0; i < nested.length; i++) {
                     if (nested[i] != null) {
-                        nested[i].closeNested();
+                        // The verifier does not load a checkcast operand, so this does not load NestedJarFile.
+                        ((NestedJarFile) nested[i]).closeNested();
                     }
                 }
             }
@@ -784,11 +794,28 @@ public final class Handlers {
             return false;
         }
         try {
-            URLConnection connection = URI.create(spec).toURL().openConnection();
-            return connection instanceof RunnerJarURLConnection;
+            return servedByHandler(URI.create(spec).toURL().openConnection());
         } catch (IOException | RuntimeException e) {
             return false;
         }
+    }
+
+    /**
+     * Whether a connection is one the launcher's own {@link Handler} serves for the registered archive: its
+     * class is in {@link Handler}'s package and was defined by {@link Handler}'s class loader.
+     *
+     * <p>That is what an {@code instanceof} of the package-private connection class would check, because it is
+     * the only {@link URLConnection} in that package. Comparing the package name alone would also accept the
+     * same class defined by another class loader, which is what a handler the JDK instantiated from that loader
+     * returns. The class is not named here, so it can stay package-private.</p>
+     *
+     * @param connection the connection a URL opened
+     * @return whether it is served by this launcher's handler
+     */
+    static boolean servedByHandler(URLConnection connection) {
+        Class<?> type = connection.getClass();
+        return type.getClassLoader() == Handler.class.getClassLoader()
+                && type.getPackageName().equals(Handler.class.getPackageName());
     }
 
     private static void warn(String reason) {

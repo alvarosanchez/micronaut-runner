@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner;
 
+import io.micronaut.core.annotation.Internal;
+
 /**
  * The application entry point, as seen by the launcher.
  *
@@ -30,8 +32,12 @@ package io.micronaut.runner;
  * <p>This interface is loaded by the class loader that loaded the launcher, not by the runner class
  * loader, so that both sides see the same type.</p>
  *
+ * <p>The interface is public because the generated entry stub, in another package, implements it; it is not
+ * API for applications.</p>
+ *
  * @since 1.0
  */
+@Internal
 public interface Entry {
 
     /**

@@ -1,0 +1,9 @@
+# The public API of micronaut-runner-launcher, as PublicApiTest reads it from the class files: every type and
+# member that micronaut-build's binary compatibility check (japicmp, enabled after 1.0.0) reports as an error when
+# it changes. Types and members marked @io.micronaut.core.annotation.Internal are not listed, because that check
+# reports only a warning for them.
+#
+# From 1.0.0, a change to this file is a 1.x binary-compatibility decision: an added line is API for all of 1.x,
+# and a removed line is a breaking change.
+io.micronaut.runner.Launcher
+io.micronaut.runner.Launcher#main([Ljava/lang/String;)V

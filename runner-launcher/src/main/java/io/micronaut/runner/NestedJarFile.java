@@ -66,9 +66,12 @@ import java.util.zip.ZipEntry;
  * {@code some/package/} is a question about the jar's content and the answer "yes, that directory exists"
  * is the useful one.</p>
  *
+ * <p>The class is package-private. {@link Handlers#nestedJarFile(int)} hands these views out typed as
+ * {@link JarFile}, which is all that {@code io.micronaut.runner.protocol.jar} and applications see.</p>
+ *
  * @since 1.0
  */
-public final class NestedJarFile extends JarFile {
+final class NestedJarFile extends JarFile {
 
     /** The manifest of a jar, which is not versioned even in a multi-release jar. */
     private static final String MANIFEST_NAME = "META-INF/MANIFEST.MF";
@@ -102,7 +105,7 @@ public final class NestedJarFile extends JarFile {
      * @throws IOException              if the outer archive cannot be opened
      * @throws IllegalArgumentException if {@code jarId} is not a nested jar of the index
      */
-    public NestedJarFile(File outerFile, Index index, ArchiveSource source, int jarId) throws IOException {
+    NestedJarFile(File outerFile, Index index, ArchiveSource source, int jarId) throws IOException {
         // The jar is checked inside the super call, so that a bad argument never leaks an open file.
         super(checkJarId(outerFile, index, jarId), false, OPEN_READ, JarFile.baseVersion());
         this.index = index;
@@ -117,6 +120,24 @@ public final class NestedJarFile extends JarFile {
         StringBuilder jarName = new StringBuilder(64);
         jarName.append(outerFile.getPath()).append(Handlers.SEPARATOR).append(index.jarName(jarId));
         this.name = jarName.toString();
+    }
+
+    /**
+     * Opens a view of one nested jar for {@link Handlers}, which keeps the views in a {@link JarFile} array.
+     * The view is typed as its supertype so that verifying {@link Handlers} does not load this class: the
+     * verifier does not resolve an {@code invokestatic} target, but it would load this class to check that
+     * a {@code NestedJarFile} value is assignable to {@link JarFile}.
+     *
+     * @param outerFile the outer runner archive
+     * @param index     the index of that archive
+     * @param source    the reader of that archive
+     * @param jarId     the nested jar, which must not be the application layer
+     * @return the view
+     * @throws IOException              if the outer archive cannot be opened
+     * @throws IllegalArgumentException if {@code jarId} is not a nested jar of the index
+     */
+    static JarFile open(File outerFile, Index index, ArchiveSource source, int jarId) throws IOException {
+        return new NestedJarFile(outerFile, index, source, jarId);
     }
 
     /**
@@ -139,7 +160,7 @@ public final class NestedJarFile extends JarFile {
      *
      * @return the jar index in the archive's jar table
      */
-    public int jarId() {
+    int jarId() {
         return jarId;
     }
 

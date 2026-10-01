@@ -186,9 +186,9 @@ class LauncherTest {
 
     @Test
     void mapsEveryModeToItsTool() {
-        assertEquals("io.micronaut.runner.tools.Extract", Launcher.toolClassName(Launcher.MODE_EXTRACT));
-        assertEquals("io.micronaut.runner.tools.Inspect", Launcher.toolClassName(Launcher.MODE_INSPECT));
-        assertEquals("io.micronaut.runner.tools.ListEntries", Launcher.toolClassName(Launcher.MODE_LIST));
+        assertEquals(Extract.class.getName(), Launcher.toolClassName(Launcher.MODE_EXTRACT));
+        assertEquals(Inspect.class.getName(), Launcher.toolClassName(Launcher.MODE_INSPECT));
+        assertEquals(ListEntries.class.getName(), Launcher.toolClassName(Launcher.MODE_LIST));
         assertNull(Launcher.toolClassName(Launcher.MODE_RUN));
         assertNull(Launcher.toolClassName("nonsense"));
     }

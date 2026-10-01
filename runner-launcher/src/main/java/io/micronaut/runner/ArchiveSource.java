@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner;
 
+import io.micronaut.core.annotation.Internal;
+
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
@@ -48,19 +50,19 @@ import java.util.zip.InflaterInputStream;
  * stores, so no per-entry bookkeeping is needed.</p>
  *
  * <h2>Read modes</h2>
- * <p>The system property {@value #MMAP_PROPERTY} selects how the archive is read:</p>
+ * <p>The system property {@code micronaut.runner.mmap} selects how the archive is read:</p>
  * <ul>
  *   <li>{@code full} or {@code true}: the whole file is mapped, as described above.</li>
  *   <li>{@code index}: only {@code MICRONAUT-INF/index.bin} is mapped. Every other read is a positional
  *   {@link FileChannel#read(ByteBuffer, long)}, and a STORED class is read with one such call into a direct
- *   buffer borrowed from a small pool; see {@link #borrow(long, int)}. The pages of the class bytes then stay
+ *   buffer borrowed from a small pool. The pages of the class bytes then stay
  *   in the page cache and out of the process's resident set, at the price of a system call per class.</li>
  *   <li>{@code false}: nothing is mapped, and every read is a positional read into a heap buffer, at most
  *   64 KiB per call so that no thread keeps a large temporary native buffer. It exists for platforms or
  *   containers where a mapping is unwelcome; it is behaviourally identical, only slower.</li>
  *   <li>Unset, or any other value: the archive decides. {@link #open(File)} maps the whole file, exactly as
- *   for {@code full}, and {@link #indexRegion(long, int)} reads {@code IndexFormat.HEADER_FLAG_POSITIONAL_READS}
- *   from the index header. When the flag is set, the source switches to the {@code index} mode before anything
+ *   for {@code full}, and the first read of the index takes {@code IndexFormat.HEADER_FLAG_POSITIONAL_READS}
+ *   from its header. When the flag is set, the source switches to the {@code index} mode before anything
  *   else has read through the mapping: it captures the file key, closes the whole-file mapping and maps the
  *   index alone. An archive whose flag is clear keeps the whole-file mapping and pays one extra read.</li>
  * </ul>
@@ -88,24 +90,36 @@ import java.util.zip.InflaterInputStream;
  * class is being defined straight from the mapping.</p>
  *
  * <h2>Thread safety</h2>
- * <p>Everything after {@link #open(File)} and the first {@link #indexRegion(long, int)}, which may switch the
- * mode and is called by {@link Index#open(ArchiveSource, long, long)} before the source is shared, is safe for
+ * <p>Everything after {@link #open(File)} and the first read of the index, which may switch the mode and is
+ * done by {@link Index#open(ArchiveSource)} before the source is shared, is safe for
  * concurrent use by any number of class-loading threads: the segments are read-only, positional channel reads
  * do not touch the channel position, and the inflater and buffer pools are guarded by this instance's lock.
  * Thread interrupts are harmless in every mode: mapped reads are not interruptible, and positional reads clear
  * and restore the caller's interrupt status and reopen, under the same lock, a channel that an interrupt
  * closed. Only {@link #close()} must not race with readers; a read that does fails and never reopens.</p>
  *
+ * <p>The class is public because runner-build reads archives with it, and
+ * {@code io.micronaut.runner.protocol.jar} and the benchmarks read entries through it; it is not API for
+ * applications.</p>
+ *
  * @since 1.0
  */
+@Internal
 public final class ArchiveSource implements AutoCloseable {
+
+    /**
+     * Largest slice {@link #slice(long, int)} can produce. {@link MemorySegment#asByteBuffer()} only
+     * supports segments up to {@link Integer#MAX_VALUE} bytes, and array allocation is capped a little
+     * below that on most VMs, so larger entries have to be streamed by {@link #stream}.
+     */
+    public static final int MAX_SLICE_LENGTH = Integer.MAX_VALUE - 8;
 
     /**
      * System property that selects the read mode: {@code full} (or {@code true}), {@code index} or
      * {@code false}. Unset, or any other value, lets the archive's header choose between {@code full} and
      * {@code index}. Values are compared exactly, so {@code FALSE} is an unrecognised value.
      */
-    public static final String MMAP_PROPERTY = "micronaut.runner.mmap";
+    static final String MMAP_PROPERTY = "micronaut.runner.mmap";
 
     /**
      * The mode of a source whose {@value #MMAP_PROPERTY} is unset or unrecognised, until
@@ -138,13 +152,6 @@ public final class ArchiveSource implements AutoCloseable {
 
     /** The granularity a pooled buffer's size is rounded up to. */
     private static final int POOL_BUFFER_ALIGNMENT = 4096;
-
-    /**
-     * Largest slice {@link #slice(long, int)} can produce. {@link MemorySegment#asByteBuffer()} only
-     * supports segments up to {@link Integer#MAX_VALUE} bytes, and array allocation is capped a little
-     * below that on most VMs, so larger entries have to be streamed by {@link #stream}.
-     */
-    public static final int MAX_SLICE_LENGTH = Integer.MAX_VALUE - 8;
 
     /**
      * Number of inflaters kept alive for reuse. Class loading from a DEFLATE archive inflates constantly,
@@ -261,10 +268,10 @@ public final class ArchiveSource implements AutoCloseable {
      * Opens an archive for reading.
      *
      * <p>Nothing about the content is checked here: an archive that is not a runner jar, or not a ZIP file
-     * at all, is only diagnosed by {@link #openIndex()}, so that the primitives stay usable over any file.</p>
+     * at all, is only diagnosed when the index is located, so that the primitives stay usable over any file.</p>
      *
      * @param file the outer archive, which must exist and be readable
-     * @return an open source, mapped as a whole unless {@value #MMAP_PROPERTY} is {@code "index"} or
+     * @return an open source, mapped as a whole unless {@code micronaut.runner.mmap} is {@code "index"} or
      *         {@code "false"}
      * @throws IOException if the file cannot be opened or cannot be mapped
      */
@@ -331,7 +338,7 @@ public final class ArchiveSource implements AutoCloseable {
      *
      * @return the file length in bytes
      */
-    public long length() {
+    long length() {
         return length;
     }
 
@@ -361,7 +368,7 @@ public final class ArchiveSource implements AutoCloseable {
      * @return {@code true} in the {@code full} mode, and in the default mode until the archive's flag selects
      *         the {@code index} mode; {@code false} in the {@code index} and {@code false} modes
      */
-    public boolean mapped() {
+    boolean mapped() {
         return segment != null;
     }
 
@@ -371,7 +378,7 @@ public final class ArchiveSource implements AutoCloseable {
      * @return {@code true} in the {@code index} mode, whether {@value #MMAP_PROPERTY} or the archive's flag
      *         selected it
      */
-    public boolean indexOnly() {
+    boolean indexOnly() {
         return mode == MODE_INDEX;
     }
 
@@ -636,7 +643,7 @@ public final class ArchiveSource implements AutoCloseable {
      * @return the value, in {@code 0..255}
      * @throws IOException if the offset is outside the archive or the read fails
      */
-    public int u8(long offset) throws IOException {
+    int u8(long offset) throws IOException {
         checkRange(offset, 1);
         ByteBuffer b = view;
         if (b != null) {
@@ -656,7 +663,7 @@ public final class ArchiveSource implements AutoCloseable {
      * @return the value, in {@code 0..65535}
      * @throws IOException if the offset is outside the archive or the read fails
      */
-    public int u16(long offset) throws IOException {
+    int u16(long offset) throws IOException {
         checkRange(offset, 2);
         ByteBuffer b = view;
         if (b != null) {
@@ -677,7 +684,7 @@ public final class ArchiveSource implements AutoCloseable {
      * @return the raw 32 bits
      * @throws IOException if the offset is outside the archive or the read fails
      */
-    public int i32(long offset) throws IOException {
+    int i32(long offset) throws IOException {
         checkRange(offset, 4);
         ByteBuffer b = view;
         if (b != null) {
@@ -698,7 +705,7 @@ public final class ArchiveSource implements AutoCloseable {
      * @return the value, in {@code 0..4294967295}
      * @throws IOException if the offset is outside the archive or the read fails
      */
-    public long u32(long offset) throws IOException {
+    long u32(long offset) throws IOException {
         return i32(offset) & 0xFFFFFFFFL;
     }
 
@@ -710,7 +717,7 @@ public final class ArchiveSource implements AutoCloseable {
      * @return the value
      * @throws IOException if the offset is outside the archive or the read fails
      */
-    public long u64(long offset) throws IOException {
+    long u64(long offset) throws IOException {
         checkRange(offset, 8);
         ByteBuffer b = view;
         if (b != null) {
@@ -730,8 +737,7 @@ public final class ArchiveSource implements AutoCloseable {
      * a new heap array, and the buffer wraps that array, writable and with {@link ByteBuffer#hasArray() an
      * accessible array}, so that {@link ClassLoader} defines a class straight from it instead of copying it
      * again. Every call returns a fresh array that the caller owns, so writing to it changes no shared state.
-     * The class loader reads classes through {@link #borrow(long, int)} instead, which pools buffers in the
-     * {@code index} mode.
+     * The class loader reads classes through a pooled buffer instead in the {@code index} mode.
      *
      * <p>The returned buffer's byte order is the {@link ByteBuffer} default, big-endian; callers reading
      * little-endian structures out of it must set the order themselves.</p>
@@ -839,7 +845,7 @@ public final class ArchiveSource implements AutoCloseable {
      * <p>This is the class loading path for a compressed archive, so it allocates one array, borrows an
      * inflater from the pool and, in the mapped modes, feeds the inflater a direct buffer over the mapping
      * rather than copying the compressed bytes first. In the {@code index} mode the compressed bytes are read
-     * into a buffer {@link #borrow(long, int) borrowed} from the pool, or into a heap array when they are
+     * into a buffer borrowed from the pool, or into a heap array when they are
      * larger than a pooled buffer.</p>
      *
      * @param dataOffset       absolute offset of the entry data
@@ -938,7 +944,7 @@ public final class ArchiveSource implements AutoCloseable {
      * @throws IOException if the file is not a ZIP archive, carries no index, or the archive disagrees
      *                     with itself
      */
-    public long[] openIndex() throws IOException {
+    long[] openIndex() throws IOException {
         long endOfCentralDirectory = findEndOfCentralDirectory();
         long entries = u16(endOfCentralDirectory + 10);
         long directorySize = u32(endOfCentralDirectory + 12);
