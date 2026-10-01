@@ -472,8 +472,8 @@ final class ZipRepacker {
          * @param hadSignatureFiles whether the source carried signature files
          * @param droppedEntries    the names that were left out
          */
-        public RepackResult(List<ZipEntryInfo> entries, long length, boolean hadSignatureFiles,
-                            List<String> droppedEntries) {
+        RepackResult(List<ZipEntryInfo> entries, long length, boolean hadSignatureFiles,
+                     List<String> droppedEntries) {
             this(entries, length, hadSignatureFiles, droppedEntries, 0);
         }
     }
