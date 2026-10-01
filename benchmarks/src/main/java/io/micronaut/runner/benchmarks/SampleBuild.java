@@ -978,8 +978,9 @@ final class SampleBuild implements SampleSteps {
         EntryMode effectiveEntryMode = inspectEntryMode(output, spec.entryMode());
         inspectArchiveReads(output, jarSpec.archiveReads());
         int preloaded = inspectPreload(output, options.startupClasses());
-        int[] methods = nestedMethods(output);
-        if (compression == Compression.HYBRID && methods[1] == 0) {
+        // Counted only for HYBRID: reading every nested jar as a stream inflates each deflated entry it skips.
+        int[] methods = compression == Compression.HYBRID ? nestedMethods(output) : null;
+        if (methods != null && methods[1] == 0) {
             throw new IOException("HYBRID was requested, but " + output + " holds no deflated nested entry: the"
                     + " build fell back to STORED");
         }
@@ -997,8 +998,7 @@ final class SampleBuild implements SampleSteps {
                 + (options.startupClasses() == null ? ""
                         : preloadOff ? "; " + preloaded + " recorded startup classes first, not preloaded"
                         : "; " + preloaded + " recorded startup classes preloaded")
-                + (compression == Compression.HYBRID
-                        ? "; nested entries: " + methods[0] + " stored, " + methods[1] + " deflated" : "");
+                + (methods == null ? "" : "; nested entries: " + methods[0] + " stored, " + methods[1] + " deflated");
         return Variant.available(spec, command, artifacts, output, deploymentSize, effectiveEntryMode, buildNote,
                 List.of(output));
     }
