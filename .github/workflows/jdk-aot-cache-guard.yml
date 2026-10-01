@@ -2,8 +2,11 @@
 #
 # Trains and verifies the JDK AOT cache of benchmark-large with the interim Gradle plugin's
 # micronautRunnerJdkAotCache task, once per target, on the LTS, the newest GA and the early-access JDK, on Linux
-# and macOS. It times nothing: it catches a JDK build that stops caching Runner's classes, such as a 25u backport
-# of JDK-8380291, which would empty the single-JAR cache without a failure anywhere else.
+# and macOS, and runs the forked AotCacheBuilderTest on the same JDK. It times nothing: it catches a JDK build that
+# stops caching Runner's classes, which would empty the single-JAR cache without a failure anywhere else. The
+# single JAR is recorded with RunnerClassLoader's training-only file: code source (#158), which JDK-8380291 (JDK 27
+# and later) requires; a JDK that re-reads those sources when it creates the cache, or checks the code source at
+# run time, fails the singleJar step on every leg.
 #
 # It runs weekly, one hour after the benchmarks job, on demand, and on pull requests that change the guard or the
 # cache engine. If the interim plugins go away, the change that removes them moves this guard to a benchmarks task
@@ -25,6 +28,11 @@ on:
       - 'runner-build/src/main/java/io/micronaut/runner/build/AotLayout.java'
       - 'runner-build/src/main/java/io/micronaut/runner/build/AotTarget.java'
       - 'runner-build/src/main/java/io/micronaut/runner/build/training/**'
+      - 'runner-launcher/src/main/java/io/micronaut/runner/RunnerClassLoader.java'
+      - 'runner-launcher/src/main/java/io/micronaut/runner/Handlers.java'
+      # The forked test this guard runs on the matrix JDK, and the convention that hands it that JDK.
+      - 'runner-build/src/test/java/io/micronaut/runner/build/aotcache/**'
+      - 'buildSrc/src/main/groovy/io.micronaut.build.internal.runner-base.gradle'
 permissions:
   contents: read
 concurrency:
@@ -92,10 +100,9 @@ jobs:
           if [ -f "$report" ]; then cp "$report" guard-reports/layout.json; fi
           exit "$status"
 
-      # Enforced on the LTS only: JDK 27 and later do not cache RunnerClassLoader's classes (JDK-8380291), so there
-      # this step reports and warns until #158 makes it gating.
+      # Enforced on every leg: the recording reports file: code sources (#158), so JDK 27 and later cache
+      # RunnerClassLoader's classes too (JDK-8380291). It fails when the build warns that they were not cached.
       - name: "🧊 Train and verify the single-JAR cache"
-        continue-on-error: ${{ matrix.java != '25' }}
         run: |
           status=0
           ./gradlew -p test-suite/samples/benchmark-large --no-daemon \
@@ -108,18 +115,22 @@ jobs:
           report=test-suite/samples/benchmark-large/build/micronaut-runner/jdk-aot-cache/aot-report.json
           if [ -f "$report" ]; then cp "$report" guard-reports/singleJar.json; fi
           if [ "$status" -ne 0 ]; then
-            echo "::warning::The singleJar cache build failed on JDK ${{ matrix.java }}"
+            echo "::error::The singleJar cache build failed on JDK ${{ matrix.java }}"
             exit "$status"
           fi
-          # Half of the io.micronaut classes from the cache: a JDK that stops caching RunnerClassLoader's
-          # classes fails this on the LTS and warns on the newer JDKs.
+          # Half of the io.micronaut classes from the cache, and no warning that they were not: a JDK that stops
+          # caching RunnerClassLoader's classes fails this on every leg.
           if ! jq -e '.micronautFromCache * 2 >= .micronautLoaded' guard-reports/singleJar.json > /dev/null; then
-            echo "::warning::On JDK ${{ matrix.java }} the single-JAR cache served $(jq -r '"\(.micronautFromCache) of \(.micronautLoaded)"' guard-reports/singleJar.json) io.micronaut classes"
+            echo "::error::On JDK ${{ matrix.java }} the single-JAR cache served $(jq -r '"\(.micronautFromCache) of \(.micronautLoaded)"' guard-reports/singleJar.json) io.micronaut classes"
+            exit 1
+          fi
+          if jq -e '[.warnings[] | select(startswith("Fewer than half of the io.micronaut classes"))] | length > 0' guard-reports/singleJar.json > /dev/null; then
+            echo "::error::On JDK ${{ matrix.java }} the single-JAR build warned that RunnerClassLoader's classes were not cached"
             exit 1
           fi
 
-      # Enforced on every leg, including those where the step above only warns: the warning is what a plugin user
-      # sees, so it has to name JDK-8380291 exactly when fewer than half of the io.micronaut classes were cached.
+      # Runs even when the step above fails: the warning is what a plugin user sees, so it has to appear exactly
+      # when fewer than half of the io.micronaut classes were cached.
       - name: "🔎 Check the single-JAR warning"
         if: ${{ !cancelled() }}
         run: |
@@ -129,12 +140,20 @@ jobs:
             exit 0
           fi
           cached=$(jq '.micronautFromCache * 2 >= .micronautLoaded' "$report")
-          warned=$(jq '[.warnings[] | select(contains("JDK-8380291"))] | length > 0' "$report")
+          warned=$(jq '[.warnings[] | select(startswith("Fewer than half of the io.micronaut classes"))] | length > 0' "$report")
           if [ "$cached" = "$warned" ]; then
             echo "::error::On JDK ${{ matrix.java }} the single-JAR warning disagrees with the counts: half of the io.micronaut classes cached: $cached, warned: $warned"
             exit 1
           fi
           echo "Half of the io.micronaut classes cached: $cached, warned: $warned"
+
+      # The forked cache test, on the matrix JDK. On a JDK with the file: rule its negative control runs rather than
+      # skips, which proves that its single-JAR case would see the rule.
+      - name: "🧪 Run AotCacheBuilderTest on JDK ${{ matrix.java }}"
+        if: ${{ !cancelled() }}
+        run: |
+          ./gradlew :micronaut-runner-build:test --tests "*AotCacheBuilderTest" --no-daemon \
+            -Prunner.test.javaHome='${{ steps.jdk.outputs.path }}'
 
       - name: "📝 Summarize the reports"
         if: always()
@@ -152,6 +171,19 @@ jobs:
                 echo "| $target | | | | | | | no report | |"
               fi
             done
+            echo
+            xml=runner-build/build/test-results/test/TEST-io.micronaut.runner.build.aotcache.AotCacheBuilderTest.xml
+            if [ -f "$xml" ]; then
+              suite=$(grep -o '<testsuite [^>]*>' "$xml" | head -1)
+              attribute() { echo "$suite" | sed -n "s/.* $1=\"\([^\"]*\)\".*/\1/p"; }
+              control=ran
+              if grep -A1 'name="withoutTheTrainingModeAJdkWithTheFileRuleLeavesTheDependencyOut()"' "$xml" | grep -q '<skipped'; then
+                control=skipped
+              fi
+              echo "AotCacheBuilderTest: $(attribute tests) tests, $(attribute failures) failures, $(attribute errors) errors, $(attribute skipped) skipped; the file: rule's negative control $control."
+            else
+              echo "AotCacheBuilderTest: no result"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: "📤 Upload the reports"
@@ -161,6 +193,7 @@ jobs:
           name: jdk-aot-cache-guard-${{ matrix.os }}-${{ matrix.java }}
           path: |
             guard-reports/
+            runner-build/build/test-results/test/TEST-io.micronaut.runner.build.aotcache.AotCacheBuilderTest.xml
             test-suite/samples/benchmark-large/build/micronaut-runner/jdk-aot-cache/*.log
             test-suite/samples/benchmark-large/build/micronaut-runner/jdk-aot-cache/app.aot.properties
           if-no-files-found: warn

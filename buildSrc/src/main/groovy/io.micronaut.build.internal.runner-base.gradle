@@ -28,8 +28,10 @@ dependencies {
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
-    // Lets tests spawn `java -jar` with the exact JDK running the build (the CI matrix JDK).
-    systemProperty 'runner.test.javaHome', providers.systemProperty('java.home').get()
+    // Lets tests spawn `java -jar` with the exact JDK running the build (the CI matrix JDK), or with the JDK home
+    // -Prunner.test.javaHome names, as the JDK AOT cache guard does for the JDK it checks.
+    systemProperty 'runner.test.javaHome', providers.gradleProperty('runner.test.javaHome')
+            .orElse(providers.systemProperty('java.home')).get()
 }
 
 tasks.withType(Jar).configureEach {

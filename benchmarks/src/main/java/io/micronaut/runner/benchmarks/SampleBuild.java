@@ -376,13 +376,14 @@ final class SampleBuild implements SampleSteps {
             core(SHADOW, SHADOW_DESCRIPTION, (steps, rows) -> steps.shadow()),
             core(SHADOW_STORED, SHADOW_STORED_DESCRIPTION, (steps, rows) -> steps.shadowStored()),
             core(SHADOW_AOT, "The same Shadow jar with a verified JDK AOT cache",
-                    (steps, rows) -> steps.aotCache(rows.get(SHADOW), SHADOW_AOT)),
+                    (steps, rows) -> steps.aotCache(rows.get(SHADOW), SHADOW_AOT, AotCache.NO_TRAINING_ARGUMENTS)),
             core(RUNNER_STORED,
                     "Runner jar, nested dependencies re-packed uncompressed; plugin-default entry stub",
                     (steps, rows) -> steps.runnerJar(RUNNER_STORED, Compression.STORED, EntryMode.STUB,
                             RunnerJarOptions.DEFAULTS)),
             core(RUNNER_STORED_AOT, "The same default-entry Runner jar with a verified JDK AOT cache",
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED), RUNNER_STORED_AOT)),
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED), RUNNER_STORED_AOT,
+                            AotCache.RUNNER_SINGLE_JAR_TRAINING)),
             optIn(RUNNER_STORED_REFLECTION,
                     "Runner jar, nested dependencies re-packed uncompressed; reflection ablation",
                     (steps, rows) -> steps.runnerJar(RUNNER_STORED_REFLECTION, Compression.STORED,
@@ -390,17 +391,19 @@ final class SampleBuild implements SampleSteps {
             optIn(RUNNER_STORED_PRELOAD, RUNNER_STORED_PRELOAD_DESCRIPTION,
                     (steps, rows) -> steps.preloadingRunnerJar(rows.get(RUNNER_STORED))),
             optIn(RUNNER_STORED_PRELOAD_AOT, RUNNER_STORED_PRELOAD_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_PRELOAD), RUNNER_STORED_PRELOAD_AOT)),
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_PRELOAD), RUNNER_STORED_PRELOAD_AOT,
+                            AotCache.RUNNER_SINGLE_JAR_TRAINING)),
             optIn(RUNNER_STORED_POSITIONAL, RUNNER_STORED_POSITIONAL_DESCRIPTION,
                     (steps, rows) -> steps.runnerJar(RUNNER_STORED_POSITIONAL, Compression.STORED, EntryMode.STUB,
                             RunnerJarOptions.DEFAULTS.withArchiveReads(ArchiveReads.POSITIONAL))),
             optIn(RUNNER_STORED_POSITIONAL_AOT, RUNNER_STORED_POSITIONAL_AOT_DESCRIPTION,
                     (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_POSITIONAL),
-                            RUNNER_STORED_POSITIONAL_AOT)),
+                            RUNNER_STORED_POSITIONAL_AOT, AotCache.RUNNER_SINGLE_JAR_TRAINING)),
             optIn(RUNNER_STORED_JORAN, RUNNER_STORED_JORAN_DESCRIPTION,
                     (steps, rows) -> steps.joranControl(rows.get(RUNNER_STORED))),
             optIn(RUNNER_STORED_JORAN_AOT, RUNNER_STORED_JORAN_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_JORAN), RUNNER_STORED_JORAN_AOT)),
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_JORAN), RUNNER_STORED_JORAN_AOT,
+                            AotCache.RUNNER_SINGLE_JAR_TRAINING)),
             // The default strips local-variable tables; this control keeps them. Drop both rows once the default
             // has shipped for one release.
             optIn(RUNNER_STORED_KEEPDEBUG, RUNNER_STORED_KEEPDEBUG_DESCRIPTION,
@@ -408,14 +411,14 @@ final class SampleBuild implements SampleSteps {
                             RunnerJarOptions.DEFAULTS.withStripLocalVariables(false))),
             optIn(RUNNER_STORED_KEEPDEBUG_AOT, RUNNER_STORED_KEEPDEBUG_AOT_DESCRIPTION,
                     (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_KEEPDEBUG),
-                            RUNNER_STORED_KEEPDEBUG_AOT)),
+                            RUNNER_STORED_KEEPDEBUG_AOT, AotCache.RUNNER_SINGLE_JAR_TRAINING)),
             // Today's jar without the table: whatever else the builder defaults to, it has too.
             optIn(RUNNER_STORED_DYNAMIC_SERVICES, RUNNER_STORED_DYNAMIC_SERVICES_DESCRIPTION,
                     (steps, rows) -> steps.runnerJar(RUNNER_STORED_DYNAMIC_SERVICES, Compression.STORED,
                             EntryMode.STUB, RunnerJarOptions.DEFAULTS.withStaticServices(false))),
             optIn(RUNNER_STORED_DYNAMIC_SERVICES_AOT, RUNNER_STORED_DYNAMIC_SERVICES_AOT_DESCRIPTION,
                     (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_DYNAMIC_SERVICES),
-                            RUNNER_STORED_DYNAMIC_SERVICES_AOT)),
+                            RUNNER_STORED_DYNAMIC_SERVICES_AOT, AotCache.RUNNER_SINGLE_JAR_TRAINING)),
             // The default desugars lambdas; these controls keep every call site an invokedynamic, with everything
             // else at the defaults, stripping included. The third is the control's extracted layout, which the
             // JDK's own loader runs: there the JDK archives lambdas itself, so that pair should be neutral.
@@ -423,14 +426,16 @@ final class SampleBuild implements SampleSteps {
                     (steps, rows) -> steps.runnerJar(RUNNER_STORED_LAMBDAS, Compression.STORED, EntryMode.STUB,
                             RunnerJarOptions.DEFAULTS.withDesugarLambdas(false))),
             optIn(RUNNER_STORED_LAMBDAS_AOT, RUNNER_STORED_LAMBDAS_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_LAMBDAS), RUNNER_STORED_LAMBDAS_AOT)),
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_LAMBDAS), RUNNER_STORED_LAMBDAS_AOT,
+                            AotCache.RUNNER_SINGLE_JAR_TRAINING)),
             optIn(RUNNER_EXTRACTED_LAMBDAS_AOT, RUNNER_EXTRACTED_LAMBDAS_AOT_DESCRIPTION,
                     (steps, rows) -> steps.aotCache(steps.extractedLambdas(rows.get(RUNNER_STORED_LAMBDAS)),
-                            RUNNER_EXTRACTED_LAMBDAS_AOT)),
+                            RUNNER_EXTRACTED_LAMBDAS_AOT, AotCache.NO_TRAINING_ARGUMENTS)),
             optIn(RUNNER_STORED_PREFETCH, RUNNER_STORED_PREFETCH_DESCRIPTION,
                     (steps, rows) -> steps.prefetchCandidate(rows.get(RUNNER_STORED))),
             optIn(RUNNER_STORED_PREFETCH_AOT, RUNNER_STORED_PREFETCH_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_PREFETCH), RUNNER_STORED_PREFETCH_AOT)),
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_STORED_PREFETCH), RUNNER_STORED_PREFETCH_AOT,
+                            AotCache.RUNNER_SINGLE_JAR_TRAINING)),
             core(RUNNER_PRESERVE,
                     "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
                     (steps, rows) -> steps.runnerJar(RUNNER_PRESERVE, Compression.PRESERVE, EntryMode.STUB,
@@ -439,15 +444,18 @@ final class SampleBuild implements SampleSteps {
                     "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own loader",
                     (steps, rows) -> steps.extracted(rows.get(RUNNER_STORED))),
             core(RUNNER_EXTRACTED_AOT, "The same extracted layout with a verified JDK AOT cache",
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_EXTRACTED), RUNNER_EXTRACTED_AOT)),
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_EXTRACTED), RUNNER_EXTRACTED_AOT,
+                            AotCache.NO_TRAINING_ARGUMENTS)),
             // The Micronaut AOT rows. The two cached ones are opt-in: training two more caches is what they cost.
             core(SHADOW_MAOT, SHADOW_MAOT_DESCRIPTION, (steps, rows) -> steps.shadowMaot()),
             optIn(SHADOW_MAOT_AOT, SHADOW_MAOT_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(SHADOW_MAOT), SHADOW_MAOT_AOT)
+                    (steps, rows) -> steps.aotCache(rows.get(SHADOW_MAOT), SHADOW_MAOT_AOT,
+                                    AotCache.NO_TRAINING_ARGUMENTS)
                             .describedAs(SHADOW_MAOT_AOT_DESCRIPTION)),
             core(RUNNER_MAOT, RUNNER_MAOT_DESCRIPTION, (steps, rows) -> steps.runnerMaot()),
             optIn(RUNNER_MAOT_AOT, RUNNER_MAOT_AOT_DESCRIPTION,
-                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_MAOT), RUNNER_MAOT_AOT)
+                    (steps, rows) -> steps.aotCache(rows.get(RUNNER_MAOT), RUNNER_MAOT_AOT,
+                                    AotCache.RUNNER_SINGLE_JAR_TRAINING)
                             .describedAs(RUNNER_MAOT_AOT_DESCRIPTION
                                     + staticServicesNote(rows.get(RUNNER_MAOT).description()))));
 
@@ -691,8 +699,9 @@ final class SampleBuild implements SampleSteps {
     }
 
     @Override
-    public Variant aotCache(Variant source, String name) throws IOException, InterruptedException {
-        return AotCache.prepare(source, name, aotRequest(artifacts, mainClass, cpuLimit, log));
+    public Variant aotCache(Variant source, String name, List<String> trainingJvmArgs)
+            throws IOException, InterruptedException {
+        return AotCache.prepare(source, name, aotRequest(artifacts, mainClass, cpuLimit, log), trainingJvmArgs);
     }
 
     @Override

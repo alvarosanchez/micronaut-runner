@@ -94,6 +94,11 @@ every archive not packaged with the `definitionPrefetch` option.
 |`micronaut.runner.prefetch.trace`
 |`false`
 |Set to `true` to print to standard error whether the application context took the prefetched bean definitions.
+
+|`micronaut.runner.aot.training`
+|`false`
+|Only for the run that records an AOT cache of the single JAR (<<cdsAndAot>>). Classes then report the archive's
+`file:` URL as their code source, so JDK 27 and later cache them. The plugins set it. Never set it in production.
 |===
 
 == Exit codes

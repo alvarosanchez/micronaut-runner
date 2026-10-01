@@ -19,7 +19,8 @@ specification and implementation attributes are correct per package, including p
 sections that override the main attributes.
 * Sealed packages are enforced: loading a class into an already sealed package from a different JAR, or
 sealing a package that is already open, raises `SecurityException`.
-* Every class has a `ProtectionDomain` whose `CodeSource` location identifies the JAR it came from.
+* Every class has a `ProtectionDomain` whose `CodeSource` location identifies the JAR it came from, except in an
+AOT-cache training run with `micronaut.runner.aot.training=true`.
 * Resources resolve through ordinary `jar:file:` URLs, so `URL.openStream()`, `URLConnection` metadata and
 `JarURLConnection.getJarFile()` all work, which is what libraries that scan the classpath rely on.
 

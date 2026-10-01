@@ -235,6 +235,28 @@ class VariantSelectionTest {
                 List.copyOf(steps.calls.keySet()));
     }
 
+    /**
+     * The row table decides which caches train in the launcher's AOT training mode: every cache of a Runner single
+     * JAR, and none of a Shadow JAR or the extracted layout, whose classes the JDK's own loaders load.
+     */
+    @Test
+    void onlyTheCachesOfRunnerSingleJarsTrainInTheLaunchersTrainingMode() {
+        FakeSteps steps = new FakeSteps();
+        List<String> cached = SampleBuild.allVariantNames().stream().filter(name -> name.endsWith("-aot")).toList();
+
+        SampleBuild.variants(steps, cached, log());
+
+        Map<String, List<String>> expected = new LinkedHashMap<>();
+        for (String name : cached) {
+            boolean runnerSingleJar = name.startsWith("runner-") && !name.startsWith("runner-extracted");
+            expected.put(name, runnerSingleJar ? List.of("-Dmicronaut.runner.aot.training=true") : List.of());
+        }
+        assertEquals(expected, steps.trainingArguments);
+        assertEquals(List.of("shadow-aot", "runner-extracted-lambdas-aot", "runner-extracted-aot", "shadow-maot-aot"),
+                expected.entrySet().stream().filter(entry -> entry.getValue().isEmpty()).map(Map.Entry::getKey)
+                        .toList());
+    }
+
     @Test
     void aCachedMicronautAotRowBuildsItsUncachedTwinWithoutReportingIt() {
         FakeSteps steps = new FakeSteps() {
@@ -269,12 +291,12 @@ class VariantSelectionTest {
             }
 
             @Override
-            public Variant aotCache(Variant source, String name) throws IOException {
+            public Variant aotCache(Variant source, String name, List<String> trainingJvmArgs) throws IOException {
                 if (!source.available()) {
                     note("aotCache:" + source.name() + "->" + name);
                     throw new IOException("cannot train AOT cache because " + source.name() + " is unavailable");
                 }
-                return super.aotCache(source, name);
+                return super.aotCache(source, name, trainingJvmArgs);
             }
 
             @Override
@@ -383,6 +405,9 @@ class VariantSelectionTest {
 
         final Map<String, Integer> calls = new LinkedHashMap<>();
 
+        /** The training-only arguments each cached row was trained with. */
+        final Map<String, List<String>> trainingArguments = new LinkedHashMap<>();
+
         void note(String call) {
             calls.merge(call, 1, Integer::sum);
         }
@@ -440,8 +465,9 @@ class VariantSelectionTest {
         }
 
         @Override
-        public Variant aotCache(Variant source, String name) throws IOException {
+        public Variant aotCache(Variant source, String name, List<String> trainingJvmArgs) throws IOException {
             note("aotCache:" + source.name() + "->" + name);
+            trainingArguments.put(name, trainingJvmArgs);
             return variant(name);
         }
 

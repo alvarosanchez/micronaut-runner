@@ -67,6 +67,56 @@ class AotCacheTest {
                 "25.0.3+9", "HotSpot", "aarch64", List.of("-Xmx256m")));
     }
 
+    /**
+     * A Runner single-JAR row trains in the launcher's AOT training mode, which enters its identity so that caches
+     * trained without it are trained again once; the measured and verified launches never carry it, and the rows of
+     * a Shadow JAR or the extracted layout train and are identified exactly as before.
+     */
+    @Test
+    void onlyTheTrainingCommandOfARunnerSingleJarRowCarriesTheTrainingProperty(@TempDir Path directory)
+            throws Exception {
+        String java = SampleBuild.javaExecutable().toString();
+        Path runnerJar = Files.writeString(directory.resolve("runner-stored.jar"), "runner", StandardCharsets.UTF_8);
+        Path shadowJar = Files.writeString(directory.resolve("shadow.jar"), "shadow", StandardCharsets.UTF_8);
+        Variant runner = Variant.available("runner-stored", "fixture", List.of(java, "-jar", runnerJar.toString()),
+                directory, runnerJar);
+        Variant shadow = Variant.available("shadow", "fixture", List.of(java, "-jar", shadowJar.toString()),
+                directory, shadowJar);
+        AotCache.Request request = request(directory, new ByteArrayOutputStream());
+        List<String> creation = List.of("-XX:+UnlockDiagnosticVMOptions", "-XX:+AOTCompatibleOopCompression");
+        Path temporary = directory.resolve("app.training.aot");
+        Path cache = directory.resolve("app.aot");
+        Path classLog = directory.resolve("verification.log");
+        String property = "-Dmicronaut.runner.aot.training=true";
+        List<String> training = AotCache.RUNNER_SINGLE_JAR_TRAINING;
+        List<String> none = AotCache.NO_TRAINING_ARGUMENTS;
+
+        assertEquals(List.of(property), training);
+        List<String> trainingCommand = AotCache.trainingCommand(runner, temporary, creation, training);
+        assertEquals(List.of(java, creation.get(0), creation.get(1),
+                "-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize(), property, "-jar",
+                runnerJar.toString()), trainingCommand);
+        assertNotEquals(AotCache.identity(runner, request, creation, none),
+                AotCache.identity(runner, request, creation, training));
+        List<String> flags = new ArrayList<>(AotCache.identityFlags(runner, request, creation, none));
+        flags.add("training=" + property);
+        assertEquals(flags, AotCache.identityFlags(runner, request, creation, training));
+        for (List<String> command : List.of(AotCache.launchCommand(runner, cache),
+                AotCache.verificationCommand(runner, cache, classLog))) {
+            assertTrue(command.stream().noneMatch(argument -> argument.contains("micronaut.runner.aot.training")),
+                    command::toString);
+        }
+
+        // What a Shadow or extracted row hashed and ran before the training mode existed.
+        List<String> before = new ArrayList<>(List.of("AOTCacheOutput", "AOTCache"));
+        before.addAll(creation);
+        before.addAll(List.of("-jar", shadowJar.toString(), "readiness=/ready", "workload=/work"));
+        assertEquals(before, AotCache.identityFlags(shadow, request, creation, none));
+        assertEquals(List.of(java, creation.get(0), creation.get(1),
+                "-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize(), "-jar", shadowJar.toString()),
+                AotCache.trainingCommand(shadow, temporary, creation, none));
+    }
+
     @Test
     @Tag("benchmark-integration")
     void forkedLifecycleTrainsReusesAndProvesAnApplicationClassIsShared(@TempDir Path directory)
@@ -77,10 +127,10 @@ class AotCacheTest {
         ByteArrayOutputStream console = new ByteArrayOutputStream();
         AotCache.Request request = request(directory, console);
 
-        Variant cached = AotCache.prepare(plain, "runner-stored-aot", request);
+        Variant cached = AotCache.prepare(plain, "runner-stored-aot", request, AotCache.RUNNER_SINGLE_JAR_TRAINING);
         Path archive = cached.launchInputs().get(cached.launchInputs().size() - 1);
         long modified = Files.getLastModifiedTime(archive).toMillis();
-        Variant reused = AotCache.prepare(plain, "runner-stored-aot", request);
+        Variant reused = AotCache.prepare(plain, "runner-stored-aot", request, AotCache.RUNNER_SINGLE_JAR_TRAINING);
 
         assertTrue(cached.available());
         assertEquals(EntryMode.STUB, cached.effectiveEntryMode());
@@ -148,7 +198,7 @@ class AotCacheTest {
                 List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
         ByteArrayOutputStream console = new ByteArrayOutputStream();
         AotCache.Request request = request(directory, console);
-        Variant trained = AotCache.prepare(plain, "runner-stored-aot", request);
+        Variant trained = AotCache.prepare(plain, "runner-stored-aot", request, AotCache.RUNNER_SINGLE_JAR_TRAINING);
         Path archive = trained.launchInputs().getLast();
         FileTime trainedAt = Files.getLastModifiedTime(archive);
 
@@ -162,7 +212,7 @@ class AotCacheTest {
         // The next run rebuilds the same bytes: the pinned time makes the earlier training valid again.
         Variant rebuilt = SampleBuild.runnerJar(directory, "runner-stored", AotCacheFixture.class.getName(),
                 List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
-        Variant reused = AotCache.prepare(rebuilt, "runner-stored-aot", request);
+        Variant reused = AotCache.prepare(rebuilt, "runner-stored-aot", request, AotCache.RUNNER_SINGLE_JAR_TRAINING);
 
         String output = console.toString(StandardCharsets.UTF_8);
         assertTrue(output.contains("reusing AOT cache " + trained.cache().identity() + " for runner-stored-aot"),
@@ -190,7 +240,8 @@ class AotCacheTest {
         Variant exitsEarly = Variant.available("early", "exits before readiness",
                 List.of(SampleBuild.javaExecutable().toString(), "-version"), directory, empty);
         IOException failed = assertThrows(IOException.class,
-                () -> AotCache.prepare(exitsEarly, "early-aot", request(directory, new ByteArrayOutputStream())));
+                () -> AotCache.prepare(exitsEarly, "early-aot", request(directory, new ByteArrayOutputStream()),
+                        AotCache.NO_TRAINING_ARGUMENTS));
         assertTrue(failed.getMessage().contains("before readiness"), failed.getMessage());
     }
 

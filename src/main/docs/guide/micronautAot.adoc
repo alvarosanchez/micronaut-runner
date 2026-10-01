@@ -217,7 +217,8 @@ its application layer and no `logback.xml`. To deploy the plain application, pac
 == With the JDK AOT cache
 
 Train the cache on the archive that production launches: run the training script of <<cdsAndAot>>
-(<<trainingSnippet>>) with `JAR` set to the `optimizedMicronautRunnerJar` archive, then launch with
+(<<trainingSnippet>>) with `JAR` set to the `optimizedMicronautRunnerJar` archive, the way its
+<<aotSingleJar,single-JAR section>> runs it, then launch with
 `java -XX:AOTCache=app.aot -jar my-app-0.1-all-optimized.jar`, adding `-XX:AOTMode=on` when the application must not
 start without its cache. A cache trained on `-all.jar` does not fit `-all-optimized.jar`.
 
@@ -226,6 +227,7 @@ start without its cache. A cache trained on `-all.jar` does not fit `-all-optimi
 Without a JDK cache, yes: on `benchmark-large` with JDK 25, `-all-optimized.jar` was ready about 78 ms before Micronaut
 AOT's `optimizedJitJarAll`, and even Runner's plain `-all.jar` was about 58 ms ahead of it. With a JDK AOT cache on
 both sides, no: the single `-all-optimized.jar` was about 23 ms behind `optimizedJitJarAll` on JDK 25, and on JDK 27 the
-cache stores none of a single Runner JAR's application classes (<<cdsAndAot>>). <<micronautAotResults>> has the
-numbers, the sizes and the second session. They were taken before Runner desugared lambdas by default
-(<<desugaredLambdas>>), which made the cached single JAR faster, and have not been measured again since.
+cache stores a single Runner JAR's application classes only when it is trained as the
+<<aotSingleJar,single-JAR section>> of <<cdsAndAot>> describes. <<micronautAotResults>> has the numbers, the sizes and
+the second session. They were taken before Runner desugared lambdas by default (<<desugaredLambdas>>), which made the
+cached single JAR faster, and have not been measured again since.

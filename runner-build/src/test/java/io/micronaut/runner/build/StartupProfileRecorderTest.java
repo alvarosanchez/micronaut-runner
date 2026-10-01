@@ -247,7 +247,8 @@ class StartupProfileRecorderTest {
                     () -> StartupProfileRecorder.render(empty, RERECORD, "25", TrainingSettings.defaults()));
             assertTrue(failure.getMessage().contains("no class that RunnerClassLoader defined")
                     && failure.getMessage().contains("class cache")
-                    && failure.getMessage().contains("jvmArgs"), failure.getMessage());
+                    && failure.getMessage().contains("jvmArgs")
+                    && failure.getMessage().contains("-Dmicronaut.runner.aot.training"), failure.getMessage());
         }
     }
 

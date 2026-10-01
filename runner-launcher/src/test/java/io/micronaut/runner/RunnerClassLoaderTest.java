@@ -15,9 +15,11 @@
  */
 package io.micronaut.runner;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.io.RandomAccessFile;
 import java.lang.classfile.ClassFile;
 import java.lang.constant.ClassDesc;
@@ -107,6 +109,8 @@ class RunnerClassLoaderTest {
     private static final long INTERRUPT_SPIN_NANOS = 20_000;
     private static final String AWKWARD = "MICRONAUT-INF/lib/a b-é.jar";
     private static final String AWKWARD_CLASS = "org.awkward.Awkward";
+    /** A parameter that stands for a system property that is not set. */
+    private static final String ABSENT = "<absent>";
 
     private static File archive;
     private static File alphaClasspathJar;
@@ -241,6 +245,7 @@ class RunnerClassLoaderTest {
     @AfterEach
     void clearProperties() {
         System.clearProperty(RunnerClassLoader.VERIFY_PROPERTY);
+        System.clearProperty(RunnerClassLoader.AOT_TRAINING_PROPERTY);
         System.clearProperty(ArchiveSource.MMAP_PROPERTY);
         System.clearProperty("jdk.util.jar.enableMultiRelease");
     }
@@ -726,21 +731,29 @@ class RunnerClassLoaderTest {
         }
     }
 
-    @Test
-    void rejectsAClassJoiningASealedPackageFromAnotherJar() throws Exception {
+    /** In both code-source modes: the AOT training mode reports one location for every jar, not one seal base. */
+    @ParameterizedTest
+    @ValueSource(strings = {"false", "true"})
+    void rejectsAClassJoiningASealedPackageFromAnotherJar(String aotTraining) throws Exception {
         assumeHandlersRegistered();
+        System.setProperty(RunnerClassLoader.AOT_TRAINING_PROPERTY, aotTraining);
         RunnerClassLoader loader = newLoader();
 
-        assertTrue(loader.loadClass("org.sealed.First").getPackage().isSealed());
+        Class<?> first = loader.loadClass("org.sealed.First");
+        assertTrue(first.getPackage().isSealed());
+        assertTrue(first.getPackage().isSealed(Handlers.codeSourceUrlFor(jarId(SEALED))),
+                "the seal base is the jar's own jar: URL in both modes");
 
         SecurityException failure = assertThrows(SecurityException.class,
                 () -> loader.loadClass("org.sealed.Second"));
         assertEquals("sealing violation: package org.sealed is sealed", failure.getMessage());
     }
 
-    @Test
-    void rejectsSealingAPackageThatIsAlreadyLoaded() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"false", "true"})
+    void rejectsSealingAPackageThatIsAlreadyLoaded(String aotTraining) throws Exception {
         assumeHandlersRegistered();
+        System.setProperty(RunnerClassLoader.AOT_TRAINING_PROPERTY, aotTraining);
         RunnerClassLoader loader = newLoader();
 
         assertFalse(loader.loadClass("org.unsealed.First").getPackage().isSealed());
@@ -766,6 +779,84 @@ class RunnerClassLoaderTest {
         assertNotNull(first.getCodeSource().getLocation());
         assertNull(first.getCodeSource().getCodeSigners(), "runner jars are never verified at runtime");
         assertSame(loader, first.getClassLoader());
+    }
+
+    /** Only the exact value {@code true} turns the AOT training mode on. */
+    @ParameterizedTest
+    @ValueSource(strings = {ABSENT, "", "false", "TRUE", "yes"})
+    void withoutTheAotTrainingModeEveryClassReportsItsJarsJarUrl(String value) throws Exception {
+        assumeHandlersRegistered();
+        if (!ABSENT.equals(value)) {
+            System.setProperty(RunnerClassLoader.AOT_TRAINING_PROPERTY, value);
+        }
+        RunnerClassLoader loader = newLoader();
+
+        java.security.ProtectionDomain application = loader.loadClass("org.example.App").getProtectionDomain();
+        URL dependency = location(loader.loadClass("org.alpha.Alpha"));
+
+        assertEquals("jar:" + archive.toURI() + "!/" + IndexFormat.CLASSES_PREFIX,
+                application.getCodeSource().getLocation().toString(), "the form HandlerTest pins");
+        assertEquals(Handlers.codeSourceUrlFor(IndexFormat.APPLICATION_JAR_ID).toString(),
+                application.getCodeSource().getLocation().toString());
+        assertEquals("jar:" + archive.toURI() + "!/" + ALPHA + "!/", dependency.toString());
+    }
+
+    @Test
+    void theAotTrainingModeReportsTheArchivesFileUrlForEveryJar() throws Exception {
+        assumeHandlersRegistered();
+        System.setProperty(RunnerClassLoader.AOT_TRAINING_PROPERTY, "true");
+        RunnerClassLoader loader = newLoader();
+
+        java.security.ProtectionDomain first = loader.loadClass("org.example.App").getProtectionDomain();
+        java.security.ProtectionDomain second = loader.loadClass("org.example.Two").getProtectionDomain();
+        java.security.ProtectionDomain other = loader.loadClass("org.alpha.Alpha").getProtectionDomain();
+        URL archiveUrl = Handlers.jarFileUrlFor(IndexFormat.APPLICATION_JAR_ID);
+
+        assertTrue(archiveUrl.toString().startsWith("file:"), archiveUrl::toString);
+        assertEquals(archiveUrl, first.getCodeSource().getLocation());
+        assertEquals(archiveUrl.toString(), first.getCodeSource().getLocation().toString());
+        assertEquals(archiveUrl.toString(), other.getCodeSource().getLocation().toString(),
+                "a dependency reports the outer archive too");
+        assertEquals(archiveUrl.toString(), location(loader.loadClass(AWKWARD_CLASS)).toString());
+        assertSame(first, second, "still one domain per jar, not one per class");
+        assertNotSame(first, other, "still one domain per jar, not one for the archive");
+        assertNull(first.getCodeSource().getCodeSigners());
+        assertSame(loader, other.getClassLoader());
+    }
+
+    @Test
+    void theAotTrainingPropertyIsReadOnceWhenTheLoaderIsCreated() throws Exception {
+        assumeHandlersRegistered();
+        RunnerClassLoader production = newLoader();
+        System.setProperty(RunnerClassLoader.AOT_TRAINING_PROPERTY, "true");
+        RunnerClassLoader training = newLoader();
+        System.clearProperty(RunnerClassLoader.AOT_TRAINING_PROPERTY);
+
+        assertTrue(location(production.loadClass("org.example.App")).toString().startsWith("jar:file:"),
+                "setting the property after the loader was created changes nothing");
+        assertTrue(location(training.loadClass("org.example.App")).toString().startsWith("file:"),
+                "clearing it afterwards changes nothing either");
+    }
+
+    @Test
+    void theAotTrainingModeSaysSoOnStandardErrorAndProductionSaysNothing() {
+        assumeHandlersRegistered();
+        PrintStream original = System.err;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            newLoader();
+            assertEquals("", captured.toString(StandardCharsets.UTF_8), "a production loader prints nothing");
+            System.setProperty(RunnerClassLoader.AOT_TRAINING_PROPERTY, "true");
+            newLoader();
+        } finally {
+            System.setErr(original);
+        }
+        String line = captured.toString(StandardCharsets.UTF_8);
+        assertEquals(1, line.lines().count(), line);
+        assertTrue(line.startsWith("micronaut-runner: AOT training mode (micronaut.runner.aot.training=true)"), line);
+        assertTrue(line.contains(Handlers.jarFileUrlFor(IndexFormat.APPLICATION_JAR_ID).toString())
+                && line.contains("never set this in production"), line);
     }
 
     @Test
@@ -1187,6 +1278,19 @@ class RunnerClassLoaderTest {
 
     private static RunnerClassLoader newLoader() {
         return new RunnerClassLoader(index, source, ClassLoader.getPlatformClassLoader());
+    }
+
+    private static URL location(Class<?> type) {
+        return type.getProtectionDomain().getCodeSource().getLocation();
+    }
+
+    private static int jarId(String name) {
+        for (int jarId = 0; jarId < index.jarCount(); jarId++) {
+            if (name.equals(index.jarName(jarId))) {
+                return jarId;
+            }
+        }
+        throw new AssertionError("no jar " + name + " in the archive");
     }
 
     private static void assumeHandlersRegistered() {

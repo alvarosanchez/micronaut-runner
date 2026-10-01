@@ -73,6 +73,15 @@ import java.util.zip.CRC32;
  * and read without it: every class definition acquires the monitor for the domain before it reads them,
  * which orders the read after the write. The boot fast path defines nothing, so it takes no lock.</p>
  *
+ * <h2>Code sources</h2>
+ * <p>Every class reports the {@code jar:} URL of the jar it came from as its code-source location, and that
+ * URL is also the seal base of the packages the jar seals. The one exception is the run that records a JDK AOT
+ * cache of the single runner jar, with {@value #AOT_TRAINING_PROPERTY} set to {@code true}: JDK 27 and later
+ * (JDK-8380291) store a class of a custom loader in the cache only when the training run reports a
+ * {@code file:} code source, so in that run every class reports the outer archive's {@code file:} URL instead.
+ * The cache is used with the {@code jar:} code sources of a production launch, which never sets the property:
+ * the JDK matches a cached class by name, size and CRC-32 and gives it the domain this loader passes.</p>
+ *
  * @since 1.0
  */
 public final class RunnerClassLoader extends ClassLoader {
@@ -97,6 +106,24 @@ public final class RunnerClassLoader extends ClassLoader {
      */
     public static final String VERIFY_PROPERTY = "micronaut.runner.verify";
 
+    /**
+     * System property that only the run recording a JDK AOT cache of the single runner jar sets. When it is
+     * exactly {@code "true"}, every class reports the outer archive's {@code file:} URL as its code-source
+     * location, instead of the {@code jar:} URL of the jar it came from.
+     *
+     * <p>It exists because JDK 27 and later (JDK-8380291) leave every class of a custom loader whose code
+     * source does not start with {@code file:} out of the cache the training run records, and that would be
+     * every class this loader defines. The check runs only while the cache is recorded: a production launch
+     * reports the {@code jar:} code sources and still gets the cached classes, so production gains nothing from
+     * the property and must never set it. Sealing is unaffected, because the seal base stays the jar's own
+     * {@code jar:} URL. On JDKs without the rule it changes nothing that is cached; it is honoured on every JDK,
+     * so that a backport of the rule is covered too.</p>
+     *
+     * <p>The property is read once, when the loader is created, which then prints one line to standard error
+     * saying that the training mode is on.</p>
+     */
+    public static final String AOT_TRAINING_PROPERTY = "micronaut.runner.aot.training";
+
     /** Name reported by {@link ClassLoader#getName()}, which shows up in stack traces. */
     private static final String LOADER_NAME = "micronaut-runner";
 
@@ -117,9 +144,15 @@ public final class RunnerClassLoader extends ClassLoader {
     private final HashMap<String, Module> parentModules;
     private final boolean bootDirect;
     private final ProtectionDomain[] domains;
+    /** The seal base of each jar, its {@code jar:} code-source URL, filled together with its domain. */
+    private final URL[] sealBases;
     private final String[][] jarAttributes;
     private final int multiReleaseVersion;
     private final boolean verify;
+    /** Whether {@value #AOT_TRAINING_PROPERTY} was {@code "true"} when the loader was created. */
+    private final boolean aotTraining;
+    /** The outer archive's {@code file:} URL, which every class reports in the AOT training mode, else null. */
+    private final URL trainingLocation;
 
     /**
      * Creates a loader over an open archive.
@@ -127,8 +160,10 @@ public final class RunnerClassLoader extends ClassLoader {
      * <p>Everything that does not depend on the classes being loaded is computed here, once: the
      * multi-release feature version, the modules of the parent-visible packages, and whether boot-module
      * packages may bypass the parent. Whether classes and resources are verified is the index's setting,
-     * read when the index was opened; see {@link #VERIFY_PROPERTY}. The archive and the index are
-     * <em>not</em> owned by the loader and are never closed by it.</p>
+     * read when the index was opened; see {@link #VERIFY_PROPERTY}. {@value #AOT_TRAINING_PROPERTY} is read
+     * here, and when it is on, the archive's {@code file:} URL is taken from {@link Handlers} and one line
+     * saying so goes to standard error. The archive and the index are <em>not</em> owned by the loader and are
+     * never closed by it.</p>
      *
      * @param index  the index of the archive, already validated
      * @param source the open archive the index describes
@@ -144,9 +179,19 @@ public final class RunnerClassLoader extends ClassLoader {
         this.parentModules = parentVisibleModules();
         this.bootDirect = isBuiltinLoader(parent);
         this.domains = new ProtectionDomain[index.jarCount()];
+        this.sealBases = new URL[index.jarCount()];
         this.jarAttributes = new String[index.jarCount()][];
         this.multiReleaseVersion = Index.effectiveMultiReleaseVersion();
         this.verify = index.verifies();
+        this.aotTraining = "true".equals(System.getProperty(AOT_TRAINING_PROPERTY));
+        if (aotTraining) {
+            this.trainingLocation = Handlers.jarFileUrlFor(IndexFormat.APPLICATION_JAR_ID);
+            System.err.println("micronaut-runner: AOT training mode (" + AOT_TRAINING_PROPERTY + "=true): classes"
+                    + " report " + (trainingLocation == null ? "no location" : trainingLocation.toString())
+                    + " as their code source; never set this in production");
+        } else {
+            this.trainingLocation = null;
+        }
     }
 
     /**
@@ -635,7 +680,7 @@ public final class RunnerClassLoader extends ClassLoader {
                     + " bytes, which is larger than a class file can be");
         }
         ProtectionDomain domain = protectionDomain(jarId);
-        definePackageOf(packageName, jarId, domain);
+        definePackageOf(packageName, jarId);
         int length = (int) size;
         if (index.entryMethod(record) == IndexFormat.METHOD_STORED) {
             ByteBuffer content = source.borrow(index.entryDataOffset(record), length);
@@ -681,19 +726,20 @@ public final class RunnerClassLoader extends ClassLoader {
      * {@code java.net.URLClassLoader} enforces it: a class from a different code source may not join a
      * sealed package, and a package that is already defined unsealed may not be sealed afterwards.</p>
      *
-     * <p>The seal base is the jar's code source location, the one URL that was created for the jar's
-     * protection domain, so sealing costs no extra URL and a sealed package's base is exactly the
-     * location every class of that jar reports.</p>
+     * <p>The seal base is the jar's own {@code jar:} URL, which {@link #protectionDomain(int)} keeps next to
+     * the domain. Outside the AOT training mode it is the very URL of the domain's code source, so sealing
+     * costs no extra URL and a sealed package's base is exactly the location every class of that jar reports.
+     * In the training mode every jar's domain reports the same {@code file:} URL, and the seal base still
+     * tells the jars apart, so that a class of one jar cannot join a package another jar seals.</p>
      *
      * <p>The common case is settled first: a package that is already defined and unsealed, joined by a
      * class from a jar that has no package sections and is not sealed by default, can raise no sealing
      * violation, so nothing else is looked up for it.</p>
      *
      * @param packageName the package of the class being defined, or {@code null} for the unnamed package
-     * @param jarId       the jar the class comes from
-     * @param domain      the protection domain of that jar
+     * @param jarId       the jar the class comes from, whose {@link #protectionDomain(int)} has been created
      */
-    private void definePackageOf(String packageName, int jarId, ProtectionDomain domain) {
+    private void definePackageOf(String packageName, int jarId) {
         if (packageName == null) {
             return;
         }
@@ -708,7 +754,8 @@ public final class RunnerClassLoader extends ClassLoader {
         if (section != IndexFormat.NO_INDEX && index.packageSealedSpecified(section)) {
             sealed = index.packageSealedValue(section);
         }
-        URL base = domain.getCodeSource() == null ? null : domain.getCodeSource().getLocation();
+        // Written with the domain by protectionDomain, which every definition calls first; see its Javadoc.
+        URL base = sealBases[jarId];
         if (defined != null) {
             checkSealing(defined, packageName, base, sealed);
             return;
@@ -773,13 +820,21 @@ public final class RunnerClassLoader extends ClassLoader {
      * only while the domain is created, never while a class is defined.</p>
      *
      * <p>The same block decodes the jar's six manifest main attributes into {@code jarAttributes}, once per
-     * jar rather than once per package, and every package of the jar then starts from those strings. They
-     * are read later without the monitor, and that read is safely published: a class definition always
-     * calls this method before it defines a package, so the reading thread acquires the monitor after the
-     * thread that wrote the attributes released it, or wrote them itself.</p>
+     * jar rather than once per package, and every package of the jar then starts from those strings, and it
+     * records the jar's seal base in {@code sealBases}. Both are read later without the monitor, and that read
+     * is safely published: a class definition always calls this method before it defines a package, so the
+     * reading thread acquires the monitor after the thread that wrote them released it, or wrote them
+     * itself.</p>
+     *
+     * <p>The code-source location is the jar's {@code jar:} URL, which is also its seal base. In the AOT
+     * training mode ({@value #AOT_TRAINING_PROPERTY}) it is the outer archive's {@code file:} URL instead, the
+     * same for every jar, because JDK 27 and later (JDK-8380291) record a class of a custom loader in an AOT
+     * cache only from a {@code file:} code source. Production is unaffected: it never sets the property, and
+     * the JDK hands a cached class the domain this loader passes at run time. The seal base stays the jar's
+     * {@code jar:} URL in both modes.</p>
      *
      * @param jarId the jar index
-     * @return the domain, whose code source location identifies the jar
+     * @return the domain, whose code source location identifies the jar, or the archive in the training mode
      */
     private ProtectionDomain protectionDomain(int jarId) {
         synchronized (domains) {
@@ -789,7 +844,10 @@ public final class RunnerClassLoader extends ClassLoader {
                     index.jarSpecTitle(jarId), index.jarSpecVersion(jarId), index.jarSpecVendor(jarId),
                     index.jarImplTitle(jarId), index.jarImplVersion(jarId), index.jarImplVendor(jarId)
                 };
-                CodeSource code = new CodeSource(Handlers.codeSourceUrlFor(jarId), (CodeSigner[]) null);
+                URL jarUrl = Handlers.codeSourceUrlFor(jarId);
+                sealBases[jarId] = jarUrl;
+                URL location = aotTraining ? trainingLocation : jarUrl;
+                CodeSource code = new CodeSource(location, (CodeSigner[]) null);
                 domain = new ProtectionDomain(code, null, this, null);
                 domains[jarId] = domain;
             }

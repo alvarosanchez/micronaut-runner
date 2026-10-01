@@ -1,17 +1,17 @@
-== What JDK 25 and 26 cache for a Runner JAR
+== What the JDK caches for a Runner JAR
 
-On JDK 25 the JDK AOT cache and dynamic Class Data Sharing (CDS) both apply to the unchanged single Runner JAR, and on
-JDK 26 the AOT cache does. JDK classes, and the launcher classes that the JDK's built-in application class loader loads
+On JDK 25 to 27 the JDK AOT cache applies to the unchanged single Runner JAR, and on JDK 25 and 27 dynamic Class Data
+Sharing (CDS) does too. JDK classes, and the launcher classes that the JDK's built-in application class loader loads
 from the outer JAR, get full AOT loading and linking. Classes that Runner's own loader defines are stored as
 _unregistered_ classes: when the loader later defines a class whose name, class-file size and CRC-32 match a stored one,
 HotSpot reuses the pre-parsed and pre-verified copy instead of parsing the bytes again. Those classes are not
 AOT-linked, and the lambdas they spin at run time are not archived, which is why Runner writes lambda classes when it
-packages the JAR (<<lambdaGap>>). The extracted layout runs entirely on the built-in
-loader, so its application classes are AOT-linked too. JDK 27's AOT cache stores only classes from `file:` code sources
-(https://bugs.openjdk.org/browse/JDK-8380291[JDK-8380291]), so it stores none of the single JAR's application classes
-(dynamic CDS still does). The single JAR's cache, trained by hand or with `jdkAotCache.target = 'singleJar'`, is worth
-having on JDK 25 and 26 only; the extracted layout's cache (<<aotLayout>>) keeps its value on JDK 25 and 27 (measured),
-and a weekly CI job checks each newer JDK.
+packages the JAR (<<lambdaGap>>). The extracted layout runs entirely on the built-in loader, so its application classes
+are AOT-linked too. JDK 27's AOT cache stores a custom loader's classes only when the training run reports `file:` code
+sources (https://bugs.openjdk.org/browse/JDK-8380291[JDK-8380291]). The single JAR does that when trained with
+`-Dmicronaut.runner.aot.training=true`, which the plugins set, and the layout needs nothing. The single JAR's cache,
+trained by hand or with `jdkAotCache.target = 'singleJar'`, keeps its value on JDK 25 and 27 (measured), trained with
+the property; the extracted layout's cache (<<aotLayout>>) does too, and a weekly CI job checks each newer JDK.
 
 [[aotLayout]]
 == Recommended: the extracted layout with the AOT cache
@@ -94,8 +94,9 @@ and later (on 25.0.0 to 25.0.3 the training stop ends it, which on Windows needs
 endpoint), and create the cache in a separate launch, with the JDK 27 creation flags below when the JDK has them.
 `jdkAotCache.jvmArgs` (Maven: `micronaut.runner.jdkAotCache.jvmArgs`) go on every launch of the cache, the recording,
 the creation and the checks, and into `app.jvmopts`, so the flags the cache depends on are the same in training and
-production; `training.jvmArgs` belong to the startup profile only. The other training settings are in
-<<trainingSettings>>.
+production; `training.jvmArgs` belong to the startup profile only. With `target = 'singleJar'` the recording alone also
+runs with `-Dmicronaut.runner.aot.training=true`, which `jdkAotCache.jvmArgs` must not name. The other training
+settings are in <<trainingSettings>>.
 
 *What the build checks* before it keeps the cache, as `aot-report.json` records:
 
@@ -157,6 +158,7 @@ RUN bash train.sh && rm train.sh \
 CMD ["java", "-XX:AOTCache=app.aot", "-jar", "my-app-0.1-all.jar"]
 ----
 
+[[aotCreationFlags]]
 *JDK 27 and later.* Cache creation needs `-XX:+UnlockDiagnosticVMOptions -XX:+AOTCompatibleOopCompression`; without it,
 strict launches fail intermittently with `incompatible CompressedOops::base()`, depending on where ASLR puts the heap.
 The JVM applies `JDK_AOT_VM_OPTIONS` only to cache creation, so the script stays unchanged (in the Dockerfile, the same
@@ -192,20 +194,27 @@ cache. The JDK's class loader replaces `RunnerClassLoader` and resolves classes 
 `META-INF/micronaut`, a dependency's own manifest `Class-Path` becomes active, and the code sources are the `lib/` JARs'
 `file:` URLs.
 
-== Single-file option on JDK 25 and 26: the AOT cache on the single JAR
+[[aotSingleJar]]
+== Single-file option: the AOT cache on the single JAR
 
 <<preload,Preloading the recorded startup classes>> complements a cache: its gain is in launches without one. Build
 the JAR with the list first, then train the cache on that JAR.
 
-Run the training script (<<trainingSnippet>>) with `JAR` at the path production launches, then
+Run the training script (<<trainingSnippet>>) with `JAR` at the path production launches, on every JDK as
+`JDK_JAVA_OPTIONS='-Dmicronaut.runner.aot.training=true' bash train.sh`, with
+<<aotCreationFlags,JDK 27's creation-flag setting>> in front of it on JDK 27; in a Dockerfile both assignments go in
+front of `bash train.sh` in the `RUN` step, never in `ENV`. Production launches unchanged, with
 `java -XX:AOTCache=app.aot -jar my-app-0.1-all.jar`. With the build plugins, `jdkAotCache.target = 'singleJar'`
 (<<aotLayout>>) trains and checks it on a copy of the Runner JAR that `micronautRunnerJar` built, with its committed
 startup profile, so the cache also holds what the preload loads. On `benchmark-large` with JDK 25.0.4.1 this was ready
 37.5 ms sooner than explicit CDS (95% CI 32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS, measured before
 the static service table (<<staticServices>>). With the table it was 25.6 to 32.4 ms later than the extracted layout and
-16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <<aotLayout>>). On JDK 27 (build 27) it
-caches no application classes and, before the table, was 173.5 ms behind Shadow's (95% CI 169.7 to 179.8 ms, 20
-pairs): a single file there uses CDS.
+16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <<aotLayout>>). On JDK 27 (build 27),
+with lambdas desugared (<<lambdaGap>>) and trained with the property, it served 1,838 of 1,844 non-lambda
+`io.micronaut` classes from the cache before the first request (13 of 1,923 without it) and was ready 107 to 109 ms
+sooner than the same JAR trained without it, at the same 135 MiB maximum RSS. It was level with Shadow (1.7 to 6.2 ms
+ahead, one of three intervals below zero) and 7 to 9 ms behind the extracted layout, each with its AOT cache (three runs
+of 20 pairs), so the layout (<<aotLayout>>) stays the faster option.
 
 [[lambdaGap]]
 === Closing the lambda gap on the single JAR
@@ -216,11 +225,11 @@ says. So Runner desugars lambdas when it packages (<<desugaredLambdas>>), on by 
 ordinary classes, and the cache holds them. On `benchmark-large` with JDK 25.0.4.1 (30 pairs), desugaring made the
 single JAR 38.0 ms faster with its AOT cache (95% CI 33.9 to 41.6 ms) and 38.9 ms faster without one (95% CI 30.2 to
 47.3 ms). With its cache it was then 16.0 ms ahead of Shadow's (95% CI 11.1 to 22.7 ms), at 144.4 MiB maximum RSS
-against Shadow's 133.6 MiB. The single-JAR figures above were taken before lambdas were desugared. The cached gain
-holds for JDK 25 and 26; on JDK 27 the single JAR's cache holds no application class (see the first section), and the
-extracted layout is the cached deployment. What is left of the cached difference: the 29 sites still excluded (none on
-this sample's startup path), about 40 string concatenation sites, the per-class cost of reusing unregistered classes,
-and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT cache
+against Shadow's 133.6 MiB. The JDK 25 single-JAR figures above were taken before lambdas were desugared. On JDK 27
+(build 27), with the cache trained with the property (<<aotSingleJar>>), desugaring made the single JAR 36.5 to 38.7 ms
+faster with its AOT cache (three runs of 20 pairs). What is left of the cached difference: the 29 sites still excluded
+(none on this sample's startup path), about 40 string concatenation sites, the per-class cost of reusing unregistered
+classes, and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT cache
 remains the parity option, with Shadow's RSS.
 
 == Zero-pipeline option: `-XX:+AutoCreateSharedArchive`
@@ -236,7 +245,9 @@ concurrent instances must not write one path; and, being dynamic CDS, it is slow
 In the training script, use `CACHE=app.jsa` and `-XX:ArchiveClassesAtExit="$CACHE"` instead of
 `-XX:AOTCacheOutput="$CACHE"`; nothing else changes. Run with `-XX:SharedArchiveFile=app.jsa`, and `-Xshare:on` to
 require it. On `benchmark-large` with JDK 25.0.4.1 its archive was 31.4 MB against the AOT cache's 49.5 MB, for 37.5 ms
-later readiness and about 15 MiB more RSS. On JDK 27 it is the single-file cache that still stores application classes.
+later readiness and about 15 MiB more RSS. On JDK 27 (build 27) the single JAR's AOT cache, trained with the property
+(<<aotSingleJar>>), was ready 27 to 32 ms sooner than its dynamic CDS archive, at 7 MiB less maximum RSS (three runs
+of 20 pairs, lambdas desugared).
 
 == Verifying that it worked
 

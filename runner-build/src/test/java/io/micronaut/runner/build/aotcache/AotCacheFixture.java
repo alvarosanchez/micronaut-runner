@@ -29,9 +29,13 @@ import java.nio.charset.StandardCharsets;
  * from its one dependency, {@link AotCacheFixtureLibrary}, and exits with status 0 on {@code POST /stop}.
  *
  * <p>The test packs this class into the application layer of a Runner JAR and the library into a nested JAR. It
- * halts itself after three minutes, so a test that fails to reap it leaves nothing behind for long.</p>
+ * prints the code-source location of the library's class, and halts itself after three minutes, so a test that
+ * fails to reap it leaves nothing behind for long.</p>
  */
 public final class AotCacheFixture {
+
+    /** What precedes the library class's code-source location on standard output. */
+    public static final String CODE_SOURCE = "AOT CACHE FIXTURE dependency code source: ";
 
     private AotCacheFixture() {
     }
@@ -66,6 +70,8 @@ public final class AotCacheFixture {
             }
         });
         server.start();
+        System.out.println(CODE_SOURCE
+                + AotCacheFixtureLibrary.class.getProtectionDomain().getCodeSource().getLocation());
         System.out.println("AOT CACHE FIXTURE listening on " + port);
     }
 

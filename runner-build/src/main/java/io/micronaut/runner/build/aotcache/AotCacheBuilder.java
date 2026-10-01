@@ -55,7 +55,8 @@ import java.util.concurrent.TimeUnit;
  * </ol>
  *
  * <p>Every launch carries {@link AotCacheSettings#jvmArgs()} and none of the build's ambient JVM option
- * variables, and each phase is logged with its duration.</p>
+ * variables, and each phase is logged with its duration. The recording alone also carries the caller's
+ * {@code recordJvmArgs}, which reach neither the creation, the checks nor the argfile.</p>
  *
  * @since 1.0
  */
@@ -97,10 +98,14 @@ public final class AotCacheBuilder {
      * @param directory the directory that holds the JAR, and receives the cache, the argfile, the identity file,
      *                  the report and the logs
      * @param jarName   the file name of the JAR to launch, in that directory
-     * @param training  how to reach, exercise and stop the application; its own {@code jvmArgs} are replaced by
-     *                  the settings'
-     * @param labels    entries added to the identity file and the report, such as {@code target}
-     * @param log       where the phases are reported
+     * @param training      how to reach, exercise and stop the application; its own {@code jvmArgs} are replaced
+     *                      by the settings'
+     * @param recordJvmArgs JVM arguments of the recording launch only, after the settings' and the recording's
+     *                      own options; the creation, the probes, the smoke launch and the argfile never get them.
+     *                      They are for what only a training run may do, such as a property that changes how the
+     *                      application's class loader reports its classes to the recording
+     * @param labels        entries added to the identity file and the report, such as {@code target}
+     * @param log           where the phases are reported
      * @return the report of the gate, which passed
      * @throws IOException          if a phase fails or the gate does; the message says which, and the logs stay
      * @throws InterruptedException if the thread is interrupted; every process has been reaped by then
@@ -110,13 +115,20 @@ public final class AotCacheBuilder {
                                        Path directory,
                                        String jarName,
                                        TrainingSettings training,
+                                       List<String> recordJvmArgs,
                                        Map<String, String> labels,
                                        BuildLogger log) throws IOException, InterruptedException {
         Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(java, "java");
         Objects.requireNonNull(training, "training");
+        List<String> recordOnly = List.copyOf(Objects.requireNonNull(recordJvmArgs, "recordJvmArgs"));
         Objects.requireNonNull(labels, "labels");
         Objects.requireNonNull(log, "log");
+        for (String argument : recordOnly) {
+            if (argument.isBlank()) {
+                throw new IllegalArgumentException("recordJvmArgs must not contain a blank argument");
+            }
+        }
         // Every fork runs in the directory, where a relative path would name another file.
         Path executable = java.toAbsolutePath();
         Path dir = directory.toAbsolutePath().normalize();
@@ -137,8 +149,11 @@ public final class AotCacheBuilder {
             log.info("JDK AOT cache: training with " + jdk.vmVersion() + " on " + jdk.osName() + " "
                     + jdk.osArch() + (creationFlags.isEmpty() ? "" : ", creating with " + String.join(" ",
                     creationFlags)) + " (probe " + millis(started) + ")");
+            if (!recordOnly.isEmpty()) {
+                log.info("JDK AOT cache: the recording alone also runs with " + String.join(" ", recordOnly));
+            }
 
-            String recordStop = record(settings, executable, dir, jar, training, log);
+            String recordStop = record(settings, executable, dir, jar, training, recordOnly, log);
             create(settings, executable, dir, jarName, creationFlags, log);
 
             AotLaunchOptions.writeIdentity(dir.resolve(AotLaunchOptions.IDENTITY_FILE),
@@ -164,16 +179,15 @@ public final class AotCacheBuilder {
      *
      * @return how the recording ended
      */
-    private static String record(AotCacheSettings settings, Path java, Path dir, Path jar,
-                                 TrainingSettings training, BuildLogger log) throws IOException, InterruptedException {
+    private static String record(AotCacheSettings settings, Path java, Path dir, Path jar, TrainingSettings training,
+                                 List<String> recordJvmArgs, BuildLogger log) throws IOException, InterruptedException {
         Path recordLog = dir.resolve(RECORD_LOG);
         Path configuration = dir.resolve(CONFIGURATION_FILE);
         Path jcmd = useJcmd && !training.runToExit() ? jcmdBeside(java) : null;
         String[] stop = new String[1];
         long[] ended = new long[1];
         long started = System.nanoTime();
-        TrainingDriver.Outcome outcome = TrainingDriver.run(java, jar,
-                List.of("-XX:AOTMode=record", "-XX:AOTConfiguration=" + CONFIGURATION_FILE, "-Xlog:aot=info"),
+        TrainingDriver.Outcome outcome = TrainingDriver.run(java, jar, recordArguments(recordJvmArgs),
                 AotLaunchOptions.trainingSettings(settings, training), dir, recordLog, application -> {
                     ended[0] = System.nanoTime();
                     if (jcmd != null && application.isAlive()
@@ -207,6 +221,22 @@ public final class AotCacheBuilder {
         log.info("JDK AOT cache stop: the recording ended by " + recordStop + ", and the application was gone "
                 + TimeUnit.NANOSECONDS.toMillis(stopped - recorded) + " ms later");
         return recordStop;
+    }
+
+    /**
+     * The JVM arguments the recording adds to the settings': its mode, its configuration and the log that
+     * names the skipped classes, then the caller's record-only arguments.
+     *
+     * @param recordJvmArgs the caller's arguments of the recording launch only
+     * @return the arguments
+     */
+    static List<String> recordArguments(List<String> recordJvmArgs) {
+        List<String> arguments = new ArrayList<>(3 + recordJvmArgs.size());
+        arguments.add("-XX:AOTMode=record");
+        arguments.add("-XX:AOTConfiguration=" + CONFIGURATION_FILE);
+        arguments.add("-Xlog:aot=info");
+        arguments.addAll(recordJvmArgs);
+        return List.copyOf(arguments);
     }
 
     /**

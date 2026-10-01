@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.benchmarks;
 
+import io.micronaut.runner.build.AotCacheOutput;
 import io.micronaut.runner.build.aotcache.AotCacheGate;
 import io.micronaut.runner.build.aotcache.JdkProbe;
 
@@ -43,6 +44,16 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** Trains, identifies and verifies a JDK AOT cache. */
 final class AotCache {
+
+    /**
+     * The training-only JVM arguments of a cache trained on a Runner single JAR: the launcher's AOT training mode,
+     * in which its classes report the archive's {@code file:} URL, which JDK 27 and later require to cache them
+     * (JDK-8380291). Only the training command gets them; the measured and verified launches never do.
+     */
+    static final List<String> RUNNER_SINGLE_JAR_TRAINING = List.of(AotCacheOutput.AOT_TRAINING_ARGUMENT);
+
+    /** The training-only JVM arguments of a cache trained on anything else, whose classes the JDK's loaders load. */
+    static final List<String> NO_TRAINING_ARGUMENTS = List.of();
 
     private static final Duration POLL_INTERVAL = Duration.ofMillis(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(2);
@@ -91,7 +102,21 @@ final class AotCache {
     private AotCache() {
     }
 
-    static Variant prepare(Variant source, String name, Request request) throws IOException, InterruptedException {
+    /**
+     * Trains, or reuses, and verifies the cache of a variant.
+     *
+     * @param source          the variant the cache is trained on
+     * @param name            the cached row
+     * @param request         the run's training request
+     * @param trainingJvmArgs what only the training command adds, part of the cache's identity:
+     *                        {@link #RUNNER_SINGLE_JAR_TRAINING} for a Runner single JAR, otherwise
+     *                        {@link #NO_TRAINING_ARGUMENTS}
+     * @return the cached variant
+     * @throws IOException          if the cache cannot be trained or verified
+     * @throws InterruptedException if the thread is interrupted
+     */
+    static Variant prepare(Variant source, String name, Request request, List<String> trainingJvmArgs)
+            throws IOException, InterruptedException {
         long preparationStarted = System.nanoTime();
         if (!source.available()) {
             throw new IOException("cannot train AOT cache because " + source.name() + " is unavailable");
@@ -101,7 +126,7 @@ final class AotCache {
         }
         List<String> creationFlags = creationFlags();
 
-        String identity = identity(source, request, creationFlags);
+        String identity = identity(source, request, creationFlags, trainingJvmArgs);
         Path cache = cacheFile(request.cacheRoot(), identity);
         Files.createDirectories(cache.getParent());
 
@@ -121,7 +146,7 @@ final class AotCache {
         long trainingMillis = -1;
         if (!reuse) {
             long trainingStarted = System.nanoTime();
-            train(source, cache, request, creationFlags);
+            train(source, cache, request, creationFlags, trainingJvmArgs);
             trainingMillis = elapsedMillis(trainingStarted);
             request.log().println("[startup-benchmark] trained AOT cache " + identity + " for " + name
                     + " in " + trainingMillis + " ms");
@@ -151,19 +176,21 @@ final class AotCache {
      * The identity of the cache a request trains for a variant on this JDK. The command prefix is not part of it;
      * a CPU limit enters through {@link Request#relevantJvmFlags()}.
      *
-     * @param source        the variant the cache is trained on
-     * @param request       the training request
-     * @param creationFlags the JDK-specific creation flags
+     * @param source          the variant the cache is trained on
+     * @param request         the training request
+     * @param creationFlags   the JDK-specific creation flags
+     * @param trainingJvmArgs what only the training command adds
      * @return the identity
      * @throws IOException if an input cannot be read
      */
-    static String identity(Variant source, Request request, List<String> creationFlags) throws IOException {
+    static String identity(Variant source, Request request, List<String> creationFlags, List<String> trainingJvmArgs)
+            throws IOException {
         return identity(source.launchInputs(),
                 System.getProperty("java.runtime.version", "<unavailable>") + "|"
                         + System.getProperty("java.vm.version", "<unavailable>"),
                 System.getProperty("java.vm.name", "<unavailable>"),
                 System.getProperty("os.arch", "<unavailable>"),
-                identityFlags(source, request, creationFlags));
+                identityFlags(source, request, creationFlags, trainingJvmArgs));
     }
 
     /**
@@ -290,20 +317,35 @@ final class AotCache {
         return creationProbe.flags();
     }
 
-    private static List<String> identityFlags(Variant source, Request request, List<String> creationFlags) {
+    /**
+     * What shapes a trained cache besides its inputs and the JDK: the cache mode, the creation flags, the request's
+     * relevant flags, the variant's command after its {@code java}, the readiness path and the workload, then each
+     * training-only argument. A variant without training-only arguments keeps the identity it had before they
+     * existed, so its caches are reused.
+     *
+     * @param source          the variant the cache is trained on
+     * @param request         the training request
+     * @param creationFlags   the JDK-specific creation flags
+     * @param trainingJvmArgs what only the training command adds
+     * @return the flags, in order
+     */
+    static List<String> identityFlags(Variant source, Request request, List<String> creationFlags,
+                                      List<String> trainingJvmArgs) {
         List<String> flags = new ArrayList<>(CACHE_FLAGS.size() + creationFlags.size()
-                + request.relevantJvmFlags().size() + source.command().size() + request.workloadPaths().size() + 2);
+                + request.relevantJvmFlags().size() + source.command().size() + request.workloadPaths().size()
+                + trainingJvmArgs.size() + 2);
         flags.addAll(CACHE_FLAGS);
         flags.addAll(creationFlags);
         flags.addAll(request.relevantJvmFlags());
         flags.addAll(source.command().subList(1, source.command().size()));
         flags.add("readiness=" + request.readinessPath());
         request.workloadPaths().forEach(path -> flags.add("workload=" + path));
+        trainingJvmArgs.forEach(argument -> flags.add("training=" + argument));
         return List.copyOf(flags);
     }
 
-    private static void train(Variant source, Path cache, Request request, List<String> creationFlags)
-            throws IOException, InterruptedException {
+    private static void train(Variant source, Path cache, Request request, List<String> creationFlags,
+                              List<String> trainingJvmArgs) throws IOException, InterruptedException {
         Path temporary = cache.resolveSibling("app.training.aot");
         Files.deleteIfExists(temporary);
         // Creation flags go on the training command line: JDK 27 (build 27) runs the create step in a child JVM
@@ -311,8 +353,8 @@ final class AotCache {
         // -XX:+AOTCompatibleOopCompression ... -XX:AOTMode=create", and the cache then reports
         // AOTCompatibleOopCompression = true. JDK_AOT_VM_OPTIONS cannot carry them: runLifecycle removes it
         // from every child JVM.
-        ByteArrayOutputStream output = runLifecycle(source, trainingCommand(source, temporary, creationFlags),
-                request, null);
+        ByteArrayOutputStream output = runLifecycle(source,
+                trainingCommand(source, temporary, creationFlags, trainingJvmArgs), request, null);
         try {
             requireUsableCache(temporary);
         } catch (IOException failure) {
@@ -353,17 +395,20 @@ final class AotCache {
     }
 
     /**
-     * The training command, without the request's prefix: the creation flags and {@code -XX:AOTCacheOutput} go
-     * directly after the variant's {@code java}.
+     * The training command, without the request's prefix: the creation flags, {@code -XX:AOTCacheOutput} and the
+     * training-only arguments go directly after the variant's {@code java}.
      *
-     * @param source        the variant being trained
-     * @param temporary     where the JVM writes the cache
-     * @param creationFlags the JDK-specific creation flags
+     * @param source          the variant being trained
+     * @param temporary       where the JVM writes the cache
+     * @param creationFlags   the JDK-specific creation flags
+     * @param trainingJvmArgs what only the training command adds
      * @return the command
      */
-    static List<String> trainingCommand(Variant source, Path temporary, List<String> creationFlags) {
+    static List<String> trainingCommand(Variant source, Path temporary, List<String> creationFlags,
+                                        List<String> trainingJvmArgs) {
         List<String> arguments = new ArrayList<>(creationFlags);
         arguments.add("-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize());
+        arguments.addAll(trainingJvmArgs);
         return withJvmArguments(source.command(), arguments);
     }
 

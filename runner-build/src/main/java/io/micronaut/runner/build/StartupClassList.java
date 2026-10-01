@@ -16,6 +16,7 @@
 package io.micronaut.runner.build;
 
 import io.micronaut.runner.Index;
+import io.micronaut.runner.RunnerClassLoader;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -204,8 +205,8 @@ final class StartupClassList {
             warn.accept("The startup class list " + file + " is a class-load log in which no class was loaded"
                     + " from the runner jar, so nothing is preloaded. Either the recording ran with a CDS or AOT"
                     + " cache, which logs classes as 'shared objects file', or it ran with the training-only"
-                    + " property that makes the runner class loader report the jar's own 'file:' code source."
-                    + " Record it again without either.");
+                    + " property -D" + RunnerClassLoader.AOT_TRAINING_PROPERTY + "=true, which makes the runner"
+                    + " class loader report the jar's own 'file:' code source. Record it again without either.");
         } else {
             writer.startupClasses(classes).jdkStartupClasses(jdkClasses);
         }
