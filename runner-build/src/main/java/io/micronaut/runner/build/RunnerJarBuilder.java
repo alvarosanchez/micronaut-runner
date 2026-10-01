@@ -86,7 +86,12 @@ import java.util.zip.CRC32;
  * dependency, staging runs on the calling thread. A staging thread holds one open {@code ZipReader}: its
  * parsed central directory and manifest and, outside the heap, a read-only mapping of the dependency, which
  * is released when the stage closes the reader. It also holds at most one {@code Inflater} at a time and at
- * most three 64 KiB buffers: in STORED, the nested jar's output buffer and the reader's two transfer buffers.
+ * most three 64 KiB buffers: in STORED and HYBRID, the nested jar's output buffer and the reader's two transfer
+ * buffers. A HYBRID stage also holds one {@code Deflater}, created for its jar, reset for each cold class and
+ * ended when the jar is written, with the buffer it deflates into, which grows to one byte less than the largest
+ * class it deflates; and, while it writes a cold class that keeps its original DEFLATE bytes, that entry's
+ * compressed region and the class verified by inflating it. None of these arrays is larger than
+ * {@link ClassTransformPipeline#MAX_CLASS_SIZE}.
  * In PRESERVE the reader reads the manifest at its exact size and never allocates its transfer buffers, so
  * the stage holds one: the buffer it checksums the dependency through. The archive's bytes do not depend on
  * the thread count: every nested jar's name and work file are fixed in class-path order before staging

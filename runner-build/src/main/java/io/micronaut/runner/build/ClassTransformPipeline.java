@@ -55,7 +55,9 @@ import java.util.zip.CRC32;
  * one of them, or one verifies worse, the unit falls back under the rule below: it starts again from the
  * original bytes without that step, and a unit without desugaring has no generated class and no bridge. The
  * accepted bytes are kept until the entry loop reaches them ({@link JarRun#planned(String)}), and a host's
- * generated classes are written right after it.</p>
+ * generated classes are written right after it, except that a generated class the startup class list names is
+ * written at its own rank among the jar's startup classes (see {@link Options}); a host the list does not name
+ * stays among the jar's other entries. A nest's bytes are held until its last class is written.</p>
  *
  * <h2>Rules the pipeline owns</h2>
  * <ol type="a">

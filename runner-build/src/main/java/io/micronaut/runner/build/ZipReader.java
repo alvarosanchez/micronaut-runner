@@ -56,8 +56,10 @@ import java.util.zip.Inflater;
  * entry's first data byte, because the runner jar format indexes entry data by absolute offset and the
  * launcher reads it with no ZIP parsing at all; that offset is only knowable by reading each local file
  * header, whose name and extra field lengths may differ from the central directory record's. Second, the
- * central directory <em>order</em>, which must be preserved into the runner jar so that
- * {@link java.util.jar.JarFile#entries()} over a nested jar reports the original order.</p>
+ * central directory <em>order</em>, which the runner jar keeps for a dependency that holds no startup class,
+ * so that {@link java.util.jar.JarFile#entries()} over that nested jar reports the original order. With a
+ * startup class list, a nested jar that holds one of the listed classes starts with them, and its other entries
+ * keep this order ({@link ZipRepacker}).</p>
  *
  * <p>ZIP64 is handled explicitly: the end of central directory record is located by scanning back from the
  * end of the file, the ZIP64 end of central directory record is read whenever a locator precedes it or any
