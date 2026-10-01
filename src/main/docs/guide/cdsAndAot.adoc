@@ -6,12 +6,14 @@ from the outer JAR, get full AOT loading and linking. Classes that Runner's own 
 _unregistered_ classes: when the loader later defines a class whose name, class-file size and CRC-32 match a stored one,
 HotSpot reuses the pre-parsed and pre-verified copy instead of parsing the bytes again. Those classes are not
 AOT-linked, and the lambdas they spin at run time are not archived, which is why Runner writes lambda classes when it
-packages the JAR (<<lambdaGap>>). The extracted layout runs entirely on the built-in loader, so its application classes
-are AOT-linked too. JDK 27's AOT cache stores a custom loader's classes only when the training run reports `file:` code
-sources (https://bugs.openjdk.org/browse/JDK-8380291[JDK-8380291]). The single JAR does that when trained with
-`-Dmicronaut.runner.aot.training=true`, which the plugins set, and the layout needs nothing. The single JAR's cache,
-trained by hand or with `jdkAotCache.target = 'singleJar'`, keeps its value on JDK 25 and 27 (measured), trained with
-the property; the extracted layout's cache (<<aotLayout>>) does too, and a weekly CI job checks each newer JDK.
+packages the single JAR (<<lambdaGap>>). The extracted layout runs entirely on the built-in loader, so its application
+classes are AOT-linked too, and the cache links and archives its lambdas itself: the plugins' layout keeps them as
+`invokedynamic` call sites (<<aotLayout>>). JDK 27's AOT cache stores a custom loader's classes only when the training
+run reports `file:` code sources (https://bugs.openjdk.org/browse/JDK-8380291[JDK-8380291]). The single JAR does that
+when trained with `-Dmicronaut.runner.aot.training=true`, which the plugins set, and the layout needs nothing. The
+single JAR's cache, trained by hand or with `jdkAotCache.target = 'singleJar'`, keeps its value on JDK 25 and 27
+(measured), trained with the property; the extracted layout's cache (<<aotLayout>>) does too, and a weekly CI job
+checks each newer JDK.
 
 [[aotLayout]]
 == Recommended: the extracted layout with the AOT cache
@@ -19,18 +21,43 @@ the property; the extracted layout's cache (<<aotLayout>>) does too, and a weekl
 This deployment is not a single file: the application JAR, `lib/` and the cache are one unit, trained and shipped
 together. It pays off only with its cache. Uncached, in the
 https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119[CI run] of <<benchmarkResults,Benchmarks>>
-(`benchmark-large`, 4 vCPUs, JDK 25.0.4.1), the layout's median readiness was 1130.0 ms (`runner-extracted`) against
-939.6 ms for the single JAR (`runner-stored`); the harness declares no pair for these two rows, so there is no
-interval. An uncached `java -jar` therefore stays on the single JAR.
+(`benchmark-large`, 4 vCPUs, JDK 25.0.4.1), the layout's median readiness was 1130.0 ms (`runner-extracted`, then
+extracted from the desugared single JAR) against 939.6 ms for the single JAR (`runner-stored`); the harness declares no
+pair for these two rows, so there is no interval. An uncached `java -jar` therefore stays on the single JAR.
 
 *With the build plugins.* Runner's interim Gradle and Maven plugins build the whole deployment, as experimental tasks
 and goals of those plugins only: `./gradlew micronautRunnerJdkAotCache` and `mvn package` with the `jdk-aot-cache` goal
-extract the Runner JAR into `build/micronaut-runner/jdk-aot-cache/` (Maven: `target/micronaut-runner/jdk-aot-cache/`),
+write the extracted layout, with lambdas kept (<<aotLayoutLambdas,Lambdas in the layout>>), into
+`build/micronaut-runner/jdk-aot-cache/` (Maven: `target/micronaut-runner/jdk-aot-cache/`),
 train the cache there with the training settings (<<trainingSettings,Training settings>>), verify it, and write the
 launch argfile `app.jvmopts`. Launch from that directory with `java @app.jvmopts -jar my-app-0.1-all.jar`, or in a
 Dockerfile with `WORKDIR /app` and `ENTRYPOINT ["java", "@app.jvmopts", "-jar", "my-app-0.1-all.jar"]`.
 `micronautRunnerLayout` and `mn-runner:layout` write only the layout, to `build/micronaut-runner/layout/` (Maven:
 `target/micronaut-runner/layout/`), for a cache trained elsewhere.
+
+[[aotLayoutLambdas]]
+*Lambdas in the layout.* The plugins' layout keeps every lambda as an `invokedynamic` call site. The JDK's own class
+loader runs the layout, and its AOT cache links those call sites and archives their lambda classes ahead of time, so
+desugaring them (<<desugaredLambdas,Desugared lambdas>>) would only add classes that a start loads from the cache and
+then initialises. When the Runner JAR desugars lambdas, as it does by default with `STORED` and `HYBRID`, the tasks
+and goals therefore do not extract it: they package a second JAR from the same inputs and options with
+`desugarLambdas=false`, under the same file name in `build/micronaut-runner/layout-source/` (Maven:
+`target/micronaut-runner/layout-source/`), and extract that one. It keeps the startup profile, which orders each
+nested JAR's entries hot-first, less the generated lambda classes the profile names and this JAR does not have. The
+Runner JAR they ship does not change. With `desugarLambdas=false` or `PRESERVE`, the layout is the Runner JAR's own
+extract. In Maven, list `layout` and `jdk-aot-cache` after `package` in the same build: they take its options from
+that run, and the first of them packages the second JAR for both. `aot-report.json` and `app.aot.properties` record
+the SHA-256 of both JARs, as `runnerJarSha256` and `layoutSourceSha256`. With the cache the difference is small: in
+the https://github.com/alvarosanchez/micronaut-runner/actions/runs/36882230170[CI run] of the harness (`benchmark-large`,
+4 vCPUs, JDK 25.0.4.1, 40 pairs), the layout with lambdas kept was ready 3.1 ms sooner (95% CI 8.2 ms sooner to
+0.7 ms later) than the one extracted from the desugared JAR, at 112.2 against 111.7 MiB RSS; without the cache it is
+slower (see the `strict` paragraph below).
+
+A layout extracted by hand from the shipped Runner JAR still runs, with its lambdas desugared, but a cache the
+plugins trained does not match it, because its JARs have other sizes: a strict launch fails with
+`This file is not the one used while building the AOT cache: 'my-app-0.1-all.jar', size has changed` and
+`shared class paths mismatch`, naming the first JAR on the class path that differs, and a default launch runs
+uncached. Train a cache by hand on a hand extract, or use the plugins' layout with the plugins' cache.
 
 [source,groovy]
 ----
@@ -56,7 +83,8 @@ each setting above is the property `micronaut.runner.jdkAotCache.<name>` and the
 
 *By hand.* Extract with `java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination app`
 (<<runtime,Running a Runner JAR>>), run the script below as `bash train.sh` with `JAR=app/my-app-0.1-all.jar`, then
-launch `java -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar`.
+launch `java -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar`. That layout keeps the JAR's desugared lambdas; to
+write the layout the plugins write, extract a JAR built with `desugarLambdas=false` instead.
 
 [[trainingSnippet]]
 [source,bash]
@@ -112,8 +140,14 @@ warns when fewer than half of the `io.micronaut` classes came from the cache;
 . the layout's `Class-Path` follows the Runner JAR's class-path order, and its JARs keep the extracted modification time.
 
 A failed check deletes `app.aot` and `app.jvmopts` and keeps the logs. `strict = true` puts `-XX:AOTMode=on` in
-`app.jvmopts`, which turns a later mismatch, such as rewritten modification times, into a failed launch instead of an
-uncached one.
+`app.jvmopts`, which turns a later mismatch, such as rewritten modification times, another JDK build or a layout
+extracted by hand from the shipped JAR, into a failed launch instead of an uncached one. An uncached start of the
+layout gives up the whole cache: in the CI run, the layout then extracted from the desugared single JAR took 1130.0 ms
+uncached against 510.9 ms with its cache. Keeping lambdas makes that fallback slower still, because the JDK then links
+every lambda at run time: in a https://github.com/alvarosanchez/micronaut-runner/actions/runs/36882230170[CI run] of
+the harness (`benchmark-large`, 4 vCPUs, JDK 25.0.4.1, 40 pairs), the plugins' layout without its cache was 106.8 ms
+(95% CI 93.4 to 116.7) behind the layout extracted from the desugared JAR, 1016.5 against 905.4 ms. Set
+`strict = true` where a silent uncached start is worse than a failed launch.
 
 In the same CI run (Micronaut 5.1.15, Netty 4.2.18, 20 pairs), the cached layout, which keeps the static service table
 (<<staticServices,Static service table>>), was ready sooner than the single JAR with its cache, `runner-extracted-aot` −
@@ -131,7 +165,9 @@ layout's cache itself, not through that task, and took 4.7 s for it, 4.0 s of th
 *Modification times.* The cache records each class-path JAR (the application JAR and each `lib/` JAR, or the single
 Runner JAR) by position, size and modification time. Extract stamps every file and directory with 1980-02-01T00:00:00Z,
 so a layout moved or copied with its times kept (`cp -p`, `tar`, Docker `COPY`) still validates, as does a re-extract of
-the same JAR. Rewritten times, or a `touch` on one JAR, fail a strict launch with `timestamp has changed`, and a default
+the JAR it was extracted from: the plugins' layout-source JAR, or a Runner JAR that keeps lambdas. A re-extract of a
+shipped Runner JAR that desugars lambdas does not match the plugins' cache (<<aotLayoutLambdas,Lambdas in the
+layout>>). Rewritten times, or a `touch` on one JAR, fail a strict launch with `timestamp has changed`, and a default
 one runs uncached. jib's default file time, 1970-01-01T00:00:01Z, does not match a cache trained on extracted files.
 The tasks and goals train in their output directory, so copy that directory the same way.
 
@@ -203,10 +239,12 @@ training, as caches are not byte-reproducible:
 |===
 
 *What differs in the layout.* Every class of the application layer carries over except the generated entry stub, so a
-precompiled Logback configuration (<<precompiledLogback,Precompiled Logback configuration>>) and the static service
-table (<<staticServices,Static service table>>) still apply. What the launcher and the stub do at startup does not run:
-the startup profile's preload (<<preload,Preloading the startup classes>>) has no effect, and a JAR built with it trains
-the same layout cache. The JDK's class loader replaces `RunnerClassLoader` and resolves classes in the same order; each
+precompiled Logback configuration (<<precompiledLogback,Precompiled Logback configuration>>), the static service table
+(<<staticServices,Static service table>>) and the stripped local-variable tables still apply; lambdas stay
+`invokedynamic` call sites in the plugins' layout (<<aotLayoutLambdas,Lambdas in the layout>>). What the launcher and
+the stub do at startup does not run: the startup profile's preload (<<preload,Preloading the startup classes>>) has no
+effect, though the hot-first order it gives each nested JAR's entries carries over. The JDK's class loader replaces
+`RunnerClassLoader` and resolves classes in the same order; each
 JAR keeps its own `META-INF/micronaut`, a dependency's own manifest `Class-Path` becomes active, and the code sources
 are the `lib/` JARs' `file:` URLs.
 
@@ -267,7 +305,9 @@ desugaring made the single JAR 36.5 to 38.7 ms faster with its AOT cache (three 
 cached difference: the 29 sites still excluded (none on this sample's startup path), about 40 string concatenation
 sites, the per-class cost of reusing unregistered classes, and the clean file-backed pages of the mapped JAR, which
 count towards RSS. The extracted layout with its AOT cache is the faster cached option, with less RSS than Shadow's:
-114.6 against 124.3 MiB, and 113.0 against 125.0 MiB on JDK 27.
+114.6 against 124.3 MiB, and 113.0 against 125.0 MiB on JDK 27. The layout does not need desugaring, because the JDK
+archives the lambdas of its own loader's classes, so the plugins write it with lambdas kept (<<aotLayoutLambdas,Lambdas
+in the layout>>); those figures are of the layout extracted from the desugared JAR, before that change.
 
 == Zero-pipeline option: `-XX:+AutoCreateSharedArchive`
 

@@ -43,8 +43,14 @@ import java.util.concurrent.TimeUnit;
  * the launch argfile {@code app.jvmopts}, the identity file, the report and the logs. The application launches from
  * that directory as {@code java @app.jvmopts -jar <jar>}.
  *
+ * <p>The {@code layout} target extracts the layout as {@code mn-runner:layout} does, from a JAR that keeps every
+ * lambda, which one of the two goals packages once per build; {@code aot-report.json} and {@code app.aot.properties}
+ * record the SHA-256 of that JAR and of the Runner JAR. A cache trained on this layout does not match an extract of
+ * a Runner JAR that desugars lambdas.</p>
+ *
  * <p>It does nothing unless {@code micronaut.runner.jdkAotCache.enabled} is {@code true}. List it after
- * {@code package} in the plugin's execution: Maven runs a phase's goals in declaration order. The training settings
+ * {@code package} in the plugin's execution, in the same build: Maven runs a phase's goals in declaration order, and
+ * the layout target takes {@code mn-runner:package}'s options from that run. The training settings
  * are the {@code micronaut.runner.training.*} properties, except {@code jvmArgs}: the cache's launches take
  * {@code micronaut.runner.jdkAotCache.jvmArgs}. The JDK is the one the {@code maven-toolchains-plugin} selected, or
  * the one that runs Maven; the cache fits only that exact JDK build.</p>
@@ -134,10 +140,13 @@ public final class JdkAotCacheMojo extends AbstractTrainingMojo {
         AotCacheSettings settings = settings();
         TrainingSettings training = trainingSettings();
         Path out = outputDirectoryOfTheCache();
+        // Only the layout target extracts it, so singleJar never packages it.
+        Path layoutSource = target == AotTarget.LAYOUT
+                ? LayoutSourceJar.resolve(project, archive.toPath(), "jdk-aot-cache", getLog()) : archive.toPath();
         long started = System.nanoTime();
         AotCacheReport report;
         try {
-            report = AotCacheOutput.write(target, settings, java(), archive.toPath(), out, training,
+            report = AotCacheOutput.write(target, settings, java(), archive.toPath(), layoutSource, out, training,
                     new MavenBuildLogger(getLog()));
         } catch (IOException e) {
             throw new MojoExecutionException("Could not build the JDK AOT cache: " + e.getMessage(), e);

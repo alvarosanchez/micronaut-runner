@@ -116,11 +116,6 @@ final class SampleBuild implements SampleSteps {
     private static final boolean CORE = false;
     private static final boolean OPT_IN = true;
 
-    /** The lambda control's unpacked layout, which is trained but is not a row of its own. */
-    private static final VariantSpec EXTRACTED_LAMBDAS = new VariantSpec("runner-extracted-lambdas",
-            "The lambda control unpacked and run by the JDK's own loader", EntryMode.STANDARD_LOADER, false, OPT_IN,
-            "runner-stored-lambdas");
-
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
     /** The configurator runner-build generates from logback.xml when it precompiles it. */
@@ -365,19 +360,14 @@ final class SampleBuild implements SampleSteps {
             cached("runner-stored-dynamic-services-aot",
                     "The same Runner jar without a static service table, with a verified JDK AOT cache",
                     EntryMode.STUB, OPT_IN, "runner-stored-dynamic-services"),
-            // The default desugars lambdas; these controls keep every call site an invokedynamic, with everything
-            // else at the defaults, stripping included. The third is the control's extracted layout, which the
-            // JDK's own loader runs: there the JDK archives lambdas itself, so that pair should be neutral.
+            // The default desugars lambdas in the single JAR; these controls keep every call site an invokedynamic,
+            // with everything else at the defaults, stripping included.
             row("runner-stored-lambdas", "Runner jar, nested dependencies re-packed uncompressed; plugin-default"
                     + " entry stub; dependency lambdas kept", EntryMode.STUB, OPT_IN, null,
                     (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
                             RunnerJarOptions.DEFAULTS.withDesugarLambdas(false))),
             cached("runner-stored-lambdas-aot", "The same lambda control with a verified JDK AOT cache",
                     EntryMode.STUB, OPT_IN, "runner-stored-lambdas"),
-            new VariantRows.Row<>(new VariantSpec("runner-extracted-lambdas-aot", "The lambda control unpacked and"
-                    + " run by the JDK's own loader, with a verified JDK AOT cache", EntryMode.STANDARD_LOADER, true,
-                    OPT_IN, "runner-stored-lambdas"),
-                    (steps, spec, lambdas) -> steps.aotCache(steps.extracted(lambdas, EXTRACTED_LAMBDAS), spec)),
             row("runner-stored-prefetch", "The same stored Runner jar with definitionPrefetch=true: bean definitions"
                     + " loaded from the entry stub", EntryMode.STUB, OPT_IN, "runner-stored",
                     (steps, spec, stored) -> steps.prefetchCandidate(stored, spec)),
@@ -386,11 +376,20 @@ final class SampleBuild implements SampleSteps {
             row("runner-preserve", "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
                     EntryMode.STUB, CORE, null, (steps, spec, source) -> steps.runnerJar(spec, Compression.PRESERVE,
                             RunnerJarOptions.DEFAULTS)),
-            row("runner-extracted", "Runner jar unpacked with -Dmicronaut.runner.mode=extract, run by the JDK's own"
-                    + " loader", EntryMode.STANDARD_LOADER, CORE, "runner-stored",
-                    (steps, spec, stored) -> steps.extracted(stored, spec)),
+            // The layout the build plugins write: runner-build's rule applied to runner-stored's spec, so lambdas are
+            // kept, because the JDK's own loader runs the layout and its AOT cache archives that loader's lambdas.
+            row("runner-extracted", "The build plugins' layout: runner-stored's inputs with lambdas kept, unpacked with"
+                    + " -Dmicronaut.runner.mode=extract and run by the JDK's own loader", EntryMode.STANDARD_LOADER, CORE,
+                    "runner-stored", (steps, spec, stored) -> steps.pluginLayout(stored, spec)),
             cached("runner-extracted-aot", "The same extracted layout with a verified JDK AOT cache",
                     EntryMode.STANDARD_LOADER, CORE, "runner-extracted"),
+            // The control: runner-stored itself unpacked, desugared lambdas included, which is the layout before the
+            // plugins kept lambdas and what extracting the shipped JAR by hand writes.
+            row("runner-extracted-desugared", "Control: runner-stored unpacked as it is, desugared lambdas included,"
+                    + " run by the JDK's own loader", EntryMode.STANDARD_LOADER, OPT_IN, "runner-stored",
+                    (steps, spec, stored) -> steps.extracted(stored, spec)),
+            cached("runner-extracted-desugared-aot", "The same desugared layout with a verified JDK AOT cache",
+                    EntryMode.STANDARD_LOADER, OPT_IN, "runner-extracted-desugared"),
             // The Micronaut AOT rows; "maot" is Micronaut AOT and the -aot suffix the JDK AOT cache. The two cached
             // ones are opt-in: training two more caches is what they cost.
             row("shadow-maot", "Micronaut AOT's optimizedJitJarAll: the AOT-optimized application flattened by"
@@ -516,8 +515,10 @@ final class SampleBuild implements SampleSteps {
                 new ComparisonSpec("runner-stored", "runner-stored-lambdas", "Lambdas desugared vs kept"),
                 new ComparisonSpec("runner-stored-aot", "runner-stored-lambdas-aot",
                         "Lambdas desugared vs kept, with the AOT cache"),
-                new ComparisonSpec("runner-extracted-aot", "runner-extracted-lambdas-aot",
-                        "Extracted layout + AOT cache: lambdas desugared vs kept"),
+                new ComparisonSpec("runner-extracted-aot", "runner-extracted-desugared-aot",
+                        "Extracted layout + AOT cache: lambdas kept (the plugins' layout) vs desugared"),
+                new ComparisonSpec("runner-extracted", "runner-extracted-desugared",
+                        "Extracted layout without its cache: lambdas kept (the plugins' layout) vs desugared"),
                 new ComparisonSpec("runner-stored-prefetch", "runner-stored",
                         "Bean definition prefetch vs the default, which has none"),
                 new ComparisonSpec("runner-stored-prefetch-aot", "runner-stored-aot",
@@ -939,34 +940,8 @@ final class SampleBuild implements SampleSteps {
                              PrintStream log) throws IOException {
         Path output = artifacts.resolve(spec.name() + ".jar");
         Files.deleteIfExists(output);
-        RunnerJarSpec.Builder builder = RunnerJarSpec.builder()
-                .mainClass(mainClass)
-                .applicationOutput(applicationOutput)
-                .dependencies(dependencies.stream().map(Dependency::of).toList())
-                .output(output)
-                .compression(compression)
-                .entryStub(spec.entryMode() == EntryMode.STUB);
-        // The PASSTHROUGH options are set by name, as a build sets them through a plugin's generic options.
-        if (options.archiveReads() != null) {
-            builder.option("archiveReads", options.archiveReads());
-        }
-        if (options.precompileLogback() != null) {
-            builder.option("precompileLogback", options.precompileLogback().toString());
-        }
-        if (options.stripLocalVariables() != null) {
-            builder.option("stripLocalVariables", options.stripLocalVariables().toString());
-        }
-        builder.startupClasses(options.startupClasses());
-        if (options.staticServices() != null) {
-            builder.option("staticServices", options.staticServices().toString());
-        }
-        if (options.desugarLambdas() != null) {
-            builder.option("desugarLambdas", options.desugarLambdas().toString());
-        }
-        if (options.definitionPrefetch() != null) {
-            builder.option("definitionPrefetch", options.definitionPrefetch().toString());
-        }
-        RunnerJarSpec jarSpec = builder.build();
+        RunnerJarSpec jarSpec = jarSpec(output, mainClass, applicationOutput, dependencies, compression,
+                spec.entryMode(), options);
         RunnerJarResult result = RunnerJarBuilder.build(jarSpec, new HarnessLogger(log, spec.name()));
         if (Boolean.FALSE.equals(options.staticServices()) && result.staticServiceSlots() != 0) {
             throw new IOException("staticServices false was requested, but " + output + " carries a table of "
@@ -991,15 +966,66 @@ final class SampleBuild implements SampleSteps {
         command.add("-jar");
         command.add(output.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", output));
-        String buildNote = (result.staticServiceSlots() == 0 ? "dynamic service scan"
-                : "static services: " + result.staticServiceSlots() + " slots (core "
-                        + result.staticServicesCoreVersion().orElse("unknown") + ")")
+        String buildNote = buildNote(result)
                 + (options.startupClasses() == null ? ""
                         : preloadOff ? "; " + preloaded + " recorded startup classes first, not preloaded"
                         : "; " + preloaded + " recorded startup classes preloaded")
                 + (methods == null ? "" : "; nested entries: " + methods[0] + " stored, " + methods[1] + " deflated");
         return Variant.available(spec, command, artifacts, output, deploymentSize, effectiveEntryMode, buildNote,
                 List.of(output));
+    }
+
+    /**
+     * The spec of a row's runner jar: the sample's inputs, the row's compression and entry mode, and the options the
+     * row sets on top of the builder defaults.
+     *
+     * @param output     where the jar is written
+     * @param entryMode  the row's entry mode, which decides whether an entry stub is requested
+     * @param options    the packaging options the row sets
+     * @return the spec
+     */
+    static RunnerJarSpec jarSpec(Path output, String mainClass, List<Path> applicationOutput, List<Path> dependencies,
+                                 Compression compression, EntryMode entryMode, RunnerJarOptions options) {
+        RunnerJarSpec.Builder builder = RunnerJarSpec.builder()
+                .mainClass(mainClass)
+                .applicationOutput(applicationOutput)
+                .dependencies(dependencies.stream().map(Dependency::of).toList())
+                .output(output)
+                .compression(compression)
+                .entryStub(entryMode == EntryMode.STUB);
+        // The PASSTHROUGH options are set by name, as a build sets them through a plugin's generic options.
+        if (options.archiveReads() != null) {
+            builder.option("archiveReads", options.archiveReads());
+        }
+        if (options.precompileLogback() != null) {
+            builder.option("precompileLogback", options.precompileLogback().toString());
+        }
+        if (options.stripLocalVariables() != null) {
+            builder.option("stripLocalVariables", options.stripLocalVariables().toString());
+        }
+        builder.startupClasses(options.startupClasses());
+        if (options.staticServices() != null) {
+            builder.option("staticServices", options.staticServices().toString());
+        }
+        if (options.desugarLambdas() != null) {
+            builder.option("desugarLambdas", options.desugarLambdas().toString());
+        }
+        if (options.definitionPrefetch() != null) {
+            builder.option("definitionPrefetch", options.definitionPrefetch().toString());
+        }
+        return builder.build();
+    }
+
+    /**
+     * What a runner jar's build note says about its static service table.
+     *
+     * @param result the jar's build result
+     * @return the note
+     */
+    private static String buildNote(RunnerJarResult result) {
+        return result.staticServiceSlots() == 0 ? "dynamic service scan"
+                : "static services: " + result.staticServiceSlots() + " slots (core "
+                        + result.staticServicesCoreVersion().orElse("unknown") + ")";
     }
 
     /**
@@ -1203,6 +1229,45 @@ final class SampleBuild implements SampleSteps {
         return extractedRunner(artifacts, stored, spec);
     }
 
+    @Override
+    public Variant pluginLayout(Variant stored, VariantSpec spec) throws IOException, InterruptedException {
+        return pluginLayout(artifacts, stored, spec, mainClass, applicationOutput, dependencies, log);
+    }
+
+    /**
+     * The layout the build plugins write for {@code runner-stored}: runner-build's rule
+     * ({@link AotLayout#sourceSpec(RunnerJarSpec, Path)}) applied to {@code runner-stored}'s spec gives the
+     * layout-source jar, which keeps every lambda. It is packaged under {@code runner-stored}'s file name in a directory
+     * of its own, as the plugins package it, so the layout's application jar keeps that name, and then extracted.
+     *
+     * @param artifacts         where the variants' artifacts are written
+     * @param stored            the {@code runner-stored} row, whose jar ships
+     * @param spec              the layout's row
+     * @param mainClass         the application's main class
+     * @param applicationOutput the application's classes and resources
+     * @param dependencies      the dependency jars, in class path order
+     * @param log               where the packaging library's lines go, under the row's name
+     * @return the variant, whose build note is the layout-source jar's
+     * @throws IOException          if there is no {@code runner-stored} jar, or packaging or the extraction fails
+     * @throws InterruptedException if the extraction is interrupted
+     */
+    static Variant pluginLayout(Path artifacts, Variant stored, VariantSpec spec, String mainClass,
+                                List<Path> applicationOutput, List<Path> dependencies, PrintStream log)
+            throws IOException, InterruptedException {
+        if (!stored.available()) {
+            throw new IOException("there is no runner jar whose layout to write: " + stored.unavailableReason());
+        }
+        Path output = recreate(artifacts.resolve(spec.name() + "-source"))
+                .resolve(stored.artifact().getFileName().toString());
+        // runner-stored's spec, as its row builds it, written where the layout-source jar goes.
+        RunnerJarSpec shipped = jarSpec(output, mainClass, applicationOutput, dependencies, Compression.STORED,
+                EntryMode.STUB, RunnerJarOptions.DEFAULTS);
+        RunnerJarSpec source = AotLayout.sourceSpec(shipped, output).orElse(shipped);
+        RunnerJarResult result = RunnerJarBuilder.build(source, new HarnessLogger(log, spec.name()));
+        LaunchInputs.pin(output);
+        return extractedRunner(artifacts, output, buildNote(result), spec);
+    }
+
     /**
      * Unpacks a runner jar into {@code <artifacts>/<name>} and describes that layout as a variant, which carries
      * the build note of the jar it was extracted from.
@@ -1219,10 +1284,26 @@ final class SampleBuild implements SampleSteps {
         if (!stored.available()) {
             throw new IOException("there is no runner jar to extract: " + stored.unavailableReason());
         }
+        return extractedRunner(artifacts, stored.artifact(), stored.buildNote(), spec);
+    }
+
+    /**
+     * Unpacks a runner jar into {@code <artifacts>/<name>} and describes that layout as a variant.
+     *
+     * @param artifacts where the variants' artifacts are written
+     * @param jar       the runner jar
+     * @param buildNote the jar's build note, which the layout carries
+     * @param spec      the layout's row
+     * @return the variant
+     * @throws IOException          if the extraction fails
+     * @throws InterruptedException if the extraction is interrupted
+     */
+    private static Variant extractedRunner(Path artifacts, Path jar, String buildNote, VariantSpec spec)
+            throws IOException, InterruptedException {
         Path destination = artifacts.resolve(spec.name());
         deleteRecursively(destination);
         // The plugins' layout, checks included: Class-Path in index order and the fixed modification times.
-        AotLayout.Result layout = AotLayout.write(javaExecutable(), stored.artifact(), destination,
+        AotLayout.Result layout = AotLayout.write(javaExecutable(), jar, destination,
                 java.time.Duration.ofSeconds(EXTRACT_TIMEOUT_SECONDS));
         Path applicationJar = layout.applicationJar();
         List<String> run = List.of(javaExecutable().toString(), "-jar",
@@ -1235,7 +1316,7 @@ final class SampleBuild implements SampleSteps {
         // Extraction already writes this instant; pinning states it rather than relying on it.
         LaunchInputs.pin(launchInputs);
         return Variant.available(spec, run, destination, destination, deploymentSize, EntryMode.STANDARD_LOADER,
-                stored.buildNote(), launchInputs);
+                buildNote, launchInputs);
     }
 
     /**

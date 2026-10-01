@@ -58,6 +58,9 @@ public final class AotCacheReport {
     /** {@link #recordStop()} when the application ran to its exit. */
     static final String STOP_EXIT = "exit";
 
+    /** The end of a label's name that holds an input's digest, which {@link #summary()} leaves out. */
+    static final String DIGEST_LABEL_SUFFIX = "Sha256";
+
     private final String jdk;
     private final String os;
     private final String arch;
@@ -344,7 +347,8 @@ public final class AotCacheReport {
      * One line that reports the cache, for a plugin to log, such as {@code Trained and verified the JDK AOT cache
      * for the layout target: 97.3% of the classes and 812 of 830 io.micronaut classes from the cache, 0 of 10
      * strict probes failed. Launch it from its directory with: java @app.jvmopts -jar app.jar}. Each label reads
-     * as {@code the <value> <name>}.
+     * as {@code the <value> <name>}, except a label whose name ends in {@value #DIGEST_LABEL_SUFFIX}, which
+     * identifies an input by its digest for the report and the identity file only.
      *
      * @return the summary
      */
@@ -353,6 +357,9 @@ public final class AotCacheReport {
                 .append(" the JDK AOT cache");
         String separator = " for ";
         for (Map.Entry<String, String> label : labels.entrySet()) {
+            if (label.getKey().endsWith(DIGEST_LABEL_SUFFIX)) {
+                continue;
+            }
             summary.append(separator).append("the ").append(label.getValue()).append(' ').append(label.getKey());
             separator = " and ";
         }

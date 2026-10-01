@@ -27,10 +27,11 @@ the harness works is in https://github.com/{githubSlug}/blob/master/benchmarks/R
 |`runner-stored-joran`{asterisk}, `-aot`{asterisk} |Control: `precompileLogback=false`
 |`runner-stored-keepdebug`{asterisk}, `-aot`{asterisk} |Control: `stripLocalVariables=false`
 |`runner-stored-dynamic-services`{asterisk}, `-aot`{asterisk} |Control: `staticServices=false`
-|`runner-stored-lambdas`{asterisk}, `-aot`{asterisk}, `runner-extracted-lambdas-aot`{asterisk} |Control: `desugarLambdas=false`; the last extracted
+|`runner-stored-lambdas`{asterisk}, `-aot`{asterisk} |Control: `desugarLambdas=false`
 |`runner-preserve` |Runner JAR with the dependencies copied byte for byte (`PRESERVE`)
-|`runner-extracted` |`runner-stored` extracted into the plugins' layout, run by the JDK's own loader
+|`runner-extracted` |The plugins' layout: `runner-stored`'s inputs with lambdas kept, extracted, run by the JDK's own loader
 |`runner-extracted-aot` |That layout with a trained cache: the AOT layout the plugins generate, the cached headline
+|`runner-extracted-desugared`{asterisk}, `-aot`{asterisk} |Control: `runner-stored` itself extracted, lambdas desugared
 |`shadow-maot`, `shadow-maot-aot`{asterisk} |Micronaut AOT's `optimizedJitJarAll`, flattened by Shadow (`-aot`: with a cache)
 |`runner-maot`, `runner-maot-aot`{asterisk} |Runner JAR of Micronaut AOT's `optimizedJitJar`, as `optimizedMicronautRunnerJar`
 |===
@@ -62,7 +63,10 @@ vCPUs, AMD EPYC 7763), *JDK 25.0.4.1+1-LTS* (Temurin, HotSpot C2), `benchmark-la
 * Preloading: only the `runner-stored-preload` rows. The plugins' convention needs a committed startup profile, which
 the sample lacks, and the harness calls the packaging library directly.
 * The extracted rows keep the rewritten classes, the Logback configurator and the service table; the entry stub, the
-prefetch, preloading and the read mode do not apply to them.
+prefetch, preloading and the read mode do not apply to them. In this run `runner-extracted` and `-aot` were still
+extracted from the desugared `runner-stored`, the layout the harness now calls `runner-extracted-desugared`, and
+the opt-in `runner-extracted-lambdas-aot` was the layout with lambdas kept, which the plugins and `runner-extracted`
+now write (<<aotLayoutLambdas,Lambdas in the layout>>).
 
 *Libraries.* On Micronaut 5.1.15 and Netty 4.2.18.Final the first request still sets up JFR with nothing recording,
 so every row, Runner and Shadow alike, includes that cost; the unreleased fixes for
@@ -125,8 +129,10 @@ ms (-136.6 to -126.2), against -144.9 ms (-151.5 to -142.4) on 5.1.15; on 5.2 th
 *What each default buys*: `runner-stored` − control, then `runner-stored-aot` − its twin. Each control turns one step
 off, so each line is that step's own effect in this build; the effects overlap and are not added up.
 
-* Lambda desugaring: -137.5 ms (-147.9 to -122.3); -127.8 ms (-135.0 to -113.9). Extracted, `runner-extracted-aot` −
-`runner-extracted-lambdas-aot`: +8.3 ms (+0.4 to +13.9).
+* Lambda desugaring: -137.5 ms (-147.9 to -122.3); -127.8 ms (-135.0 to -113.9). In the extracted layout with its
+cache it cost +8.3 ms (+0.4 to +13.9), `runner-extracted-aot` − `runner-extracted-lambdas-aot` in this run, so the
+plugins' layout now keeps lambdas; the harness declares that pair as `runner-extracted-aot` −
+`runner-extracted-desugared-aot` and, without the cache, `runner-extracted` − `runner-extracted-desugared`.
 * Logback compilation: -37.3 ms (-53.8 to -33.1); -23.4 ms (-35.6 to -19.7).
 * Local-variable stripping: -19.8 ms (-29.7 to -5.0); -4.9 ms (-12.2 to +4.5).
 * Static service table: -11.4 ms (-22.6 to -2.9); -19.6 ms (-27.9 to -11.5).

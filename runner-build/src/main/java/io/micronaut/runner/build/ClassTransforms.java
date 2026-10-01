@@ -58,6 +58,17 @@ final class ClassTransforms {
     }
 
     /**
+     * Whether a build of a spec desugars lambdas, as {@link #prepare} decides it: the option is on and the
+     * compression re-packs the dependencies, which {@code PRESERVE} does not.
+     *
+     * @param spec the spec
+     * @return whether its build rewrites lambda call sites
+     */
+    static boolean desugarsLambdas(RunnerJarSpec spec) {
+        return spec.desugarLambdas() && spec.compression() != Compression.PRESERVE;
+    }
+
+    /**
      * Decides which class transforms run and, when any does, scans the class path they need.
      *
      * <p>The transforms run only in STORED and HYBRID: in PRESERVE every dependency is nested byte for byte,

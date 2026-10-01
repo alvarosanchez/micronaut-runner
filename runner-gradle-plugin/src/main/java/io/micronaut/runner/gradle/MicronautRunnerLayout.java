@@ -39,6 +39,12 @@ import java.nio.file.Path;
  * {@code java -Dmicronaut.runner.mode=extract} writes, run with the project's toolchain, and every file carries
  * the modification time {@code 1980-02-01T00:00:00Z}.
  *
+ * <p>The plugin has it extract the archive of an internal task, which packages {@code micronautRunnerJar}'s inputs
+ * and options with every lambda kept: the JDK's own class loader runs the layout, and a JDK AOT cache links and
+ * archives that loader's lambdas itself. When {@code micronautRunnerJar} desugars lambdas, as it does by default,
+ * the layout is therefore not what {@code extract} writes from its archive, and a cache trained on one does not
+ * match the other.</p>
+ *
  * <p>The task is experimental and belongs to this interim plugin only.</p>
  *
  * @since 1.0
@@ -52,7 +58,8 @@ public abstract class MicronautRunnerLayout extends DefaultTask {
     }
 
     /**
-     * The Runner JAR to extract. The plugin sets the archive of {@code micronautRunnerJar}.
+     * The Runner JAR to extract. The plugin sets the archive of its internal layout-source task, which packages
+     * {@code micronautRunnerJar}'s inputs and options with every lambda kept, under the same file name.
      *
      * @return the Runner JAR
      */

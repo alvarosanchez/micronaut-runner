@@ -250,8 +250,9 @@ public final class PackageMojo extends AbstractMojo {
                 manifestSource = mainArtifact;
             }
 
+            File list = startupClassList();
             RunnerJarResult result = RunnerJarBuilder.build(
-                    buildSpec(classes, target, manifestSource), new MavenBuildLogger(getLog()));
+                    buildSpec(classes, target, manifestSource, list), new MavenBuildLogger(getLog()));
             mainArtifactReplaced = replaceMainArtifact;
 
             if (replaceMainArtifact) {
@@ -264,6 +265,10 @@ public final class PackageMojo extends AbstractMojo {
                 projectHelper.attachArtifact(project, "jar", classifier, target);
             }
             getLog().info(result.summary());
+            // For mn-runner:layout and mn-runner:jdk-aot-cache later in the build, with the manifest source at the
+            // name it keeps: the copy the build read it from has just become the original.
+            LayoutSourceJar.remember(project, buildSpec(classes, target,
+                    replaceMainArtifact && manifestSource != null ? original : manifestSource, list));
         } catch (IOException e) {
             if (mainArtifactReplaced && savedThinArtifact != null && Files.isRegularFile(savedThinArtifact)) {
                 getLog().warn("Could not update " + original + "; the thin jar is preserved at "
@@ -314,6 +319,22 @@ public final class PackageMojo extends AbstractMojo {
      *                              packaging library's or maven-archiver's message
      */
     RunnerJarSpec buildSpec(File classes, File target, File manifestSource) throws MojoFailureException {
+        return buildSpec(classes, target, manifestSource, startupClassList());
+    }
+
+    /**
+     * Hands the project's facts and the configured options to the packaging library.
+     *
+     * @param classes        the application's classes directory
+     * @param target         where the archive is written
+     * @param manifestSource the jar whose manifest describes the application, or {@code null}
+     * @param list           the startup class list to embed, or {@code null} for none
+     * @return the spec
+     * @throws MojoFailureException if an option, the timestamp or a dependency is not usable, with the
+     *                              packaging library's or maven-archiver's message
+     */
+    private RunnerJarSpec buildSpec(File classes, File target, File manifestSource, File list)
+            throws MojoFailureException {
         Set<String> modules = new HashSet<>();
         if (reactorProjects != null) {
             for (MavenProject module : reactorProjects) {
@@ -369,7 +390,6 @@ public final class PackageMojo extends AbstractMojo {
             if (manifestEntries != null) {
                 spec.manifestAttributes(new LinkedHashMap<>(manifestEntries));
             }
-            File list = startupClasses != null ? startupClasses : committedProfile();
             if (list != null) {
                 spec.startupClasses(list.toPath());
             }
@@ -393,6 +413,15 @@ public final class PackageMojo extends AbstractMojo {
         } catch (IllegalArgumentException e) {
             throw new MojoFailureException(e.getMessage(), e);
         }
+    }
+
+    /**
+     * The startup class list to embed: {@code startupClasses} when it is set, else the committed profile.
+     *
+     * @return the list, or {@code null} for none
+     */
+    private File startupClassList() {
+        return startupClasses != null ? startupClasses : committedProfile();
     }
 
     /**

@@ -26,6 +26,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -110,6 +111,29 @@ class StartupClassListTest {
                 list.classes());
         assertEquals(3, list.listed());
         assertFalse(list.recordedWithoutArchiveClasses());
+    }
+
+    @Test
+    void theLayoutSourceLeavesTheGeneratedLambdaClassesOutAndKeepsTheOrder() {
+        StartupClassList list = StartupClassList.parse(List.of(
+                "com.example.App",
+                "com.example.App$$Lambda$R0",
+                "jrt:java.lang.Thread",
+                "com.example.Lib",
+                "com.example.App$$Lambda$R0",
+                "com.example.Lib$$Lambda$R12",
+                "com.example.Other$$Lambda/0x0000000801001234"));
+
+        assertEquals(3, list.generatedLambdaListings(), "a repeated name counts every time it is listed");
+        StartupClassList kept = list.withoutGeneratedLambdaClasses();
+
+        assertEquals(List.of("com.example.App", "com.example.Lib", "com.example.Other$$Lambda/0x0000000801001234"),
+                kept.classes(), "only the classes desugaring generates are left out");
+        assertEquals(List.of("java.lang.Thread"), kept.jdkClasses());
+        assertEquals(list.listed() - 3, kept.listed(), "they do not count against the dropped-names warning");
+        assertEquals(0, kept.generatedLambdaListings());
+        StartupClassList none = StartupClassList.parse(List.of("com.example.App"));
+        assertSame(none, none.withoutGeneratedLambdaClasses(), "a list without them is kept as it is");
     }
 
     @Test

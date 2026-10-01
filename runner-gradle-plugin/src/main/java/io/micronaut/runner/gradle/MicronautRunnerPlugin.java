@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.gradle;
 
+import io.micronaut.runner.build.AotTarget;
 import io.micronaut.runner.build.RunnerJarOption;
 import io.micronaut.runner.build.StartupProfileRecorder;
 import org.gradle.api.Action;
@@ -28,6 +29,7 @@ import org.gradle.api.artifacts.result.ResolvedArtifactResult;
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition;
 import org.gradle.api.attributes.Usage;
 import org.gradle.api.file.RegularFile;
+import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.plugins.AppliedPlugin;
 import org.gradle.api.plugins.BasePluginExtension;
 import org.gradle.api.plugins.ExtensionAware;
@@ -85,7 +87,9 @@ import java.util.Set;
  * <p>Experimentally, and only in this interim plugin, it registers {@code micronautRunnerJdkAotCache}, which trains
  * and verifies a JDK AOT cache for the archive's extracted layout (or the archive itself) with the project's
  * toolchain, and {@code micronautRunnerLayout}, which writes the layout alone. {@code assemble} builds the cache only
- * with {@code jdkAotCache.enabled = true}.</p>
+ * with {@code jdkAotCache.enabled = true}. Both extract the layout from the archive of an internal task, which
+ * packages {@code micronautRunnerJar}'s inputs and options with every lambda kept, so a cache trained on the layout
+ * does not match an extract of {@code micronautRunnerJar}'s archive when that archive desugars lambdas.</p>
  *
  * @since 1.0
  */
@@ -151,6 +155,12 @@ public final class MicronautRunnerPlugin implements Plugin<Project> {
      * {@code optimizedJitJarAll}, its Shadow JAR of the optimized application.
      */
     static final String OPTIMIZED_CLASSIFIER = "all-optimized";
+
+    /**
+     * The internal task that packages the JAR the layout is extracted from: {@value #TASK_NAME}'s inputs and options
+     * with every lambda kept. It is not part of {@code assemble}, and nothing publishes its archive.
+     */
+    private static final String LAYOUT_SOURCE_TASK_NAME = "micronautRunnerLayoutSource";
 
     /** The Micronaut Gradle plugin's Runner plugin, which replaces this one. */
     private static final String UPSTREAM_PLUGIN_ID = "io.micronaut.runner";
@@ -271,12 +281,27 @@ public final class MicronautRunnerPlugin implements Plugin<Project> {
             onlyIfEnabled(task, extension);
         });
 
-        // The JDK AOT cache and its layout: experimental, and only in this interim plugin.
+        // The JDK AOT cache and its layout: experimental, and only in this interim plugin. The layout is extracted
+        // from a JAR of its own, which the internal task packages from micronautRunnerJar's inputs with every lambda
+        // kept: the JDK's own loader runs the layout, and the cache archives that loader's lambdas itself.
+        TaskProvider<MicronautRunnerJar> layoutSource = project.getTasks().register(LAYOUT_SOURCE_TASK_NAME,
+                MicronautRunnerJar.class, task -> {
+                    task.setDescription("Packages the runner jar that " + LAYOUT_TASK_NAME + " and "
+                            + JDK_AOT_CACHE_TASK_NAME + " extract: the inputs and options of " + TASK_NAME
+                            + ", with every lambda kept (internal)");
+                    sameInputsAs(task, runnerJar.get());
+                    // Its own directory, under micronautRunnerJar's file name, which names the layout's
+                    // application JAR.
+                    task.getDestinationDirectory().convention(project.getLayout().getBuildDirectory()
+                            .dir("micronaut-runner/layout-source"));
+                    task.packageLayoutSource();
+                    onlyIfEnabled(task, extension);
+                });
         project.getTasks().register(LAYOUT_TASK_NAME, MicronautRunnerLayout.class, task -> {
             task.setGroup(LifecycleBasePlugin.BUILD_GROUP);
             task.setDescription("Writes the extracted layout of the runner jar, for a JDK AOT cache trained"
                     + " elsewhere (experimental)");
-            task.getArchiveFile().convention(runnerJar.flatMap(MicronautRunnerJar::getArchiveFile));
+            task.getArchiveFile().convention(layoutSource.flatMap(MicronautRunnerJar::getArchiveFile));
             task.getJavaLauncher().convention(toolchains.launcherFor(java.getToolchain()));
             task.getDestinationDirectory().convention(project.getLayout().getBuildDirectory()
                     .dir("micronaut-runner/layout"));
@@ -288,6 +313,9 @@ public final class MicronautRunnerPlugin implements Plugin<Project> {
                     task.setDescription("Trains and verifies a JDK AOT cache for the runner jar, in its own"
                             + " directory with a launch argfile (experimental)");
                     task.getArchiveFile().convention(runnerJar.flatMap(MicronautRunnerJar::getArchiveFile));
+                    // Only the layout target extracts it, so singleJar never packages it.
+                    task.getLayoutSourceFile().convention(layoutSourceOf(project, task.getJdkAotCache(),
+                            layoutSource));
                     task.getJavaLauncher().convention(toolchains.launcherFor(java.getToolchain()));
                     task.getJdkBuild().convention(task.getJavaLauncher().map(launcher ->
                             launcher.getMetadata().getJavaRuntimeVersion() + " / "
@@ -398,6 +426,68 @@ public final class MicronautRunnerPlugin implements Plugin<Project> {
 
         project.getTasks().named(LifecycleBasePlugin.ASSEMBLE_TASK_NAME, task -> task.dependsOn(runnerJar));
         return runnerJar;
+    }
+
+    /**
+     * Gives the internal layout-source task the inputs and options of {@code micronautRunnerJar}, as that task has
+     * them, so that a value set on {@code micronautRunnerJar} itself reaches the layout too. Each property takes the
+     * other task's property as its convention; none of them is an output, so this task does not depend on
+     * {@code micronautRunnerJar}, only on what builds the inputs they share.
+     *
+     * @param task    the layout-source task
+     * @param shipped {@code micronautRunnerJar}
+     */
+    private static void sameInputsAs(MicronautRunnerJar task, MicronautRunnerJar shipped) {
+        task.getMainClass().convention(shipped.getMainClass());
+        task.getApplicationOutput().from(shipped.getApplicationOutput());
+        task.getApplicationJar().convention(shipped.getApplicationJar());
+        task.setInheritedManifest(shipped.getInheritedManifest());
+        task.getClasspath().from(shipped.getClasspath());
+        task.getCoordinates().convention(shipped.getCoordinates());
+        task.getProjectModules().convention(shipped.getProjectModules());
+        task.getCompression().convention(shipped.getCompression());
+        task.getEntryStub().convention(shipped.getEntryStub());
+        task.getMultiRelease().convention(shipped.getMultiRelease());
+        task.getEnableNativeAccess().convention(shipped.getEnableNativeAccess());
+        task.getAddOpens().convention(shipped.getAddOpens());
+        task.getAddExports().convention(shipped.getAddExports());
+        task.getManifestAttributes().convention(shipped.getManifestAttributes());
+        task.getStartupClasses().convention(shipped.getStartupClasses());
+        task.getOptions().convention(shipped.getOptions());
+        task.getArchiveBaseName().convention(shipped.getArchiveBaseName());
+        task.getArchiveVersion().convention(shipped.getArchiveVersion());
+        task.getArchiveClassifier().convention(shipped.getArchiveClassifier());
+    }
+
+    /**
+     * The JAR {@code micronautRunnerJdkAotCache} extracts: the layout-source task's archive for the layout target,
+     * and nothing for any other, so that the single-JAR target does not package it.
+     *
+     * @param project      the project
+     * @param spec         the task's cache settings
+     * @param layoutSource the layout-source task
+     * @return the archive, or no value
+     */
+    private static Provider<RegularFile> layoutSourceOf(Project project, JdkAotCacheSpec spec,
+                                                        TaskProvider<MicronautRunnerJar> layoutSource) {
+        RegularFileProperty none = project.getObjects().fileProperty();
+        return spec.getTarget().orElse(AotTarget.DEFAULT.value())
+                .flatMap(target -> isLayout(target) ? layoutSource.flatMap(MicronautRunnerJar::getArchiveFile) : none);
+    }
+
+    /**
+     * Whether a target, as a build script spells it, is the layout. A value that names no target is not: the task
+     * fails on it when it runs, naming both.
+     *
+     * @param target the target
+     * @return whether it is {@code layout}
+     */
+    private static boolean isLayout(String target) {
+        try {
+            return AotTarget.parse(target) == AotTarget.LAYOUT;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     /**

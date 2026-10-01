@@ -83,28 +83,31 @@ class VariantSelectionTest {
                         "runner-stored-ordered", "runner-stored-hybrid", "runner-stored-positional", "runner-stored-positional-aot", "runner-stored-joran",
                         "runner-stored-joran-aot", "runner-stored-keepdebug", "runner-stored-keepdebug-aot",
                         "runner-stored-dynamic-services", "runner-stored-dynamic-services-aot",
-                        "runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot",
-                        "runner-stored-prefetch", "runner-stored-prefetch-aot", "shadow-maot-aot", "runner-maot-aot"),
+                        "runner-stored-lambdas", "runner-stored-lambdas-aot",
+                        "runner-stored-prefetch", "runner-stored-prefetch-aot", "runner-extracted-desugared",
+                        "runner-extracted-desugared-aot", "shadow-maot-aot", "runner-maot-aot"),
                 all.stream().filter(name -> !SampleBuild.variantNames().contains(name)).toList());
         assertEquals(all.indexOf("runner-stored-aot") + 1, all.indexOf("runner-stored-reflection"));
-        assertEquals(all.indexOf("runner-extracted-lambdas-aot") + 1, all.indexOf("runner-stored-prefetch"));
+        assertEquals(all.indexOf("runner-stored-lambdas-aot") + 1, all.indexOf("runner-stored-prefetch"));
+        assertEquals(all.indexOf("runner-extracted-aot") + 1, all.indexOf("runner-extracted-desugared"));
         assertEquals(all.indexOf("runner-stored-prefetch-aot") + 1, all.indexOf("runner-preserve"));
         assertEquals(all.indexOf("shadow-maot") + 1, all.indexOf("shadow-maot-aot"));
         assertEquals(all.indexOf("runner-maot") + 1, all.indexOf("runner-maot-aot"));
     }
 
     @Test
-    void theExtractedLambdaControlBuildsTheStoredControlAndItsLayoutOnce() {
+    void bothLayoutsBuildRunnerStoredOnceAndTheirOwnLayout() {
         FakeSteps steps = new FakeSteps();
 
-        List<Variant> variants = SampleBuild.variants(steps, List.of("runner-stored-lambdas-aot",
-                "runner-extracted-lambdas-aot"), log());
+        List<Variant> variants = SampleBuild.variants(steps, List.of("runner-extracted-aot",
+                "runner-extracted-desugared-aot"), log());
 
-        assertEquals(List.of("runner-stored-lambdas-aot", "runner-extracted-lambdas-aot"), names(variants));
-        assertEquals(Map.of("runnerJar:runner-stored-lambdas", 1,
-                "aotCache:runner-stored-lambdas->runner-stored-lambdas-aot", 1,
-                "extracted:runner-stored-lambdas", 1,
-                "aotCache:runner-extracted-lambdas->runner-extracted-lambdas-aot", 1), steps.calls);
+        assertEquals(List.of("runner-extracted-aot", "runner-extracted-desugared-aot"), names(variants));
+        assertEquals(Map.of("runnerJar:runner-stored", 1,
+                "pluginLayout:runner-stored", 1,
+                "aotCache:runner-extracted->runner-extracted-aot", 1,
+                "extracted:runner-stored", 1,
+                "aotCache:runner-extracted-desugared->runner-extracted-desugared-aot", 1), steps.calls);
     }
 
     @Test
@@ -130,7 +133,7 @@ class VariantSelectionTest {
                 new PrintStream(console, true, StandardCharsets.UTF_8));
 
         assertEquals(List.of("runner-extracted-aot"), names(variants));
-        assertEquals(Map.of("runnerJar:runner-stored", 1, "extracted:runner-stored", 1,
+        assertEquals(Map.of("runnerJar:runner-stored", 1, "pluginLayout:runner-stored", 1,
                 "aotCache:runner-extracted->runner-extracted-aot", 1), steps.calls);
         String log = console.toString(StandardCharsets.UTF_8);
         assertTrue(log.contains("[startup-benchmark] prepared runner-stored"), log);
@@ -261,7 +264,7 @@ class VariantSelectionTest {
         assertTrue(steps.calls.values().stream().allMatch(count -> count == 1), steps.calls.toString());
         assertEquals(List.of("explodedClasspath", "thinJar", "shadow", "shadowStored", "aotCache:shadow->shadow-aot",
                 "runnerJar:runner-stored", "aotCache:runner-stored->runner-stored-aot", "runnerJar:runner-preserve",
-                "extracted:runner-stored", "aotCache:runner-extracted->runner-extracted-aot", "shadowMaot",
+                "pluginLayout:runner-stored", "aotCache:runner-extracted->runner-extracted-aot", "shadowMaot",
                 "runnerMaot"),
                 List.copyOf(steps.calls.keySet()));
     }
@@ -284,7 +287,7 @@ class VariantSelectionTest {
             expected.put(name, runnerSingleJar ? List.of("-Dmicronaut.runner.aot.training=true") : List.of());
         }
         assertEquals(expected, steps.trainingArguments);
-        assertEquals(List.of("shadow-aot", "runner-extracted-lambdas-aot", "runner-extracted-aot", "shadow-maot-aot"),
+        assertEquals(List.of("shadow-aot", "runner-extracted-aot", "runner-extracted-desugared-aot", "shadow-maot-aot"),
                 expected.entrySet().stream().filter(entry -> entry.getValue().isEmpty()).map(Map.Entry::getKey)
                         .toList());
     }
@@ -320,8 +323,8 @@ class VariantSelectionTest {
             }
 
             @Override
-            public Variant extracted(Variant stored, SampleBuild.VariantSpec spec) {
-                note("extracted:" + stored.name());
+            public Variant pluginLayout(Variant stored, SampleBuild.VariantSpec spec) {
+                note("pluginLayout:" + stored.name());
                 throw new IllegalStateException("there is no runner jar to extract: " + stored.unavailableReason());
             }
         };
@@ -331,7 +334,7 @@ class VariantSelectionTest {
         assertEquals(List.of("runner-stored-aot", "runner-extracted"), names(variants));
         assertTrue(variants.stream().noneMatch(Variant::available));
         assertEquals(1, steps.calls("runnerJar:runner-stored"));
-        assertEquals(1, steps.calls("extracted:runner-stored"));
+        assertEquals(1, steps.calls("pluginLayout:runner-stored"));
         assertTrue(variants.get(0).unavailableReason().contains("runner-stored is unavailable"),
                 variants.get(0).unavailableReason());
         assertTrue(variants.get(1).unavailableReason().contains("no runner jar for runner-stored"),
@@ -503,6 +506,11 @@ class VariantSelectionTest {
         @Override
         public Variant extracted(Variant stored, SampleBuild.VariantSpec spec) {
             return variant("extracted:" + stored.name(), spec);
+        }
+
+        @Override
+        public Variant pluginLayout(Variant stored, SampleBuild.VariantSpec spec) {
+            return variant("pluginLayout:" + stored.name(), spec);
         }
     }
 

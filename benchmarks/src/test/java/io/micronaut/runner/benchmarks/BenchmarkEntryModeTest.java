@@ -85,7 +85,6 @@ class BenchmarkEntryModeTest {
             "runner-stored-dynamic-services-aot",
             "runner-stored-lambdas",
             "runner-stored-lambdas-aot",
-            "runner-extracted-lambdas-aot",
             "runner-stored-prefetch",
             "runner-stored-prefetch-aot");
 
@@ -105,16 +104,16 @@ class BenchmarkEntryModeTest {
             assertEquals(expected, spec.entryMode(), name);
             assertEquals(name.endsWith("-aot"), spec.aotCache(), name);
             assertEquals(!CORE_ROWS.contains(name), spec.optIn(), name);
-            if (spec.aotCache() && !name.equals("runner-extracted-lambdas-aot")) {
+            if (spec.aotCache()) {
                 assertEquals(name.substring(0, name.length() - "-aot".length()), spec.source(), name);
             }
         }
         assertEquals("shadow", SampleBuild.spec("shadow-aot").source());
         assertEquals("runner-stored", SampleBuild.spec("runner-extracted").source());
+        assertEquals("runner-stored", SampleBuild.spec("runner-extracted-desugared").source());
         assertEquals("runner-stored", SampleBuild.spec("runner-stored-preload").source());
         assertEquals("runner-stored", SampleBuild.spec("runner-stored-ordered").source());
         assertEquals("runner-stored", SampleBuild.spec("runner-stored-hybrid").source());
-        assertEquals("runner-stored-lambdas", SampleBuild.spec("runner-extracted-lambdas-aot").source());
         assertNull(SampleBuild.spec("runner-stored").source());
     }
 
@@ -132,11 +131,14 @@ class BenchmarkEntryModeTest {
 
         List<String> expected = new ArrayList<>(CORE_ROWS);
         expected.addAll(expected.indexOf("runner-stored-aot") + 1, OPT_IN_ROWS);
+        // The desugared layout control follows the plugins' layout it controls.
+        expected.addAll(expected.indexOf("runner-extracted-aot") + 1,
+                List.of("runner-extracted-desugared", "runner-extracted-desugared-aot"));
         // Each cached Micronaut AOT row is opt-in and directly follows the row it caches.
         expected.add(expected.indexOf("shadow-maot") + 1, "shadow-maot-aot");
         expected.add(expected.indexOf("runner-maot") + 1, "runner-maot-aot");
         assertEquals(expected, withOptIn);
-        assertEquals(CORE_ROWS.size() + OPT_IN_ROWS.size() + 2, withOptIn.size());
+        assertEquals(CORE_ROWS.size() + OPT_IN_ROWS.size() + 4, withOptIn.size());
         assertTrue(core.stream().noneMatch(name -> name.endsWith("-maot-aot")), core.toString());
         assertTrue(core.stream().noneMatch(name -> name.contains("joran")), core.toString());
         assertEquals(List.of("runner-stored-preload", "runner-stored-preload-aot", "runner-stored-ordered",
@@ -145,15 +147,19 @@ class BenchmarkEntryModeTest {
                         withOptIn.indexOf("runner-stored-reflection") + 5),
                 "both preload rows come right after the reflection row, and the rows that reuse their recording"
                         + " right after them");
-        assertEquals(List.of("runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot"),
+        assertEquals(List.of("runner-stored-lambdas", "runner-stored-lambdas-aot"),
                 withOptIn.stream().filter(name -> name.contains("lambdas")).toList(),
                 "the lambda controls, in this order, after the runner-stored group");
         assertTrue(withOptIn.indexOf("runner-stored-lambdas") > withOptIn.indexOf("runner-stored-dynamic-services-aot")
-                && withOptIn.indexOf("runner-extracted-lambdas-aot") < withOptIn.indexOf("runner-preserve"));
+                && withOptIn.indexOf("runner-stored-lambdas-aot") < withOptIn.indexOf("runner-preserve"));
         assertEquals(List.of("runner-stored-prefetch", "runner-stored-prefetch-aot"),
-                withOptIn.subList(withOptIn.indexOf("runner-extracted-lambdas-aot") + 1,
+                withOptIn.subList(withOptIn.indexOf("runner-stored-lambdas-aot") + 1,
                         withOptIn.indexOf("runner-preserve")),
                 "the prefetch candidates close the runner-stored group");
+        assertEquals(List.of("runner-extracted", "runner-extracted-aot", "runner-extracted-desugared",
+                        "runner-extracted-desugared-aot"),
+                withOptIn.stream().filter(name -> name.startsWith("runner-extracted")).toList(),
+                "the desugared layout control follows the plugins' layout");
         assertTrue(core.stream().noneMatch(OPT_IN_ROWS::contains), "opt-in rows never gate: " + core);
     }
 
@@ -240,14 +246,15 @@ class BenchmarkEntryModeTest {
                 "runner-stored-preload - shadow",
                 "runner-stored-preload-aot - runner-stored-aot"), pairs.subList(first, first + 3),
                 "the three preload comparisons follow each other in the list");
-        // Rows added later append their own comparisons after these three.
+        // Rows added later append their own comparisons after these four.
         int lambdas = pairs.indexOf("runner-stored - runner-stored-lambdas");
         assertTrue(lambdas > first, pairs::toString);
         assertEquals(List.of(
                 "runner-stored - runner-stored-lambdas",
                 "runner-stored-aot - runner-stored-lambdas-aot",
-                "runner-extracted-aot - runner-extracted-lambdas-aot"), pairs.subList(lambdas, lambdas + 3),
-                "and the three lambda comparisons follow each other later");
+                "runner-extracted-aot - runner-extracted-desugared-aot",
+                "runner-extracted - runner-extracted-desugared"), pairs.subList(lambdas, lambdas + 4),
+                "and the four lambda comparisons follow each other later");
         assertTrue(first > pairs.indexOf("runner-stored-aot - runner-stored-keepdebug-aot"), pairs::toString);
     }
 
@@ -707,7 +714,51 @@ class BenchmarkEntryModeTest {
         assertTrue(comparisons.stream().anyMatch(spec -> spec.candidate().equals("runner-stored-aot")
                 && spec.baseline().equals("runner-stored-lambdas-aot")));
         assertTrue(comparisons.stream().anyMatch(spec -> spec.candidate().equals("runner-extracted-aot")
-                && spec.baseline().equals("runner-extracted-lambdas-aot")));
+                && spec.baseline().equals("runner-extracted-desugared-aot")));
+    }
+
+    /**
+     * {@code runner-extracted} is the layout the build plugins write: runner-build's rule applied to
+     * {@code runner-stored}'s spec, packaged under {@code runner-stored}'s file name and extracted. Its source jar
+     * is the lambda control's jar byte for byte, and only the desugared control carries generated lambda classes.
+     */
+    @Test
+    void theExtractedLayoutKeepsLambdasAsThePluginsWriteItAndTheControlDoesNot(@TempDir Path output)
+            throws Exception {
+        Path classes = compile(output.resolve("lambdas"), "fixture.LambdaMain", """
+                package fixture;
+                public final class LambdaMain {
+                    public static void main(String[] args) {
+                        Runnable greeting = () -> System.out.println("hello");
+                        greeting.run();
+                    }
+                }
+                """);
+        Path library = output.resolve("library.jar");
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(library))) {
+            jar.putNextEntry(new ZipEntry("fixture/lib/Unused.txt"));
+            jar.closeEntry();
+        }
+        Variant stored = runnerJar(output, "runner-stored", "fixture.LambdaMain",
+                List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB);
+        Variant kept = runnerJar(output, "runner-stored-lambdas", "fixture.LambdaMain",
+                List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB,
+                SampleBuild.RunnerJarOptions.DEFAULTS.withDesugarLambdas(false));
+
+        Variant layout = SampleBuild.pluginLayout(output, stored, SampleBuild.spec("runner-extracted"),
+                "fixture.LambdaMain", List.of(classes), List.of(library), QUIET);
+        Variant control = SampleBuild.extractedRunner(output, stored, SampleBuild.spec("runner-extracted-desugared"));
+
+        Path source = output.resolve("runner-extracted-source").resolve("runner-stored.jar");
+        assertEquals(-1, Files.mismatch(source, kept.artifact()),
+                "the layout-source jar is the jar runner-stored's options build with lambdas kept");
+        assertEquals("runner-stored.jar", layout.launchInputs().get(0).getFileName().toString(),
+                "the application jar keeps the shipped jar's name, as the plugins' layout does");
+        assertTrue(entryNames(layout.launchInputs().get(0)).stream().noneMatch(name -> name.contains("$$Lambda$R")));
+        assertTrue(entryNames(control.launchInputs().get(0)).contains("fixture/LambdaMain$$Lambda$R0.class"),
+                "the control is runner-stored's own layout, desugared");
+        assertEquals(stored.buildNote(), layout.buildNote());
+        assertEquals(EntryMode.STANDARD_LOADER, layout.effectiveEntryMode());
     }
 
     @Test
@@ -720,7 +771,7 @@ class BenchmarkEntryModeTest {
         assertEquals(List.of("runner-stored-prefetch - runner-stored",
                 "runner-stored-prefetch-aot - runner-stored-aot"), pairs.subList(first, first + 2),
                 "the prefetch comparisons follow each other");
-        assertTrue(first > pairs.indexOf("runner-extracted-aot - runner-extracted-lambdas-aot"),
+        assertTrue(first > pairs.indexOf("runner-extracted - runner-extracted-desugared"),
                 "a row added to the matrix appends its comparisons");
     }
 

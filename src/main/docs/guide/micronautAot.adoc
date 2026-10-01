@@ -240,5 +240,5 @@ With a JDK AOT cache on both sides, no: the single `-all-optimized.jar` was behi
 application classes only when it is trained as the <<aotSingleJar,single-JAR section>> of
 <<cdsAndAot,Class Data Sharing and the AOT Cache>> describes. For a cached deployment, see
 <<aotLayout,the extracted layout with the AOT cache>>, which `micronautRunnerLayout` and `micronautRunnerJdkAotCache`
-build from the plain `-all.jar`. No run has measured an extracted `-all-optimized.jar`, so this guide claims no gain
-for one.
+build from the inputs of the plain `-all.jar`, with lambdas kept. No run has measured an extracted
+`-all-optimized.jar`, so this guide claims no gain for one.

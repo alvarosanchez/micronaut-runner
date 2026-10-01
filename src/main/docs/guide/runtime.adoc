@@ -401,6 +401,12 @@ why an application that will be started thousands of times in the same container
 extracting once at image build time. For that cached deployment, trained and verified with its launch options, see
 <<aotLayout,The extracted layout with the AOT cache>>.
 
+`extract` writes the nested JARs byte for byte, so a layout extracted from a Runner JAR that desugars lambdas, the
+default with `STORED`, keeps them desugared. The build plugins' layout keeps lambdas instead: it is extracted from a
+JAR they package for it with `desugarLambdas=false` (<<aotLayoutLambdas,Lambdas in the layout>>). A cache the plugins
+trained therefore does not match a layout extracted by hand from the shipped JAR; train the cache on the layout it
+serves.
+
 === Publication and replacement
 
 Extraction writes the layout into a temporary sibling directory and renames it into place, so an interrupted

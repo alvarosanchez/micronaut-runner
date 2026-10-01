@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.gradle;
 
+import io.micronaut.runner.build.AotLayout;
 import io.micronaut.runner.build.ApplicationManifest;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
@@ -80,9 +81,15 @@ import java.util.TreeMap;
 @CacheableTask
 public abstract class MicronautRunnerJar extends DefaultTask {
 
+    /** The ad hoc input that tells the layout-source task apart from a packaging task with the same inputs. */
+    private static final String LAYOUT_SOURCE_INPUT = "layoutSource";
+
     private final RegularFileProperty archiveFile;
 
     private @Nullable Manifest inheritedManifest;
+
+    /** Whether this task packages the layout-source JAR, as the plugin's internal task does. */
+    private boolean layoutSource;
 
     /** Creates the task, deriving the archive's location from its naming properties. */
     public MicronautRunnerJar() {
@@ -391,8 +398,25 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     @TaskAction
     public void packageArchive() throws IOException {
         File output = getArchiveFile().get().getAsFile();
-        RunnerJarResult result = RunnerJarBuilder.build(buildSpec(output), new GradleBuildLogger(getLogger()));
+        RunnerJarSpec spec = buildSpec(output);
+        if (layoutSource) {
+            // The packaging library's rule; a spec that keeps every lambda is packaged as it is.
+            spec = AotLayout.sourceSpec(spec, output.toPath()).orElse(spec);
+        }
+        RunnerJarResult result = RunnerJarBuilder.build(spec, new GradleBuildLogger(getLogger()));
         getLogger().lifecycle(result.summary());
+    }
+
+    /**
+     * Makes this task package the JAR the extracted layout is written from: the spec it would package otherwise,
+     * changed by the packaging library's rule ({@link AotLayout#sourceSpec(RunnerJarSpec, Path)}), or that spec
+     * itself when it keeps every lambda. The plugin calls it on its internal layout-source task only. The flag is
+     * an input of its own, so that the build cache never hands this task the archive of a packaging task with the
+     * same inputs.
+     */
+    void packageLayoutSource() {
+        layoutSource = true;
+        getInputs().property(LAYOUT_SOURCE_INPUT, true);
     }
 
     private RunnerJarSpec buildSpec(File output) {

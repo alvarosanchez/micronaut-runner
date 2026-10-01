@@ -78,6 +78,7 @@ class JdkAotCacheMojoTest {
     Path temp;
 
     private Path buildDirectory;
+    private MavenProject project;
     private JdkAotCacheMojo mojo;
     private LayoutMojo layout;
     private RecordingLog log;
@@ -85,7 +86,7 @@ class JdkAotCacheMojoTest {
     @BeforeEach
     void setUp() {
         buildDirectory = temp.resolve("target");
-        MavenProject project = new MavenProject();
+        project = new MavenProject();
         project.setGroupId("com.example");
         project.setArtifactId("demo");
         project.setVersion("1.0");
@@ -231,18 +232,24 @@ class JdkAotCacheMojoTest {
             out.write(new byte[64]);
             out.closeEntry();
         }
-        RunnerJarBuilder.build(RunnerJarSpec.builder()
+        RunnerJarSpec spec = RunnerJarSpec.builder()
                 .mainClass("com.example.App")
                 .applicationOutput(List.of(classes))
                 .dependencies(List.of(Dependency.of(library)))
                 .output(layout.runnerJar().toPath())
-                .build(), BuildLogger.noOp());
+                .build();
+        RunnerJarBuilder.build(spec, BuildLogger.noOp());
+        // What mn-runner:package leaves for the goal earlier in the build.
+        LayoutSourceJar.remember(project, spec);
 
         layout.execute();
 
-        // The packaging library's summary, which names the application JAR the layout keeps.
-        assertEquals(List.of("Wrote the layout demo-1.0.jar with 1 JARs in lib/ to "
-                + layout.destination().toAbsolutePath().normalize()), log.infos);
+        // The layout-source JAR it packaged, with the packaging library's lines, then the layout's summary, which
+        // names the application JAR the layout keeps.
+        assertTrue(log.infos.stream().anyMatch(line -> line.startsWith("Packaged the layout-source JAR, which keeps"
+                + " every lambda: ")), log.infos::toString);
+        assertEquals("Wrote the layout demo-1.0.jar with 1 JARs in lib/ to "
+                + layout.destination().toAbsolutePath().normalize(), log.infos.get(log.infos.size() - 1));
     }
 
     @Test

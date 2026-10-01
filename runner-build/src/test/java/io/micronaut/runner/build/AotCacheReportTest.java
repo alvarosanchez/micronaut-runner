@@ -49,6 +49,20 @@ class AotCacheReportTest {
     }
 
     @Test
+    void theSummaryLeavesTheDigestsOutAndTheJsonKeepsThem() {
+        Map<String, String> labels = new LinkedHashMap<>();
+        labels.put("target", "layout");
+        labels.put("runnerJarSha256", "ab12");
+        labels.put("layoutSourceSha256", "cd34");
+        AotCacheReport report = report(labels, AotCacheReport.PASSED);
+
+        assertTrue(report.summary().startsWith("Trained and verified the JDK AOT cache for the layout target: "),
+                report::summary);
+        assertTrue(report.toJson().contains("\"target\": \"layout\",\n  \"runnerJarSha256\": \"ab12\",\n"
+                + "  \"layoutSourceSha256\": \"cd34\",\n"), report::toJson);
+    }
+
+    @Test
     void theJsonNamesTheJarAfterTheLabels() {
         String json = report(Map.of("target", "layout"), AotCacheReport.PASSED).toJson();
 

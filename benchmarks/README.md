@@ -134,9 +134,15 @@ In a row name, `maot` is Micronaut AOT and the `-aot` suffix is the JDK AOT cach
 - **Caches:** `runner-stored-aot`, `runner-extracted-aot` and `shadow-aot` against each other. Each cached row shares
   its uncached twin's exact artifact bytes.
 - **Controls:** `runner-stored` − control and `runner-stored-aot` − its `-aot` twin, for each default the control turns
-  off (`-joran`, `-keepdebug`, `-dynamic-services`, `-lambdas`). `runner-extracted-aot` − `runner-extracted-lambdas-aot`
-  runs on the JDK's own loader, which archives lambdas itself, so it checks that desugaring costs the extracted layout
-  nothing.
+  off (`-joran`, `-keepdebug`, `-dynamic-services`, `-lambdas`).
+- **Extracted layout and lambdas:** `runner-extracted` is the layout the build plugins write: runner-build's rule
+  (`AotLayout.sourceSpec`) applied to `runner-stored`'s spec gives a JAR with every lambda kept, packaged under
+  `runner-stored`'s file name in `runner-extracted-source/` and extracted. The opt-in control
+  `runner-extracted-desugared` extracts `runner-stored` itself, desugared lambdas included, which is the layout before
+  the plugins kept lambdas and what a hand extract of the shipped JAR writes. `runner-extracted-aot` −
+  `runner-extracted-desugared-aot` checks that keeping lambdas pays with the cache, where the JDK's own loader archives
+  them, and `runner-extracted` − `runner-extracted-desugared` measures what keeping them costs when the cache is not
+  used.
 - **Opt-in candidates:** `-preload`, `-prefetch` and `-positional` against `runner-stored` (and their `-aot` twins
   against `runner-stored-aot`); `runner-stored` − `runner-stored-reflection` for the entry stub, whose interval still
   spans zero at 20 iterations, so run it with 40.

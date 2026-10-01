@@ -95,7 +95,8 @@ class AotCacheOutputTest {
         for (AotTarget target : AotTarget.values()) {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                     () -> AotCacheOutput.write(target, settings, directory.resolve("no-java"),
-                            directory.resolve("no-such.jar"), out, TrainingSettings.defaults(), new Logged()));
+                            directory.resolve("no-such.jar"), directory.resolve("no-such-source.jar"), out,
+                            TrainingSettings.defaults(), new Logged()));
             assertTrue(failure.getMessage().contains(argument) && failure.getMessage().contains("app.jvmopts"),
                     failure.getMessage());
         }

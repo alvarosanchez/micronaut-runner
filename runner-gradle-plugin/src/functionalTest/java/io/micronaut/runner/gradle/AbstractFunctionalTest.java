@@ -27,8 +27,11 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +42,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
@@ -411,6 +415,68 @@ abstract class AbstractFunctionalTest {
     static Forked runJarInMode(Path archive, String mode, String... arguments)
             throws IOException, InterruptedException {
         return runJar(archive, List.of("-Dmicronaut.runner.mode=" + mode), arguments);
+    }
+
+    /**
+     * Runs an archive with JVM options, from the archive's directory.
+     *
+     * @param archive      the archive to run
+     * @param jvmArguments options for the forked JVM, placed before {@code -jar}
+     * @param arguments    the application arguments
+     * @return the exit status and the combined output
+     * @throws IOException          if the process cannot be started
+     * @throws InterruptedException if the wait is interrupted
+     */
+    static Forked runJarWith(Path archive, List<String> jvmArguments, String... arguments)
+            throws IOException, InterruptedException {
+        return runJar(archive, jvmArguments, arguments);
+    }
+
+    /**
+     * Extracts a Runner JAR with {@code -Dmicronaut.runner.mode=extract}, as a user does by hand.
+     *
+     * @param archive     the Runner JAR
+     * @param destination the directory the layout is written to
+     * @return the layout's files, keyed by their path relative to it, with their SHA-256
+     * @throws IOException          if the extraction fails
+     * @throws InterruptedException if the wait is interrupted
+     */
+    static Map<String, String> extract(Path archive, Path destination) throws IOException, InterruptedException {
+        Forked extraction = runJarInMode(archive, "extract", "--destination", destination.toString());
+        assertEquals(0, extraction.status(), extraction::output);
+        return digests(destination);
+    }
+
+    /**
+     * The SHA-256 of every regular file under a directory, keyed by its path relative to it with {@code /}.
+     *
+     * @param directory the directory
+     * @return the digests, in path order
+     * @throws IOException if a file cannot be read
+     */
+    static Map<String, String> digests(Path directory) throws IOException {
+        Map<String, String> digests = new TreeMap<>();
+        try (Stream<Path> walk = Files.walk(directory)) {
+            for (Path file : walk.filter(Files::isRegularFile).toList()) {
+                digests.put(directory.relativize(file).toString().replace('\\', '/'), sha256(file));
+            }
+        }
+        return digests;
+    }
+
+    /**
+     * The SHA-256 of a file, in lower-case hexadecimal.
+     *
+     * @param file the file
+     * @return the digest
+     * @throws IOException if the file cannot be read
+     */
+    static String sha256(Path file) throws IOException {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /**

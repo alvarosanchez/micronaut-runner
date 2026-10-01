@@ -95,6 +95,7 @@ micronaut {
         // options.put('staticServices', 'false')
 
         // On unless PRESERVE; 'false' keeps lambdas as invokedynamic call sites. See Build-Time Transformations.
+        // It shapes the single JAR: the extracted layout of micronautRunnerLayout keeps lambdas either way.
         // options.put('desugarLambdas', 'false')
 
         // Off by default. Packages the bean definition prefetch, which can shorten a start without an AOT cache.
@@ -151,6 +152,9 @@ and invalid entries fail packaging.
 
 `precompileLogback` compiles `logback.xml` into a Logback `Configurator` when it is packaged, and leaves any file it
 cannot reproduce exactly to Logback; see <<precompiledLogback,Precompiled Logback configuration>>.
+
+`desugarLambdas` shapes the single JAR. The extracted layout that the plugins write for a JDK AOT cache keeps lambdas
+either way; see <<aotLayoutLambdas,Lambdas in the layout>>.
 
 `definitionPrefetch` packages two classes that start Micronaut's bean definition loading before `main`, on the common
 pool, and hand the result to the first application context. It is off unless you set it; see
@@ -267,7 +271,9 @@ Dependency local-variable tables are dropped by default (see <<localVariableTabl
 `-Dmicronaut.runner.stripLocalVariables=false` to keep them. Lambdas are desugared by default (see
 <<desugaredLambdas,Desugared lambdas>>); to keep them as `invokedynamic` call sites, pass
 `-Dmicronaut.runner.desugarLambdas=false` or set
-`<runnerOptions><desugarLambdas>false</desugarLambdas></runnerOptions>`.
+`<runnerOptions><desugarLambdas>false</desugarLambdas></runnerOptions>`. The option shapes the single JAR: the layout
+of `mn-runner:layout` and `mn-runner:jdk-aot-cache` keeps lambdas either way (<<aotLayoutLambdas,Lambdas in the
+layout>>).
 To package the bean definition prefetch (<<definitionPrefetch,Bean definition prefetch>>), pass
 `-Dmicronaut.runner.definitionPrefetch=true` or set
 `<runnerOptions><definitionPrefetch>true</definitionPrefetch></runnerOptions>`. That property is read while

@@ -26,12 +26,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -45,6 +47,8 @@ class JdkAotCacheFunctionalTest extends AbstractFunctionalTest {
     private static final String CACHE_TASK = ":micronautRunnerJdkAotCache";
 
     private static final String LAYOUT_TASK = ":micronautRunnerLayout";
+
+    private static final String LAYOUT_SOURCE_TASK = LayoutSourceFunctionalTest.LAYOUT_SOURCE_TASK;
 
     private static final String CACHE_DIRECTORY = "build/micronaut-runner/jdk-aot-cache";
 
@@ -126,8 +130,11 @@ class JdkAotCacheFunctionalTest extends AbstractFunctionalTest {
                         println "TOOLCHAIN_RUNTIME_VERSION=" + toolchainLauncher.get().metadata.javaRuntimeVersion
                     }
                 }
-                """.formatted(feature), "");
+                %s
+                """.formatted(feature, LayoutSourceFunctionalTest.LAMBDA_DEPENDENCY), "");
         write(directory.resolve("src/main/java/com/example/App.java"), SERVER_SOURCE);
+        // A lambda in a dependency and one in the application, which micronautRunnerJar desugars by default.
+        LayoutSourceFunctionalTest.writeLambdas(directory);
         Path buildFile = directory.resolve("build.gradle");
         Path out = directory.resolve(CACHE_DIRECTORY);
 
@@ -139,10 +146,13 @@ class JdkAotCacheFunctionalTest extends AbstractFunctionalTest {
         assertTrue(defaultAssemble.getOutput().contains(RUNNER_JAR_TASK), defaultAssemble::getOutput);
         assertFalse(defaultAssemble.getOutput().contains(CACHE_TASK), defaultAssemble::getOutput);
         assertFalse(defaultAssemble.getOutput().contains(LAYOUT_TASK), defaultAssemble::getOutput);
+        assertFalse(defaultAssemble.getOutput().contains(LAYOUT_SOURCE_TASK), defaultAssemble::getOutput);
         append(buildFile, "micronautRunner { jdkAotCache { enabled = true } }");
         BuildResult enabledAssemble = build(directory, "assemble", "--dry-run");
         assertTrue(enabledAssemble.getOutput().contains(CACHE_TASK), enabledAssemble::getOutput);
-        assertFalse(enabledAssemble.getOutput().contains(LAYOUT_TASK), enabledAssemble::getOutput);
+        assertFalse(LayoutSourceFunctionalTest.scheduled(enabledAssemble, LAYOUT_TASK), enabledAssemble::getOutput);
+        assertTrue(LayoutSourceFunctionalTest.scheduled(enabledAssemble, LAYOUT_SOURCE_TASK),
+                enabledAssemble::getOutput);
 
         // (b) The configuration cache is stored, then reused, and the second run is up to date.
         BuildResult trained = build(directory, "micronautRunnerJdkAotCache", "--configuration-cache");
@@ -152,11 +162,34 @@ class JdkAotCacheFunctionalTest extends AbstractFunctionalTest {
                 trained::getOutput);
         // The report's summary, which names the JAR, and what only the task knows: the directory and the time.
         assertTrue(TRAINED.matcher(trained.getOutput()).find(), trained::getOutput);
-        for (String file : List.of(ARCHIVE_NAME, "lib/alpha.jar",
-                "lib/beta.jar", "app.aot", "app.jvmopts", "app.aot.properties", "aot-report.json")) {
+        for (String file : List.of(ARCHIVE_NAME, "lib/alpha.jar", "lib/beta.jar", "lib/gamma.jar", "app.aot",
+                "app.jvmopts", "app.aot.properties", "aot-report.json")) {
             assertTrue(Files.isRegularFile(out.resolve(file)), () -> "no " + file + " in " + out);
         }
-        assertTrue(Files.readString(out.resolve("aot-report.json")).contains("\"verdict\": \"passed\""));
+        String report = Files.readString(out.resolve("aot-report.json"));
+        assertTrue(report.contains("\"verdict\": \"passed\""), report);
+
+        // The cache was trained on the layout of the layout-source JAR, which keeps every lambda, and the report
+        // names both JARs.
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(trained, LAYOUT_SOURCE_TASK), trained::getOutput);
+        Path shipped = directory.resolve(DEFAULT_ARCHIVE);
+        Path layoutSource = directory.resolve("build/micronaut-runner/layout-source").resolve(ARCHIVE_NAME);
+        assertTrue(report.contains("\"runnerJarSha256\": \"" + sha256(shipped) + "\""), report);
+        assertTrue(report.contains("\"layoutSourceSha256\": \"" + sha256(layoutSource) + "\""), report);
+        assertNotEquals(sha256(shipped), sha256(layoutSource));
+        List<String> generated = LayoutSourceFunctionalTest.generatedLambdaClasses(out);
+        assertTrue(generated.isEmpty(), generated::toString);
+
+        // A strict launch of an extract of the shipped, desugared JAR with this cache fails: the JDK finds the first
+        // JAR whose size changed, here the application JAR, whose own lambda the shipped JAR desugars.
+        Path handExtract = directory.resolve("hand-extract");
+        extract(shipped, handExtract);
+        Forked strictLaunch = runJarWith(handExtract.resolve(ARCHIVE_NAME),
+                List.of("-XX:AOTMode=on", "-XX:AOTCache=" + out.resolve("app.aot")));
+        assertNotEquals(0, strictLaunch.status(), strictLaunch::output);
+        assertTrue(strictLaunch.output().contains("This file is not the one used while building the AOT cache: '"
+                + ARCHIVE_NAME + "', size has changed"), strictLaunch::output);
+        assertTrue(strictLaunch.output().contains("shared class paths mismatch"), strictLaunch::output);
         assertEquals("-XX:AOTCache=app.aot\n", Files.readString(out.resolve("app.jvmopts")));
         BuildResult reused = build(directory, "micronautRunnerJdkAotCache", "--configuration-cache");
         assertTrue(reused.getOutput().contains("Configuration cache entry reused"), reused::getOutput);
@@ -187,15 +220,40 @@ class JdkAotCacheFunctionalTest extends AbstractFunctionalTest {
         BuildResult profileArgs = build(directory, "micronautRunnerJdkAotCache");
         assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(profileArgs, CACHE_TASK), profileArgs::getOutput);
 
-        // The layout alone, for a cache trained elsewhere.
-        BuildResult layout = build(directory, "micronautRunnerLayout");
-        assertEquals(TaskOutcome.SUCCESS, outcomeOf(layout, LAYOUT_TASK), layout::getOutput);
+        // An option set on micronautRunnerJar reaches the layout source, so both tasks run again, the layout-source
+        // JAR packaged once for both; an unchanged build is then up to date.
+        append(buildFile, "tasks.named('micronautRunnerJar') { options.put('stripLocalVariables', 'false') }");
+        BuildResult option = build(directory, "micronautRunnerJdkAotCache", "micronautRunnerLayout");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(option, LAYOUT_SOURCE_TASK), option::getOutput);
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(option, CACHE_TASK), option::getOutput);
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(option, LAYOUT_TASK), option::getOutput);
+        assertEquals(1, option.getTasks().stream().filter(task -> task.getPath().equals(LAYOUT_SOURCE_TASK)).count());
+        BuildResult unchanged = build(directory, "micronautRunnerJdkAotCache", "micronautRunnerLayout");
+        for (String task : List.of(LAYOUT_SOURCE_TASK, CACHE_TASK, LAYOUT_TASK)) {
+            assertEquals(TaskOutcome.UP_TO_DATE, outcomeOf(unchanged, task), unchanged::getOutput);
+        }
+
+        // The layout alone, for a cache trained elsewhere: the same JARs as the cache's directory.
         Path layoutDirectory = directory.resolve("build/micronaut-runner/layout");
-        assertTrue(Files.isRegularFile(layoutDirectory.resolve(ARCHIVE_NAME))
-                && Files.isRegularFile(layoutDirectory.resolve("lib/alpha.jar")), layout::getOutput);
+        Map<String, String> layoutFiles = digests(layoutDirectory);
+        assertTrue(layoutFiles.containsKey(ARCHIVE_NAME) && layoutFiles.containsKey("lib/alpha.jar"),
+                layoutFiles::toString);
         assertFalse(Files.exists(layoutDirectory.resolve("app.aot")));
-        assertTrue(layout.getOutput().contains("Wrote the layout " + ARCHIVE_NAME + " with 2 JARs in lib/ to "),
-                layout::getOutput);
+        assertTrue(option.getOutput().contains("Wrote the layout " + ARCHIVE_NAME + " with 3 JARs in lib/ to "),
+                option::getOutput);
+        Map<String, String> cacheFiles = digests(out);
+        cacheFiles.keySet().retainAll(layoutFiles.keySet());
+        assertEquals(layoutFiles, cacheFiles, "both tasks extract the one layout-source JAR");
+    }
+
+    @Test
+    void theSingleJarTargetDoesNotPackageTheLayoutSource(@TempDir Path directory) throws IOException {
+        writeFixture(directory, "micronautRunner { jdkAotCache { target = 'singleJar' } }", "");
+
+        BuildResult dryRun = build(directory, "micronautRunnerJdkAotCache", "--dry-run");
+
+        assertTrue(LayoutSourceFunctionalTest.scheduled(dryRun, RUNNER_JAR_TASK), dryRun::getOutput);
+        assertFalse(LayoutSourceFunctionalTest.scheduled(dryRun, LAYOUT_SOURCE_TASK), dryRun::getOutput);
     }
 
     @Test

@@ -37,8 +37,14 @@ import java.nio.file.Path;
  * AOT cache elsewhere, such as in a container image. It is what {@code java -Dmicronaut.runner.mode=extract} writes,
  * run with the JDK the {@code maven-toolchains-plugin} selected or else the one that runs Maven.
  *
- * <p>List it after {@code package} in the plugin's execution: Maven runs a phase's goals in declaration order.
- * The goal is experimental and belongs to this interim plugin only.</p>
+ * <p>When the Runner JAR desugars lambdas, as it does by default, the layout is extracted from another JAR, which
+ * the goal packages to {@code target/micronaut-runner/layout-source/} with {@code mn-runner:package}'s options and
+ * every lambda kept: the JDK's own class loader runs the layout, and a JDK AOT cache links and archives that
+ * loader's lambdas itself. A cache trained on this layout therefore does not match an extract of the Runner JAR.</p>
+ *
+ * <p>List it after {@code package} in the plugin's execution, in the same build: Maven runs a phase's goals in
+ * declaration order, and the goal takes {@code mn-runner:package}'s options from that run. The goal is experimental
+ * and belongs to this interim plugin only.</p>
  *
  * @since 1.0
  */
@@ -88,10 +94,10 @@ public final class LayoutMojo extends AbstractMojo {
             throw new MojoFailureException("There is no Runner JAR at " + archive + " to extract: list"
                     + " mn-runner:layout after mn-runner:package");
         }
+        Path source = LayoutSourceJar.resolve(project, archive.toPath(), "layout", getLog());
         Path destination = destination();
         try {
-            getLog().info(AotLayout.write(java(), archive.toPath(), destination, AotLayout.DEFAULT_TIMEOUT)
-                    .summary());
+            getLog().info(AotLayout.write(java(), source, destination, AotLayout.DEFAULT_TIMEOUT).summary());
         } catch (IOException e) {
             throw new MojoExecutionException("Could not write the layout: " + e.getMessage(), e);
         } catch (InterruptedException e) {

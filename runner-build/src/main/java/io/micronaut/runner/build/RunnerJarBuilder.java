@@ -364,6 +364,12 @@ public final class RunnerJarBuilder {
                 .collect(Collectors.joining(", ", "Runner options: ", "")));
         validate();
         StartupClassList startupClasses = StartupClassList.read(spec.startupClasses().orElse(null));
+        if (spec.layoutSource() && startupClasses.generatedLambdaListings() > 0) {
+            // Recorded from the shipped JAR, which desugars lambdas; this one keeps them, so it has none of these.
+            logger.info("Left " + startupClasses.generatedLambdaListings() + " generated lambda classes out of the"
+                    + " startup class list, because the layout-source JAR keeps every lambda");
+            startupClasses = startupClasses.withoutGeneratedLambdaClasses();
+        }
         Path directory = output.getParent();
         Files.createDirectories(directory);
         Path work = Files.createTempDirectory(directory, ".micronaut-runner-");

@@ -33,15 +33,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -265,6 +269,105 @@ class MavenBasicSampleTest {
         } finally {
             verified.close();
         }
+    }
+
+    /**
+     * {@code mn-runner:layout} and {@code mn-runner:jdk-aot-cache} extract the layout from a JAR with every lambda
+     * kept, which the first of them packages from {@code mn-runner:package}'s spec and the second reuses; the cache
+     * names both JARs. For a build that keeps lambdas anyway, {@code desugarLambdas=false} or {@code PRESERVE}, the
+     * layout is the extract of that build's own archive, and the default layout is exactly that of
+     * {@code desugarLambdas=false}.
+     */
+    @Test
+    void writesTheLayoutWithLambdasKeptAndTrainsItsCache() throws Exception {
+        Samples.requireIntegrationScenario();
+        Samples.requirePublishedArtifact("io/micronaut/runner/micronaut-runner-maven-plugin/"
+                + Samples.VERSION + "/micronaut-runner-maven-plugin-" + Samples.VERSION + ".jar");
+        requireMavenCanLoadThePlugin();
+        Path sample = Samples.copySample(Samples.sample("maven-basic"), temporary.resolve("maven-basic-layout"));
+        Path archive = sample.resolve("target/maven-basic-0.1.jar");
+        Path layout = sample.resolve("target/micronaut-runner/layout");
+        Path cache = sample.resolve("target/micronaut-runner/jdk-aot-cache");
+        String plugin = "io.micronaut.runner:micronaut-runner-maven-plugin:" + Samples.VERSION + ":";
+
+        StringBuilder log = new StringBuilder();
+        int status = maven(sample, log, "clean", "package", plugin + "layout", plugin + "jdk-aot-cache",
+                "-Dmicronaut.runner.jdkAotCache.enabled=true", "-Dmicronaut.runner.jdkAotCache.verifyProbes=2",
+                "-Dmicronaut.runner.training.runToExit=true");
+        assertEquals(0, status, () -> "the Maven build failed:\n" + log);
+        assertEquals(1, log.toString().lines().filter(line -> line.contains("Packaged the layout-source JAR"))
+                .count(), () -> "both goals share one layout-source JAR:\n" + log);
+        Path source = sample.resolve("target/micronaut-runner/layout-source/maven-basic-0.1.jar");
+        assertTrue(isRunnerJar(source), () -> "no layout-source JAR at " + source + ":\n" + log);
+        Map<String, String> defaultLayout = digests(layout);
+        assertTrue(defaultLayout.containsKey("maven-basic-0.1.jar"), defaultLayout::toString);
+        assertEquals(List.of(), generatedLambdaClasses(layout), "the layout keeps every lambda");
+        Map<String, String> cached = digests(cache);
+        cached.keySet().retainAll(defaultLayout.keySet());
+        assertEquals(defaultLayout, cached, "both goals extract the same JAR");
+        String report = Files.readString(cache.resolve("aot-report.json"));
+        assertTrue(report.contains("\"verdict\": \"passed\""), report);
+        assertTrue(report.contains("\"runnerJarSha256\": \"" + sha256(archive) + "\""), report);
+        assertTrue(report.contains("\"layoutSourceSha256\": \"" + sha256(source) + "\""), report);
+        assertFalse(defaultLayout.equals(extract(archive, temporary.resolve("extract-default"))),
+                "an extract of the shipped JAR keeps its desugared lambdas");
+
+        for (String option : List.of("-Dmicronaut.runner.desugarLambdas=false", "-Dmicronaut.runner.compression=PRESERVE")) {
+            StringBuilder keptLog = new StringBuilder();
+            assertEquals(0, maven(sample, keptLog, "clean", "package", plugin + "layout", option),
+                    () -> "the Maven build with " + option + " failed:\n" + keptLog);
+            assertFalse(keptLog.toString().contains("Packaged the layout-source JAR"),
+                    () -> "a Runner JAR that keeps every lambda is extracted itself:\n" + keptLog);
+            Map<String, String> kept = digests(layout);
+            assertEquals(extract(archive, temporary.resolve(option.contains("PRESERVE") ? "extract-preserve"
+                    : "extract-kept")), kept, option);
+            if (option.contains("desugarLambdas")) {
+                assertEquals(defaultLayout, kept, "the default layout is the extract of a JAR that keeps lambdas");
+            }
+        }
+    }
+
+    /** Extracts a Runner JAR as a user does by hand, and returns the digests of the layout's files. */
+    private static Map<String, String> extract(Path archive, Path destination) throws Exception {
+        Path java = Samples.javaExecutable();
+        assertNotNull(java, "no java executable to extract with");
+        Process process = new ProcessBuilder(java.toString(), "-Dmicronaut.runner.mode=extract", "-jar",
+                archive.toString(), "--destination", destination.toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertTrue(process.waitFor(2, TimeUnit.MINUTES), "the extraction did not finish");
+        assertEquals(0, process.exitValue(), output);
+        return digests(destination);
+    }
+
+    /** The SHA-256 of every regular file under a directory, keyed by its relative path with {@code /}. */
+    private static Map<String, String> digests(Path directory) throws Exception {
+        Map<String, String> digests = new TreeMap<>();
+        try (Stream<Path> walk = Files.walk(directory)) {
+            for (Path file : walk.filter(Files::isRegularFile).toList()) {
+                digests.put(directory.relativize(file).toString().replace('\\', '/'), sha256(file));
+            }
+        }
+        return digests;
+    }
+
+    private static String sha256(Path file) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+    }
+
+    /** The entries of the layout's JARs whose name has {@code $$Lambda$R}. */
+    private static List<String> generatedLambdaClasses(Path layout) throws IOException {
+        List<String> generated = new ArrayList<>();
+        try (Stream<Path> walk = Files.walk(layout)) {
+            for (Path jar : walk.filter(file -> file.toString().endsWith(".jar")).sorted().toList()) {
+                try (JarFile file = new JarFile(jar.toFile())) {
+                    file.stream().map(JarEntry::getName).filter(name -> name.contains("$$Lambda$R"))
+                            .forEach(name -> generated.add(layout.relativize(jar) + "!/" + name));
+                }
+            }
+        }
+        return generated;
     }
 
     // ------------------------------------------------------------------ plumbing

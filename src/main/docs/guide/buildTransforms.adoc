@@ -138,6 +138,11 @@ at every start, with or without a cache. Desugaring writes that class when the a
 each eligible site calls a generated class, `<Host>$$Lambda$R<n>`, stored right after its host, in the same JAR or
 in the application layer. Nothing is linked at run time, and a cache holds the generated class like any other.
 
+Desugaring is for the single JAR. The extracted layout runs on the JDK's own class loader, whose lambdas an AOT cache
+links and archives itself, and there a generated class only adds a class to load from the cache and initialise. So the
+build plugins write that layout from a JAR they package with desugaring off, whatever this option says
+(<<aotLayoutLambdas,Lambdas in the layout>>).
+
 Rewritten:: A call site of `LambdaMetafactory.metafactory` whose implementation the generated class can call as
 the site did: a member of the host's own nest, private ones included; a non-private member of the host's package;
 or a public member of a public class, in any JAR or in an exported package of the JDK. The generated class

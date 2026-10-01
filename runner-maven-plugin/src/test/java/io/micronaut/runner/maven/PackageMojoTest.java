@@ -144,6 +144,7 @@ class PackageMojoTest {
         project.setArtifactId("demo");
         project.setVersion("1.0");
         project.getBuild().setOutputDirectory(classes.toString());
+        project.getBuild().setDirectory(buildDirectory.toString());
         project.setArtifact(new DefaultArtifact("com.example", "demo", "1.0", "compile", "jar", null,
                 new DefaultArtifactHandler("jar")));
 
@@ -478,6 +479,70 @@ class PackageMojoTest {
                 "the project's main artifact must point at the runner jar");
         assertTrue(projectHelper.attached.isEmpty(),
                 () -> "nothing may be attached when the main artifact is replaced: " + projectHelper.attached);
+    }
+
+    // ------------------------------------------------------ the layout-source JAR
+
+    @Test
+    void leavesItsSpecForTheLayoutGoalsWithTheOriginalAsTheManifestSource() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        writeJarPluginOutput(buildDirectory.resolve("demo-1.0.jar"));
+
+        mojo.execute();
+
+        RunnerJarSpec remembered = (RunnerJarSpec) project.getContextValue(LayoutSourceJar.SPEC);
+        assertNotNull(remembered, "mn-runner:layout and mn-runner:jdk-aot-cache take the spec from the context");
+        assertEquals(Optional.of(buildDirectory.resolve("original-demo-1.0.jar")),
+                remembered.applicationManifestSource(), "the copy the build read is gone; the original stays");
+        assertEquals(buildDirectory.resolve("demo-1.0.jar"), remembered.output());
+        assertEquals("true", remembered.effectiveOptions().get("desugarLambdas"));
+    }
+
+    @Test
+    void theLayoutGoalsPackageTheLayoutSourceJarOncePerBuild() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        writeJarPluginOutput(buildDirectory.resolve("demo-1.0.jar"));
+        mojo.execute();
+        Path runnerJar = buildDirectory.resolve("demo-1.0.jar");
+
+        Path source = LayoutSourceJar.resolve(project, runnerJar, "layout", log);
+
+        assertEquals(buildDirectory.resolve("micronaut-runner/layout-source/demo-1.0.jar"), source,
+                "its own directory, under the Runner JAR's file name");
+        assertTrue(isRunnerJar(source));
+        long packaged = log.infos.stream().filter(line -> line.startsWith("Packaged the layout-source JAR")).count();
+        assertEquals(1, packaged, log.infos::toString);
+        assertEquals(source, LayoutSourceJar.resolve(project, runnerJar, "jdk-aot-cache", log),
+                "the second goal of the build reuses it");
+        assertEquals(packaged, log.infos.stream()
+                .filter(line -> line.startsWith("Packaged the layout-source JAR")).count(), "and packages nothing");
+
+        // A new package of the same build makes the next goal package it again.
+        mojo.execute();
+        assertNull(project.getContextValue(LayoutSourceJar.JAR));
+    }
+
+    @Test
+    void aRunnerJarThatKeepsEveryLambdaIsExtractedItself() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        set("compression", "PRESERVE");
+        mojo.execute();
+        Path runnerJar = buildDirectory.resolve("demo-1.0.jar");
+
+        assertEquals(runnerJar, LayoutSourceJar.resolve(project, runnerJar, "layout", log));
+        assertFalse(Files.exists(buildDirectory.resolve("micronaut-runner/layout-source")), "nothing is packaged");
+    }
+
+    @Test
+    void withoutThePackagingGoalInTheBuildTheLayoutGoalsFailSayingWhy() {
+        MojoFailureException failure = assertThrows(MojoFailureException.class,
+                () -> LayoutSourceJar.resolve(project, buildDirectory.resolve("demo-1.0.jar"), "layout", log));
+
+        assertTrue(failure.getMessage().contains("mn-runner:package, which did not run earlier in this build")
+                && failure.getMessage().contains("list layout after package"), failure::getMessage);
     }
 
     @Test

@@ -33,8 +33,13 @@ on:
       - 'runner-build/src/main/java/io/micronaut/runner/build/JdkProbe.java'
       - 'runner-build/src/main/java/io/micronaut/runner/build/TrainingDriver.java'
       - 'runner-build/src/main/java/io/micronaut/runner/build/AotCacheOutput.java'
+      # AotLayout also holds the rule that gives the layout its source JAR, with every lambda kept.
       - 'runner-build/src/main/java/io/micronaut/runner/build/AotLayout.java'
       - 'runner-build/src/main/java/io/micronaut/runner/build/AotTarget.java'
+      # The Gradle wiring the layout step goes through: the internal layout-source task and the cache task.
+      - 'runner-gradle-plugin/src/main/java/io/micronaut/runner/gradle/MicronautRunnerPlugin.java'
+      - 'runner-gradle-plugin/src/main/java/io/micronaut/runner/gradle/MicronautRunnerJar.java'
+      - 'runner-gradle-plugin/src/main/java/io/micronaut/runner/gradle/MicronautRunnerJdkAotCache.java'
       - 'runner-build/src/main/java/io/micronaut/runner/build/training/**'
       - 'runner-launcher/src/main/java/io/micronaut/runner/RunnerClassLoader.java'
       - 'runner-launcher/src/main/java/io/micronaut/runner/Handlers.java'

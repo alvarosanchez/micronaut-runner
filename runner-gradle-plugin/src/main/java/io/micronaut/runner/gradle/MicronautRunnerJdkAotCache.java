@@ -29,6 +29,7 @@ import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.Nested;
+import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
@@ -47,6 +48,10 @@ import java.util.concurrent.TimeUnit;
  * the cache, and runs the verification gate. The directory then holds everything a cached deployment needs, and
  * the application launches from it as {@code java @app.jvmopts -jar <jar>}.
  *
+ * <p>The layout is extracted from {@link #getLayoutSourceFile()}, a JAR that keeps every lambda, so the cache
+ * matches that layout and not an extract of {@code micronautRunnerJar}'s archive when that archive desugars
+ * lambdas. {@code aot-report.json} and {@code app.aot.properties} record the SHA-256 of both JARs.</p>
+ *
  * <p>The task is tracked: with the same Runner JAR, JDK build and settings it is up to date. It is never cached,
  * and it is part of {@code assemble} only with {@code jdkAotCache.enabled = true}. It is experimental and belongs
  * to this interim plugin only.</p>
@@ -62,13 +67,27 @@ public abstract class MicronautRunnerJdkAotCache extends DefaultTask {
     }
 
     /**
-     * The Runner JAR to train the cache for. The plugin sets the archive of {@code micronautRunnerJar}.
+     * The Runner JAR the build ships, which the {@code singleJar} target copies and the layout target's report
+     * identifies by its SHA-256. The plugin sets the archive of {@code micronautRunnerJar}.
      *
      * @return the Runner JAR
      */
     @InputFile
     @PathSensitive(PathSensitivity.NONE)
     public abstract RegularFileProperty getArchiveFile();
+
+    /**
+     * The Runner JAR the {@code layout} target extracts. For that target the plugin sets the archive of its internal
+     * task, which packages {@code micronautRunnerJar}'s inputs and options with every lambda kept, because the
+     * JDK's own class loader runs the layout and the cache archives that loader's lambdas itself; for
+     * {@code singleJar} it sets nothing. Unset, the layout is extracted from {@link #getArchiveFile()}.
+     *
+     * @return the JAR the layout is extracted from
+     */
+    @InputFile
+    @Optional
+    @PathSensitive(PathSensitivity.NONE)
+    public abstract RegularFileProperty getLayoutSourceFile();
 
     /**
      * The JVM that trains the cache, and the only JDK build the cache fits. The plugin sets the launcher of the
@@ -136,11 +155,14 @@ public abstract class MicronautRunnerJdkAotCache extends DefaultTask {
         } catch (IllegalArgumentException e) {
             throw new InvalidUserDataException(String.valueOf(e.getMessage()), e);
         }
+        Path archive = getArchiveFile().get().getAsFile().toPath();
+        Path layoutSource = getLayoutSourceFile().isPresent()
+                ? getLayoutSourceFile().get().getAsFile().toPath() : archive;
         long started = System.nanoTime();
         AotCacheReport report;
         try {
-            report = AotCacheOutput.write(target, settings, java, getArchiveFile().get().getAsFile().toPath(), out,
-                    training, new GradleBuildLogger(getLogger()));
+            report = AotCacheOutput.write(target, settings, java, archive, layoutSource, out, training,
+                    new GradleBuildLogger(getLogger()));
         } catch (IllegalArgumentException e) {
             throw new InvalidUserDataException(String.valueOf(e.getMessage()), e);
         } catch (InterruptedException e) {

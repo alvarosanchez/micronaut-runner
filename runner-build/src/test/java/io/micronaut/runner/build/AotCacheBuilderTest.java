@@ -30,12 +30,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
 
@@ -70,6 +73,7 @@ class AotCacheBuilderTest {
 
     private static Path java;
     private static Path runnerJar;
+    private static Path layoutSource;
     private static Path layout;
     private static Path singleJar;
     private static AotCacheReport layoutReport;
@@ -81,13 +85,17 @@ class AotCacheBuilderTest {
         Assumptions.assumeTrue(
                 RunnerJarBuilder.class.getResource("/META-INF/micronaut-runner/launcher.jar") != null,
                 "the bundled launcher jar is not on the test class path");
-        runnerJar = packageFixture(temp.resolve("package"));
+        RunnerJarSpec spec = packageFixture(temp.resolve("package"));
+        runnerJar = spec.output();
+        // The build plugins' layout-source JAR: the same spec with every lambda kept, under the same file name.
+        layoutSource = temp.resolve("layout-source").resolve(runnerJar.getFileName().toString());
+        RunnerJarBuilder.build(AotLayout.sourceSpec(spec, layoutSource).orElseThrow(), BuildLogger.noOp());
         layout = temp.resolve("layout");
         singleJar = temp.resolve("single-jar");
-        layoutReport = AotCacheOutput.write(AotTarget.LAYOUT, AotCacheSettings.defaults(), java, runnerJar, layout,
-                training().build(), new RecordingLog());
+        layoutReport = AotCacheOutput.write(AotTarget.LAYOUT, AotCacheSettings.defaults(), java, runnerJar,
+                layoutSource, layout, training().build(), new RecordingLog());
         singleJarReport = AotCacheOutput.write(AotTarget.SINGLE_JAR, AotCacheSettings.defaults(), java, runnerJar,
-                singleJar, training().build(), new RecordingLog());
+                runnerJar, singleJar, training().build(), new RecordingLog());
     }
 
     @AfterAll
@@ -105,7 +113,7 @@ class AotCacheBuilderTest {
     }
 
     @Test
-    void theLayoutPassesTheGateWithJcmdEndingTheRecording() throws IOException {
+    void theLayoutPassesTheGateWithJcmdEndingTheRecording() throws Exception {
         assertTrue(layoutReport.passed(), layoutReport::toJson);
         assertTrue(layoutReport.coverage() >= 0.95, layoutReport::toJson);
         assertTrue(layoutReport.failures().isEmpty(), layoutReport::toJson);
@@ -133,21 +141,38 @@ class AotCacheBuilderTest {
         assertFalse(Files.exists(layout.resolve(AotCacheBuilder.CONFIGURATION_FILE)), "the configuration is gone");
         assertEquals("-XX:AOTCache=app.aot\n", Files.readString(layout.resolve(AotLaunchOptions.ARGFILE)));
         assertEquals(layoutReport.toJson(), Files.readString(layout.resolve(AotCacheReport.FILE)));
-        assertEquals("layout",
-                AotLaunchOptions.readIdentity(layout.resolve(AotLaunchOptions.IDENTITY_FILE)).get("target"));
+        Map<String, String> identity = AotLaunchOptions.readIdentity(layout.resolve(AotLaunchOptions.IDENTITY_FILE));
+        assertEquals("layout", identity.get("target"));
+        // Both JARs are recorded, and they differ: the shipped one desugars the fixture's lambdas.
+        String shipped = sha256(runnerJar);
+        String source = sha256(layoutSource);
+        assertFalse(shipped.equals(source), "the layout-source JAR keeps the lambdas the Runner JAR desugars");
+        assertEquals(shipped, layoutReport.labels().get("runnerJarSha256"), layoutReport::toJson);
+        assertEquals(source, layoutReport.labels().get("layoutSourceSha256"), layoutReport::toJson);
+        assertEquals(shipped, identity.get("runnerJarSha256"));
+        assertEquals(source, identity.get("layoutSourceSha256"));
+        for (Path jar : List.of(layout.resolve(jarName), layout.resolve("lib/" + LIBRARY_JAR))) {
+            try (JarFile file = new JarFile(jar.toFile())) {
+                assertTrue(file.stream().noneMatch(entry -> entry.getName().contains("$$Lambda$R")),
+                        () -> jar + " holds a desugared lambda class");
+            }
+        }
         assertTrue(Files.readString(layout.resolve(AotCacheGate.CLASS_LOAD_LOG), StandardCharsets.ISO_8859_1)
                 .contains(AotCacheFixtureLibrary.class.getName() + " source: shared objects file"),
                 "the dependency's class came from the cache");
     }
 
     @Test
-    void theSingleJarPassesTheEnforcedChecks() throws IOException {
+    void theSingleJarPassesTheEnforcedChecks() throws Exception {
         assertTrue(singleJarReport.passed(), singleJarReport::toJson);
         assertEquals(0, singleJarReport.probeFailures());
         assertEquals("singleJar", singleJarReport.labels().get(TARGET_LABEL));
+        assertEquals(sha256(runnerJar), singleJarReport.labels().get("runnerJarSha256"), singleJarReport::toJson);
+        assertFalse(singleJarReport.labels().containsKey("layoutSourceSha256"), singleJarReport::toJson);
         Path copy = singleJar.resolve(runnerJar.getFileName().toString());
         assertEquals(Files.getLastModifiedTime(runnerJar), Files.getLastModifiedTime(copy),
                 "the copy keeps the modification time");
+        assertEquals(-1, Files.mismatch(runnerJar, copy), "singleJar stages the shipped JAR, not the layout source");
         assertTrue(Files.isRegularFile(singleJar.resolve(AotLaunchOptions.CACHE_FILE)));
     }
 
@@ -227,7 +252,7 @@ class AotCacheBuilderTest {
         AotCacheReport report;
         try {
             report = AotCacheOutput.write(AotTarget.LAYOUT, AotCacheSettings.builder().verifyProbes(3).build(), java,
-                    runnerJar, out, training.build(), new RecordingLog());
+                    runnerJar, layoutSource, out, training.build(), new RecordingLog());
         } finally {
             AotCacheBuilder.useJcmd = true;
         }
@@ -249,7 +274,7 @@ class AotCacheBuilderTest {
         }
         Path copy = deep.resolve("layout");
         AotCacheOutput.write(AotTarget.LAYOUT, AotCacheSettings.builder().verifyProbes(2).build(), relativeJava,
-                runnerJar, copy, training().build(), new RecordingLog());
+                runnerJar, layoutSource, copy, training().build(), new RecordingLog());
         Files.setLastModifiedTime(copy.resolve("lib").resolve(LIBRARY_JAR), FileTime.from(Instant.now()));
 
         IOException failure = assertThrows(IOException.class, () -> AotCacheGate.verify(
@@ -296,8 +321,13 @@ class AotCacheBuilderTest {
                 .readinessTimeout(Duration.ofSeconds(120));
     }
 
-    /** Packs the fixture into a STORED Runner JAR with an entry stub, and its library into a nested JAR. */
-    private static Path packageFixture(Path directory) throws IOException {
+    /**
+     * Packs the fixture into a STORED Runner JAR with an entry stub, and its library into a nested JAR. Both have
+     * lambdas, which the default desugars.
+     *
+     * @return the spec, whose output is the Runner JAR
+     */
+    private static RunnerJarSpec packageFixture(Path directory) throws IOException {
         Path classes = directory.resolve("classes");
         String packagePath = AotCacheFixture.class.getPackageName().replace('.', '/');
         Path applicationClass = classes.resolve(packagePath).resolve(AotCacheFixture.class.getSimpleName() + ".class");
@@ -310,16 +340,20 @@ class AotCacheBuilderTest {
             out.write(classBytes(AotCacheFixtureLibrary.class));
             out.closeEntry();
         }
-        Path archive = directory.resolve("fixture-1.0-all.jar");
-        RunnerJarBuilder.build(RunnerJarSpec.builder()
+        RunnerJarSpec spec = RunnerJarSpec.builder()
                 .mainClass(MAIN_CLASS)
                 .applicationOutput(List.of(classes))
                 .dependencies(List.of(Dependency.of(library, "com.example:fixture-library:1.0")))
                 .compression(Compression.STORED)
                 .entryStub(true)
-                .output(archive)
-                .build(), BuildLogger.noOp());
-        return archive;
+                .output(directory.resolve("fixture-1.0-all.jar"))
+                .build();
+        RunnerJarBuilder.build(spec, BuildLogger.noOp());
+        return spec;
+    }
+
+    private static String sha256(Path file) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
     }
 
     private static byte[] classBytes(Class<?> type) throws IOException {

@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -41,14 +42,22 @@ import java.util.stream.Stream;
 /**
  * Writes the extracted layout of a Runner JAR, the deployment a JDK AOT cache serves in full: an application
  * JAR whose manifest {@code Class-Path} lists {@code lib/*.jar} in class-path order, and the dependencies under
- * {@code lib/}, byte for byte the JARs the Runner JAR nests.
+ * {@code lib/}, byte for byte the JARs the extracted Runner JAR nests.
  *
  * <p>The layout is what {@code java -Dmicronaut.runner.mode=extract} writes, forked with the {@code java} the
  * cache is trained with, so the build runs exactly the path a user runs and keeps its own JVM clean. Every file
  * carries the modification time {@code 1980-02-01T00:00:00Z}, so a layout copied with its times kept, or
  * extracted again from the same JAR, still matches a cache trained on it.</p>
  *
- * <p>Internal to Runner's interim build plugins, which call {@link #write}: it may change in any release.</p>
+ * <p>The build plugins do not extract the Runner JAR they ship when its build desugars lambdas. They extract the
+ * <em>layout-source JAR</em> that {@link #sourceSpec(RunnerJarSpec, Path)} describes, which keeps every lambda
+ * as an {@code invokedynamic}: the JDK's own class loader runs the layout, and a JDK AOT cache links and archives
+ * the lambdas of that loader's classes itself, where a class generated per call site is loaded from the cache and
+ * then initialised at run time. A cache trained on their layout therefore does not match an extract of the
+ * shipped JAR, whose {@code lib/} JARs have other sizes.</p>
+ *
+ * <p>Internal to Runner's interim build plugins, which call {@link #write} and {@link #sourceSpec}: it may change
+ * in any release.</p>
  *
  * @since 1.0
  */
@@ -71,6 +80,38 @@ public final class AotLayout {
     private static final long KILL_MILLIS = 5_000;
 
     private AotLayout() {
+    }
+
+    /**
+     * The spec of the JAR the build plugins extract the layout from, for the Runner JAR a spec builds: the same
+     * spec, with every lambda kept ({@code desugarLambdas=false}) and written to another file. Every other option,
+     * stripping, the generated classes and the compression included, stays as it is, and so does the startup class
+     * list, which orders each nested JAR's entries hot-first and, with {@link Compression#HYBRID}, decides which
+     * classes stay stored, so the layout keeps that order.
+     *
+     * <p>The list was recorded from the shipped JAR, so it names the classes its desugaring generated, which this
+     * JAR does not have. The build leaves those names out of the list instead of reporting them as dropped, and
+     * every other name keeps its place.</p>
+     *
+     * <p>The layout-source JAR keeps the shipped JAR's file name in its own directory: {@code extract} names the
+     * application JAR after it, and production launches that name.</p>
+     *
+     * @param runnerJar the spec of the Runner JAR the build ships
+     * @param output    where the layout-source JAR is written
+     * @return the layout-source JAR's spec; empty when the shipped JAR keeps every lambda already, because the
+     *         option is off or its compression is {@code PRESERVE}, so that its own extract is the layout
+     */
+    public static Optional<RunnerJarSpec> sourceSpec(RunnerJarSpec runnerJar, Path output) {
+        Objects.requireNonNull(runnerJar, "runnerJar");
+        Objects.requireNonNull(output, "output");
+        if (!ClassTransforms.desugarsLambdas(runnerJar)) {
+            return Optional.empty();
+        }
+        return Optional.of(runnerJar.toBuilder()
+                .desugarLambdas(false)
+                .layoutSource(true)
+                .output(output)
+                .build());
     }
 
     /**

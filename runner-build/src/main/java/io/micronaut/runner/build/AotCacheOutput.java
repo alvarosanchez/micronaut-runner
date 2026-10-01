@@ -20,6 +20,7 @@ import io.micronaut.runner.RunnerClassLoader;
 import io.micronaut.runner.build.training.TrainingSettings;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -27,6 +28,10 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,11 +43,17 @@ import java.util.concurrent.TimeUnit;
  * plugins call.
  *
  * <p>With {@link AotTarget#LAYOUT} the program is the extracted layout ({@link AotLayout}), which every JDK
- * caches in full. With {@link AotTarget#SINGLE_JAR} it is a copy of the Runner JAR with its modification time
+ * caches in full. It is extracted from the layout-source JAR ({@link AotLayout#sourceSpec(RunnerJarSpec, Path)}),
+ * which keeps every lambda, so the cache matches that layout only, never an extract of a shipped Runner JAR that
+ * desugars lambdas. With {@link AotTarget#SINGLE_JAR} it is a copy of the Runner JAR with its modification time
  * kept, and its recording launch, and no other launch, runs with {@code -Dmicronaut.runner.aot.training=true}:
  * the classes {@code RunnerClassLoader} defines then report the archive's {@code file:} URL, which JDK 27 and
  * later require to cache them (JDK-8380291). Its coverage is reported but not enforced, and a warning says when
  * the JDK still did not cache most of those classes.</p>
+ *
+ * <p>The identity file and the report record the SHA-256 of the Runner JAR the build ships as
+ * {@code runnerJarSha256}, and the layout target's also that of the JAR the layout was extracted from as
+ * {@code layoutSourceSha256}, so a cache can be traced to both.</p>
  *
  * <p>From the directory the application launches as {@code java @app.jvmopts -jar <jar>}. The cache is valid
  * only as long as the JARs keep their size and modification time, so a copy of the directory keeps its times,
@@ -83,6 +94,12 @@ public final class AotCacheOutput {
             + " although the training run reported file: code sources, as JDK 27 and later require (JDK-8380291)."
             + " The cache left out most of the classes RunnerClassLoader defines; use the layout target.";
 
+    /** The label that holds the SHA-256 of the Runner JAR the build ships, in hexadecimal. */
+    static final String RUNNER_JAR_LABEL = "runnerJarSha256";
+
+    /** The layout target's label that holds the SHA-256 of the JAR the layout was extracted from, in hexadecimal. */
+    static final String LAYOUT_SOURCE_LABEL = "layoutSourceSha256";
+
     /** The JVM argument that sets the training property without a value, which production must never get. */
     private static final String AOT_TRAINING_DEFINE = "-D" + RunnerClassLoader.AOT_TRAINING_PROPERTY;
 
@@ -92,14 +109,17 @@ public final class AotCacheOutput {
     /**
      * Stages the program in a directory, replacing what the directory held, trains and verifies the cache.
      *
-     * @param target    what to train the cache for
-     * @param settings  the cache settings; coverage is enforced for {@link AotTarget#LAYOUT} only, whatever
-     *                  they say
-     * @param java      the {@code java} executable to train with, of the exact JDK build production runs
-     * @param runnerJar the Runner JAR
-     * @param out       the output directory, replaced as a whole
-     * @param training  how to reach, exercise and stop the application
-     * @param log       where the phases are reported
+     * @param target       what to train the cache for
+     * @param settings     the cache settings; coverage is enforced for {@link AotTarget#LAYOUT} only, whatever
+     *                     they say
+     * @param java         the {@code java} executable to train with, of the exact JDK build production runs
+     * @param runnerJar    the Runner JAR the build ships, which the single-JAR target copies
+     * @param layoutSource the Runner JAR the layout target extracts: the one built from
+     *                     {@link AotLayout#sourceSpec(RunnerJarSpec, Path)} of the shipped JAR's spec, or
+     *                     {@code runnerJar} itself when that is empty. The single-JAR target ignores it
+     * @param out          the output directory, replaced as a whole
+     * @param training     how to reach, exercise and stop the application
+     * @param log          where the phases are reported
      * @return the gate's report
      * @throws IOException              if staging, training or verification fails; the cache and the argfile are
      *                                  deleted then, and the logs stay
@@ -111,6 +131,7 @@ public final class AotCacheOutput {
                                        AotCacheSettings settings,
                                        Path java,
                                        Path runnerJar,
+                                       Path layoutSource,
                                        Path out,
                                        TrainingSettings training,
                                        BuildLogger log) throws IOException, InterruptedException {
@@ -121,19 +142,22 @@ public final class AotCacheOutput {
         // Every fork runs in the output directory or its parent, where a relative path would name another file.
         Path javaExecutable = java.toAbsolutePath();
         Path directory = out.toAbsolutePath().normalize();
-        Path archive = runnerJar.toAbsolutePath().normalize();
-        if (!Files.isRegularFile(archive) || !RunnerJarReader.isRunnerJar(archive)) {
-            throw new IOException(archive + " is not a Runner JAR, so there is nothing to train a JDK AOT cache for");
-        }
-        if (archive.startsWith(directory)) {
-            throw new IllegalArgumentException("The Runner JAR " + archive + " must not be inside the output"
-                    + " directory " + directory + ", which is replaced");
-        }
+        Path archive = runnerJar(runnerJar, directory);
+        Map<String, String> labels = new LinkedHashMap<>();
+        labels.put(TARGET_LABEL, target.value());
+        labels.put(RUNNER_JAR_LABEL, sha256(archive));
         long started = System.nanoTime();
         String jarName;
+        Path source = archive;
         if (target == AotTarget.LAYOUT) {
-            jarName = AotLayout.write(javaExecutable, archive, directory, AotLayout.DEFAULT_TIMEOUT).applicationJar()
+            source = runnerJar(layoutSource, directory);
+            labels.put(LAYOUT_SOURCE_LABEL, sha256(source));
+            jarName = AotLayout.write(javaExecutable, source, directory, AotLayout.DEFAULT_TIMEOUT).applicationJar()
                     .getFileName().toString();
+            if (!source.equals(archive)) {
+                log.info("JDK AOT cache: the layout is extracted from " + source + ", which keeps every lambda, not"
+                        + " from " + archive);
+            }
         } else {
             deleteRecursively(directory);
             Files.createDirectories(directory);
@@ -149,10 +173,9 @@ public final class AotCacheOutput {
             // The layout's classes load through the JDK's own loader from file: JARs, so it needs no training mode.
             List<String> recordOnly = target == AotTarget.SINGLE_JAR ? List.of(AOT_TRAINING_ARGUMENT) : List.of();
             AotCacheReport report = AotCacheBuilder.build(settings.withEnforceCoverage(target == AotTarget.LAYOUT),
-                    javaExecutable, directory, jarName, training, recordOnly, Map.of(TARGET_LABEL, target.value()),
-                    log);
+                    javaExecutable, directory, jarName, training, recordOnly, labels, log);
             if (target == AotTarget.LAYOUT) {
-                AotLayout.verify(directory, archive);
+                AotLayout.verify(directory, source);
             } else {
                 report = warnUnlessRunnerClassesAreCached(report, directory, log);
             }
@@ -164,6 +187,50 @@ public final class AotCacheOutput {
                 Files.deleteIfExists(directory.resolve(AotLaunchOptions.ARGFILE));
             }
         }
+    }
+
+    /**
+     * Checks that a file is a Runner JAR outside the output directory.
+     *
+     * @param jar       the file
+     * @param directory the output directory, absolute and normalized
+     * @return the file's absolute, normalized path
+     * @throws IOException              if the file is not a Runner JAR
+     * @throws IllegalArgumentException if it is inside the output directory, which is replaced
+     */
+    private static Path runnerJar(Path jar, Path directory) throws IOException {
+        Path archive = jar.toAbsolutePath().normalize();
+        if (!Files.isRegularFile(archive) || !RunnerJarReader.isRunnerJar(archive)) {
+            throw new IOException(archive + " is not a Runner JAR, so there is nothing to train a JDK AOT cache for");
+        }
+        if (archive.startsWith(directory)) {
+            throw new IllegalArgumentException("The Runner JAR " + archive + " must not be inside the output"
+                    + " directory " + directory + ", which is replaced");
+        }
+        return archive;
+    }
+
+    /**
+     * The SHA-256 of a file's content, in lower-case hexadecimal.
+     *
+     * @param file the file
+     * @return the digest
+     * @throws IOException if the file cannot be read
+     */
+    static String sha256(Path file) throws IOException {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("every JDK has SHA-256", e);
+        }
+        try (InputStream in = Files.newInputStream(file)) {
+            byte[] buffer = new byte[64 * 1024];
+            for (int read = in.read(buffer); read >= 0; read = in.read(buffer)) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        return HexFormat.of().formatHex(digest.digest());
     }
 
     /**

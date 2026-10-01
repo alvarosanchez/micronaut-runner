@@ -158,7 +158,7 @@ interface SampleSteps {
     Variant aotCache(Variant source, SampleBuild.VariantSpec spec) throws Exception;
 
     /**
-     * Extracts a Runner jar into the directory the spec names.
+     * Extracts a Runner jar into the directory the spec names, as it is.
      *
      * @param stored the Runner variant to extract
      * @param spec   the extracted layout
@@ -166,4 +166,15 @@ interface SampleSteps {
      * @throws Exception if it cannot be built
      */
     Variant extracted(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
+
+    /**
+     * Writes the layout the build plugins write for a Runner jar: packages the jar that runner-build's rule derives
+     * from the jar's spec, which keeps every lambda, and extracts it into the directory the spec names.
+     *
+     * @param stored the {@code runner-stored} row, the jar that ships
+     * @param spec   the extracted layout
+     * @return the variant
+     * @throws Exception if it cannot be built
+     */
+    Variant pluginLayout(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
 }

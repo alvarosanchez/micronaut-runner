@@ -79,6 +79,7 @@ public final class RunnerJarSpec {
     private final boolean definitionPrefetch;
     private final Instant timestamp;
     private final Map<String, String> effectiveOptions;
+    private final boolean layoutSource;
 
     private RunnerJarSpec(Builder builder) {
         this.mainClass = builder.mainClass;
@@ -107,6 +108,7 @@ public final class RunnerJarSpec {
         this.desugarLambdas = builder.desugarLambdas;
         this.definitionPrefetch = builder.definitionPrefetch;
         this.timestamp = builder.timestamp;
+        this.layoutSource = builder.layoutSource;
         Map<String, String> effective = new LinkedHashMap<>();
         for (RunnerJarOption option : RunnerJarOption.values()) {
             effective.put(option.optionName(), effectiveValue(option));
@@ -383,6 +385,9 @@ public final class RunnerJarSpec {
      * generic options do, with {@code option("desugarLambdas", "false")}. See
      * {@link Builder#desugarLambdas(boolean)} for what is rewritten and what changes as a result.</p>
      *
+     * <p>It shapes the single Runner JAR. The extracted layout the build plugins write for a JDK AOT cache keeps
+     * every lambda either way, because they extract it from a JAR built with this option off.</p>
+     *
      * @return whether lambdas are desugared, {@code true} unless configured otherwise
      */
     boolean desugarLambdas() {
@@ -420,6 +425,18 @@ public final class RunnerJarSpec {
     }
 
     /**
+     * Whether this spec builds the extracted layout's source JAR ({@link AotLayout#sourceSpec(RunnerJarSpec, Path)}):
+     * one that keeps every lambda with a startup class list recorded from a JAR that desugars them, whose generated
+     * classes the build therefore leaves out of the list rather than reporting them as dropped. It is not a
+     * packaging option.
+     *
+     * @return whether the spec builds a layout-source JAR
+     */
+    boolean layoutSource() {
+        return layoutSource;
+    }
+
+    /**
      * The value every {@link RunnerJarOption} has in this spec, whether it was set or defaulted, keyed by
      * {@linkplain RunnerJarOption#optionName() option name} in table order. Each value is in the grammar
      * {@link Builder#option(String, String)} reads, so passing the entries back to a fresh builder reproduces
@@ -429,6 +446,40 @@ public final class RunnerJarSpec {
      */
     public Map<String, String> effectiveOptions() {
         return effectiveOptions;
+    }
+
+    /**
+     * A builder that starts from every value of this spec, for a build that derives another jar from it, as the
+     * extracted layout's source does ({@link AotLayout#sourceSpec(RunnerJarSpec, Path)}). {@link #build()} of the
+     * unchanged builder returns an equal spec.
+     *
+     * @return a new builder
+     */
+    Builder toBuilder() {
+        Builder builder = new Builder();
+        builder.mainClass = mainClass;
+        builder.applicationOutput = new ArrayList<>(applicationOutput);
+        builder.applicationManifestSource = applicationManifestSource;
+        builder.applicationManifest = applicationManifest == null ? null : new Manifest(applicationManifest);
+        builder.dependencies = new ArrayList<>(dependencies);
+        builder.output = output;
+        builder.compression = compression;
+        builder.multiRelease = multiRelease;
+        builder.entryStub = entryStub;
+        builder.manifestAttributes = new LinkedHashMap<>(manifestAttributes);
+        builder.addOpens = new ArrayList<>(addOpens);
+        builder.addExports = new ArrayList<>(addExports);
+        builder.enableNativeAccess = enableNativeAccess;
+        builder.archiveReads = archiveReads;
+        builder.precompileLogback = precompileLogback;
+        builder.stripLocalVariables = stripLocalVariables;
+        builder.startupClasses = startupClasses;
+        builder.staticServices = staticServices;
+        builder.desugarLambdas = desugarLambdas;
+        builder.definitionPrefetch = definitionPrefetch;
+        builder.timestamp = timestamp;
+        builder.layoutSource = layoutSource;
+        return builder;
     }
 
     /**
@@ -500,6 +551,7 @@ public final class RunnerJarSpec {
         private boolean desugarLambdas;
         private boolean definitionPrefetch;
         private Instant timestamp = ZipWriter.DEFAULT_TIMESTAMP;
+        private boolean layoutSource;
 
         /**
          * Starts from the defaults of the option table, so {@link RunnerJarOption#defaultValue()} is the only
@@ -913,6 +965,11 @@ public final class RunnerJarSpec {
          * a nest that verifies worse than before is packaged as it was. With {@link Compression#PRESERVE}, which
          * nests every dependency byte for byte, the option has no effect.</p>
          *
+         * <p>The option shapes the single Runner JAR, which its own class loader runs. The extracted layout the
+         * build plugins write for a JDK AOT cache keeps every lambda either way: the JDK's own class loader runs
+         * it, and the cache links and archives that loader's lambdas itself, so they extract it from a JAR built
+         * with this option off.</p>
+         *
          * <p>Defaults to {@code true}.</p>
          *
          * @param value whether to desugar lambdas
@@ -1092,6 +1149,17 @@ public final class RunnerJarSpec {
             // Fails here rather than halfway through writing the archive.
             ZipWriter.toDosTime(value);
             this.timestamp = value;
+            return this;
+        }
+
+        /**
+         * Marks the spec as the extracted layout's source JAR's; see {@link RunnerJarSpec#layoutSource()}.
+         *
+         * @param value whether the spec builds a layout-source JAR
+         * @return this builder
+         */
+        Builder layoutSource(boolean value) {
+            this.layoutSource = value;
             return this;
         }
 

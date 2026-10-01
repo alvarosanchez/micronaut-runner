@@ -86,20 +86,59 @@ final class StartupClassList {
             + " startup-profile task or goal.";
 
     /** What a build without a startup class list has: nothing to embed and nothing to report. */
-    private static final StartupClassList NONE = new StartupClassList(null, Set.of(), Set.of(), 0, 0);
+    private static final StartupClassList NONE = new StartupClassList(null, Set.of(), Set.of(), 0, 0, 0);
 
     private final Path file;
     private final List<String> classes;
     private final List<String> jdkClasses;
     private final int listed;
     private final int logLines;
+    /** How many of the {@link #listed} names are classes that desugaring lambdas generates. */
+    private final int generatedLambdaListings;
 
-    private StartupClassList(Path file, Set<String> classes, Set<String> jdkClasses, int listed, int logLines) {
+    private StartupClassList(Path file, Set<String> classes, Set<String> jdkClasses, int listed, int logLines,
+                             int generatedLambdaListings) {
         this.file = file;
         this.classes = List.copyOf(classes);
         this.jdkClasses = List.copyOf(jdkClasses);
         this.listed = listed;
         this.logLines = logLines;
+        this.generatedLambdaListings = generatedLambdaListings;
+    }
+
+    /**
+     * This list without the classes that desugaring lambdas generates ({@code <Host>$$Lambda$R<n>}), for a build
+     * that keeps every lambda and so holds none of them although the list was recorded from one that desugars: the
+     * extracted layout's source JAR ({@link AotLayout#sourceSpec(RunnerJarSpec, java.nio.file.Path)}). The names
+     * left out do not count as dropped, and every other name keeps its place.
+     *
+     * @return the list without them, or this list when it names none
+     */
+    StartupClassList withoutGeneratedLambdaClasses() {
+        if (generatedLambdaListings == 0) {
+            return this;
+        }
+        Set<String> kept = new LinkedHashSet<>();
+        for (String name : classes) {
+            if (!isGeneratedLambdaClass(name)) {
+                kept.add(name);
+            }
+        }
+        return new StartupClassList(file, kept, new LinkedHashSet<>(jdkClasses), listed - generatedLambdaListings,
+                logLines, 0);
+    }
+
+    /**
+     * How many of the listed names are classes that desugaring lambdas generates, a repeated name every time.
+     *
+     * @return the count
+     */
+    int generatedLambdaListings() {
+        return generatedLambdaListings;
+    }
+
+    private static boolean isGeneratedLambdaClass(String name) {
+        return name.contains(LambdaDesugarer.GENERATED_INFIX);
     }
 
     /**
@@ -149,6 +188,7 @@ final class StartupClassList {
         Set<String> jdkClasses = new LinkedHashSet<>();
         int listed = 0;
         int logLines = 0;
+        int generated = 0;
         for (String line : lines) {
             int marker = line.indexOf(SOURCE_MARKER);
             if (marker >= 0) {
@@ -162,6 +202,7 @@ final class StartupClassList {
                     jdkClasses.add(name);
                 } else if (line.indexOf(ARCHIVE_SOURCE, source) >= 0) {
                     listed++;
+                    generated += isGeneratedLambdaClass(name) ? 1 : 0;
                     classes.add(name);
                 }
                 continue;
@@ -178,9 +219,10 @@ final class StartupClassList {
                 continue;
             }
             listed++;
+            generated += isGeneratedLambdaClass(name) ? 1 : 0;
             classes.add(name);
         }
-        return new StartupClassList(file, classes, jdkClasses, listed, logLines);
+        return new StartupClassList(file, classes, jdkClasses, listed, logLines, generated);
     }
 
     /**
