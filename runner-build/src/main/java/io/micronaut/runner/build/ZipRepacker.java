@@ -329,7 +329,7 @@ final class ZipRepacker {
      * @param kept     the source entries the items point at
      * @return the order and the number of hot entries
      */
-    static Order order(List<Item> listFree, List<ZipEntryInfo> kept) {
+    private static Order order(List<Item> listFree, List<ZipEntryInfo> kept) {
         int hot = 0;
         for (Item item : listFree) {
             if (item.rank() >= 0) {
@@ -409,7 +409,7 @@ final class ZipRepacker {
      * @param rank      its startup class rank, or {@code -1} when it is cold
      * @param position  its position in the list-free order
      */
-    record Item(int source, int generated, int rank, int position) {
+    private record Item(int source, int generated, int rank, int position) {
     }
 
     /**
@@ -418,7 +418,7 @@ final class ZipRepacker {
      * @param items every entry, in the order it is written
      * @param hot   how many of them are hot
      */
-    record Order(List<Item> items, int hot) {
+    private record Order(List<Item> items, int hot) {
     }
 
     /**
@@ -435,7 +435,7 @@ final class ZipRepacker {
      * @param hotEntries        how many entries are startup classes or their versioned variants, which the
      *                          repack wrote first; always {@code 0} without a startup class list
      */
-    public record RepackResult(
+    record RepackResult(
             List<ZipEntryInfo> entries,
             long length,
             boolean hadSignatureFiles,
@@ -453,7 +453,7 @@ final class ZipRepacker {
          * @throws NullPointerException     if a list is {@code null}
          * @throws IllegalArgumentException if the length or the hot count is negative
          */
-        public RepackResult {
+        RepackResult {
             entries = List.copyOf(Objects.requireNonNull(entries, "entries"));
             droppedEntries = List.copyOf(Objects.requireNonNull(droppedEntries, "droppedEntries"));
             if (length < 0) {
