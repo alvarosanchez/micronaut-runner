@@ -44,6 +44,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -165,11 +166,11 @@ class RecordStartupProfileMojoTest {
 
         TrainingSettings settings = mojo.trainingSettings();
 
-        assertEquals("/health", settings.readinessPath());
+        assertEquals(Optional.of("/health"), settings.readinessPath());
         assertEquals(List.of("/hello", "/orders"), settings.workloadPaths());
         assertEquals(3, settings.workloadRepeat());
         assertEquals(List.of("warm-up", "--all"), settings.workloadCommand());
-        assertEquals("/stop", settings.stopPath());
+        assertEquals(Optional.of("/stop"), settings.stopPath());
         assertEquals(List.of("-Xmx256m"), settings.jvmArgs());
         assertEquals(Map.of("ENDPOINTS_STOP_ENABLED", "true", "EMPTY", "", "URL", "http://a/?b=c"),
                 settings.environment());

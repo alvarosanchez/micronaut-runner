@@ -15,7 +15,7 @@
  */
 package io.micronaut.runner.build.training;
 
-import io.micronaut.core.annotation.Experimental;
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.runner.build.BuildLogger;
 
 import java.io.File;
@@ -61,16 +61,14 @@ import java.util.stream.Stream;
  * arguments that make it a recording or a cache training, and reads the result in its
  * {@link AfterWorkload} callback.</p>
  *
+ * <p>Internal to runner-build: the startup-profile recorder and the JDK AOT-cache code in other packages launch
+ * through it, which is why it is public. It is not part of the stable API and may change in any release; build
+ * plugins call {@code StartupProfileRecorder} with {@link TrainingSettings} instead.</p>
+ *
  * @since 1.0
  */
-@Experimental
+@Internal
 public final class TrainingDriver {
-
-    /**
-     * The environment variable that tells a {@linkplain TrainingSettings#workloadCommand() workload command}
-     * where the application listens: {@code http://127.0.0.1:<port>}.
-     */
-    public static final String URL_VARIABLE = "MICRONAUT_RUNNER_TRAINING_URL";
 
     /**
      * The environment variables through which a JVM takes options nobody passed it. They are removed from the
@@ -317,6 +315,7 @@ public final class TrainingDriver {
      * What a training run does between its workload and its stop: read what the application recorded, or
      * tell the JVM to finish a recording.
      */
+    @Internal
     @FunctionalInterface
     public interface AfterWorkload {
 
@@ -349,6 +348,7 @@ public final class TrainingDriver {
      *                   the exit
      * @param total      the time from the launch to the exit
      */
+    @Internal
     public record Outcome(int exitStatus, boolean forced, boolean destroyed, Duration readiness, Duration total) {
 
         /**
@@ -434,7 +434,7 @@ public final class TrainingDriver {
 
         private Duration awaitReadiness() throws IOException, InterruptedException {
             long deadline = launched + settings.readinessTimeout().toNanos();
-            String path = settings.readinessPath();
+            String path = settings.readinessPath().orElse(null);
             boolean accepted = false;
             String last = null;
             while (true) {
@@ -532,7 +532,7 @@ public final class TrainingDriver {
 
         private void workloadCommand(long deadline) throws IOException, InterruptedException {
             Map<String, String> commandEnvironment = new LinkedHashMap<>(environment);
-            commandEnvironment.put(URL_VARIABLE, "http://127.0.0.1:" + port);
+            commandEnvironment.put(TrainingSettings.URL_VARIABLE, "http://127.0.0.1:" + port);
             Process command;
             try {
                 command = redirected(new ProcessBuilder(settings.workloadCommand()), directory, logFile,
@@ -560,7 +560,7 @@ public final class TrainingDriver {
             long deadline = started + settings.stopTimeout().toNanos();
             // The last look at the application's children: once it is gone they cannot be found through it.
             reaper.snapshot();
-            String path = settings.stopPath();
+            String path = settings.stopPath().orElse(null);
             if (path == null) {
                 // The handle's destroy(), not the Process's, which also closes the streams to the child.
                 application.toHandle().destroy();

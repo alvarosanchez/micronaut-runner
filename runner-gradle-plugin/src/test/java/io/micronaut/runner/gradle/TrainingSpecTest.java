@@ -27,7 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.lang.reflect.Method;
-import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -47,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The {@code training { }} block is wiring for {@link TrainingSettings}: one optional input per component,
+ * The {@code training { }} block is wiring for {@link TrainingSettings}: one optional input per setting,
  * the library's defaults as the extension's conventions, and the extension's values as the task's. Also the
  * wiring of {@code recordStartupProfile} and of the committed profile's convention.
  */
@@ -55,8 +55,11 @@ class TrainingSpecTest {
 
     @Test
     void theBlockHasOneOptionalInputForEachSetting() throws NoSuchMethodException {
-        Set<String> settings = Arrays.stream(TrainingSettings.class.getRecordComponents())
-                .map(RecordComponent::getName).collect(Collectors.toSet());
+        // A setting is a setter of the builder.
+        Set<String> settings = Arrays.stream(TrainingSettings.Builder.class.getDeclaredMethods())
+                .filter(method -> Modifier.isPublic(method.getModifiers()) && !method.getName().equals("build"))
+                .map(Method::getName).collect(Collectors.toSet());
+        assertEquals(12, settings.size(), settings::toString);
         for (String name : settings) {
             Method getter = TrainingSpec.class.getMethod(
                     "get" + name.substring(0, 1).toUpperCase(Locale.ROOT) + name.substring(1));
@@ -98,11 +101,11 @@ class TrainingSpecTest {
         task.getTraining().getWorkloadPaths().set(List.of("/orders"));
 
         TrainingSettings settings = TrainingSpec.settings(task.getTraining());
-        assertEquals("/health", settings.readinessPath());
+        assertEquals(java.util.Optional.of("/health"), settings.readinessPath());
         assertEquals(List.of("/orders"), settings.workloadPaths());
         assertEquals(Map.of("A", "b"), settings.environment());
         assertEquals(Duration.ofSeconds(5), settings.stopTimeout());
-        assertEquals(TrainingSettings.DEFAULT_PORT_VARIABLE, settings.portVariable());
+        assertEquals(TrainingSettings.defaults().portVariable(), settings.portVariable());
     }
 
     @Test

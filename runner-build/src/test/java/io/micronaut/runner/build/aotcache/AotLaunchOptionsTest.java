@@ -92,10 +92,19 @@ class AotLaunchOptionsTest {
         TrainingSettings copy = AotLaunchOptions.trainingSettings(settings, training);
 
         assertEquals(List.of("-XX:+UseSerialGC"), copy.jvmArgs(), "the cache's jvmArgs, not training.jvmArgs");
-        TrainingSettings expected = new TrainingSettings(training.readinessPath(), training.workloadPaths(),
-                training.workloadRepeat(), training.workloadCommand(), training.runToExit(), training.stopPath(),
-                List.of("-XX:+UseSerialGC"), training.environment(), training.portVariable(),
-                training.readinessTimeout(), training.workloadTimeout(), training.stopTimeout());
+        TrainingSettings expected = TrainingSettings.builder()
+                .readinessPath("/health")
+                .workloadPaths(List.of("/hello", "/orders"))
+                .workloadRepeat(3)
+                .workloadCommand(List.of("warm", "up"))
+                .stopPath("/stop")
+                .jvmArgs(List.of("-XX:+UseSerialGC"))
+                .environment(Map.of("ENDPOINTS_STOP_ENABLED", "true"))
+                .portVariable("SERVER_PORT")
+                .readinessTimeout(Duration.ofSeconds(90))
+                .workloadTimeout(Duration.ofSeconds(45))
+                .stopTimeout(Duration.ofSeconds(10))
+                .build();
         assertEquals(expected, copy, "every other setting is kept");
         assertEquals(List.of(), AotLaunchOptions.trainingSettings(AotCacheSettings.defaults(), training).jvmArgs());
     }

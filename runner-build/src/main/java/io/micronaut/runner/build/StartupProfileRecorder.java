@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.build;
 
-import io.micronaut.core.annotation.Experimental;
 import io.micronaut.runner.RunnerClassLoader;
 import io.micronaut.runner.build.training.TrainingDriver;
 import io.micronaut.runner.build.training.TrainingSettings;
@@ -43,12 +42,15 @@ import java.util.stream.Stream;
  * Records the startup profile of an application: the classes a run of its runner jar loaded, in load order,
  * written to a file that is meant to be committed and that the packager embeds for the launcher to preload.
  *
- * <p>One recording is one launch of the archive through the {@link TrainingDriver}, with class-load logging
- * on. It gets right what a recipe run by hand gets wrong without any sign of it:</p>
+ * <p>One recording is one training run of the archive, as {@link TrainingSettings} describe it, with
+ * class-load logging on: the archive is launched once with {@code java -jar}, sent the workload and stopped,
+ * and every process the run started is gone when it ends. It gets right what a recipe run by hand gets wrong
+ * without any sign of it:</p>
  * <ul>
  *     <li>the log is read once the workload is done and <em>before</em> the application is stopped, so the
  *     classes that only a shutdown loads stay out, and the list does not depend on how the JVM is stopped;</li>
- *     <li>the classes are recorded in an order that two recordings agree on (see {@link #ORDERING_FLAG});</li>
+ *     <li>the classes are recorded in an order that two recordings agree on: the launch sets the common
+ *     ForkJoin pool's parallelism to zero, so Micronaut's parallel service loading runs on one thread;</li>
  *     <li>no JVM option of the machine the build runs on takes part, so no class cache hides the
  *     application's classes;</li>
  *     <li>an archive that already embeds a profile does not replay it into the new one.</li>
@@ -57,14 +59,21 @@ import java.util.stream.Stream;
  * <p>The profile names no build tool: the caller passes the command that records it again, which goes into
  * the header.</p>
  *
+ * <h2>Compatibility</h2>
+ *
+ * <p>This type is stable API for all of 1.x. An input added in a minor release arrives as an overload of
+ * {@link #record record} that takes it, and the existing method keeps its signature and passes the input's
+ * default. {@code record} returns the number of archive classes; other figures go to the {@link BuildLogger},
+ * and a minor release that has to return more adds a method rather than change this one's result.</p>
+ *
  * @since 1.0
  */
-@Experimental
 public final class StartupProfileRecorder {
 
     /**
-     * Where a project keeps its startup profile, relative to the project directory. A build plugin embeds the
-     * file at this location when the build sets no other.
+     * Where a project keeps its startup profile, relative to the project directory: a build plugin embeds the
+     * file at this location when the build sets no other. Projects commit the file there, so the location is
+     * fixed for all of 1.x.
      */
     public static final String PROFILE_LOCATION = "src/main/micronaut-runner/startup-classes.txt";
 
@@ -133,9 +142,12 @@ public final class StartupProfileRecorder {
      *                        one non-blank line
      * @param log             where progress is reported
      * @return the number of archive classes recorded
-     * @throws IOException              if the launch fails, the recording holds no class of the archive, or
-     *                                  the profile cannot be written
+     * @throws IOException              if {@code runnerJar} is not a runner jar, the launch fails, the
+     *                                  recording holds no class of the archive, or the profile cannot be
+     *                                  written
      * @throws InterruptedException     if the thread is interrupted; the application has been reaped by then
+     * @throws NullPointerException     if an argument is {@code null}; the message is the name of the
+     *                                  parameter, and nothing has been launched or written
      * @throws IllegalArgumentException if {@code rerecordCommand} is blank or has a line break, the profile or
      *                                  the runner jar lies inside the work directory, or the work directory
      *                                  holds files that no earlier recording left there
@@ -150,6 +162,9 @@ public final class StartupProfileRecorder {
         Objects.requireNonNull(java, "java");
         Objects.requireNonNull(runnerJar, "runnerJar");
         Objects.requireNonNull(settings, "settings");
+        Objects.requireNonNull(workDirectory, "workDirectory");
+        Objects.requireNonNull(profile, "profile");
+        Objects.requireNonNull(rerecordCommand, "rerecordCommand");
         Objects.requireNonNull(log, "log");
         requireCommand(rerecordCommand);
         Path directory = workDirectory.toAbsolutePath().normalize();
@@ -267,10 +282,10 @@ public final class StartupProfileRecorder {
     }
 
     private static void requireCommand(String rerecordCommand) {
-        if (rerecordCommand == null || rerecordCommand.isBlank() || rerecordCommand.indexOf('\n') >= 0
-                || rerecordCommand.indexOf('\r') >= 0) {
-            throw new IllegalArgumentException("The command that re-records the startup profile must be one"
-                    + " non-blank line, not '" + rerecordCommand + "'");
+        Objects.requireNonNull(rerecordCommand, "rerecordCommand");
+        if (rerecordCommand.isBlank() || rerecordCommand.indexOf('\n') >= 0 || rerecordCommand.indexOf('\r') >= 0) {
+            throw new IllegalArgumentException("rerecordCommand, the command that re-records the startup profile,"
+                    + " must be one non-blank line, not '" + rerecordCommand + "'");
         }
     }
 

@@ -120,10 +120,7 @@ public final class AotLaunchOptions {
      * @return the copy
      */
     public static TrainingSettings trainingSettings(AotCacheSettings settings, TrainingSettings training) {
-        return new TrainingSettings(training.readinessPath(), training.workloadPaths(), training.workloadRepeat(),
-                training.workloadCommand(), training.runToExit(), training.stopPath(), settings.jvmArgs(),
-                training.environment(), training.portVariable(), training.readinessTimeout(),
-                training.workloadTimeout(), training.stopTimeout());
+        return training.toBuilder().jvmArgs(settings.jvmArgs()).build();
     }
 
     /**

@@ -254,13 +254,16 @@ class StartupProfileRecorderTest {
 
     @Test
     void theRerecordCommandMustBeOneNonBlankLine() {
-        for (String command : new String[] {"", "   ", "./gradlew a\n./gradlew b", "mvn a\r", null}) {
+        // A null command is a NullPointerException, as for every argument: StartupProfileApiTest.
+        for (String command : new String[] {"", "   ", "./gradlew a\n./gradlew b", "mvn a\r"}) {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                     () -> StartupProfileRecorder.record(java(), runnerJar, TrainingSettings.defaults(),
                             temp.resolve("record"), temp.resolve("startup-classes.txt"), command, log));
-            assertTrue(failure.getMessage().contains("one non-blank line"), failure.getMessage());
-            assertThrows(IllegalArgumentException.class, () -> StartupProfileRecorder.render(archiveClasses(),
-                    command, "25", TrainingSettings.defaults()));
+            assertTrue(failure.getMessage().startsWith("rerecordCommand")
+                    && failure.getMessage().contains("one non-blank line"), failure.getMessage());
+            IllegalArgumentException rendered = assertThrows(IllegalArgumentException.class,
+                    () -> StartupProfileRecorder.render(archiveClasses(), command, "25", TrainingSettings.defaults()));
+            assertTrue(rendered.getMessage().startsWith("rerecordCommand"), rendered.getMessage());
         }
         assertFalse(Files.exists(temp.resolve("record")), "nothing is launched for a command that is refused");
     }
