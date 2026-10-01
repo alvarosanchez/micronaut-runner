@@ -24,7 +24,10 @@ import org.junit.jupiter.api.io.TempDir;
 
 import javax.tools.ToolProvider;
 import java.io.File;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,6 +51,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BenchmarkEntryModeTest {
 
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
+
+    /** Where the packaging library's lines go when a test does not read them. */
+    private static final PrintStream QUIET = new PrintStream(OutputStream.nullOutputStream());
 
     private static final List<String> CORE_ROWS = List.of(
             "exploded-cp",
@@ -185,7 +191,7 @@ class BenchmarkEntryModeTest {
         Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
 
         Variant maot = SampleBuild.optimizedRunnerJar(artifacts, SampleBuild.spec("runner-maot"), "fixture.MaotMain",
-                optimizedJitJar, List.of(core));
+                optimizedJitJar, List.of(core), QUIET);
 
         // What every Runner row says about its static service table.
         assertEquals("static services: 1 slots (core 5.1.15)", maot.buildNote());
@@ -199,7 +205,7 @@ class BenchmarkEntryModeTest {
         assertTrue(Files.isRegularFile(artifacts.resolve("runner-maot-application/sample-0.1-jit.jar")));
 
         IOException noTask = assertThrows(IOException.class, () -> SampleBuild.optimizedRunnerJar(artifacts,
-                SampleBuild.spec("runner-maot"), "fixture.MaotMain", null, List.of()));
+                SampleBuild.spec("runner-maot"), "fixture.MaotMain", null, List.of(), QUIET));
         assertEquals("The sample's build declares no optimizedJitJar task (it does not apply io.micronaut.aot)",
                 noTask.getMessage());
     }
@@ -319,6 +325,30 @@ class BenchmarkEntryModeTest {
         Variant extracted = SampleBuild.extractedRunner(output, table, SampleBuild.spec("runner-extracted"));
         assertEquals(table.buildNote(), extracted.buildNote(),
                 "the extracted layout carries the table of the jar it was extracted from");
+    }
+
+    @Test
+    void theBuildersLinesGoToTheHarnessLogUnderTheRowsName(@TempDir Path output) throws Exception {
+        Path classes = compile(output.resolve("logged"), "fixture.LoggedMain", """
+                package fixture;
+                public final class LoggedMain {
+                    public static void main(String[] args) { }
+                }
+                """);
+        Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
+        ByteArrayOutputStream console = new ByteArrayOutputStream();
+
+        SampleBuild.runnerJar(output, SampleBuild.spec("runner-stored-dynamic-services"), "fixture.LoggedMain",
+                List.of(classes), List.of(core), Compression.STORED,
+                SampleBuild.RunnerJarOptions.DEFAULTS.withStaticServices(false),
+                new PrintStream(console, true, StandardCharsets.UTF_8));
+
+        List<String> lines = console.toString(StandardCharsets.UTF_8).lines().toList();
+        assertFalse(lines.isEmpty(), "the builder logs what it did");
+        assertTrue(lines.stream().allMatch(line -> line.startsWith("[startup-benchmark] runner-stored-dynamic-services: ")),
+                lines.toString());
+        assertTrue(lines.stream().anyMatch(line -> line.contains("staticServices=false")),
+                "the effective options name the step the row turned off: " + lines);
     }
 
     /**
@@ -729,7 +759,7 @@ class BenchmarkEntryModeTest {
                                      SampleBuild.RunnerJarOptions... options) throws IOException {
         return SampleBuild.runnerJar(output, new SampleBuild.VariantSpec(name, "fixture", entryMode, false, false,
                 null), mainClass, classes, dependencies, compression,
-                options.length == 0 ? SampleBuild.RunnerJarOptions.DEFAULTS : options[0]);
+                options.length == 0 ? SampleBuild.RunnerJarOptions.DEFAULTS : options[0], QUIET);
     }
 
     private static Path compile(Path fixture, String className, String source) throws IOException {

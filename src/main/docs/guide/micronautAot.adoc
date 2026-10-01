@@ -53,9 +53,9 @@ Shadow JAR and in a Runner JAR alike. What Micronaut Runner's index and its <<st
 save there therefore still counts in the optimized archive (see <<micronautAotWithRunner,below>>).
 
 Micronaut AOT is not the JDK AOT cache. Micronaut AOT generates application classes in the build, and its output is a
-different application JAR. The JDK AOT cache (`-XX:AOTCache`, see <<cdsAndAot>>) is a file the JVM writes after a
-training run, which stores loaded and linked classes of an unchanged application. They are independent, and they
-combine: see <<micronautAotWithJdkCache,below>>.
+different application JAR. The JDK AOT cache (`-XX:AOTCache`, see <<cdsAndAot,Class Data Sharing and the AOT Cache>>) is
+a file the JVM writes after a training run, which stores loaded and linked classes of an unchanged application. They are
+independent, and they combine: see <<micronautAotWithJdkCache,below>>.
 
 == Gradle: `optimizedMicronautRunnerJar`
 
@@ -98,7 +98,7 @@ for the optimized archive record the JVM's class-load log of a run of `-all-opti
 `-Dmicronaut.runner.preload=false` so the embedded profile is not replayed into it, and set it with
 `optimizedMicronautRunnerJar { startupClasses = file('...') }`. A list that does not fit is safe; its extra classes
 are loaded for nothing.
-* `micronautRunnerElements` carries `-all.jar` only (see <<quickStart>>).
+* `micronautRunnerElements` carries `-all.jar` only (see <<quickStart,Quick Start>>).
 * Without `io.micronaut.aot`, or without a Micronaut application or library plugin, there is no
 `optimizedMicronautRunnerJar`.
 
@@ -216,18 +216,19 @@ its application layer and no `logback.xml`. To deploy the plain application, pac
 [[micronautAotWithJdkCache]]
 == With the JDK AOT cache
 
-Train the cache on the archive that production launches: run the training script of <<cdsAndAot>>
-(<<trainingSnippet>>) with `JAR` set to the `optimizedMicronautRunnerJar` archive, the way its
-<<aotSingleJar,single-JAR section>> runs it, then launch with
+Train the cache on the archive that production launches: run the <<trainingSnippet,training script>> of
+<<cdsAndAot,Class Data Sharing and the AOT Cache>> with `JAR` set to the `optimizedMicronautRunnerJar` archive, the way
+its <<aotSingleJar,single-JAR section>> runs it, then launch with
 `java -XX:AOTCache=app.aot -jar my-app-0.1-all-optimized.jar`, adding `-XX:AOTMode=on` when the application must not
 start without its cache. A cache trained on `-all.jar` does not fit `-all-optimized.jar`.
 
 == Is it worth it
 
 Without a JDK cache, yes: on `benchmark-large` with JDK 25, `-all-optimized.jar` was ready about 78 ms before Micronaut
-AOT's `optimizedJitJarAll`, and even Runner's plain `-all.jar` was about 58 ms ahead of it. With a JDK AOT cache on
-both sides, no: the single `-all-optimized.jar` was about 23 ms behind `optimizedJitJarAll` on JDK 25, and on JDK 27 the
+AOT's `optimizedJitJarAll`, and even Runner's plain `-all.jar` was about 58 ms ahead of it. With a JDK AOT cache on both
+sides, no: the single `-all-optimized.jar` was about 23 ms behind `optimizedJitJarAll` on JDK 25, and on JDK 27 the
 cache stores a single Runner JAR's application classes only when it is trained as the
-<<aotSingleJar,single-JAR section>> of <<cdsAndAot>> describes. <<micronautAotResults>> has the numbers, the sizes and
-the second session. They were taken before Runner desugared lambdas by default (<<desugaredLambdas>>), which made the
-cached single JAR faster, and have not been measured again since.
+<<aotSingleJar,single-JAR section>> of <<cdsAndAot,Class Data Sharing and the AOT Cache>> describes. These figures
+come from a local macOS session taken before Runner desugared lambdas by default
+(<<desugaredLambdas,Desugared lambdas>>). The CI run in <<micronautAotResults,Benchmarks>>, with desugaring on, points
+the same way on all three pairs.

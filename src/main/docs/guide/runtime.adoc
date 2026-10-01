@@ -66,8 +66,8 @@ application.
 
 |`micronaut.runner.logback.precompiled`
 |`true`
-|`false` hands a precompiled Logback configuration (<<precompiledLogback>>) over to Logback's Joran at startup. It
-has no effect on an archive without one.
+|`false` hands a precompiled Logback configuration (<<precompiledLogback,Precompiled Logback configuration>>) over to
+Logback's Joran at startup. It has no effect on an archive without one.
 
 |`micronaut.runner.static-services`
 |`true`
@@ -97,8 +97,9 @@ every archive not packaged with the `definitionPrefetch` option.
 
 |`micronaut.runner.aot.training`
 |`false`
-|Only for the run that records an AOT cache of the single JAR (<<cdsAndAot>>). Classes then report the archive's
-`file:` URL as their code source, so JDK 27 and later cache them. The plugins set it. Never set it in production.
+|Only for the run that records an AOT cache of the single JAR (<<cdsAndAot,Class Data Sharing and the AOT Cache>>).
+Classes then report the archive's `file:` URL as their code source, so JDK 27 and later cache them. The plugins set it.
+Never set it in production.
 |===
 
 == Exit codes
@@ -154,7 +155,7 @@ loader, as the main thread does. Otherwise Micronaut does not find the table, an
 
 Micronaut loads and initialises almost every bean definition before the application is ready, on the common
 fork/join pool, but only after the main thread has configured logging and created the context builder. A runner JAR
-packaged with the `definitionPrefetch` option (<<quickStart>>) starts that work earlier: its entry stub runs
+packaged with the `definitionPrefetch` option (<<quickStart,Quick Start>>) starts that work earlier: its entry stub runs
 Micronaut's own `DefaultBeanDefinitionsProvider` on the common pool before `main`, and the first application context
 built through an `ApplicationContextBuilder` (`Micronaut.run`, `ApplicationContext.run` or `builder()`,
 `PicocliRunner`) receives what it returned, or the exception it threw, unchanged. Which failing bean definitions
@@ -183,8 +184,8 @@ launch. So does `-Dmicronaut.runner.static-services.verify=true`, so that the st
 The prefetch and the static service table work together. The table is generated after the prefetch, so it lists the
 prefetch's `ApplicationContextConfigurer`, and the prefetch thread has the application's class loader as its context
 class loader, so the lookups it makes are answered by the table. The same holds for Micronaut AOT: the archive of
-`optimizedMicronautRunnerJar` (<<micronautAot>>) takes the option from `micronautRunnerJar`, its service file lists the
-prefetch's configurer after Micronaut AOT's own, and the static optimizations Micronaut AOT registers as
+`optimizedMicronautRunnerJar` (<<micronautAot,Micronaut AOT>>) takes the option from `micronautRunnerJar`, its service
+file lists the prefetch's configurer after Micronaut AOT's own, and the static optimizations Micronaut AOT registers as
 `StaticOptimizations` loaders are found from the prefetch thread.
 
 What it changes:
@@ -256,10 +257,10 @@ the next, with the process's peak footprint within 5 MB; in the container it ros
 With a JDK AOT cache the recorded classes are already cheap to load, and preloading is not what makes a cached launch
 fast: the same two runs measured -10.1 ms (95% CI -16.1 to -3.9) and -14.8 ms (95% CI -22.5 to +7.0). That small gain
 has a memory cost of its own. With a cache the preloader gets through the whole list before readiness, and the list,
-recorded without a cache over a whole run, names classes that a cached launch loads later or not at all: about 460
-more classes were loaded at readiness. On macOS that was 5.4 MiB more private memory at readiness (95% CI 4.7 to 6.5
-MiB, 60 pairs; 4 to 6.5 MiB across sessions), while in the container private memory did not change. To combine the
-two, build the JAR with the list first and train the cache on that JAR (<<cdsAndAot>>).
+recorded without a cache over a whole run, names classes that a cached launch loads later or not at all: about 460 more
+classes were loaded at readiness. On macOS that was 5.4 MiB more private memory at readiness (95% CI 4.7 to 6.5 MiB, 60
+pairs; 4 to 6.5 MiB across sessions), while in the container private memory did not change. To combine the two, build
+the JAR with the list first and train the cache on that JAR (<<cdsAndAot,Class Data Sharing and the AOT Cache>>).
 
 *Record the profile.* The build records the list from the runner JAR it produces:
 
@@ -322,7 +323,7 @@ or stop, and it must exit 0. Then the list also holds what the shutdown loads.
 |`stopPath` |none |`POST` it instead of ending the process, for example Micronaut's `/stop` endpoint with
 `ENDPOINTS_STOP_ENABLED=true` and `ENDPOINTS_STOP_SENSITIVE=false` in `environment`.
 |`jvmArgs` |none |JVM arguments of the recording launch. Name no class cache in them. The JDK AOT cache's launches
-take `jdkAotCache.jvmArgs` instead (<<aotLayout>>).
+take `jdkAotCache.jvmArgs` instead (<<aotLayout,The extracted layout with the AOT cache>>).
 |`environment` |none |Environment variables added to the launch.
 |`portVariable` |`MICRONAUT_SERVER_PORT` |The variable that receives the port.
 |`readinessTimeout`, `workloadTimeout`, `stopTimeout` |60 s, 60 s, 30 s |In Gradle a `java.time.Duration`.
@@ -340,10 +341,10 @@ class. Set it on the extension (`micronaut { runner { startupClasses = file('sta
 `options` or `<runnerOptions>`, the build fails. `null` falls back to the profile, so to build without it, delete the
 file.
 
-*When it does not run.* `-Dmicronaut.runner.preload=false` switches preloading off at run time. The launcher also
-leaves the thread out when the JVM sees fewer than two processors, which in a container means a CPU limit of one:
-there is no spare core for it to use. It applies only when the single JAR runs: the extracted layout (<<aotLayout>>)
-has no launcher and ignores the list.
+*When it does not run.* `-Dmicronaut.runner.preload=false` switches preloading off at run time. The launcher also leaves
+the thread out when the JVM sees fewer than two processors, which in a container means a CPU limit of one: there is no
+spare core for it to use. It applies only when the single JAR runs: the extracted layout
+(<<aotLayout,The extracted layout with the AOT cache>>) has no launcher and ignores the list.
 
 *A stale list is safe.* The list does not depend on the JAR's bytes. A class that is still in the archive but that
 the application no longer uses is loaded for nothing: the launcher loads a listed class and never initialises it, so
@@ -376,12 +377,12 @@ java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination ./app
 java -jar ./app/my-app-0.1-all.jar
 ----
 
-The extracted form runs entirely on the JDK's own application class loader, with no custom class loader
-anywhere. The single JAR also uses the JDK's ahead-of-time cache (<<cdsAndAot>>); what extraction adds is AOT
-linking of the application classes, which classes defined by a user-defined class loader do not get. That is
-why an application that will be started thousands of times in the same container image may be better served
-by extracting once at image build time. For that cached deployment, trained and verified with its launch
-options, see <<aotLayout>>.
+The extracted form runs entirely on the JDK's own application class loader, with no custom class loader anywhere. The
+single JAR also uses the JDK's ahead-of-time cache (<<cdsAndAot,Class Data Sharing and the AOT Cache>>); what extraction
+adds is AOT linking of the application classes, which classes defined by a user-defined class loader do not get. That is
+why an application that will be started thousands of times in the same container image may be better served by
+extracting once at image build time. For that cached deployment, trained and verified with its launch options, see
+<<aotLayout,The extracted layout with the AOT cache>>.
 
 === Publication and replacement
 

@@ -22,6 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -246,7 +247,8 @@ class AotCacheTest {
     private static Variant storedJar(Path directory) throws Exception {
         Path classes = Path.of(AotCacheFixture.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         return SampleBuild.runnerJar(directory, SampleBuild.spec("runner-stored"), AotCacheFixture.class.getName(),
-                List.of(classes), List.of(), Compression.STORED, SampleBuild.RunnerJarOptions.DEFAULTS);
+                List.of(classes), List.of(), Compression.STORED, SampleBuild.RunnerJarOptions.DEFAULTS,
+                new PrintStream(OutputStream.nullOutputStream()));
     }
 
     private static AotCache.Request request(Path directory, ByteArrayOutputStream console) {

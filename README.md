@@ -10,6 +10,11 @@
 
 Fast-starting single-jar packaging for Micronaut applications.
 
+On a 49-dependency Micronaut Netty service on JDK 25, a Runner JAR built with the plugins' defaults answers its first
+request 33.2% sooner than the same application shaded with Gradle Shadow (median of 20 interleaved runs in CI, no JDK
+cache). See [Benchmarks](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#benchmarks) for the
+conditions and for where it does not win.
+
 `micronaut-runner` packages an application and all of its dependencies into one executable JAR that you
 run with `java -jar app.jar`, **without** flattening the dependencies into a single namespace the way
 Gradle Shadow and Maven Shade do. Dependencies remain separately addressable nested JARs, so ordinary
