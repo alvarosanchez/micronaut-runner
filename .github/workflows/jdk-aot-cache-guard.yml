@@ -30,6 +30,9 @@ on:
       - 'runner-build/src/main/java/io/micronaut/runner/build/training/**'
       - 'runner-launcher/src/main/java/io/micronaut/runner/RunnerClassLoader.java'
       - 'runner-launcher/src/main/java/io/micronaut/runner/Handlers.java'
+      # The forked test this guard runs on the matrix JDK, and the convention that hands it that JDK.
+      - 'runner-build/src/test/java/io/micronaut/runner/build/aotcache/**'
+      - 'buildSrc/src/main/groovy/io.micronaut.build.internal.runner-base.gradle'
 permissions:
   contents: read
 concurrency:

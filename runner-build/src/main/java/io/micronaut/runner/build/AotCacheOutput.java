@@ -69,11 +69,10 @@ public final class AotCacheOutput {
     /** What the single-JAR target warns when the JDK left most of the Runner JAR's classes out of the cache. */
     public static final String SINGLE_JAR_WARNING = "Fewer than half of the io.micronaut classes came from the cache,"
             + " although the training run reported file: code sources, as JDK 27 and later require (JDK-8380291)."
-            + " This JDK caches fewer of the classes RunnerClassLoader defines than JDK 25 and 27 do. Use the layout"
-            + " target.";
+            + " The cache left out most of the classes RunnerClassLoader defines; use the layout target.";
 
-    /** What starts a JVM argument that sets the training property, which production must never get. */
-    private static final String AOT_TRAINING_PREFIX = "-D" + RunnerClassLoader.AOT_TRAINING_PROPERTY;
+    /** The JVM argument that sets the training property without a value, which production must never get. */
+    private static final String AOT_TRAINING_DEFINE = "-D" + RunnerClassLoader.AOT_TRAINING_PROPERTY;
 
     private AotCacheOutput() {
     }
@@ -156,16 +155,18 @@ public final class AotCacheOutput {
     }
 
     /**
-     * Refuses cache settings whose {@code jvmArgs} set the launcher's AOT training property: those arguments go
-     * on every launch of the cache and into {@code app.jvmopts}, the options production launches with, and the
-     * property belongs to the recording launch only, which the single-JAR target gives it.
+     * Refuses cache settings whose {@code jvmArgs} set the launcher's AOT training property, with or without a
+     * value: those arguments go on every launch of the cache and into {@code app.jvmopts}, the options production
+     * launches with, and the property belongs to the recording launch only, which the single-JAR target gives it.
+     * A property whose name only starts with the same text, such as {@code micronaut.runner.aot.training.x}, is
+     * another property and passes.
      *
      * @param settings the cache settings
      * @throws IllegalArgumentException if an argument sets the property
      */
     static void requireNoTrainingProperty(AotCacheSettings settings) {
         for (String argument : settings.jvmArgs()) {
-            if (argument.startsWith(AOT_TRAINING_PREFIX)) {
+            if (argument.equals(AOT_TRAINING_DEFINE) || argument.startsWith(AOT_TRAINING_DEFINE + "=")) {
                 throw new IllegalArgumentException("jdkAotCache jvmArgs must not contain " + argument + ": they"
                         + " also go into " + AotLaunchOptions.ARGFILE + ", the options production launches with,"
                         + " and " + RunnerClassLoader.AOT_TRAINING_PROPERTY + " is for the recording launch only,"

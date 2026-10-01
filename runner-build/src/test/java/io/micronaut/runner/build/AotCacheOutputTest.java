@@ -105,7 +105,9 @@ class AotCacheOutputTest {
     @Test
     void otherPropertiesPassTheTrainingPropertyCheck() {
         AotCacheOutput.requireNoTrainingProperty(AotCacheSettings.builder()
-                .jvmArgs(List.of("-Dmicronaut.runner.verify=true", "-Dmicronaut.runner.aot=x", "-XX:+UseG1GC")).build());
+                .jvmArgs(List.of("-Dmicronaut.runner.verify=true", "-Dmicronaut.runner.aot=x",
+                        "-Dmicronaut.runner.aot.training.timeout=30", "-Dmicronaut.runner.aot.trainingx=true",
+                        "-XX:+UseG1GC")).build());
     }
 
     @Test
