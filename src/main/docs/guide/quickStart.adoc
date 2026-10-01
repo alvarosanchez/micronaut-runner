@@ -58,7 +58,7 @@ micronaut {
         // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
         // PRESERVE copies each dependency byte for byte: smaller on disk only (its gzip size is about 1.55x
         // STORED's), and it loads more slowly.
-        // HYBRID stores the startup classes of startupClasses and deflates the rest: smaller on disk, larger gzipped.
+        // HYBRID stores the startupClasses and keeps other classes compressed: smaller on disk, larger gzipped.
         compression = 'STORED'
 
         // Enter main through a generated direct call instead of reflection.

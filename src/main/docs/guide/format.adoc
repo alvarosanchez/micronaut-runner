@@ -60,9 +60,10 @@ each nested JAR's startup classes first, in the order they were recorded, after 
 bytes startup reads are then contiguous instead of scattered through every dependency. Nested JARs keep their
 places in the outer archive and class path order, so lookups and duplicate precedence do not change.
 
-The `HYBRID` option re-packs as `STORED` does, startup classes first, but stores only the listed classes. Every
-other class is written `DEFLATED`: with its original compressed bytes when no build-time transform changed it, and
-deflated afresh when a transform rewrote or generated it. Resources stay stored. On benchmark-large:
+The `HYBRID` option re-packs as `STORED` does, startup classes first, but keeps the other classes compressed. An
+unlisted class that no build-time transform changed keeps its original compressed bytes, and one a transform
+rewrote or generated is deflated afresh. Listed classes, resources, and the few classes the dependency stored or
+that do not get smaller stay stored.
 
 // HYBRID_TABLE: filled in from the measured runs of the pull request that adds HYBRID.
 
