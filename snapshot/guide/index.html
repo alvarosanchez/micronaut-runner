@@ -331,7 +331,7 @@ Micronaut AOT-optimized application into <code>build/libs/my-app-0.1-all-optimiz
         enabled = true
 
         // STORED re-packs dependencies uncompressed so classes are defined straight from the mapped file.
-        // PRESERVE copies each dependency byte for byte: smaller on disk only (its gzip size is about 1.4x
+        // PRESERVE copies each dependency byte for byte: smaller on disk only (its gzip size is about 1.55x
         // STORED's), and it loads more slowly.
         compression = 'STORED'
 
@@ -376,6 +376,11 @@ Micronaut AOT-optimized application into <code>build/libs/my-app-0.1-all-optimiz
     }
 }</code></pre>
 </div>
+</div>
+<div class="paragraph">
+<p>The gzip ratio in the <code>compression</code> comment is from the packaging comparison of the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> in <a href="#benchmarkResults">Benchmarks</a>:
+on <code>benchmark-large</code>, 13,626,952 bytes gzip -6 for <code>PRESERVE</code> against 8,782,511 for <code>STORED</code>.</p>
 </div>
 <div class="paragraph">
 <p><code>micronautRunner { }</code> is the same extension under another name, for a build without a Micronaut plugin. Each option is
@@ -1066,6 +1071,15 @@ several classes together, so there the unit is the nest: the classes of one top-
 for them.</p>
 </div>
 <div class="paragraph">
+<p>With both transforms on, as with every other default, packaging <code>benchmark-large</code> still takes less time than Shadow:
+in the packaging comparison of the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> of <a href="#benchmarkResults">Benchmarks</a>
+(4 vCPUs, warm Gradle daemon, <code>--rerun</code>, 10 rounds), the median <code>micronautRunnerJar</code> task action took 1167.9 ms
+against 1347.1 ms for <code>shadowJar</code>, <code>runner-stored</code> − <code>shadow</code> -187.7 ms [-226.8, -113.8]. CI has no packaging row with
+the transforms off; the on and off times under each transform below come from local sessions on another machine, and
+do not compare with these.</p>
+</div>
+<div class="paragraph">
 <p>Stripping never applies to the application&#8217;s own classes or to a project dependency (another project of a Gradle
 build, another module of a Maven reactor): they are user code, whose locals users debug. Desugaring applies to
 both. Neither applies to the classes Runner generates into the application layer or to any class of a signed JAR,
@@ -1161,9 +1175,9 @@ generated, the bridges added and the sites left, by reason. The sites left inclu
 <div class="paragraph">
 <p>On <code>test-suite/samples/benchmark-large</code>, desugaring rewrites 2,963 of the 2,992 lambda call sites of the
 dependencies and the application, 361 of them through bridges, with no fallback; none of the 29 it leaves runs
-before the application is ready. Measured by the startup harness (<a href="#benchmarks">Benchmarks</a>) against the
-<code>runner-stored-lambdas</code> control, 30 interleaved pairs on an Apple Silicon machine with 12 CPUs and Homebrew OpenJDK
-25.0.4.1:</p>
+before the application is ready. Measured by the startup harness against the <code>runner-stored-lambdas</code> control, in
+the <a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> of
+<a href="#benchmarkResults">Benchmarks</a> (4 vCPUs, JDK 25.0.4.1, 20 interleaved pairs; memory at readiness as medians):</p>
 </div>
 <table class="tableblock frame-all grid-all stretch">
 <colgroup>
@@ -1179,27 +1193,31 @@ before the application is ready. Measured by the startup harness (<a href="#benc
 <tbody>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Readiness without a JDK cache</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−38.9 ms paired median, 95% CI [−47.3, −30.2] (386.9 ms against 422.9 ms)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-137.5 ms paired median (-147.9 to -122.3), 939.6 ms against 1079.5 ms</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Readiness with the JDK AOT cache</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−38.0 ms, 95% CI [−41.6, −33.9] (220.2 ms against 259.7 ms)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-127.8 ms (-135.0 to -113.9), 553.5 ms against 675.6 ms</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Maximum RSS</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">135.7 against 170.9 MiB without a cache, 144.4 against 164.1 MiB with the AOT cache (medians of three runs)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">RSS at readiness</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">138.7 against 164.2 MiB without a cache, 139.4 against 172.3 MiB with the AOT cache</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Private memory (<code>RssAnon</code>) at readiness</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">83.4 against 111.2 MiB without a cache, 81.6 against 116.9 MiB with the AOT cache</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Archive size</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">36,023,843 against 32,810,600 bytes raw (+9.8%), 8,781,234 against 8,367,796 bytes gzip -6 (+4.9%); the AOT cache
-is 0.6 MB larger</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.4 against 31.3 MiB raw (1.10×), 8.4 against 8.0 MiB gzip -6 (1.05×); the AOT cache is 45,940,736 against
+45,334,528 B</p></td>
 </tr>
 </tbody>
 </table>
 <div class="paragraph">
-<p>Packaging does the extra work on the staging threads. With both class transforms on, the sample&#8217;s
-<code>micronautRunnerJar</code> task took 0.26 s instead of 0.11 s with both off, and 0.22 s with desugaring alone off (medians
-of ten warm-daemon rounds), against 0.75 s for its <code>shadowJar</code>.</p>
+<p>Packaging does the extra work on the staging threads. Measured locally on a 12-CPU Apple Silicon Mac with Homebrew
+OpenJDK 25.0.4.1 (medians of ten warm-daemon rounds), the sample&#8217;s <code>micronautRunnerJar</code> task took 0.26 s with both
+class transforms on, 0.11 s with both off and 0.22 s with desugaring alone off.</p>
 </div>
 <div class="paragraph">
 <p>To keep every lambda an <code>invokedynamic</code> call site, set the <code>desugarLambdas</code> option to <code>false</code>. In Gradle:</p>
@@ -1283,8 +1301,10 @@ archive is byte-reproducible only when it is built with the same JDK build.</p>
 </div>
 <div class="paragraph">
 <p>On <code>test-suite/samples/benchmark-large</code>, stripping rewrites 7,102 of the 8,428 dependency classes and saves
-4,868,965 bytes, with no fallback. Measured by the startup harness (<a href="#benchmarks">Benchmarks</a>) against the
-<code>runner-stored-keepdebug</code> control, 30 interleaved pairs on an Apple M4 Pro with Homebrew OpenJDK 25.0.4.1:</p>
+4,992,144 bytes, with no fallback, as the build log of the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> shows. Measured by the startup
+harness in that run (<a href="#benchmarkResults">Benchmarks</a>: 4 vCPUs, JDK 25.0.4.1, 20 interleaved pairs) against the
+<code>runner-stored-keepdebug</code> control, except for the memory row:</p>
 </div>
 <table class="tableblock frame-all grid-all stretch">
 <colgroup>
@@ -1300,19 +1320,20 @@ archive is byte-reproducible only when it is built with the same JDK build.</p>
 <tbody>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Readiness without a JDK cache</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−12.6 ms paired median, 95% CI [−13.9, −8.1] (428.1 ms against 440.6 ms)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-19.8 ms paired median (-29.7 to -5.0), 939.6 ms against 952.5 ms</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Readiness with the JDK AOT cache</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−2.1 ms, 95% CI [−5.1, +1.1]: no measurable gain</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-4.9 ms (-12.2 to +4.5): no measurable gain</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Maximum RSS with the JDK AOT cache</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−4.6 MB paired median, 95% CI [−4.9, −3.6] (181.9 MB against 186.3 MB); the AOT cache is 1.7 MB smaller</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Maximum RSS with the JDK AOT cache, local study below</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">−4.6 MB paired median, 95% CI [−4.9, −3.6] (181.9 MB against 186.3 MB)</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Archive size</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">32,726,207 against 37,590,842 bytes raw (−12.9%), 8,344,903 against 9,686,906 bytes gzip -6 (−13.9%)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.4 against 39.4 MiB raw (0.87×), 8.4 against 9.8 MiB gzip -6 (0.86×); the AOT cache is 45,940,736 against
+47,775,744 B</p></td>
 </tr>
 </tbody>
 </table>
@@ -1320,15 +1341,16 @@ archive is byte-reproducible only when it is built with the same JDK build.</p>
 <p>The memory row comes from a separate run, because the RSS of a cached start moves by several MB from one trained
 cache to the next, which is more than stripping saves. It is the paired median over 40 pairs of AOT caches, each
 pair trained afresh from the two archives and each archive then started three times; in 5 of the 40 pairs the
-stripped archive used more, by 2.0 MB at most.</p>
+stripped archive used more, by 2.0 MB at most. It was measured locally on an Apple M4 Pro (12 CPUs) with Homebrew
+OpenJDK 25.0.4.1, before Runner precompiled <code>logback.xml</code> (<a href="#precompiledLogback">Precompiled Logback configuration</a>), generated the static service table
+or desugared lambdas: both archives of each pair configured Logback with Joran. The CI run trains one cache per row,
+so its 5.9 MiB less RSS and 2.7 MiB less private memory (<code>RssAnon</code>) at readiness are a single training&#8217;s difference,
+without an interval.</p>
 </div>
 <div class="paragraph">
-<p>Packaging does the extra work on the staging threads. With 8 of them, the sample&#8217;s <code>micronautRunnerJar</code> task took
-0.24 s instead of 0.08 s (medians of ten warm-daemon rounds), against 0.73 s for its <code>shadowJar</code>.</p>
-</div>
-<div class="paragraph">
-<p>These figures were taken before Runner precompiled <code>logback.xml</code> (<a href="#precompiledLogback">Precompiled Logback configuration</a>): both archives of each
-pair configured Logback with Joran, and neither carried the generated configurator.</p>
+<p>Packaging does the extra work on the staging threads. Measured locally on that machine, also before the Logback
+precompilation, the static service table and desugaring, with 8 staging threads, the sample&#8217;s <code>micronautRunnerJar</code>
+task took 0.24 s with stripping and 0.08 s without (medians of ten warm-daemon rounds).</p>
 </div>
 <div class="paragraph">
 <p>Some libraries read local-variable tables at run time and find nothing once they are gone. When the class path
@@ -1619,29 +1641,26 @@ built through an <code>ApplicationContextBuilder</code> (<code>Micronaut.run</co
 Micronaut skips and which ones stop the application does not change.</p>
 </div>
 <div class="paragraph">
-<p>The option is off by default, because what the prefetch gains depends on the machine and is small next to a JDK AOT
-cache. On <code>benchmark-large</code> with JDK 25 and its static service table, measured with paired, interleaved starts:</p>
+<p>The option is off by default, because its effect is not measurable on the 4 vCPUs of the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> of <a href="#benchmarkResults">Benchmarks</a>.
+There, on <code>benchmark-large</code> with JDK 25.0.4.1, its static service table and lambdas desugared
+(<a href="#desugaredLambdas">Desugared lambdas</a>), <code>runner-stored-prefetch</code> − <code>runner-stored</code> was -18.4 ms (-25.0 to +12.8)
+without an AOT cache and +13.2 ms (-0.1 to +19.3) with one (20 pairs each): both intervals include zero. RSS at
+readiness was 3.2 MiB lower without a cache and 4.0 MiB higher with one, and private memory (<code>RssAnon</code>) 2.9 MiB lower
+and 4.2 MiB higher. CI does not run the prefetch rows with other processor counts. Measured locally, with paired,
+interleaved starts in Linux containers (Temurin 25.0.4+7) in a colima VM on a 12-CPU Apple Silicon Mac, before lambdas
+were desugared:</p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p>with lambdas desugared (<a href="#desugaredLambdas">Desugared lambdas</a>), the default, one run on a 12-processor Mac made
-the start 20 ms shorter without an AOT cache and 9 ms shorter with one; the measurements below were taken before
-lambdas were desugared;</p>
+<p>without an AOT cache, with the static service table, it made the start 19 to 33 ms shorter with five processors
+and 22 ms shorter with six;</p>
 </li>
 <li>
-<p>without an AOT cache, it made the start 26 to 35 ms shorter on a 12-processor Mac, and in a Linux container 2 to
-10 ms shorter with four processors, 19 to 33 ms with five and 22 ms with six;</p>
-</li>
-<li>
-<p>with an AOT cache, the start was 0 to 7 ms shorter on the Mac, where one of two runs could not tell the difference
-from zero, and 1 to 8 ms shorter in those containers, where five of seven runs could not either, among them three
-of the four with four processors; the resident set at readiness was at most about 2 MB larger;</p>
-</li>
-<li>
-<p>with three processors, in a measurement before the static service table, it made the start about 50 ms longer,
-because Micronaut then loads the definitions on one thread fewer. So the prefetch starts only when the common pool
-has at least three threads, which takes four processors.</p>
+<p>with three processors, before the static service table, it made the start about 50 ms longer, because Micronaut
+then loads the definitions on one thread fewer. So the prefetch starts only when the common pool has at least three
+threads, which takes four processors.</p>
 </li>
 </ul>
 </div>
@@ -1707,44 +1726,50 @@ only the index instead and reads each class with one positional read into a dire
 at most 16 buffers of at most 64 KiB; a larger class is read into a heap array.</p>
 </div>
 <div class="paragraph">
-<p>Measured on <code>test-suite/samples/benchmark-large</code>, with paired, interleaved launches (30 pairs per run, two runs per
-platform), positional reads against the default:</p>
+<p>Positional reads against the default on <code>test-suite/samples/benchmark-large</code>, in the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> of <a href="#benchmarkResults">Benchmarks</a>
+(Linux, 4 vCPUs, JDK 25.0.4.1, 20 interleaved pairs; memory as differences of medians, without an interval):</p>
 </div>
 <table class="tableblock frame-all grid-all stretch">
 <colgroup>
-<col style="width: 22%;">
-<col style="width: 26%;">
-<col style="width: 26%;">
-<col style="width: 26%;">
+<col style="width: 34%;">
+<col style="width: 33%;">
+<col style="width: 33%;">
 </colgroup>
 <thead>
 <tr>
-<th class="tableblock halign-left valign-top">Platform</th>
-<th class="tableblock halign-left valign-top">RSS at readiness</th>
-<th class="tableblock halign-left valign-top">Private memory</th>
-<th class="tableblock halign-left valign-top">Readiness</th>
+<th class="tableblock halign-left valign-top">Measure</th>
+<th class="tableblock halign-left valign-top">Without a JDK cache</th>
+<th class="tableblock halign-left valign-top">With the JDK AOT cache</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">macOS 26.6, Apple Silicon, Homebrew JDK 25.0.4.1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-24 MiB; -20 to -23 MiB with the JDK AOT cache</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-3.0 to +0.8 MiB (<code>phys_footprint</code>)</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">+9 to +11 ms (+2.1 to +2.4%); +8 ms (+3.1 to +3.2%) with the AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Readiness</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+26.8 ms (+16.3 to +33.3), +2.8%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+23.2 ms (+9.6 to +28.2), +4.2%</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Linux container, Temurin JDK 25.0.4+7, 6 CPUs</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-24 to -25 MiB without a cache</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">+4 to +6 MiB without a cache (<code>RssAnon</code>)</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">+13 ms (+3.2%); +7 to +9 ms (+3.0 to +3.9%) with the AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">RSS at readiness</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-26.1 MiB</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-22.3 MiB</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Private memory (<code>RssAnon</code>) at readiness</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+1.3 MiB</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+2.2 MiB</p></td>
 </tr>
 </tbody>
 </table>
 <div class="paragraph">
-<p>The Runner JAR&#8217;s resident mapping falls from 25 MiB (macOS) or 30 MiB (Linux) to 1.2 MiB, the index. Positional
-reads change RSS, not page-cache use: in a Linux container the working set that Kubernetes reports
-(<code>memory.current</code> minus <code>inactive_file</code>) did not drop, because the archive&#8217;s pages sit on the inactive file list
-whether they are mapped or read. The slower start is why <code>MAPPED</code> is the default.</p>
+<p>CI does not run on macOS, where private memory is <code>phys_footprint</code>. Measured locally on a 12-CPU Apple Silicon Mac with
+Homebrew OpenJDK 25.0.4.1, in two runs of 30 pairs with and without the cache, before Runner&#8217;s build-time
+transformations (<a href="#buildTransforms">Build-Time Transformations</a>) and before the static service table
+(<a href="#staticServices">Static service table</a>), positional reads changed it by -3.0 to +0.8 MiB. In that setup the Runner
+JAR&#8217;s resident mapping fell from 25 MiB on macOS, or 30 MiB in a Linux container (Temurin 25.0.4+7, in a colima VM on
+that Mac), to 1.2 MiB, the index. Positional reads change RSS, not page-cache use: in that container the working set
+that Kubernetes reports (<code>memory.current</code> minus <code>inactive_file</code>) did not drop, because the archive&#8217;s pages sit on the
+inactive file list whether they are mapped or read. The slower start is why <code>MAPPED</code> is the default.</p>
 </div>
 </div>
 </div>
@@ -1758,21 +1783,29 @@ of the application loaded. The launcher then loads them, in that order, on one b
 application starts, so that the main thread usually finds a class already defined.</p>
 </div>
 <div class="paragraph">
-<p>Preloading is the accelerator for launches without a JDK cache. On <code>benchmark-large</code> (Micronaut 5.1.15, Netty
-4.2.18) the uncached single JAR reached readiness about 100 ms sooner with its recorded list: -108.0 ms (95% CI -120.1
-to -97.4, 60 pairs) on macOS with 12 CPUs and JDK 25.0.4.1, and -106.0 ms (95% CI -116.8 to -94.3, 20 pairs) in a Linux
-container limited to 2 CPUs with JDK 25.0.4. The same class loading happens earlier and on two threads, which can cost
-memory while the application starts: on macOS, private memory at readiness was 3 to 17 MiB higher from one session to
-the next, with the process&#8217;s peak footprint within 5 MB; in the container it rose by at most 2 MiB.</p>
+<p>Preloading is the accelerator for launches without a JDK cache. In the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> of <a href="#benchmarkResults">Benchmarks</a>
+(<code>benchmark-large</code> on Micronaut 5.1.15 and Netty 4.2.18, Linux, 4 vCPUs, JDK 25.0.4.1, 20 pairs), the uncached single
+JAR reached readiness sooner with its recorded list, <code>runner-stored-preload</code> − <code>runner-stored</code> -136.1 ms (-148.6 to
+-127.9), -14.5%, with 0.2 MiB more RSS and 0.1 MiB less private memory (<code>RssAnon</code>) at readiness. CI runs the preload
+rows with 4 vCPUs only. Measured locally in a Linux container limited to 2 CPUs (Temurin 25.0.4+7, in a colima VM on a
+12-CPU Apple Silicon Mac), before Runner stripped local variables, generated the static service table or desugared
+lambdas, it was -106.0 ms (95% CI -116.8 to -94.3, 20 pairs). The same class loading happens earlier and on two
+threads, which can cost memory while the application starts: measured locally on that Mac with Homebrew OpenJDK
+25.0.4.1, in sessions taken before the static service table and lambda desugaring, some of them also before
+local-variable stripping and Logback precompilation, private memory at readiness (<code>phys_footprint</code>) was 3 to 17 MiB
+higher from one session to the next, with the process&#8217;s peak footprint within 5 MB.</p>
 </div>
 <div class="paragraph">
 <p>With a JDK AOT cache the recorded classes are already cheap to load, and preloading is not what makes a cached launch
-fast: the same two runs measured -10.1 ms (95% CI -16.1 to -3.9) and -14.8 ms (95% CI -22.5 to +7.0). That small gain
-has a memory cost of its own. With a cache the preloader gets through the whole list before readiness, and the list,
-recorded without a cache over a whole run, names classes that a cached launch loads later or not at all: about 460 more
-classes were loaded at readiness. On macOS that was 5.4 MiB more private memory at readiness (95% CI 4.7 to 6.5 MiB, 60
-pairs; 4 to 6.5 MiB across sessions), while in the container private memory did not change. To combine the two, build
-the JAR with the list first and train the cache on that JAR (<a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a>).</p>
+fast: in the CI run, <code>runner-stored-preload-aot</code> − <code>runner-stored-aot</code> was -11.3 ms (-18.1 to -5.1), and in the local
+2-CPU container -14.8 ms (95% CI -22.5 to +7.0). That small gain has a memory cost of its own. With a cache the
+preloader gets through the whole list before readiness, and the list, recorded without a cache over a whole run, names
+classes that a cached launch loads later or not at all. In the CI run, 439 more classes were loaded at readiness, with
+6.6 MiB more RSS and 3.6 MiB more private memory (<code>RssAnon</code>). In those local macOS sessions, private memory at readiness
+(<code>phys_footprint</code>) was 5.4 MiB higher (95% CI 4.7 to 6.5 MiB, 60 pairs; 4 to 6.5 MiB across sessions). To combine the
+two, build the JAR with the list first and train the cache on that JAR
+(<a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a>).</p>
 </div>
 <div class="paragraph">
 <p><strong>Record the profile.</strong> The build records the list from the runner JAR it produces:</p>
@@ -2169,8 +2202,11 @@ the property; the extracted layout&#8217;s cache (<a href="#aotLayout">Recommend
 <div class="sectionbody">
 <div class="paragraph">
 <p>This deployment is not a single file: the application JAR, <code>lib/</code> and the cache are one unit, trained and shipped
-together. It pays off only with its cache: uncached, the layout reached readiness 57–63 ms later than the single JAR
-(<code>benchmark-large</code>, JDK 25.0.4.1), so an uncached <code>java -jar</code> stays on the single JAR.</p>
+together. It pays off only with its cache. Uncached, in the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> of <a href="#benchmarkResults">Benchmarks</a>
+(<code>benchmark-large</code>, 4 vCPUs, JDK 25.0.4.1), the layout&#8217;s median readiness was 1130.0 ms (<code>runner-extracted</code>) against
+939.6 ms for the single JAR (<code>runner-stored</code>); the harness declares no pair for these two rows, so there is no
+interval. An uncached <code>java -jar</code> therefore stays on the single JAR.</p>
 </div>
 <div class="paragraph">
 <p><strong>With the build plugins.</strong> Runner&#8217;s interim Gradle and Maven plugins build the whole deployment, as experimental tasks
@@ -2285,14 +2321,18 @@ warns when fewer than half of the <code>io.micronaut</code> classes came from th
 uncached one.</p>
 </div>
 <div class="paragraph">
-<p>On <code>benchmark-large</code> (Micronaut 5.1.15, Netty 4.2.18; macOS on Apple silicon, a shared machine; 20 pairs per run) with
-JDK 25.0.4.1, the cached layout, which keeps the static service table (<a href="#staticServices">Static service table</a>), was
-ready 25.6 to 32.4 ms sooner than the single JAR with its cache and 1.5 to 14.4 ms before a Shadow JAR with its cache
-over six runs; in the four least loaded runs, the lead over Shadow was 9.1 to 14.4 ms with each 95% CI below zero. Its
-maximum RSS was about 121 MiB, against 163 to 165 MiB for the single JAR and 134 MiB for Shadow. Without the table it
-was 1.8 to 6.8 ms behind Shadow. On JDK 27 (build 27) it was level with Shadow without the table (−0.5 ms, 95% CI −11.1
-to +7.1) and 14.9 to 26.0 ms ahead with it over three runs, the largest lead under the heaviest load, at about 115
-against 127 MiB. Training and verifying it with <code>micronautRunnerJdkAotCache</code> took about 4 s of build time.</p>
+<p>In the same CI run (Micronaut 5.1.15, Netty 4.2.18, 20 pairs), the cached layout, which keeps the static service table
+(<a href="#staticServices">Static service table</a>), was ready sooner than the single JAR with its cache, <code>runner-extracted-aot</code> −
+<code>runner-stored-aot</code> -38.9 ms (-44.5 to -33.7), and sooner than a Shadow JAR with its cache, <code>runner-extracted-aot</code> −
+<code>shadow-aot</code> -27.1 ms (-30.7 to -16.9). Its RSS at readiness was 114.6 MiB, against 139.4 MiB for the single JAR and
+124.3 MiB for Shadow; its private memory (<code>RssAnon</code>) was 82.6 MiB, against 81.6 and 91.4 MiB. In the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818490124">JDK 27 run</a> (27+35) it was ahead of Shadow
+too, -28.0 ms (-49.9 to -17.4), at 113.0 against 125.0 MiB RSS. CI has no extracted row without the static service
+table. Without it, measured locally on a 12-CPU Apple Silicon Mac before lambdas were desugared (20 pairs per run), the
+layout was 1.8 to 6.8 ms behind Shadow over three runs with Homebrew OpenJDK 25.0.4.1, and level with it with Homebrew
+OpenJDK 27 (build 27): −0.5 ms (95% CI −11.1 to +7.1). In that local setup, with JDK 25.0.4.1, training and verifying
+the cache with <code>micronautRunnerJdkAotCache</code> took about 4 s of build time. The CI harness trains and verifies the
+layout&#8217;s cache itself, not through that task, and took 4.7 s for it, 4.0 s of them training.</p>
 </div>
 <div class="paragraph">
 <p><strong>Modification times.</strong> The cache records each class-path JAR (the application JAR and each <code>lib/</code> JAR, or the single
@@ -2348,40 +2388,54 @@ JDK_AOT_VM_OPTIONS='-XX:+UnlockDiagnosticVMOptions -XX:+AOTCompatibleOopCompress
 </div>
 <div class="paragraph">
 <p><strong>STORED or PRESERVE.</strong> Under an AOT cache almost every class comes from the cache, so building the Runner JAR with
-<code>PRESERVE</code> before extracting leaves readiness unchanged (<code>benchmark-large</code>, JDK 25.0.4.1, PRESERVE minus STORED: −2.6
-ms, 95% CI −7.9 to +2.9, 20 pairs; +3.0 ms, 95% CI −3.1 to +8.9, 30 pairs) and shrinks the unpacked layout to the Shadow
-JAR&#8217;s 14,774,163 B. <code>STORED</code>, the default, gives the smaller gzipped layer and is 20.4 ms faster (95% CI 2.3 to 25.1, 20
-pairs) if the cache is missing or rejected. Set <code>micronautRunnerJar { compression = 'PRESERVE' }</code> in Gradle or
-<code>-Dmicronaut.runner.compression=PRESERVE</code> in Maven. Count the cache in a cached deployment&#8217;s raw and gzipped bytes; the
-table omits the JDK 25.0.4.1 cache (52.3 MB, 12.4 MB gzipped, from one training, as caches are not byte-reproducible):</p>
+<code>PRESERVE</code> before extracting leaves readiness unchanged and shrinks the unpacked layout to the size of a Shadow JAR.
+<code>STORED</code>, the default, gives the smaller gzipped layer and is faster if the cache is missing or rejected. Set
+<code>micronautRunnerJar { compression = 'PRESERVE' }</code> in Gradle or <code>-Dmicronaut.runner.compression=PRESERVE</code> in Maven. CI
+has no layout extracted from <code>PRESERVE</code>. Measured locally on <code>benchmark-large</code>, on a 12-CPU Apple Silicon Mac with
+Homebrew OpenJDK 25.0.4.1, before Runner&#8217;s build-time transformations (<a href="#buildTransforms">Build-Time Transformations</a>)
+and before the static service table (<a href="#staticServices">Static service table</a>), PRESERVE minus STORED was −2.6 ms (95% CI
+−7.9 to +2.9, 20 pairs) and +3.0 ms (95% CI −3.1 to +8.9, 30 pairs) with the cache, and STORED was 20.4 ms faster (95%
+CI 2.3 to 25.1, 20 pairs) without it. In that build the layout extracted from PRESERVE was 14,791,648 B on disk and
+13.18 MB as <code>tar | gzip -6</code>, against the same build&#8217;s 14,774,163 B Shadow JAR.</p>
+</div>
+<div class="paragraph">
+<p>Count the cache in a cached deployment&#8217;s raw and gzipped bytes. In the CI run, the complete deployments measured as
+follows, gzip being the sum of each file&#8217;s gzip -6 size; the layout&#8217;s cache alone was 47,140,864 B (45.0 MiB), from one
+training, as caches are not byte-reproducible:</p>
 </div>
 <table class="tableblock frame-all grid-all stretch">
 <colgroup>
-<col style="width: 37.5%;">
-<col style="width: 25%;">
-<col style="width: 25%;">
-<col style="width: 12.5%;">
+<col style="width: 60%;">
+<col style="width: 20%;">
+<col style="width: 20%;">
 </colgroup>
 <thead>
 <tr>
-<th class="tableblock halign-left valign-top"><code>benchmark-large</code> layout extracted from</th>
+<th class="tableblock halign-left valign-top"><code>benchmark-large</code> deployment, CI run</th>
 <th class="tableblock halign-left valign-top">On disk</th>
-<th class="tableblock halign-left valign-top"><code>tar | gzip -6</code></th>
-<th class="tableblock halign-left valign-top">vs Shadow</th>
+<th class="tableblock halign-left valign-top">gzip -6</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">STORED Runner JAR (default)</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">34,758,846 B</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">9.29 MB</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2.35x</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Layout extracted from the STORED Runner JAR (<code>runner-extracted</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">31.2 MiB</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">7.9 MiB</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">PRESERVE Runner JAR</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">14,791,648 B</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">13.18 MB</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1.00x</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The same layout with its AOT cache (<code>runner-extracted-aot</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">76.2 MiB</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">18.4 MiB</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shadow JAR (<code>shadow</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">14.1 MiB</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">12.5 MiB</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shadow JAR with its AOT cache (<code>shadow-aot</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">63.7 MiB</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">24.2 MiB</p></td>
 </tr>
 </tbody>
 </table>
@@ -2410,15 +2464,30 @@ the JAR with the list first, then train the cache on that JAR.</p>
 front of <code>bash train.sh</code> in the <code>RUN</code> step, never in <code>ENV</code>. Production launches unchanged, with
 <code>java -XX:AOTCache=app.aot -jar my-app-0.1-all.jar</code>. With the build plugins, <code>jdkAotCache.target = 'singleJar'</code>
 (<a href="#aotLayout">Recommended: the extracted layout with the AOT cache</a>) trains and checks it on a copy of the Runner JAR that <code>micronautRunnerJar</code> built, with its committed
-startup profile, so the cache also holds what the preload loads. On <code>benchmark-large</code> with JDK 25.0.4.1 this was ready
-37.5 ms sooner than explicit CDS (95% CI 32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS, measured before
-the static service table (<a href="#staticServices">Static service table</a>). With the table it was 25.6 to 32.4 ms later than the
-extracted layout and 16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <a href="#aotLayout">Recommended: the extracted layout with the AOT cache</a>). On
-JDK 27 (build 27), with lambdas desugared (<a href="#lambdaGap">Closing the lambda gap on the single JAR</a>) and trained with the property, it served 1,838 of 1,844
-non-lambda <code>io.micronaut</code> classes from the cache before the first request (13 of 1,923 without it) and was ready 107 to
-109 ms sooner than the same JAR trained without it, at the same 135 MiB maximum RSS. It was level with Shadow (1.7 to
-6.2 ms ahead, one of three intervals below zero) and 7 to 9 ms behind the extracted layout, each with its AOT cache
-(three runs of 20 pairs), so the layout (<a href="#aotLayout">Recommended: the extracted layout with the AOT cache</a>) stays the faster option.</p>
+startup profile, so the cache also holds what the preload loads.</p>
+</div>
+<div class="paragraph">
+<p>This is the option for a deployment that must be one file, not the faster cached one. In the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> of <a href="#benchmarkResults">Benchmarks</a>
+(<code>benchmark-large</code>, 4 vCPUs, JDK 25.0.4.1, 20 pairs), with lambdas desugared (<a href="#lambdaGap">Closing the lambda gap on the single JAR</a>) and the static service
+table (<a href="#staticServices">Static service table</a>), the single JAR with its AOT cache was behind Shadow with its own,
+<code>runner-stored-aot</code> − <code>shadow-aot</code> +17.4 ms (+12.1 to +22.5), and the extracted layout was ahead of it,
+<code>runner-extracted-aot</code> − <code>runner-stored-aot</code> -38.9 ms (-44.5 to -33.7). In the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818490124">JDK 27 run</a>, trained with the property, it
+trailed both by more: +76.0 ms (+52.3 to +82.5) against Shadow, and -101.3 ms (-120.7 to -91.3) for the layout against
+it, at 140.9 MiB peak RSS. So the layout (<a href="#aotLayout">Recommended: the extracted layout with the AOT cache</a>) is the faster option. In the Linux JDK 27 leg of the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818157354">cache guard</a>, a strict launch of the single
+JAR with its cache loaded 2201 <code>io.micronaut</code> classes up to the end of the training workload, lambda proxies included,
+and 2195 of them came from the cache.</p>
+</div>
+<div class="paragraph">
+<p>On JDK 27 the property is what makes the cache work. Measured locally on a 12-CPU Apple Silicon Mac with Homebrew
+OpenJDK 27 (build 27) and lambdas desugared, the single JAR trained with it served 1,838 of 1,844 non-lambda
+<code>io.micronaut</code> classes from the cache before the first request (13 of 1,923 without it) and was ready 107 to 109 ms
+sooner than the same JAR trained without it, at the same maximum RSS (three runs of 20 pairs). With Homebrew OpenJDK
+25.0.4.1 on that Mac, before Runner&#8217;s build-time transformations and before the static service table
+(<a href="#staticServices">Static service table</a>), the single JAR&#8217;s AOT cache was ready 37.5 ms sooner than explicit CDS (95% CI
+32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS.</p>
 </div>
 <div class="sect2">
 <h3 id="lambdaGap">Closing the lambda gap on the single JAR</h3>
@@ -2426,15 +2495,23 @@ non-lambda <code>io.micronaut</code> classes from the cache before the first req
 <p>Every lambda the single JAR&#8217;s classes run would otherwise be linked at every start, cache or not, as the first section
 says. So Runner desugars lambdas when it packages (<a href="#desugaredLambdas">Desugared lambdas</a>), on by default with <code>STORED</code>;
 set the <code>desugarLambdas</code> option to <code>false</code> to opt out. Train with the snippet above unchanged: the generated classes are
-ordinary classes, and the cache holds them. On <code>benchmark-large</code> with JDK 25.0.4.1 (30 pairs), desugaring made the
-single JAR 38.0 ms faster with its AOT cache (95% CI 33.9 to 41.6 ms) and 38.9 ms faster without one (95% CI 30.2 to
-47.3 ms). With its cache it was then 16.0 ms ahead of Shadow&#8217;s (95% CI 11.1 to 22.7 ms), at 144.4 MiB maximum RSS
-against Shadow&#8217;s 133.6 MiB. The JDK 25 single-JAR figures above were taken before lambdas were desugared. On JDK 27
-(build 27), with the cache trained with the property (<a href="#aotSingleJar">Single-file option: the AOT cache on the single JAR</a>), desugaring made the single JAR 36.5 to 38.7 ms
-faster with its AOT cache (three runs of 20 pairs). What is left of the cached difference: the 29 sites still excluded
-(none on this sample&#8217;s startup path), about 40 string concatenation sites, the per-class cost of reusing unregistered
-classes, and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT
-cache remains the parity option, with Shadow&#8217;s RSS.</p>
+ordinary classes, and the cache holds them. In the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> of <a href="#benchmarkResults">Benchmarks</a>
+(<code>benchmark-large</code>, 4 vCPUs, JDK 25.0.4.1, 20 pairs), desugaring made the single JAR faster with its AOT cache,
+<code>runner-stored-aot</code> − <code>runner-stored-lambdas-aot</code> -127.8 ms (-135.0 to -113.9), and without one, <code>runner-stored</code> −
+<code>runner-stored-lambdas</code> -137.5 ms (-147.9 to -122.3). The desugared single JAR with its cache is still behind Shadow&#8217;s:
+<code>runner-stored-aot</code> − <code>shadow-aot</code> +17.4 ms (+12.1 to +22.5), +10.7 to +66.7 ms on the run&#8217;s four CPU and page-cache
+legs with every interval above zero, and +76.0 ms (+52.3 to +82.5) in the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818490124">JDK 27 run</a>. On JDK 25 its RSS at readiness
+was 139.4 MiB against Shadow&#8217;s 124.3 MiB, and its private memory (<code>RssAnon</code>) 81.6 against 91.4 MiB. Before desugaring,
+the medians were 675.6 ms for <code>runner-stored-lambdas-aot</code> and 539.4 ms for <code>shadow-aot</code>; the harness declares no pair
+for those two rows, so there is no interval. The JDK 27 run has no row with lambdas kept: measured locally on a 12-CPU
+Apple Silicon Mac with Homebrew OpenJDK 27 (build 27), with the cache trained with the property (<a href="#aotSingleJar">Single-file option: the AOT cache on the single JAR</a>),
+desugaring made the single JAR 36.5 to 38.7 ms faster with its AOT cache (three runs of 20 pairs). What is left of the
+cached difference: the 29 sites still excluded (none on this sample&#8217;s startup path), about 40 string concatenation
+sites, the per-class cost of reusing unregistered classes, and the clean file-backed pages of the mapped JAR, which
+count towards RSS. The extracted layout with its AOT cache is the faster cached option, with less RSS than Shadow&#8217;s:
+114.6 against 124.3 MiB, and 113.0 against 125.0 MiB on JDK 27.</p>
 </div>
 </div>
 </div>
@@ -2457,10 +2534,12 @@ concurrent instances must not write one path; and, being dynamic CDS, it is slow
 <div class="paragraph">
 <p>In the training script, use <code>CACHE=app.jsa</code> and <code>-XX:ArchiveClassesAtExit="$CACHE"</code> instead of
 <code>-XX:AOTCacheOutput="$CACHE"</code>; nothing else changes. Run with <code>-XX:SharedArchiveFile=app.jsa</code>, and <code>-Xshare:on</code> to
-require it. On <code>benchmark-large</code> with JDK 25.0.4.1 its archive was 31.4 MB against the AOT cache&#8217;s 49.5 MB, for 37.5 ms
-later readiness and about 15 MiB more RSS. On JDK 27 (build 27) the single JAR&#8217;s AOT cache, trained with the property
-(<a href="#aotSingleJar">Single-file option: the AOT cache on the single JAR</a>), was ready 27 to 32 ms sooner than its dynamic CDS archive, at 7 MiB less maximum RSS (three runs
-of 20 pairs, lambdas desugared).</p>
+require it. CI has no CDS row. Measured locally on <code>benchmark-large</code>, on a 12-CPU Apple Silicon Mac: with Homebrew
+OpenJDK 25.0.4.1, before Runner&#8217;s build-time transformations and before the static service table
+(<a href="#staticServices">Static service table</a>), the single JAR&#8217;s archive was 31.4 MB against the AOT cache&#8217;s 49.5 MB, for
+37.5 ms later readiness and about 15 MiB more maximum RSS (20 pairs); with Homebrew OpenJDK 27
+(build 27) and lambdas desugared, the single JAR&#8217;s AOT cache, trained with the property (<a href="#aotSingleJar">Single-file option: the AOT cache on the single JAR</a>), was ready
+27 to 32 ms sooner than its dynamic CDS archive, at 7 MiB less maximum RSS (three runs of 20 pairs).</p>
 </div>
 </div>
 </div>
@@ -2559,12 +2638,17 @@ and <code>Mono</code> are then loaded but not initialised at startup</p></td>
 </tbody>
 </table>
 <div class="paragraph">
-<p><code>replaceLogbackXml</code> and <code>optimizeClassLoading</code> carry the whole startup gain. In paired A/B runs outside the startup
-harness, on <code>benchmark-large&#8217;s `optimizedJitJarAll</code> with JDK 25.0.4.1, those two plus <code>optimizeNetty</code> made readiness
-47.6 ms (95% CI 42.3 to 58.3) and 57.6 ms (53.7 to 60.9) earlier than no optimizer, in two sessions of 30 pairs, and
-adding <code>cacheEnvironment</code>, <code>deduceEnvironment</code> and <code>precomputeOperations</code> changed nothing measurable (+0.7 ms, −9.3 to
-+12.9, and +2.4 ms, −4.6 to +6.2). Micronaut Launch 5.2.0 and later generate those three as <code>false</code>, and so do the
-samples this guide measures.</p>
+<p><code>benchmark-large</code> enables <code>replaceLogbackXml</code>, <code>optimizeClassLoading</code> and <code>optimizeNetty</code>. With those three, in the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> of
+<a href="#benchmarkResults">Benchmarks</a> (4 vCPUs, JDK 25.0.4.1, 20 pairs), Micronaut AOT made the sample&#8217;s Shadow JAR ready
+sooner: <code>shadow-maot</code> − <code>shadow</code> -126.2 ms (-134.1 to -122.6), -9.0%. That is the nearest pair the harness has: it
+compares <code>optimizedJitJarAll</code> with the plain Shadow JAR, not with <code>optimizedJitJarAll</code> built with every flag off.
+Paired A/B runs of <code>optimizedJitJarAll</code> outside the harness made that second comparison, measured locally on a 12-CPU
+Apple Silicon Mac with Homebrew OpenJDK 25.0.4.1. They found that <code>replaceLogbackXml</code> and <code>optimizeClassLoading</code> carry
+the whole gain over the same JAR with every flag off, and that adding <code>cacheEnvironment</code>, <code>deduceEnvironment</code> and
+<code>precomputeOperations</code> to the three changed nothing measurable (+0.7 ms, −9.3 to +12.9, and +2.4 ms, −4.6 to +6.2, in
+two sessions of 30 pairs). Micronaut Launch 5.2.0 and later generate those three as <code>false</code>, and so do the samples
+this guide measures.</p>
 </div>
 <div class="paragraph">
 <p>Micronaut AOT 3 does not optimize service loading. Its <code>optimizeServiceLoading</code> flag only logs a warning, so the
@@ -2794,14 +2878,20 @@ start without its cache. A cache trained on <code>-all.jar</code> does not fit <
 <h2 id="_is_it_worth_it">Is it worth it</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Without a JDK cache, yes: on <code>benchmark-large</code> with JDK 25, <code>-all-optimized.jar</code> was ready about 78 ms before Micronaut
-AOT&#8217;s <code>optimizedJitJarAll</code>, and even Runner&#8217;s plain <code>-all.jar</code> was about 58 ms ahead of it. With a JDK AOT cache on both
-sides, no: the single <code>-all-optimized.jar</code> was about 23 ms behind <code>optimizedJitJarAll</code> on JDK 25, and on JDK 27 the
-cache stores a single Runner JAR&#8217;s application classes only when it is trained as the
-<a href="#aotSingleJar">single-JAR section</a> of <a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a> describes. These figures
-come from a local macOS session taken before Runner desugared lambdas by default
-(<a href="#desugaredLambdas">Desugared lambdas</a>). The CI run in <a href="#micronautAotResults">Benchmarks</a>, with desugaring on, points
-the same way on all three pairs.</p>
+<p>Without a JDK cache, yes. In the
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">CI run</a> of
+<a href="#micronautAotResults">Benchmarks</a> (<code>benchmark-large</code>, 4 vCPUs, JDK 25.0.4.1, 20 pairs), <code>-all-optimized.jar</code> was
+ready sooner than Micronaut AOT&#8217;s <code>optimizedJitJarAll</code>, <code>runner-maot</code> − <code>shadow-maot</code> -381.3 ms (-394.6 to -373.6),
+and even Runner&#8217;s plain <code>-all.jar</code> was ahead of it, <code>runner-stored</code> − <code>shadow-maot</code> -348.6 ms (-354.1 to -321.0).</p>
+</div>
+<div class="paragraph">
+<p>With a JDK AOT cache on both sides, no: the single <code>-all-optimized.jar</code> was behind <code>optimizedJitJarAll</code>,
+<code>runner-maot-aot</code> − <code>shadow-maot-aot</code> +36.4 ms (+28.1 to +43.2), and on JDK 27 the cache stores a single Runner JAR&#8217;s
+application classes only when it is trained as the <a href="#aotSingleJar">single-JAR section</a> of
+<a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a> describes. For a cached deployment, see
+<a href="#aotLayout">the extracted layout with the AOT cache</a>, which <code>micronautRunnerLayout</code> and <code>micronautRunnerJdkAotCache</code>
+build from the plain <code>-all.jar</code>. No run has measured an extracted <code>-all-optimized.jar</code>, so this guide claims no gain
+for one.</p>
 </div>
 </div>
 </div>
@@ -3672,8 +3762,7 @@ The definition prefetch&#8217;s intervals include zero on these 4 vCPUs.</p>
 with 8.8 MiB less private memory, but it is a directory of JARs plus a cache file. The single-file
 <code>runner-stored-aot</code>, already desugared, still loses on JDK 25: +17.4 ms (+12.1 to +22.5). On JDK 27 the layout stays
 ahead and the single JAR trails by 76.0 ms. <a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a> has the JDK 27
-code-source rule and where the single JAR&#8217;s remaining cached gap goes. There, measured in local Apple Silicon sessions,
-the desugared single JAR led Shadow&#8217;s cache on JDK 25 and was level on JDK 27; on these runners it trails on both.</p>
+code-source rule and where the single JAR&#8217;s remaining cached gap goes.</p>
 </li>
 <li>
 <p><a id="micronautAotResults"></a><strong>Micronaut AOT</strong>: <code>runner-maot</code> − <code>shadow-maot</code> -381.3 ms (-394.6 to -373.6); <code>runner-stored</code>
