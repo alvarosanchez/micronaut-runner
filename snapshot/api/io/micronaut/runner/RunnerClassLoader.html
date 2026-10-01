@@ -56,6 +56,7 @@ loadScripts(document, 'script');</script>
 <ol class="toc-list">
 <li><a href="#delegation-order-heading" tabindex="0">Delegation order</a></li>
 <li><a href="#thread-safety-heading" tabindex="0">Thread safety</a></li>
+<li><a href="#code-sources-heading" tabindex="0">Code sources</a></li>
 </ol>
 </li>
 <li><a href="#field-summary" tabindex="0">Field Summary</a></li>
@@ -66,6 +67,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#PARENT_PROPERTY" tabindex="0">PARENT_PROPERTY</a></li>
 <li><a href="#PARENT_SYSTEM" tabindex="0">PARENT_SYSTEM</a></li>
 <li><a href="#VERIFY_PROPERTY" tabindex="0">VERIFY_PROPERTY</a></li>
+<li><a href="#AOT_TRAINING_PROPERTY" tabindex="0">AOT_TRAINING_PROPERTY</a></li>
 </ol>
 </li>
 <li><a href="#constructor-detail" tabindex="0">Constructor Details</a>
@@ -142,7 +144,16 @@ never held while a class is defined, and package definition relies on the superc
 package map, catching the <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link"><code>IllegalArgumentException</code></a> that a lost race produces. The decoded
 manifest attributes of a jar are written under that same monitor, together with its protection domain,
 and read without it: every class definition acquires the monitor for the domain before it reads them,
-which orders the read after the write. The boot fast path defines nothing, so it takes no lock.</p></div>
+which orders the read after the write. The boot fast path defines nothing, so it takes no lock.</p>
+
+<h2 id="code-sources-heading">Code sources</h2>
+<p>Every class reports the <code>jar:</code> URL of the jar it came from as its code-source location, and that
+URL is also the seal base of the packages the jar seals. The one exception is the run that records a JDK AOT
+cache of the single runner jar, with <a href="#AOT_TRAINING_PROPERTY">"micronaut.runner.aot.training"</a> set to <code>true</code>: JDK 27 and later
+(JDK-8380291) store a class of a custom loader in the cache only when the training run reports a
+<code>file:</code> code source, so in that run every class reports the outer archive's <code>file:</code> URL instead.
+The cache is used with the <code>jar:</code> code sources of a production launch, which never sets the property:
+the JDK matches a cached class by name, size and CRC-32 and gives it the domain this loader passes.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -161,18 +172,23 @@ which orders the read after the write. The boot fast path defines nothing, so it
 <div class="table-header col-second">Field</div>
 <div class="table-header col-last">Description</div>
 <div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#PARENT_PROPERTY" class="member-name-link">PARENT_PROPERTY</a></code></div>
+<div class="col-second even-row-color"><code><a href="#AOT_TRAINING_PROPERTY" class="member-name-link">AOT_TRAINING_PROPERTY</a></code></div>
 <div class="col-last even-row-color">
-<div class="block">System property selecting the parent class loader.</div>
+<div class="block">System property that only the run recording a JDK AOT cache of the single runner jar sets.</div>
 </div>
 <div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#PARENT_SYSTEM" class="member-name-link">PARENT_SYSTEM</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#PARENT_PROPERTY" class="member-name-link">PARENT_PROPERTY</a></code></div>
 <div class="col-last odd-row-color">
-<div class="block">Value of <a href="#PARENT_PROPERTY">"micronaut.runner.parent"</a> that selects <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#getSystemClassLoader()" title="class or interface in java.lang" class="external-link"><code>ClassLoader.getSystemClassLoader()</code></a>.</div>
+<div class="block">System property selecting the parent class loader.</div>
 </div>
 <div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#VERIFY_PROPERTY" class="member-name-link">VERIFY_PROPERTY</a></code></div>
+<div class="col-second even-row-color"><code><a href="#PARENT_SYSTEM" class="member-name-link">PARENT_SYSTEM</a></code></div>
 <div class="col-last even-row-color">
+<div class="block">Value of <a href="#PARENT_PROPERTY">"micronaut.runner.parent"</a> that selects <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html#getSystemClassLoader()" title="class or interface in java.lang" class="external-link"><code>ClassLoader.getSystemClassLoader()</code></a>.</div>
+</div>
+<div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#VERIFY_PROPERTY" class="member-name-link">VERIFY_PROPERTY</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">System property that turns on CRC-32 verification of every class and resource read from the
 archive.</div>
 </div>
@@ -321,6 +337,36 @@ once per jar, and checksumming every class would add a full pass over each class
 </div>
 </section>
 </li>
+<li>
+<section class="detail" id="AOT_TRAINING_PROPERTY">
+<h3>AOT_TRAINING_PROPERTY</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">AOT_TRAINING_PROPERTY</span></div>
+<div class="block">System property that only the run recording a JDK AOT cache of the single runner jar sets. When it is
+exactly <code>"true"</code>, every class reports the outer archive's <code>file:</code> URL as its code-source
+location, instead of the <code>jar:</code> URL of the jar it came from.
+
+<p>It exists because JDK 27 and later (JDK-8380291) leave every class of a custom loader whose code
+source does not start with <code>file:</code> out of the cache the training run records, and that would be
+every class this loader defines. The check runs only while the cache is recorded: a production launch
+reports the <code>jar:</code> code sources and still gets the cached classes, so production gains nothing from
+the property and must never set it. Sealing is unaffected, because the seal base stays the jar's own
+<code>jar:</code> URL. On JDKs without the rule it changes nothing that is cached; it is honoured on every JDK,
+so that a backport of the rule is covered too.</p>
+
+<p>The property is read once, when the loader is created, which then prints one line to standard error
+saying that the training mode is on.</p></div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../constant-values.html#io.micronaut.runner.RunnerClassLoader.AOT_TRAINING_PROPERTY">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
 </ul>
 </section>
 </li>
@@ -341,8 +387,10 @@ once per jar, and checksumming every class would add a full pass over each class
 <p>Everything that does not depend on the classes being loaded is computed here, once: the
 multi-release feature version, the modules of the parent-visible packages, and whether boot-module
 packages may bypass the parent. Whether classes and resources are verified is the index's setting,
-read when the index was opened; see <a href="#VERIFY_PROPERTY"><code>VERIFY_PROPERTY</code></a>. The archive and the index are
-<em>not</em> owned by the loader and are never closed by it.</p></div>
+read when the index was opened; see <a href="#VERIFY_PROPERTY"><code>VERIFY_PROPERTY</code></a>. <a href="#AOT_TRAINING_PROPERTY">"micronaut.runner.aot.training"</a> is read
+here, and when it is on, the archive's <code>file:</code> URL is taken from <a href="Handlers.html" title="class in io.micronaut.runner"><code>Handlers</code></a> and one line
+saying so goes to standard error. The archive and the index are <em>not</em> owned by the loader and are
+never closed by it.</p></div>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>index</code> - the index of the archive, already validated</dd>

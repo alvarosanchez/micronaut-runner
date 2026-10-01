@@ -64,7 +64,7 @@ loadScripts(document, 'script');</script>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
 <ol class="toc-list">
-<li><a href="#build(io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.util.Map,io.micronaut.runner.build.BuildLogger)" tabindex="0">build(AotCacheSettings, Path, Path, String, TrainingSettings, Map, BuildLogger)</a></li>
+<li><a href="#build(io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.util.List,java.util.Map,io.micronaut.runner.build.BuildLogger)" tabindex="0">build(AotCacheSettings, Path, Path, String, TrainingSettings, List, Map, BuildLogger)</a></li>
 </ol>
 </li>
 </ol>
@@ -102,7 +102,8 @@ that directory, so the cache is trained at the relative layout it runs from. One
 </ol>
 
 <p>Every launch carries <a href="AotCacheSettings.html#jvmArgs()"><code>AotCacheSettings.jvmArgs()</code></a> and none of the build's ambient JVM option
-variables, and each phase is logged with its duration.</p></div>
+variables, and each phase is logged with its duration. The recording alone also carries the caller's
+<code>recordJvmArgs</code>, which reach neither the creation, the checks nor the argfile.</p></div>
 <dl class="notes">
 <dt>Since:</dt>
 <dd>1.0</dd>
@@ -150,11 +151,12 @@ variables, and each phase is logged with its duration.</p></div>
 <div class="table-header col-second">Method</div>
 <div class="table-header col-last">Description</div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code>static <a href="AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#build(io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.util.Map,io.micronaut.runner.build.BuildLogger)" class="member-name-link">build</a><wbr>(<a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a>&nbsp;settings,
+<div class="col-second even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4"><code><a href="#build(io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.util.List,java.util.Map,io.micronaut.runner.build.BuildLogger)" class="member-name-link">build</a><wbr>(<a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a>&nbsp;settings,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;java,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;directory,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;jarName,
  <a href="../training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a>&nbsp;training,
+ <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;recordJvmArgs,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;labels,
  <a href="../BuildLogger.html" title="interface in io.micronaut.runner.build">BuildLogger</a>&nbsp;log)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab1 method-summary-table-tab4">
@@ -237,7 +239,7 @@ variables, and each phase is logged with its duration.</p></div>
 <h2>Method Details</h2>
 <ul class="member-list">
 <li>
-<section class="detail" id="build(io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.util.Map,io.micronaut.runner.build.BuildLogger)">
+<section class="detail" id="build(io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.util.List,java.util.Map,io.micronaut.runner.build.BuildLogger)">
 <h3>build</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static</span>&nbsp;<span class="return-type"><a href="AotCacheReport.html" title="class in io.micronaut.runner.build.aotcache">AotCacheReport</a></span>&nbsp;<span class="element-name">build</span><wbr><span class="parameters">(<a href="AotCacheSettings.html" title="class in io.micronaut.runner.build.aotcache">AotCacheSettings</a>&nbsp;settings,
@@ -245,6 +247,7 @@ variables, and each phase is logged with its duration.</p></div>
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;directory,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;jarName,
  <a href="../training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a>&nbsp;training,
+ <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;recordJvmArgs,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;labels,
  <a href="../BuildLogger.html" title="interface in io.micronaut.runner.build">BuildLogger</a>&nbsp;log)</span>
                             throws <span class="exceptions"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a>,
@@ -258,8 +261,12 @@ variables, and each phase is logged with its duration.</p></div>
 <dd><code>directory</code> - the directory that holds the JAR, and receives the cache, the argfile, the identity file,
                  the report and the logs</dd>
 <dd><code>jarName</code> - the file name of the JAR to launch, in that directory</dd>
-<dd><code>training</code> - how to reach, exercise and stop the application; its own <code>jvmArgs</code> are replaced by
-                 the settings'</dd>
+<dd><code>training</code> - how to reach, exercise and stop the application; its own <code>jvmArgs</code> are replaced
+                     by the settings'</dd>
+<dd><code>recordJvmArgs</code> - JVM arguments of the recording launch only, after the settings' and the recording's
+                     own options; the creation, the probes, the smoke launch and the argfile never get them.
+                     They are for what only a training run may do, such as a property that changes how the
+                     application's class loader reports its classes to the recording</dd>
 <dd><code>labels</code> - entries added to the identity file and the report, such as <code>target</code></dd>
 <dd><code>log</code> - where the phases are reported</dd>
 <dt>Returns:</dt>

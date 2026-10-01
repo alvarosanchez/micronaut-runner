@@ -88,6 +88,15 @@ loadScripts(document, 'script');</script>
 <dd>
 <div class="block">The environment variables through which a JVM takes options nobody passed it.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/AotCacheOutput.html#AOT_TRAINING_ARGUMENT" class="member-name-link">AOT_TRAINING_ARGUMENT</a> - Static variable in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheOutput.html" title="class in io.micronaut.runner.build">AotCacheOutput</a></dt>
+<dd>
+<div class="block">What the single-JAR target's recording launch adds, and no other launch: the launcher's AOT training mode,
+<a href="io/micronaut/runner/RunnerClassLoader.html#AOT_TRAINING_PROPERTY"><code>RunnerClassLoader.AOT_TRAINING_PROPERTY</code></a>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/RunnerClassLoader.html#AOT_TRAINING_PROPERTY" class="member-name-link">AOT_TRAINING_PROPERTY</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/RunnerClassLoader.html" title="class in io.micronaut.runner">RunnerClassLoader</a></dt>
+<dd>
+<div class="block">System property that only the run recording a JDK AOT cache of the single runner jar sets.</div>
+</dd>
 <dt><a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html" class="type-name-link" title="class in io.micronaut.runner.build.aotcache">AotCacheBuilder</a> - Class in <a href="io/micronaut/runner/build/aotcache/package-summary.html">io.micronaut.runner.build.aotcache</a></dt>
 <dd>
 <div class="block">Trains a JDK AOT cache for a JAR in place, and verifies it.</div>
@@ -281,7 +290,7 @@ or by mapping only the index and reading classes positionally.</div>
 <dd>
 <div class="block">Validates and builds the settings.</div>
 </dd>
-<dt><a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html#build(io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.util.Map,io.micronaut.runner.build.BuildLogger)" class="member-name-link">build(AotCacheSettings, Path, Path, String, TrainingSettings, Map, BuildLogger)</a> - Static method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheBuilder</a></dt>
+<dt><a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html#build(io.micronaut.runner.build.aotcache.AotCacheSettings,java.nio.file.Path,java.nio.file.Path,java.lang.String,io.micronaut.runner.build.training.TrainingSettings,java.util.List,java.util.Map,io.micronaut.runner.build.BuildLogger)" class="member-name-link">build(AotCacheSettings, Path, Path, String, TrainingSettings, List, Map, BuildLogger)</a> - Static method in class io.micronaut.runner.build.aotcache.<a href="io/micronaut/runner/build/aotcache/AotCacheBuilder.html" title="class in io.micronaut.runner.build.aotcache">AotCacheBuilder</a></dt>
 <dd>
 <div class="block">Trains, creates and verifies a cache in a directory.</div>
 </dd>
@@ -431,6 +440,8 @@ it generated.</div>
 <dd>
 <div class="block">Does nothing.</div>
 </dd>
+<dt><a href="io/micronaut/runner/RunnerClassLoader.html#code-sources-heading" class="search-tag-link">Code sources</a> - Section in class io.micronaut.runner.RunnerClassLoader</dt>
+<dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/Handlers.html#codeSourceUrlFor(int)" class="member-name-link">codeSourceUrlFor(int)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
 <div class="block">The URL that identifies a whole jar of the registered archive: the <code>CodeSource</code> location of

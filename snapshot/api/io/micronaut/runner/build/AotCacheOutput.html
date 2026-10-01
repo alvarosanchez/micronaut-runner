@@ -58,6 +58,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#field-detail" tabindex="0">Field Details</a>
 <ol class="toc-list">
 <li><a href="#TARGET_LABEL" tabindex="0">TARGET_LABEL</a></li>
+<li><a href="#AOT_TRAINING_ARGUMENT" tabindex="0">AOT_TRAINING_ARGUMENT</a></li>
 <li><a href="#SINGLE_JAR_WARNING" tabindex="0">SINGLE_JAR_WARNING</a></li>
 </ol>
 </li>
@@ -87,8 +88,10 @@ plugins call.
 
 <p>With <a href="AotTarget.html#LAYOUT"><code>AotTarget.LAYOUT</code></a> the program is the extracted layout (<a href="AotLayout.html" title="class in io.micronaut.runner.build"><code>AotLayout</code></a>), which every JDK
 caches in full. With <a href="AotTarget.html#SINGLE_JAR"><code>AotTarget.SINGLE_JAR</code></a> it is a copy of the Runner JAR with its modification time
-kept; its coverage is reported but not enforced, and a warning says when the JDK did not cache the classes
-<code>RunnerClassLoader</code> defines.</p>
+kept, and its recording launch, and no other launch, runs with <a href="#AOT_TRAINING_ARGUMENT"><code>AOT_TRAINING_ARGUMENT</code></a>: the classes
+<code>RunnerClassLoader</code> defines then report the archive's <code>file:</code> URL, which JDK 27 and later require
+to cache them (JDK-8380291). Its coverage is reported but not enforced, and a warning says when the JDK still
+did not cache most of those classes.</p>
 
 <p>From the directory the application launches as <code>java @app.jvmopts -jar &lt;jar&gt;</code>. The cache is valid
 only as long as the JARs keep their size and modification time, so a copy of the directory keeps its times,
@@ -111,13 +114,19 @@ as <code>cp -p</code> and Docker <code>COPY</code> do.</p></div>
 <div class="table-header col-second">Field</div>
 <div class="table-header col-last">Description</div>
 <div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second even-row-color"><code><a href="#SINGLE_JAR_WARNING" class="member-name-link">SINGLE_JAR_WARNING</a></code></div>
+<div class="col-second even-row-color"><code><a href="#AOT_TRAINING_ARGUMENT" class="member-name-link">AOT_TRAINING_ARGUMENT</a></code></div>
 <div class="col-last even-row-color">
-<div class="block">What the single-JAR target warns when the JDK left most of the Runner JAR's classes out of the cache.</div>
+<div class="block">What the single-JAR target's recording launch adds, and no other launch: the launcher's AOT training mode,
+<a href="../RunnerClassLoader.html#AOT_TRAINING_PROPERTY"><code>RunnerClassLoader.AOT_TRAINING_PROPERTY</code></a>.</div>
 </div>
 <div class="col-first odd-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
-<div class="col-second odd-row-color"><code><a href="#TARGET_LABEL" class="member-name-link">TARGET_LABEL</a></code></div>
+<div class="col-second odd-row-color"><code><a href="#SINGLE_JAR_WARNING" class="member-name-link">SINGLE_JAR_WARNING</a></code></div>
 <div class="col-last odd-row-color">
+<div class="block">What the single-JAR target warns when the JDK left most of the Runner JAR's classes out of the cache.</div>
+</div>
+<div class="col-first even-row-color"><code>static final <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></code></div>
+<div class="col-second even-row-color"><code><a href="#TARGET_LABEL" class="member-name-link">TARGET_LABEL</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The label of the identity file and the report that names the target.</div>
 </div>
 </div>
@@ -180,6 +189,24 @@ as <code>cp -p</code> and Docker <code>COPY</code> do.</p></div>
 </section>
 </li>
 <li>
+<section class="detail" id="AOT_TRAINING_ARGUMENT">
+<h3>AOT_TRAINING_ARGUMENT</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a></span>&nbsp;<span class="element-name">AOT_TRAINING_ARGUMENT</span></div>
+<div class="block">What the single-JAR target's recording launch adds, and no other launch: the launcher's AOT training mode,
+<a href="../RunnerClassLoader.html#AOT_TRAINING_PROPERTY"><code>RunnerClassLoader.AOT_TRAINING_PROPERTY</code></a>.</div>
+<dl class="notes">
+<dt>See Also:</dt>
+<dd>
+<ul class="tag-list">
+<li><a href="../../../../constant-values.html#io.micronaut.runner.build.AotCacheOutput.AOT_TRAINING_ARGUMENT">Constant Field Values</a></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
 <section class="detail" id="SINGLE_JAR_WARNING">
 <h3>SINGLE_JAR_WARNING</h3>
 <div class="horizontal-scroll">
@@ -232,7 +259,9 @@ as <code>cp -p</code> and Docker <code>COPY</code> do.</p></div>
 <dd>the gate's report</dd>
 <dt>Throws:</dt>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/IOException.html" title="class or interface in java.io" class="external-link">IOException</a></code> - if staging, training or verification fails; the cache and the argfile are
-                             deleted then, and the logs stay</dd>
+                                 deleted then, and the logs stay</dd>
+<dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/IllegalArgumentException.html" title="class or interface in java.lang" class="external-link">IllegalArgumentException</a></code> - if the settings' <code>jvmArgs</code> set <a href="#AOT_TRAINING_ARGUMENT"><code>AOT_TRAINING_ARGUMENT</code></a>'s
+                                 property, which would reach <code>app.jvmopts</code>; nothing is staged then</dd>
 <dd><code><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/InterruptedException.html" title="class or interface in java.lang" class="external-link">InterruptedException</a></code> - if the thread is interrupted; every process has been reaped by then</dd>
 </dl>
 </div>
