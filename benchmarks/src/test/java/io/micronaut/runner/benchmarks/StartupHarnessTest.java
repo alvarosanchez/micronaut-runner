@@ -87,9 +87,9 @@ class StartupHarnessTest {
     }
 
     /**
-     * A poll's request timeout ends it only until the response headers arrive. An answer whose body never ends, as
-     * a desktop application listening on the loopback address once sent, fails the run one poll timeout after its
-     * startup timeout instead of hanging it; an exercise's workload request is bounded by the startup timeout.
+     * An answer whose body never ends fails the run instead of hanging it, and an exercise's workload request too. On
+     * JDK 25 a poll's request timeout ends when the response headers arrive, so only the watchdog ends that poll, one
+     * poll timeout after the startup timeout; from JDK 26 the client's request timeout also covers the body.
      */
     @Test
     @Timeout(value = 60, unit = TimeUnit.SECONDS)
@@ -99,7 +99,8 @@ class StartupHarnessTest {
                 StartupHarness::freePort))) {
             StartupHarness.RunFailure run = assertThrows(StartupHarness.RunFailure.class,
                     () -> harness.run(fixture("stall", directory.resolve("run.pid")), 0, false));
-            assertTrue(run.getMessage().contains("a poll was still waiting for its response"), run.getMessage());
+            assertTrue(run.getMessage().contains(Runtime.version().feature() < 26
+                    ? "a poll was still waiting for its response" : "did not answer"), run.getMessage());
             StartupHarness.RunFailure exercise = assertThrows(StartupHarness.RunFailure.class, () -> harness.exercise(
                     fixture("stall-after-ready", directory.resolve("exercise.pid")), List.of(), List.of("/work")));
             assertTrue(exercise.getMessage().contains("did not answer the workload request"), exercise.getMessage());

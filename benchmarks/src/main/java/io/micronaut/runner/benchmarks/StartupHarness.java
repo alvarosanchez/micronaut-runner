@@ -469,10 +469,11 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
      * {@link #exercise} shares. The clock starts immediately before {@link ProcessBuilder#start()}, and nothing
      * but polling happens between the spawn and the first 200.
      *
-     * <p>A poll's request timeout ends it when no response headers arrive, but not when the headers arrive and the
-     * body never ends, and a poll once hung for good with the timeout set. A {@link Watchdog}, armed before the clock
-     * starts and disarmed once the loop has ended, interrupts such a poll one poll timeout after the startup
-     * timeout. Until then its thread only waits, so every poll does exactly what it did without it.</p>
+     * <p>On JDK 25 a poll's request timeout ends it when no response headers arrive, but not when the headers arrive
+     * and the body never ends (from JDK 26 it covers the body too), and a poll once hung for good with the timeout
+     * set. A {@link Watchdog}, armed before the clock starts and disarmed once the loop has ended, interrupts such a
+     * poll one poll timeout after the startup timeout. Until then its thread only waits, so every poll does exactly
+     * what it did without it.</p>
      *
      * @param variant the variant, for failure messages
      * @param builder the child process
