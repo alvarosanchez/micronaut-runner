@@ -24,6 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayOutputStream;
@@ -700,6 +701,42 @@ class ZipReaderTest {
 
         IOException failure = assertThrows(IOException.class, () -> ZipReader.open(jar));
         assertTrue(failure.getMessage().contains("entry 'one.txt' overlaps entry 'two.txt'"), failure.getMessage());
+    }
+
+    /** A stored entry is read through the channel, 64 KiB per positional read, by both read and readRaw. */
+    @ParameterizedTest(name = "reads a stored entry of {0} bytes")
+    @MethodSource("transferBoundarySizes")
+    void readsAStoredEntryThatSpansSeveralPositionalReads(int size) throws IOException {
+        byte[] content = Payload.RANDOM.bytes(size);
+        byte[] after = "the entry after it".getBytes(StandardCharsets.UTF_8);
+        Path jar = temp.resolve("stored-" + size + ".jar");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+            stored(zip, "data.bin", content);
+            stored(zip, "after.txt", after);
+        }
+
+        try (ZipReader reader = ZipReader.open(jar)) {
+            ZipEntryInfo entry = reader.entry("data.bin").orElseThrow();
+            assertArrayEquals(content, reader.read(entry));
+            assertArrayEquals(content, reader.readRaw(entry));
+            assertArrayEquals(after, reader.read(reader.entry("after.txt").orElseThrow()));
+        }
+    }
+
+    /**
+     * The last positional read into an array just under the largest Java array: the chunk's limit must stop at
+     * the array's end, where {@code position + 64 KiB} overflows to a negative limit.
+     */
+    @Test
+    void theLastPositionalReadOfANearlyMaximalArrayStopsAtItsEnd() {
+        int chunk = ZipReader.TRANSFER_BUFFER_SIZE;
+        int position = (Integer.MAX_VALUE / chunk) * chunk;
+        assertTrue(position + chunk < 0, "the position the overflow happened at");
+        assertEquals(2_147_450_000, ZipReader.chunkLimit(position, 2_147_450_000));
+        assertEquals(Integer.MAX_VALUE - 8, ZipReader.chunkLimit(position, Integer.MAX_VALUE - 8));
+        assertEquals(position, ZipReader.chunkLimit(position - chunk, Integer.MAX_VALUE - 8));
+        assertEquals(chunk, ZipReader.chunkLimit(0, Integer.MAX_VALUE - 8));
+        assertEquals(chunk - 1, ZipReader.chunkLimit(0, chunk - 1));
     }
 
     @Test

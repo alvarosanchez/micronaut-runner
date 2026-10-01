@@ -734,13 +734,22 @@ final class ZipReader implements Closeable {
         int end = offset + length;
         long at = position;
         while (buffer.position() < end) {
-            buffer.limit(Math.min(end, buffer.position() + TRANSFER_BUFFER_SIZE));
+            buffer.limit(chunkLimit(buffer.position(), end));
             int read = channel.read(buffer, at);
             if (read < 0) {
                 throw unreadable(new EOFException("unexpected end of file at offset " + at));
             }
             at += read;
         }
+    }
+
+    /**
+     * Where the positional read that fills an array from {@code position} towards {@code end} stops: at most
+     * {@link #TRANSFER_BUFFER_SIZE} bytes on. It adds the distance left, which is never more than the array's
+     * length, so it cannot overflow near the largest Java array as {@code position + TRANSFER_BUFFER_SIZE} would.
+     */
+    static int chunkLimit(int position, int end) {
+        return position + Math.min(end - position, TRANSFER_BUFFER_SIZE);
     }
 
     /**

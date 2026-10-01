@@ -22,7 +22,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -133,9 +132,14 @@ class ZipReaderCompiledTruncationTest {
                 .findFirst().orElse("<not printed>");
     }
 
+    /**
+     * Runs the probe and returns what it printed. Its output goes to a file rather than a pipe, so that waiting
+     * for it can time out: reading a pipe to its end would block for as long as a hung probe keeps it open.
+     */
     private static String fork(Case probe, Path directory) throws IOException, InterruptedException {
         String home = System.getProperty("runner.test.javaHome", System.getProperty("java.home"));
         Path java = Path.of(home, "bin", "java");
+        Path log = directory.resolve("probe.log");
         ProcessBuilder builder = new ProcessBuilder(java.toString(),
                 "-Xbatch", "-XX:-TieredCompilation", "-XX:CompileThreshold=1000", "-XX:+PrintCompilation",
                 "-XX:CompileCommand=quiet",
@@ -144,20 +148,21 @@ class ZipReaderCompiledTruncationTest {
                 "-Xmx128m",
                 "-cp", System.getProperty("java.class.path"),
                 Probe.class.getName(), probe.name(), directory.toString())
-                .redirectErrorStream(true);
+                .redirectErrorStream(true)
+                .redirectOutput(log.toFile());
         Map<String, String> environment = builder.environment();
         // Options the environment would add to the forked JVM, such as another compiler configuration.
         environment.remove("JAVA_TOOL_OPTIONS");
         environment.remove("JDK_JAVA_OPTIONS");
         environment.remove("_JAVA_OPTIONS");
         Process process = builder.start();
-        String output;
-        try (InputStream in = process.getInputStream()) {
-            output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        boolean exited = process.waitFor(2, TimeUnit.MINUTES);
+        if (!exited) {
+            process.destroyForcibly().waitFor();
         }
-        if (!process.waitFor(2, TimeUnit.MINUTES)) {
-            process.destroyForcibly();
-            throw new AssertionError("the probe did not exit:\n" + output);
+        String output = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+        if (!exited) {
+            throw new AssertionError("the probe did not exit within 2 minutes:\n" + output);
         }
         assertEquals(0, process.exitValue(), output);
         return output;
