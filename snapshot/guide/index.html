@@ -207,7 +207,7 @@ classpath order, each JAR keeps its own manifest and package metadata, sealed pa
 and multi-release JARs still resolve per JAR against the running JDK.</p>
 </div>
 <div class="sect1">
-<h2 id="_why_it_is_fast">Why it is fast</h2>
+<h2 id="whyItIsFast">Why it is fast</h2>
 <div class="sectionbody">
 <div class="paragraph">
 <p>Reading nested JARs is normally <strong>slower</strong> than an ordinary classpath, which is why the usual advice for
@@ -222,7 +222,9 @@ linear probing up to the longest probe sequence recorded by the builder, followe
 Same-name records are then resolved in classpath order and per JAR against the effective multi-release
 version. No central directory is parsed, no nested archive is opened, nothing is extracted to disk, and no
 temporary files are written. Dependencies are stored uncompressed by default, so a class is defined straight
-from the mapped bytes with no intermediate array and no decompression.</p>
+from the mapped bytes with no intermediate array and no decompression. That makes the default archive larger than
+a shaded JAR on disk but smaller gzipped, 2.44 and 0.67 times Shadow&#8217;s in the <a href="#benchmarkResults">benchmark</a>;
+<code>PRESERVE</code>, which copies each dependency byte for byte, is the size-first option.</p>
 </div>
 <div class="paragraph">
 <p>The launcher itself is written to keep off the JVM&#8217;s slow paths: no lambdas, no string concatenation
@@ -314,7 +316,7 @@ archives under one name. The plugin fails the build if it detects that.
 <div class="paragraph">
 <p>A project that also applies <code>io.micronaut.aot</code> gets a second task, <code>optimizedMicronautRunnerJar</code>, which packages the
 Micronaut AOT-optimized application into <code>build/libs/my-app-0.1-all-optimized.jar</code>; <code>micronautRunnerJar</code> and its
-<code>-all.jar</code> stay the plain application. See <a href="#micronautAot">[micronautAot]</a>.</p>
+<code>-all.jar</code> stay the plain application. See <a href="#micronautAot">Micronaut AOT</a>.</p>
 </div>
 <div class="sect2">
 <h3 id="_configuration">Configuration</h3>
@@ -522,12 +524,12 @@ and invalid entries fail packaging.</p>
 </div>
 <div class="paragraph">
 <p><code>precompileLogback</code> compiles <code>logback.xml</code> into a Logback <code>Configurator</code> when it is packaged, and leaves any file it
-cannot reproduce exactly to Logback; see <a href="#precompiledLogback">[precompiledLogback]</a>.</p>
+cannot reproduce exactly to Logback; see <a href="#precompiledLogback">Precompiled Logback configuration</a>.</p>
 </div>
 <div class="paragraph">
 <p><code>definitionPrefetch</code> packages two classes that start Micronaut&#8217;s bean definition loading before <code>main</code>, on the common
-pool, and hand the result to the first application context. It is off unless you set it; see <a href="#definitionPrefetch">[definitionPrefetch]</a>
-for what it changes and when it pays off.</p>
+pool, and hand the result to the first application context. It is off unless you set it; see
+<a href="#definitionPrefetch">Bean definition prefetch</a> for what it changes and when it pays off.</p>
 </div>
 <div class="paragraph">
 <p>The application&#8217;s <code>Implementation-*</code>, <code>Specification-*</code> and <code>Sealed</code> attributes and package sections come from the
@@ -668,7 +670,7 @@ Dependency local-variable tables are dropped by default (see <a href="#localVari
 <a href="#desugaredLambdas">Desugared lambdas</a>); to keep them as <code>invokedynamic</code> call sites, pass
 <code>-Dmicronaut.runner.desugarLambdas=false</code> or set
 <code>&lt;runnerOptions&gt;&lt;desugarLambdas&gt;false&lt;/desugarLambdas&gt;&lt;/runnerOptions&gt;</code>.
-To package the bean definition prefetch (<a href="#definitionPrefetch">[definitionPrefetch]</a>), pass
+To package the bean definition prefetch (<a href="#definitionPrefetch">Bean definition prefetch</a>), pass
 <code>-Dmicronaut.runner.definitionPrefetch=true</code> or set
 <code>&lt;runnerOptions&gt;&lt;definitionPrefetch&gt;true&lt;/definitionPrefetch&gt;&lt;/runnerOptions&gt;</code>. That property is read while
 packaging; the switch that turns a packaged prefetch off for one launch is <code>-Dmicronaut.runner.prefetch=false</code> on
@@ -789,7 +791,7 @@ copies each dependency byte for byte instead.</p>
 </div>
 <div class="paragraph">
 <p>Shadow can also write <code>STORED</code> entries (<code>entryCompression = ZipEntryCompression.STORED</code>), so the gain from not
-inflating is not specific to this format; <a href="#benchmarks">[benchmarks]</a> measures the two effects separately.</p>
+inflating is not specific to this format; <a href="#benchmarks">Benchmarks</a> measures the two effects separately.</p>
 </div>
 </div>
 </div>
@@ -909,7 +911,7 @@ application layer: a few classes under <code>io/micronaut/runner/generated/servi
 <code>META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader</code> that registers them, put in front of the
 application&#8217;s own file when it has one. The table lists, for each service type, the names in every JAR&#8217;s
 <code>META-INF/services/</code> file and in the merged directory, in the order Micronaut&#8217;s scan finds them, so that Micronaut
-reads neither when the application starts. See <a href="#staticServices">[staticServices]</a>.</p>
+reads neither when the application starts. See <a href="#staticServices">Static service table</a>.</p>
 </div>
 </div>
 </div>
@@ -1471,8 +1473,8 @@ application.</p></td>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.logback.precompiled</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code> hands a precompiled Logback configuration (<a href="#precompiledLogback">[precompiledLogback]</a>) over to Logback&#8217;s Joran at startup. It
-has no effect on an archive without one.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code> hands a precompiled Logback configuration (<a href="#precompiledLogback">Precompiled Logback configuration</a>) over to
+Logback&#8217;s Joran at startup. It has no effect on an archive without one.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.static-services</code></p></td>
@@ -1508,8 +1510,9 @@ every archive not packaged with the <code>definitionPrefetch</code> option.</p><
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.aot.training</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Only for the run that records an AOT cache of the single JAR (<a href="#cdsAndAot">[cdsAndAot]</a>). Classes then report the archive&#8217;s
-<code>file:</code> URL as their code source, so JDK 27 and later cache them. The plugins set it. Never set it in production.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Only for the run that records an AOT cache of the single JAR (<a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a>).
+Classes then report the archive&#8217;s <code>file:</code> URL as their code source, so JDK 27 and later cache them. The plugins set it.
+Never set it in production.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1609,7 +1612,7 @@ loader, as the main thread does. Otherwise Micronaut does not find the table, an
 <div class="paragraph">
 <p>Micronaut loads and initialises almost every bean definition before the application is ready, on the common
 fork/join pool, but only after the main thread has configured logging and created the context builder. A runner JAR
-packaged with the <code>definitionPrefetch</code> option (<a href="#quickStart">[quickStart]</a>) starts that work earlier: its entry stub runs
+packaged with the <code>definitionPrefetch</code> option (<a href="#quickStart">Quick Start</a>) starts that work earlier: its entry stub runs
 Micronaut&#8217;s own <code>DefaultBeanDefinitionsProvider</code> on the common pool before <code>main</code>, and the first application context
 built through an <code>ApplicationContextBuilder</code> (<code>Micronaut.run</code>, <code>ApplicationContext.run</code> or <code>builder()</code>,
 <code>PicocliRunner</code>) receives what it returned, or the exception it threw, unchanged. Which failing bean definitions
@@ -1652,8 +1655,8 @@ launch. So does <code>-Dmicronaut.runner.static-services.verify=true</code>, so 
 <p>The prefetch and the static service table work together. The table is generated after the prefetch, so it lists the
 prefetch&#8217;s <code>ApplicationContextConfigurer</code>, and the prefetch thread has the application&#8217;s class loader as its context
 class loader, so the lookups it makes are answered by the table. The same holds for Micronaut AOT: the archive of
-<code>optimizedMicronautRunnerJar</code> (<a href="#micronautAot">[micronautAot]</a>) takes the option from <code>micronautRunnerJar</code>, its service file lists the
-prefetch&#8217;s configurer after Micronaut AOT&#8217;s own, and the static optimizations Micronaut AOT registers as
+<code>optimizedMicronautRunnerJar</code> (<a href="#micronautAot">Micronaut AOT</a>) takes the option from <code>micronautRunnerJar</code>, its service
+file lists the prefetch&#8217;s configurer after Micronaut AOT&#8217;s own, and the static optimizations Micronaut AOT registers as
 <code>StaticOptimizations</code> loaders are found from the prefetch thread.</p>
 </div>
 <div class="paragraph">
@@ -1766,10 +1769,10 @@ the next, with the process&#8217;s peak footprint within 5 MB; in the container 
 <p>With a JDK AOT cache the recorded classes are already cheap to load, and preloading is not what makes a cached launch
 fast: the same two runs measured -10.1 ms (95% CI -16.1 to -3.9) and -14.8 ms (95% CI -22.5 to +7.0). That small gain
 has a memory cost of its own. With a cache the preloader gets through the whole list before readiness, and the list,
-recorded without a cache over a whole run, names classes that a cached launch loads later or not at all: about 460
-more classes were loaded at readiness. On macOS that was 5.4 MiB more private memory at readiness (95% CI 4.7 to 6.5
-MiB, 60 pairs; 4 to 6.5 MiB across sessions), while in the container private memory did not change. To combine the
-two, build the JAR with the list first and train the cache on that JAR (<a href="#cdsAndAot">[cdsAndAot]</a>).</p>
+recorded without a cache over a whole run, names classes that a cached launch loads later or not at all: about 460 more
+classes were loaded at readiness. On macOS that was 5.4 MiB more private memory at readiness (95% CI 4.7 to 6.5 MiB, 60
+pairs; 4 to 6.5 MiB across sessions), while in the container private memory did not change. To combine the two, build
+the JAR with the list first and train the cache on that JAR (<a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a>).</p>
 </div>
 <div class="paragraph">
 <p><strong>Record the profile.</strong> The build records the list from the runner JAR it produces:</p>
@@ -1873,7 +1876,7 @@ or stop, and it must exit 0. Then the list also holds what the shutdown loads.</
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>jvmArgs</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">none</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">JVM arguments of the recording launch. Name no class cache in them. The JDK AOT cache&#8217;s launches
-take <code>jdkAotCache.jvmArgs</code> instead (<a href="#aotLayout">[aotLayout]</a>).</p></td>
+take <code>jdkAotCache.jvmArgs</code> instead (<a href="#aotLayout">The extracted layout with the AOT cache</a>).</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>environment</code></p></td>
@@ -1907,10 +1910,10 @@ class. Set it on the extension (<code>micronaut { runner { startupClasses = file
 file.</p>
 </div>
 <div class="paragraph">
-<p><strong>When it does not run.</strong> <code>-Dmicronaut.runner.preload=false</code> switches preloading off at run time. The launcher also
-leaves the thread out when the JVM sees fewer than two processors, which in a container means a CPU limit of one:
-there is no spare core for it to use. It applies only when the single JAR runs: the extracted layout (<a href="#aotLayout">[aotLayout]</a>)
-has no launcher and ignores the list.</p>
+<p><strong>When it does not run.</strong> <code>-Dmicronaut.runner.preload=false</code> switches preloading off at run time. The launcher also leaves
+the thread out when the JVM sees fewer than two processors, which in a container means a CPU limit of one: there is no
+spare core for it to use. It applies only when the single JAR runs: the extracted layout
+(<a href="#aotLayout">The extracted layout with the AOT cache</a>) has no launcher and ignores the list.</p>
 </div>
 <div class="paragraph">
 <p><strong>A stale list is safe.</strong> The list does not depend on the JAR&#8217;s bytes. A class that is still in the archive but that
@@ -1953,12 +1956,12 @@ java -jar ./app/my-app-0.1-all.jar</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>The extracted form runs entirely on the JDK&#8217;s own application class loader, with no custom class loader
-anywhere. The single JAR also uses the JDK&#8217;s ahead-of-time cache (<a href="#cdsAndAot">[cdsAndAot]</a>); what extraction adds is AOT
-linking of the application classes, which classes defined by a user-defined class loader do not get. That is
-why an application that will be started thousands of times in the same container image may be better served
-by extracting once at image build time. For that cached deployment, trained and verified with its launch
-options, see <a href="#aotLayout">[aotLayout]</a>.</p>
+<p>The extracted form runs entirely on the JDK&#8217;s own application class loader, with no custom class loader anywhere. The
+single JAR also uses the JDK&#8217;s ahead-of-time cache (<a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a>); what extraction
+adds is AOT linking of the application classes, which classes defined by a user-defined class loader do not get. That is
+why an application that will be started thousands of times in the same container image may be better served by
+extracting once at image build time. For that cached deployment, trained and verified with its launch options, see
+<a href="#aotLayout">The extracted layout with the AOT cache</a>.</p>
 </div>
 <div class="sect2">
 <h3 id="_publication_and_replacement">Publication and replacement</h3>
@@ -2037,15 +2040,14 @@ AOT-cache training run with <code>micronaut.runner.aot.training=true</code>.</p>
 <h2 id="_deliberate_micronaut_metadata_exception">Deliberate Micronaut metadata exception</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Micronaut Runner merges every entry below <code>META-INF/micronaut/</code> from the application and its dependencies into
-one de-duplicated tree at the outer archive root. A lookup anywhere under that prefix uses only the merged
-tree, and <code>getResources("META-INF/micronaut/")</code> returns one merged URL rather than one URL per contributing
-JAR. When contributors provide the same file name, the first content in classpath order is retained and a
-warning reports differing later content. This is intentional build-time aggregation for Micronaut bean
-discovery, not ordinary resource enumeration. Classic <code>META-INF/services/**</code> resources are not merged and
-keep the classpath behavior described above. Micronaut&#8217;s own service lookups are answered from a table of those
-names computed when the application is packaged (<a href="#staticServices">[staticServices]</a>); <code>-Dmicronaut.runner.static-services=false</code>
-switches it off.</p>
+<p>Micronaut Runner merges every entry below <code>META-INF/micronaut/</code> from the application and its dependencies into one
+de-duplicated tree at the outer archive root. A lookup anywhere under that prefix uses only the merged tree, and
+<code>getResources("META-INF/micronaut/")</code> returns one merged URL rather than one URL per contributing JAR. When contributors
+provide the same file name, the first content in classpath order is retained and a warning reports differing later
+content. This is intentional build-time aggregation for Micronaut bean discovery, not ordinary resource enumeration.
+Classic <code>META-INF/services/**</code> resources are not merged and keep the classpath behavior described above. Micronaut&#8217;s own
+service lookups are answered from a table of those names computed when the application is packaged
+(<a href="#staticServices">Static service table</a>); <code>-Dmicronaut.runner.static-services=false</code> switches it off.</p>
 </div>
 </div>
 </div>
@@ -2172,11 +2174,11 @@ together. It pays off only with its cache: uncached, the layout reached readines
 <p><strong>With the build plugins.</strong> Runner&#8217;s interim Gradle and Maven plugins build the whole deployment, as experimental tasks
 and goals of those plugins only: <code>./gradlew micronautRunnerJdkAotCache</code> and <code>mvn package</code> with the <code>jdk-aot-cache</code> goal
 extract the Runner JAR into <code>build/micronaut-runner/jdk-aot-cache/</code> (Maven: <code>target/micronaut-runner/jdk-aot-cache/</code>),
-train the cache there with the training settings (<a href="#trainingSettings">[trainingSettings]</a>), verify it, and write the launch argfile
-<code>app.jvmopts</code>. Launch from that directory with <code>java @app.jvmopts -jar my-app-0.1-all.jar</code>, or in a Dockerfile with
-<code>WORKDIR /app</code> and <code>ENTRYPOINT ["java", "@app.jvmopts", "-jar", "my-app-0.1-all.jar"]</code>. <code>micronautRunnerLayout</code> and
-<code>mn-runner:layout</code> write only the layout, to <code>build/micronaut-runner/layout/</code> (Maven: <code>target/micronaut-runner/layout/</code>),
-for a cache trained elsewhere.</p>
+train the cache there with the training settings (<a href="#trainingSettings">Training settings</a>), verify it, and write the
+launch argfile <code>app.jvmopts</code>. Launch from that directory with <code>java @app.jvmopts -jar my-app-0.1-all.jar</code>, or in a
+Dockerfile with <code>WORKDIR /app</code> and <code>ENTRYPOINT ["java", "@app.jvmopts", "-jar", "my-app-0.1-all.jar"]</code>.
+<code>micronautRunnerLayout</code> and <code>mn-runner:layout</code> write only the layout, to <code>build/micronaut-runner/layout/</code> (Maven:
+<code>target/micronaut-runner/layout/</code>), for a cache trained elsewhere.</p>
 </div>
 <div class="listingblock">
 <div class="content">
@@ -2202,9 +2204,9 @@ order) and enable it with <code>-Dmicronaut.runner.jdkAotCache.enabled=true</cod
 each setting above is the property <code>micronaut.runner.jdkAotCache.&lt;name&gt;</code> and the parameter <code>jdkAotCache&lt;Name&gt;</code>.</p>
 </div>
 <div class="paragraph">
-<p><strong>By hand.</strong> Extract with <code>java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination app</code> (<a href="#runtime">[runtime]</a>),
-run the script below as <code>bash train.sh</code> with <code>JAR=app/my-app-0.1-all.jar</code>, then launch
-<code>java -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar</code>.</p>
+<p><strong>By hand.</strong> Extract with <code>java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination app</code>
+(<a href="#runtime">Running a Runner JAR</a>), run the script below as <code>bash train.sh</code> with <code>JAR=app/my-app-0.1-all.jar</code>, then
+launch <code>java -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar</code>.</p>
 </div>
 <div id="trainingSnippet" class="listingblock">
 <div class="content">
@@ -2249,7 +2251,7 @@ endpoint), and create the cache in a separate launch, with the JDK 27 creation f
 the creation and the checks, and into <code>app.jvmopts</code>, so the flags the cache depends on are the same in training and
 production; <code>training.jvmArgs</code> belong to the startup profile only. With <code>target = 'singleJar'</code> the recording alone also
 runs with <code>-Dmicronaut.runner.aot.training=true</code>, which <code>jdkAotCache.jvmArgs</code> must not name. The other training
-settings are in <a href="#trainingSettings">[trainingSettings]</a>.</p>
+settings are in <a href="#trainingSettings">Training settings</a>.</p>
 </div>
 <div class="paragraph">
 <p><strong>What the build checks</strong> before it keeps the cache, as <code>aot-report.json</code> records:</p>
@@ -2282,13 +2284,13 @@ uncached one.</p>
 </div>
 <div class="paragraph">
 <p>On <code>benchmark-large</code> (Micronaut 5.1.15, Netty 4.2.18; macOS on Apple silicon, a shared machine; 20 pairs per run) with
-JDK 25.0.4.1, the cached layout, which keeps the static service table (<a href="#staticServices">[staticServices]</a>), was ready 25.6 to 32.4 ms
-sooner than the single JAR with its cache and 1.5 to 14.4 ms before a Shadow JAR with its cache over six runs; in the
-four least loaded runs, the lead over Shadow was 9.1 to 14.4 ms with each 95% CI below zero. Its maximum RSS was about
-121 MiB, against 163 to 165 MiB for the single JAR and 134 MiB for Shadow. Without the table it was 1.8 to 6.8 ms
-behind Shadow. On JDK 27 (build 27) it was level with Shadow without the table (−0.5 ms, 95% CI −11.1 to +7.1) and 14.9
-to 26.0 ms ahead with it over three runs, the largest lead under the heaviest load, at about 115 against 127 MiB.
-Training and verifying it with <code>micronautRunnerJdkAotCache</code> took about 4 s of build time.</p>
+JDK 25.0.4.1, the cached layout, which keeps the static service table (<a href="#staticServices">Static service table</a>), was
+ready 25.6 to 32.4 ms sooner than the single JAR with its cache and 1.5 to 14.4 ms before a Shadow JAR with its cache
+over six runs; in the four least loaded runs, the lead over Shadow was 9.1 to 14.4 ms with each 95% CI below zero. Its
+maximum RSS was about 121 MiB, against 163 to 165 MiB for the single JAR and 134 MiB for Shadow. Without the table it
+was 1.8 to 6.8 ms behind Shadow. On JDK 27 (build 27) it was level with Shadow without the table (−0.5 ms, 95% CI −11.1
+to +7.1) and 14.9 to 26.0 ms ahead with it over three runs, the largest lead under the heaviest load, at about 115
+against 127 MiB. Training and verifying it with <code>micronautRunnerJdkAotCache</code> took about 4 s of build time.</p>
 </div>
 <div class="paragraph">
 <p><strong>Modification times.</strong> The cache records each class-path JAR (the application JAR and each <code>lib/</code> JAR, or the single
@@ -2383,12 +2385,12 @@ table omits the JDK 25.0.4.1 cache (52.3 MB, 12.4 MB gzipped, from one training,
 </table>
 <div class="paragraph">
 <p><strong>What differs in the layout.</strong> Every class of the application layer carries over except the generated entry stub, so a
-precompiled Logback configuration (<a href="#precompiledLogback">[precompiledLogback]</a>) and the static service table (<a href="#staticServices">[staticServices]</a>) still
-apply. What the launcher and the stub do at startup
-does not run: the startup profile&#8217;s preload (<a href="#preload">[preload]</a>) has no effect, and a JAR built with it trains the same layout
-cache. The JDK&#8217;s class loader replaces <code>RunnerClassLoader</code> and resolves classes in the same order; each JAR keeps its own
-<code>META-INF/micronaut</code>, a dependency&#8217;s own manifest <code>Class-Path</code> becomes active, and the code sources are the <code>lib/</code> JARs'
-<code>file:</code> URLs.</p>
+precompiled Logback configuration (<a href="#precompiledLogback">Precompiled Logback configuration</a>) and the static service
+table (<a href="#staticServices">Static service table</a>) still apply. What the launcher and the stub do at startup does not run:
+the startup profile&#8217;s preload (<a href="#preload">Preloading the startup classes</a>) has no effect, and a JAR built with it trains
+the same layout cache. The JDK&#8217;s class loader replaces <code>RunnerClassLoader</code> and resolves classes in the same order; each
+JAR keeps its own <code>META-INF/micronaut</code>, a dependency&#8217;s own manifest <code>Class-Path</code> becomes active, and the code sources
+are the <code>lib/</code> JARs' <code>file:</code> URLs.</p>
 </div>
 </div>
 </div>
@@ -2400,7 +2402,7 @@ cache. The JDK&#8217;s class loader replaces <code>RunnerClassLoader</code> and 
 the JAR with the list first, then train the cache on that JAR.</p>
 </div>
 <div class="paragraph">
-<p>Run the training script (<a href="#trainingSnippet">[trainingSnippet]</a>) with <code>JAR</code> at the path production launches, on every JDK as
+<p>Run the <a href="#trainingSnippet">training script</a> with <code>JAR</code> at the path production launches, on every JDK as
 <code>JDK_JAVA_OPTIONS='-Dmicronaut.runner.aot.training=true' bash train.sh</code>, with
 <a href="#aotCreationFlags">JDK 27&#8217;s creation-flag setting</a> in front of it on JDK 27; in a Dockerfile both assignments go in
 front of <code>bash train.sh</code> in the <code>RUN</code> step, never in <code>ENV</code>. Production launches unchanged, with
@@ -2408,20 +2410,20 @@ front of <code>bash train.sh</code> in the <code>RUN</code> step, never in <code
 (<a href="#aotLayout">Recommended: the extracted layout with the AOT cache</a>) trains and checks it on a copy of the Runner JAR that <code>micronautRunnerJar</code> built, with its committed
 startup profile, so the cache also holds what the preload loads. On <code>benchmark-large</code> with JDK 25.0.4.1 this was ready
 37.5 ms sooner than explicit CDS (95% CI 32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS, measured before
-the static service table (<a href="#staticServices">[staticServices]</a>). With the table it was 25.6 to 32.4 ms later than the extracted layout and
-16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <a href="#aotLayout">Recommended: the extracted layout with the AOT cache</a>). On JDK 27 (build 27),
-with lambdas desugared (<a href="#lambdaGap">Closing the lambda gap on the single JAR</a>) and trained with the property, it served 1,838 of 1,844 non-lambda
-<code>io.micronaut</code> classes from the cache before the first request (13 of 1,923 without it) and was ready 107 to 109 ms
-sooner than the same JAR trained without it, at the same 135 MiB maximum RSS. It was level with Shadow (1.7 to 6.2 ms
-ahead, one of three intervals below zero) and 7 to 9 ms behind the extracted layout, each with its AOT cache (three runs
-of 20 pairs), so the layout (<a href="#aotLayout">Recommended: the extracted layout with the AOT cache</a>) stays the faster option.</p>
+the static service table (<a href="#staticServices">Static service table</a>). With the table it was 25.6 to 32.4 ms later than the
+extracted layout and 16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <a href="#aotLayout">Recommended: the extracted layout with the AOT cache</a>). On
+JDK 27 (build 27), with lambdas desugared (<a href="#lambdaGap">Closing the lambda gap on the single JAR</a>) and trained with the property, it served 1,838 of 1,844
+non-lambda <code>io.micronaut</code> classes from the cache before the first request (13 of 1,923 without it) and was ready 107 to
+109 ms sooner than the same JAR trained without it, at the same 135 MiB maximum RSS. It was level with Shadow (1.7 to
+6.2 ms ahead, one of three intervals below zero) and 7 to 9 ms behind the extracted layout, each with its AOT cache
+(three runs of 20 pairs), so the layout (<a href="#aotLayout">Recommended: the extracted layout with the AOT cache</a>) stays the faster option.</p>
 </div>
 <div class="sect2">
 <h3 id="lambdaGap">Closing the lambda gap on the single JAR</h3>
 <div class="paragraph">
 <p>Every lambda the single JAR&#8217;s classes run would otherwise be linked at every start, cache or not, as the first section
-says. So Runner desugars lambdas when it packages (<a href="#desugaredLambdas">[desugaredLambdas]</a>), on by default with <code>STORED</code>; set the
-<code>desugarLambdas</code> option to <code>false</code> to opt out. Train with the snippet above unchanged: the generated classes are
+says. So Runner desugars lambdas when it packages (<a href="#desugaredLambdas">Desugared lambdas</a>), on by default with <code>STORED</code>;
+set the <code>desugarLambdas</code> option to <code>false</code> to opt out. Train with the snippet above unchanged: the generated classes are
 ordinary classes, and the cache holds them. On <code>benchmark-large</code> with JDK 25.0.4.1 (30 pairs), desugaring made the
 single JAR 38.0 ms faster with its AOT cache (95% CI 33.9 to 41.6 ms) and 38.9 ms faster without one (95% CI 30.2 to
 47.3 ms). With its cache it was then 16.0 ms ahead of Shadow&#8217;s (95% CI 11.1 to 22.7 ms), at 144.4 MiB maximum RSS
@@ -2429,8 +2431,8 @@ against Shadow&#8217;s 133.6 MiB. The JDK 25 single-JAR figures above were taken
 (build 27), with the cache trained with the property (<a href="#aotSingleJar">Single-file option: the AOT cache on the single JAR</a>), desugaring made the single JAR 36.5 to 38.7 ms
 faster with its AOT cache (three runs of 20 pairs). What is left of the cached difference: the 29 sites still excluded
 (none on this sample&#8217;s startup path), about 40 string concatenation sites, the per-class cost of reusing unregistered
-classes, and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT cache
-remains the parity option, with Shadow&#8217;s RSS.</p>
+classes, and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT
+cache remains the parity option, with Shadow&#8217;s RSS.</p>
 </div>
 </div>
 </div>
@@ -2570,9 +2572,9 @@ save there therefore still counts in the optimized archive (see <a href="#micron
 </div>
 <div class="paragraph">
 <p>Micronaut AOT is not the JDK AOT cache. Micronaut AOT generates application classes in the build, and its output is a
-different application JAR. The JDK AOT cache (<code>-XX:AOTCache</code>, see <a href="#cdsAndAot">[cdsAndAot]</a>) is a file the JVM writes after a
-training run, which stores loaded and linked classes of an unchanged application. They are independent, and they
-combine: see <a href="#micronautAotWithJdkCache">below</a>.</p>
+different application JAR. The JDK AOT cache (<code>-XX:AOTCache</code>, see <a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a>) is
+a file the JVM writes after a training run, which stores loaded and linked classes of an unchanged application. They are
+independent, and they combine: see <a href="#micronautAotWithJdkCache">below</a>.</p>
 </div>
 </div>
 </div>
@@ -2628,7 +2630,7 @@ for the optimized archive record the JVM&#8217;s class-load log of a run of <cod
 are loaded for nothing.</p>
 </li>
 <li>
-<p><code>micronautRunnerElements</code> carries <code>-all.jar</code> only (see <a href="#quickStart">[quickStart]</a>).</p>
+<p><code>micronautRunnerElements</code> carries <code>-all.jar</code> only (see <a href="#quickStart">Quick Start</a>).</p>
 </li>
 <li>
 <p>Without <code>io.micronaut.aot</code>, or without a Micronaut application or library plugin, there is no
@@ -2778,9 +2780,9 @@ its application layer and no <code>logback.xml</code>. To deploy the plain appli
 <h2 id="micronautAotWithJdkCache">With the JDK AOT cache</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>Train the cache on the archive that production launches: run the training script of <a href="#cdsAndAot">[cdsAndAot]</a>
-(<a href="#trainingSnippet">[trainingSnippet]</a>) with <code>JAR</code> set to the <code>optimizedMicronautRunnerJar</code> archive, the way its
-<a href="#aotSingleJar">single-JAR section</a> runs it, then launch with
+<p>Train the cache on the archive that production launches: run the <a href="#trainingSnippet">training script</a> of
+<a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a> with <code>JAR</code> set to the <code>optimizedMicronautRunnerJar</code> archive, the way
+its <a href="#aotSingleJar">single-JAR section</a> runs it, then launch with
 <code>java -XX:AOTCache=app.aot -jar my-app-0.1-all-optimized.jar</code>, adding <code>-XX:AOTMode=on</code> when the application must not
 start without its cache. A cache trained on <code>-all.jar</code> does not fit <code>-all-optimized.jar</code>.</p>
 </div>
@@ -2791,12 +2793,13 @@ start without its cache. A cache trained on <code>-all.jar</code> does not fit <
 <div class="sectionbody">
 <div class="paragraph">
 <p>Without a JDK cache, yes: on <code>benchmark-large</code> with JDK 25, <code>-all-optimized.jar</code> was ready about 78 ms before Micronaut
-AOT&#8217;s <code>optimizedJitJarAll</code>, and even Runner&#8217;s plain <code>-all.jar</code> was about 58 ms ahead of it. With a JDK AOT cache on
-both sides, no: the single <code>-all-optimized.jar</code> was about 23 ms behind <code>optimizedJitJarAll</code> on JDK 25, and on JDK 27 the
+AOT&#8217;s <code>optimizedJitJarAll</code>, and even Runner&#8217;s plain <code>-all.jar</code> was about 58 ms ahead of it. With a JDK AOT cache on both
+sides, no: the single <code>-all-optimized.jar</code> was about 23 ms behind <code>optimizedJitJarAll</code> on JDK 25, and on JDK 27 the
 cache stores a single Runner JAR&#8217;s application classes only when it is trained as the
-<a href="#aotSingleJar">single-JAR section</a> of <a href="#cdsAndAot">[cdsAndAot]</a> describes. <a href="#micronautAotResults">[micronautAotResults]</a> has the numbers, the sizes and
-the second session. They were taken before Runner desugared lambdas by default (<a href="#desugaredLambdas">[desugaredLambdas]</a>), which made the
-cached single JAR faster, and have not been measured again since.</p>
+<a href="#aotSingleJar">single-JAR section</a> of <a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a> describes. These figures
+come from a local macOS session taken before Runner desugared lambdas by default
+(<a href="#desugaredLambdas">Desugared lambdas</a>). The CI run in <a href="#micronautAotResults">Benchmarks</a>, with desugaring on, points
+the same way on all three pairs.</p>
 </div>
 </div>
 </div>
@@ -2811,623 +2814,906 @@ cached single JAR faster, and have not been measured again since.</p>
 
 
 <div class="paragraph">
-<p>Performance claims about startup are easy to make and easy to get wrong, so the numbers for Micronaut
-Runner are produced by a harness in the repository rather than quoted from memory.</p>
+<p>Micronaut Runner&#8217;s startup claims come from a harness in the repository; this page publishes one CI run of it. How
+the harness works is in <a href="https://github.com/micronaut-projects/micronaut-runner/blob/master/benchmarks/README.md"><code>benchmarks/README.md</code></a>.</p>
 </div>
 <div class="sect1">
 <h2 id="_what_is_measured">What is measured</h2>
 <div class="sectionbody">
-<div class="dlist">
-<dl>
-<dt class="hdlist1">Micro-benchmarks</dt>
-<dd>
-<p>JMH benchmarks over the class loader&#8217;s hot path: index lookup hit and miss, package-table
-lookup, class loading, defining a class from a mapped buffer versus a byte array, resource lookup and
-streaming, duplicate-resource enumeration and service discovery. Named synthetic shapes vary JAR and entry
-count, class size and locality, resource size, manifest packages, duplicate names and multi-release entries.
-These isolate mechanisms; they are not startup results. Class loading and resource lookup are compared with
-two JDK baselines built from the same synthetic inputs as the Runner archives:</p>
 <div class="ulist">
 <ul>
 <li>
-<p>The <code>Shaded*</code> benchmarks run a <code>URLClassLoader</code> over one flattened JAR: the application first, then every
-dependency in class-path order, with <code>META-INF/services</code> descriptors merged, first-wins duplicates and every
-entry DEFLATED. This is the layout of the <code>shadow</code> startup variant, and the comparison Runner has to win.
-<code>java -jar</code> runs a Shadow JAR on the JDK&#8217;s built-in application class loader rather than <code>URLClassLoader</code>,
-so this baseline is a proxy for it.</p>
+<p><strong>JMH</strong>: class loading and resource lookup against two JDK baselines built from the same inputs: a flat single JAR
+(the Shadow and Shade layout) and a multi-JAR <code>URLClassLoader</code> (the thin or exploded layout).</p>
 </li>
 <li>
-<p>The <code>URL*</code> benchmarks run a <code>URLClassLoader</code> over the application classes plus every dependency JAR. This is
-the layout of the <code>thin-jar</code> and <code>exploded-cp</code> startup variants.</p>
+<p><strong>Packaging</strong>: <code>micronautRunnerJar</code> against <code>shadowJar</code> in a warm Gradle daemon. Maven Shade is not compared.</p>
+</li>
+<li>
+<p><strong>Startup</strong>: <code>test-suite/samples/benchmark-large</code> (Micronaut Netty, 49 dependency JARs), packaged as each row below.</p>
 </li>
 </ul>
 </div>
-</dd>
-<dt class="hdlist1">Packaging</dt>
-<dd>
-<p>Fresh-JVM profiles build STORED and PRESERVE Runner archives for deterministic first-build,
-unchanged-rebuild, application-edit and dependency-edit scenarios. Elapsed time/allocation and process
-RSS/peak heap come from separate invocations. Logical input/output bytes are reported separately from time and
-memory and are not kernel I/O counters.</p>
-<div class="paragraph">
-<p><code>packagingComparison</code> packages a real application instead, a fresh copy of <code>test-suite/samples/benchmark-large</code>,
-in one warm Gradle daemon of its own, which is where developers and CI pay for packaging. It compares Runner with
-the Shadow JAR it replaces: <code>micronautRunnerJar</code> with STORED (<code>runner-stored</code>) and PRESERVE (<code>runner-preserve</code>)
-compression against <code>shadowJar</code> (<code>shadow</code>) and the sample&#8217;s STORED control <code>shadowJarStored</code> (<code>shadow-stored</code>).
-The <code>rerun</code> scenario runs <code>&lt;task&gt; --rerun</code>, which re-executes only the packaging task; <code>micronautRunnerJar</code> keeps
-no packaging state between executions, so this is the cold packaging path and there is no separate cold
-scenario. The <code>edit</code> scenario makes a bytecode-changing edit to <code>Application.java</code> and runs <code>&lt;task&gt;</code>, so
-compilation and the packaging task&#8217;s other dependencies execute as well. Each invocation records the packaging
-task&#8217;s action time and the wall time of the whole <code>gradlew</code> process. The comparisons are <code>runner-stored</code>/<code>shadow</code>
-(the defaults) and the compression-matched <code>runner-stored</code>/<code>shadow-stored</code> (neither archive deflated) and
-<code>runner-preserve</code>/<code>shadow</code> (both deflated), each the median of per-round differences.
-The <code>runner-stored</code> time includes the default class transforms, which desugar lambdas (see
-<a href="#desugaredLambdas">Desugared lambdas</a>) and strip the local-variable tables of the dependency classes (see
-<a href="#localVariableTables">Local-variable tables</a>); <code>runner-preserve</code> nests the dependencies byte for byte and runs
-none.</p>
-</div>
-<div class="paragraph">
-<p>Maven Shade is not compared. <code>test-suite/samples/maven-basic</code> configures no <code>maven-shade-plugin</code>, and in that
-small sample Maven&#8217;s own startup would dominate the timings. The Maven plugin packages with the same
-<code>runner-build</code> code path as the Gradle task, which the Runner rows here and <code>packagingProfile</code> already cover.</p>
-</div>
-</dd>
-<dt class="hdlist1">Startup</dt>
-<dd>
-<p>The whole process, from spawn to readiness, for the same application packaged in each mode that the
-current harness implements:</p>
 <table class="tableblock frame-all grid-all stretch">
 <colgroup>
-<col style="width: 25%;">
-<col style="width: 75%;">
+<col style="width: 38%;">
+<col style="width: 62%;">
 </colgroup>
-<thead>
-<tr>
-<th class="tableblock halign-left valign-top">Variant</th>
-<th class="tableblock halign-left valign-top">Packaging</th>
-</tr>
-</thead>
 <tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Row (* opt-in)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Packaging</p></td>
+</tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>exploded-cp</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Class files and dependency JARs on an explicit class path</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>thin-jar</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Application JAR with a <code>Class-Path</code> manifest</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An application JAR with a <code>Class-Path</code> manifest</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">One JAR flattened by the Shadow plugin</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">One JAR flattened by Gradle Shadow</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-stored</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The same Shadow task inputs written with <code>entryCompression = ZipEntryCompression.STORED</code>, a compression-matched
-control</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The same Shadow inputs with <code>STORED</code> entries, a compression-matched control</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The identical Shadow JAR with a trained, application-class-verified JDK AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow</code> with a trained JDK AOT cache</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with nested dependencies re-packed uncompressed and the plugin-default entry stub</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR: dependencies re-packed uncompressed (<code>STORED</code>), entered through the entry stub</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The identical default-entry stored Runner JAR with a trained, application-class-verified JDK AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored</code> with a trained JDK AOT cache: the single-file option</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-reflection</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating ablation: the same stored Runner JAR inputs with the entry stub disabled, which measures the
-plugin-default entry stub against reflective entry</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-reflection</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored</code> entered by reflection instead of the entry stub</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-preload</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the same stored Runner JAR inputs packaged with the startup profile that this run records
-from <code>runner-stored</code>, with the recorder that <code>recordStartupProfile</code> uses; compared with <code>runner-stored</code> and <code>shadow</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-preload</code>*, <code>-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">With the startup classes recorded from <code>runner-stored</code> in the same run</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-preload-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the identical preloading Runner JAR with a trained, application-class-verified JDK AOT cache;
-compared with <code>runner-stored-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-positional</code>*, <code>-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>archiveReads=POSITIONAL</code>: only the index is mapped</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-positional</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the same stored Runner JAR inputs packaged with <code>archiveReads</code> set to <code>POSITIONAL</code>, so the
-launcher maps only the index and reads each class with one positional read; compared with <code>runner-stored</code> and
-<code>shadow</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-prefetch</code>*, <code>-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>definitionPrefetch=true</code></p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-positional-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the identical <code>POSITIONAL</code> Runner JAR with a trained, application-class-verified JDK AOT cache;
-compared with <code>runner-stored-aot</code> and <code>shadow-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-joran</code>*, <code>-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Control: <code>precompileLogback=false</code></p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-joran</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in control: the same stored Runner JAR with <code>precompileLogback=false</code>, so Logback reads <code>logback.xml</code> with Joran</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-keepdebug</code>*, <code>-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Control: <code>stripLocalVariables=false</code></p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-joran-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in control: that Joran Runner JAR with a trained, application-class-verified JDK AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-dynamic-services</code>*, <code>-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Control: <code>staticServices=false</code></p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-keepdebug</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the same stored Runner JAR inputs with <code>stripLocalVariables</code> off, so dependency
-classes keep their local-variable tables (see <a href="#localVariableTables">Local-variable tables</a>)</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-keepdebug-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the identical <code>runner-stored-keepdebug</code> JAR with a trained, application-class-verified
-JDK AOT cache</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-dynamic-services</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the same stored Runner JAR inputs packaged with <code>staticServices</code> set to <code>false</code>, so
-that Micronaut scans for its services; compared with <code>runner-stored</code></p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-dynamic-services-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the identical Runner JAR without a static service table, with a trained,
-application-class-verified JDK AOT cache; compared with <code>runner-stored-aot</code></p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-lambdas</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the same stored Runner JAR inputs with <code>desugarLambdas</code> off, so every lambda stays an
-<code>invokedynamic</code> call site (see <a href="#desugaredLambdas">Desugared lambdas</a>)</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-lambdas-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the identical <code>runner-stored-lambdas</code> JAR with a trained, application-class-verified
-JDK AOT cache</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted-lambdas-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the <code>runner-stored-lambdas</code> JAR extracted and launched by the JDK&#8217;s built-in loader,
-with a trained, application-class-verified JDK AOT cache; compared with <code>runner-extracted-aot</code></p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-prefetch</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the same stored Runner JAR inputs packaged with <code>definitionPrefetch=true</code>, so the entry stub
-starts loading the bean definitions before <code>main</code> (see <a href="#definitionPrefetch">[definitionPrefetch]</a>); compared with <code>runner-stored</code></p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-prefetch-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: that prefetching Runner JAR with a trained, application-class-verified JDK AOT cache; compared
-with <code>runner-stored-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-lambdas</code>*, <code>-aot</code>*, <code>runner-extracted-lambdas-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Control: <code>desugarLambdas=false</code>; the last extracted</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with nested dependencies copied byte for byte and the plugin-default entry stub</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR with the dependencies copied byte for byte (<code>PRESERVE</code>)</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The stored Runner JAR extracted and launched by the JDK&#8217;s built-in loader</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored</code> extracted into the plugins' layout, run by the JDK&#8217;s own loader</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The identical extracted layout and manifest class path with a trained, application-class-verified JDK AOT
-cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">That layout with a trained cache: the AOT layout the plugins generate, the cached headline</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-maot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Micronaut AOT&#8217;s <code>optimizedJitJarAll</code>, unmodified: the AOT-optimized application flattened by Shadow. In a row name,
-<code>maot</code> is Micronaut AOT (<a href="#micronautAot">[micronautAot]</a>), and the <code>-aot</code> suffix stays the JDK AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-maot</code>, <code>shadow-maot-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Micronaut AOT&#8217;s <code>optimizedJitJarAll</code>, flattened by Shadow (<code>-aot</code>: with a cache)</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-maot-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the identical <code>optimizedJitJarAll</code> with a trained, application-class-verified JDK AOT cache</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR of the Micronaut AOT-optimized application: <code>runner-stored</code> with the sample&#8217;s <code>optimizedJitJar</code> archive as
-its application layer, which is what the Gradle plugin&#8217;s <code>optimizedMicronautRunnerJar</code> packages. It is built with the
-packaging library&#8217;s defaults of the day, like <code>runner-stored</code></p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the identical <code>runner-maot</code> JAR with a trained, application-class-verified JDK AOT cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot</code>, <code>runner-maot-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runner JAR of Micronaut AOT&#8217;s <code>optimizedJitJar</code>, as <code>optimizedMicronautRunnerJar</code></p></td>
 </tr>
 </tbody>
 </table>
-</dd>
-</dl>
-</div>
-<div class="paragraph">
-<p>Each sample starts a fresh JVM. This is a cold JVM process start, not a claim that storage or the OS page cache
-is cold, unless the run used <code>-Pbenchmarks.pageCache=evict-artifacts</code> or <code>drop-all</code>. Readiness is measured
-externally, from process spawn to the first successful HTTP response, because that is what a user waits for and
-it captures class loading on the first request. The framework&#8217;s own "startup completed" line is recorded
-separately rather than substituted for readiness.</p>
-</div>
-<div class="paragraph">
-<p>The cache pairs are <code>runner-stored</code>/<code>runner-stored-aot</code>, <code>shadow</code>/<code>shadow-aot</code>,
-<code>runner-extracted</code>/<code>runner-extracted-aot</code> and, with the opt-in rows, <code>shadow-maot</code>/<code>shadow-maot-aot</code> and
-<code>runner-maot</code>/<code>runner-maot-aot</code>. Each pair shares the exact artifact bytes, ordered class path,
-working directory, measured workload and JVM options except for the one application-cache selection option.
-Default JDK class sharing remains enabled when the selected JDK enables it, but reuse of platform classes from
-the JDK&#8217;s default archive is not evidence of trained application-class AOT cache reuse; default JDK class
-sharing is a separate baseline condition.</p>
-</div>
-<div class="paragraph">
-<p>Every Runner row builds with the packaging library&#8217;s defaults, so <code>runner-stored</code> and the rows derived from it,
-<code>runner-stored-aot</code>, <code>runner-extracted</code> and <code>runner-extracted-aot</code>, measure dependency classes stripped of their
-local-variable tables and lambdas desugared into generated classes: <code>runner-stored</code> is the desugared default. The
-opt-in pairs <code>runner-stored</code>/<code>runner-stored-keepdebug</code> and <code>runner-stored-aot</code>/<code>runner-stored-keepdebug-aot</code>
-measure the first default against keeping the tables. The opt-in pairs <code>runner-stored</code>/<code>runner-stored-lambdas</code>,
-<code>runner-stored-aot</code>/<code>runner-stored-lambdas-aot</code> and <code>runner-extracted-aot</code>/<code>runner-extracted-lambdas-aot</code> measure
-the second against keeping the call sites; the last pair runs on the JDK&#8217;s built-in loader, which archives lambdas
-itself, so it checks that desugaring costs the extracted layout nothing.</p>
-</div>
-<div class="paragraph">
-<p>The compression-matched pairs are <code>runner-stored</code>/<code>shadow-stored</code>, where neither side inflates class bytes, and
-<code>runner-preserve</code>/<code>shadow</code>, where both do; they measure what Runner&#8217;s layout itself buys. <code>runner-stored</code>/<code>shadow</code>
-is the default-vs-default pair, and its difference also includes the cost of inflating Shadow&#8217;s DEFLATED entries.</p>
-</div>
-<div class="paragraph">
-<p>The Micronaut AOT pairs are <code>runner-maot</code>/<code>shadow-maot</code>, the like-for-like pair, in which both archives hold the same
-AOT-optimized application; <code>runner-stored</code>/<code>shadow-maot</code>, Runner&#8217;s <code>-all.jar</code> against Shadow&#8217;s <code>-all-optimized.jar</code>;
-and <code>runner-maot</code>/<code>runner-stored</code> and <code>shadow-maot</code>/<code>shadow</code>, which measure what Micronaut AOT adds to each packaging.
-<code>runner-maot</code> takes the same packaging defaults as <code>runner-stored</code>, so <code>runner-maot</code>/<code>runner-stored</code> is what
-<code>-all-optimized.jar</code> adds on top of them: Micronaut AOT&#8217;s own Logback configurator takes the place of the
-<a href="#precompiledLogback">precompiled one</a>, which is why that gain is smaller than Micronaut AOT&#8217;s gain on Shadow. With
-the opt-in rows, <code>runner-maot-aot</code>/<code>shadow-maot-aot</code> compares the two with a JDK AOT cache on each side.</p>
+<div class="ulist">
+<ul>
+<li>
+<p>The Runner rows use the plugins' defaults of the day, build-time transforms included; the Shadow rows use the
+dependencies unmodified.</p>
+</li>
+<li>
+<p>Each sample is a fresh JVM; readiness runs from spawn to the first HTTP 200 on <code>/hello</code>.</p>
+</li>
+<li>
+<p>Rows run interleaved in a random order within each iteration and are compared as within-iteration pairs.</p>
+</li>
+<li>
+<p>The OS page cache is uncontrolled by default; Linux runs can pin CPUs and evict it (<code>-Pbenchmarks.cpus</code>,
+<code>-Pbenchmarks.pageCache</code>).</p>
+</li>
+<li>
+<p>Timing runs carry no <code>-Xlog</code>; memory and class counts are read after readiness and are not timed.</p>
+</li>
+<li>
+<p>A trained cache is its own row, distinct from the JDK&#8217;s default class sharing.</p>
+</li>
+<li>
+<p>Opt-in rows are built only on request and never gate a run.</p>
+</li>
+</ul>
 </div>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_methodology">Methodology</h2>
+<h2 id="benchmarkResults">Results</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>The harness interleaves the variants in random order rather than running each in a block, discards designated
-warm-up runs, keeps every raw sample, and always reports descriptive counts, medians and 90th percentiles.
-Confidence intervals are omitted and the summary is labelled descriptive-only until there are at least ten
-successful measured samples. Ten is a reporting threshold, not a universal guarantee of precision; a
-zero-width interval over repeated observations cannot recover variability that was never observed.
-Discarding a process run does not evict or warm the OS page cache in a controlled way; by default the cache
-is uncontrolled, and <a href="#benchmarkConditions">the page-cache modes</a> below say what else a run can do.</p>
+<p>From <a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818155119">one CI run</a> on 2026-10-01: commit
+<code>2ef8217</code> (master <code>9aef0be</code> plus the harness&#8217;s build log), GitHub <code>ubuntu-24.04</code> runner (image 20260920.314.1, 4
+vCPUs, AMD EPYC 7763), <strong>JDK 25.0.4.1+1-LTS</strong> (Temurin, HotSpot C2), <code>benchmark-large</code> on Micronaut 5.1.15 and Netty
+4.2.18.Final, 3 warm-up and 20 measured iterations per row. Lines that name another run or JDK say so.</p>
 </div>
 <div class="paragraph">
-<p>Readiness comparisons are a predeclared list of candidate minus baseline pairs, led by <code>runner-stored</code> minus
-<code>shadow</code>, so a negative difference means the candidate is faster. Each reports the median per-iteration
-difference and a relative change, the median per-iteration candidate/baseline ratio minus one, over complete
-measured iterations only; an incomplete iteration is excluded and listed, never re-paired. A bootstrap interval
-over complete iteration pairs appears only with at least ten complete pairs.</p>
+<p><strong>Build-time steps</strong> of <code>runner-stored</code>, and so of <code>runner-stored-aot</code>, as the build log shows them
+(<a href="#buildTransforms">Build-Time Transformations</a>):</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Local-variable stripping and lambda desugaring: on (7102 classes, 2963 call sites); no effect in <code>runner-preserve</code>.</p>
+</li>
+<li>
+<p>Logback compilation: on; stood down in <code>runner-maot</code>, which has "no logback.xml" after Micronaut AOT.</p>
+</li>
+<li>
+<p>Static service table: on (486 slots for micronaut-core 5.1.15). Definition prefetch: off. Archive reads: <code>MAPPED</code>.</p>
+</li>
+<li>
+<p>Preloading: only the <code>runner-stored-preload</code> rows. The plugins' convention needs a committed startup profile, which
+the sample lacks, and the harness calls the packaging library directly.</p>
+</li>
+<li>
+<p>The extracted rows keep the rewritten classes, the Logback configurator and the service table; the entry stub, the
+prefetch, preloading and the read mode do not apply to them.</p>
+</li>
+</ul>
 </div>
 <div class="paragraph">
-<p>Timing runs carry no diagnostic flags: <code>-Xlog</code> changes what is being measured, so class counts are read
-without it. Before timing begins, each cache lifecycle makes its own diagnostic launch and
-requires <code>com.example.Application</code>, an application class, to load from the selected shared objects file;
-aggregate shared-class counts alone are insufficient. The harness removes <code>JAVA_TOOL_OPTIONS</code>,
-<code>JDK_JAVA_OPTIONS</code>, <code>_JAVA_OPTIONS</code> and <code>JDK_AOT_VM_OPTIONS</code> from child JVM environments so ambient flags
-cannot silently change that cache mode.</p>
-</div>
-<div class="paragraph">
-<p>Every successful timing run also records memory and loaded classes once, after HTTP readiness and outside the
-timed interval: <code>atReadiness</code> in <code>results.json</code>, per attempt and as per-variant medians, and the summary&#8217;s
-memory table. Memory is read in-process, from <code>/proc/&lt;pid&gt;/status</code> on Linux (<code>VmRSS</code>, <code>VmHWM</code>, <code>RssAnon</code>,
-<code>RssFile</code>) and from <code>proc_pid_rusage</code> on macOS (resident size, <code>phys_footprint</code> and its lifetime peak). Class
-counts come from one <code>jstat -snap</code> of the child&#8217;s JDK, which reads its performance counters without attaching and
-adds no flag to the child. A value that cannot be read is <code>null</code>: all of them on Windows, and the class counts of
-a JVM started with <code>-XX:-UsePerfData</code>. RSS includes clean, file-backed pages of memory-mapped files (the Runner
-archive, CDS and AOT archives, JDK libraries) that the kernel can drop and re-read, so private memory
-(<code>phys_footprint</code> or <code>RssAnon</code>) is the like-for-like comparison between a mapped archive and a flattened JAR. The
-<code>-Xlog</code> files that <code>-Pbenchmarks.diagnostics=true</code> writes still cover spawn through shutdown and are for per-class
-inspection; their readiness only shows the logging overhead and never enters measured timing distributions.</p>
-</div>
-<div class="sect2">
-<h3 id="benchmarkConditions">Page cache, CPU limit and row selection</h3>
-<div class="paragraph">
-<p><code>-Pbenchmarks.pageCache</code> chooses what happens to the OS page cache before every launch (warm-up, measured and
-diagnostic), always outside the timed interval:</p>
+<p><strong>Libraries.</strong> On Micronaut 5.1.15 and Netty 4.2.18.Final the first request still sets up JFR with nothing recording,
+so every row, Runner and Shadow alike, includes that cost; the unreleased fixes for
+<a href="https://github.com/micronaut-projects/micronaut-core/issues/13386">micronaut-core#13386</a> and
+<a href="https://github.com/netty/netty/issues/17612">netty#17612</a> remove it.</p>
 </div>
 <table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 1. Startup, JDK 25.0.4.1+1-LTS: ms, MiB and s; Δ is the paired median against the group&#8217;s reference</caption>
 <colgroup>
-<col style="width: 20%;">
-<col style="width: 80%;">
+<col style="width: 29.5918%;">
+<col style="width: 6.1224%;">
+<col style="width: 6.1224%;">
+<col style="width: 15.3061%;">
+<col style="width: 6.1224%;">
+<col style="width: 6.1224%;">
+<col style="width: 6.1224%;">
+<col style="width: 6.1224%;">
+<col style="width: 6.1224%;">
+<col style="width: 6.1224%;">
+<col style="width: 6.1229%;">
 </colgroup>
 <thead>
 <tr>
-<th class="tableblock halign-left valign-top">Mode</th>
-<th class="tableblock halign-left valign-top">What it does</th>
+<th class="tableblock halign-left valign-top">Row (* opt-in)</th>
+<th class="tableblock halign-left valign-top">Ready</th>
+<th class="tableblock halign-left valign-top">p90</th>
+<th class="tableblock halign-left valign-top">Δ (95% CI)</th>
+<th class="tableblock halign-left valign-top">Δ %</th>
+<th class="tableblock halign-left valign-top">Size</th>
+<th class="tableblock halign-left valign-top">gzip</th>
+<th class="tableblock halign-left valign-top">Cache</th>
+<th class="tableblock halign-left valign-top">Training</th>
+<th class="tableblock halign-left valign-top">RSS</th>
+<th class="tableblock halign-left valign-top">Private</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>uncontrolled</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The default. No eviction, no <code>sync</code> and no <code>sudo</code>: the cache holds whatever the build and earlier starts left in
-it, so the run is neither a warm-cache nor a cold-cache measurement.</p></td>
+<th class="tableblock halign-left valign-top" colspan="11"><p class="tableblock">No JDK cache, against <code>shadow</code></p></th>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>evict-artifacts</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Linux only, no root. After preparation the harness runs <code>sync</code> once, then before every launch it evicts every
-regular file of the variant&#8217;s artifact and launch inputs with <code>posix_fadvise(POSIX_FADV_DONTNEED)</code>: the JAR, the
-AOT cache file, the thin and exploded <code>lib/</code> JARs and class trees, and the whole extracted layout. The JDK and the
-shared work directory stay cached, so only the packaging is cold.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>exploded-cp</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1518.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1576.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">15.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">12.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">176.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">150.2</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>drop-all</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Needs passwordless <code>sudo</code>. Before every launch: <code>sync</code>, then <code>echo 3 &gt; /proc/sys/vm/drop_caches</code> on Linux or
-<code>purge</code> on macOS. Pages a live process maps stay resident, including the parts of the JDK the harness JVM itself
-maps, so it is colder than <code>evict-artifacts</code> but not a fresh node.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>thin-jar</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1467.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1540.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">14.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">12.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">178.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">152.4</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1408.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1470.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">14.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">12.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">171.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">145.2</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-stored</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1335.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1395.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-80.5 (-98.5 to -56.7)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-5.8%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">171.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">145.2</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">939.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1008.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-464.0 (-479.9 to -453.1)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-33.2%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">138.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">83.4</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-reflection</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">948.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">995.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">138.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">83.5</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-preload</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">808.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">846.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-603.6 (-619.3 to -592.8)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-42.7%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">138.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">83.4</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-positional</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">970.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1008.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-437.1 (-452.3 to -432.0)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-31.3%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">112.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">84.7</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-joran</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">977.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1036.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">138.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">82.8</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-keepdebug</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">952.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1015.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">39.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">9.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">143.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">84.8</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-dynamic-services</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">953.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1008.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">138.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">83.5</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-lambdas</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1079.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1149.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">31.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">164.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">111.2</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-prefetch</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">935.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">973.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">135.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">80.6</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1186.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1231.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-233.3 (-260.6 to -218.3)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-16.5%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">16.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">13.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">167.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">125.1</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1130.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1216.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">31.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">7.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">138.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">112.5</p></td>
+</tr>
+<tr>
+<th class="tableblock halign-left valign-top" colspan="11"><p class="tableblock">JDK AOT cache, against <code>shadow-aot</code></p></th>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">539.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">561.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">63.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">24.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">49.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">124.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">91.4</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-aot</code> (single file)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">553.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">572.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+17.4 (+12.1 to +22.5)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+3.1%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">78.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">18.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">43.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">139.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">81.6</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-preload-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">539.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">567.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">78.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">18.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">43.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">146.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">85.2</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-positional-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">573.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">602.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+37.5 (+29.0 to +39.7)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+7.2%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">78.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">18.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">43.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">117.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">83.8</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-joran-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">577.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">605.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">80.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">19.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">46.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">142.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">84.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-keepdebug-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">561.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">582.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">85.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">20.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">45.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">145.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">84.4</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-dynamic-services-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">575.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">595.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">78.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">18.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">43.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">139.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">82.0</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-lambdas-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">675.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">700.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">74.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">18.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">43.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">172.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">116.9</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted-lambdas-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">501.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">528.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">74.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">18.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">45.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">111.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">79.9</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-prefetch-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">563.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">574.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">78.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">18.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">43.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">143.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">85.8</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted-aot</code> (cached headline)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">510.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">533.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-27.1 (-30.7 to -16.9)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-5.1%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">76.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">18.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">45.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">114.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">82.6</p></td>
+</tr>
+<tr>
+<th class="tableblock halign-left valign-top" colspan="11"><p class="tableblock">Micronaut AOT, against <code>shadow-maot</code></p></th>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-maot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1285.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1329.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">14.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">12.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">157.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">130.7</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">902.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">955.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-381.3 (-394.6 to -373.6)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-29.7%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">34.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">132.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">79.9</p></td>
+</tr>
+<tr>
+<th class="tableblock halign-left valign-top" colspan="11"><p class="tableblock">Micronaut AOT and the JDK AOT cache, against <code>shadow-maot-aot</code></p></th>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-maot-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">521.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">546.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">—</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">61.0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">23.5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">46.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">122.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">90.1</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot-aot</code>*</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">555.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">584.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+36.4 (+28.1 to +43.2)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+7.2%</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">78.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">18.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">43.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">139.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">81.8</p></td>
+</tr>
+</tbody>
+</table>
+<div class="ulist">
+<ul>
+<li>
+<p>Δ % is the median per-iteration ratio − 1; <code>—</code> means no declared pair, or no cache. Size is the complete
+deployment, cache included. RSS and private memory (<code>RssAnon</code>) are medians at readiness.</p>
+</li>
+<li>
+<p><strong>CPU and page-cache legs</strong>, same JDK build, each on its own machine: at 1 CPU <code>runner-stored</code> − <code>shadow</code> was -639.8
+ms (-659.1 to -619.1) and <code>runner-stored-aot</code> − <code>shadow-aot</code> +66.7 ms (+60.4 to +85.0); with <code>evict-artifacts</code>, -527.9
+ms (-546.9 to -519.3) and +44.2 ms (+30.3 to +51.3).</p>
+</li>
+<li>
+<p><strong>JDK 27</strong>, 27+35 Temurin (<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818490124">run</a>,
+<a href="https://github.com/alvarosanchez/micronaut-runner/actions/runs/36818157354">cache guard</a>): <code>runner-extracted-aot</code> −
+<code>shadow-aot</code> -28.0 ms (-49.9 to -17.4), <code>runner-stored-aot</code> − <code>shadow-aot</code> +76.0 ms (+52.3 to +82.5), extracted −
+stored -101.3 ms (-120.7 to -91.3). Cached <code>io.micronaut</code> classes: single JAR 2195 of 2201, layout 2312 of 2318;
+coverage of all classes 97.87% and 98.59%.</p>
+</li>
+<li>
+<p><strong>micronaut-core 5.2.10</strong>, local only (macOS, Homebrew JDK 25.0.4.1, one session): <code>runner-stored</code> − <code>shadow</code> -131.4
+ms (-136.6 to -126.2), against -144.9 ms (-151.5 to -142.4) on 5.1.15; on 5.2 the static service table stands down.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>What each default buys</strong>: <code>runner-stored</code> − control, then <code>runner-stored-aot</code> − its twin. Each control turns one step
+off, so each line is that step&#8217;s own effect in this build; the effects overlap and are not added up.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Lambda desugaring: -137.5 ms (-147.9 to -122.3); -127.8 ms (-135.0 to -113.9). Extracted, <code>runner-extracted-aot</code> −
+<code>runner-extracted-lambdas-aot</code>: +8.3 ms (+0.4 to +13.9).</p>
+</li>
+<li>
+<p>Logback compilation: -37.3 ms (-53.8 to -33.1); -23.4 ms (-35.6 to -19.7).</p>
+</li>
+<li>
+<p>Local-variable stripping: -19.8 ms (-29.7 to -5.0); -4.9 ms (-12.2 to +4.5).</p>
+</li>
+<li>
+<p>Static service table: -11.4 ms (-22.6 to -2.9); -19.6 ms (-27.9 to -11.5).</p>
+</li>
+</ul>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 2. Memory at readiness, JDK 25.0.4.1+1-LTS, MiB: medians, and differences of medians without an interval</caption>
+<colgroup>
+<col style="width: 40%;">
+<col style="width: 10%;">
+<col style="width: 10%;">
+<col style="width: 10%;">
+<col style="width: 10%;">
+<col style="width: 10%;">
+<col style="width: 10%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Pair</th>
+<th class="tableblock halign-left valign-top">RSS</th>
+<th class="tableblock halign-left valign-top">Reference</th>
+<th class="tableblock halign-left valign-top">Δ</th>
+<th class="tableblock halign-left valign-top">Private</th>
+<th class="tableblock halign-left valign-top">Reference</th>
+<th class="tableblock halign-left valign-top">Δ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored</code> vs <code>shadow</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">138.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">171.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-32.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">83.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">145.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-61.8</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted-aot</code> vs <code>shadow-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">114.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">124.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-9.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">82.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">91.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-8.8</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-aot</code> vs <code>shadow-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">139.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">124.3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">+15.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">81.6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">91.4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-9.8</p></td>
+</tr>
+</tbody>
+</table>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 3. JMH, JDK 25.0.4.1+1-LTS, <code>workload=representative</code>: score ± error</caption>
+<colgroup>
+<col style="width: 26%;">
+<col style="width: 18%;">
+<col style="width: 18%;">
+<col style="width: 16%;">
+<col style="width: 7%;">
+<col style="width: 15%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Operation</th>
+<th class="tableblock halign-left valign-top">Runner <code>STORED</code></th>
+<th class="tableblock halign-left valign-top">Flat single JAR</th>
+<th class="tableblock halign-left valign-top">Multi-JAR</th>
+<th class="tableblock halign-left valign-top">Unit</th>
+<th class="tableblock halign-left valign-top">Runner vs flat JAR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Fresh loader, 200 classes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4,442 ± 181</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">9,066 ± 152</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">13,112 ± 493</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">µs/op</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2.0× faster</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">12 classes in one package</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">361 ± 24.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1,347 ± 22.1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">636 ± 11.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">µs/op</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.7× faster</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">200 resource hits + 200 misses</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">480 ± 11.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">976 ± 15.8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4,226 ± 29.9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">µs/op</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2.0× faster</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>localLookup</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">976,235 ± 8,465</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1,632,425 ± 18,042</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">280,433 ± 2,689</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ops/s</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.7× slower</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>spreadLookup</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">849,946 ± 13,166</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1,596,346 ± 26,385</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">217,422 ± 2,284</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ops/s</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.9× slower</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>missingLookup</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2,428,810 ± 180,814</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3,246,144 ± 156,023</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">182,269 ± 3,337</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ops/s</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.3× slower</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>serviceDiscovery</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">68,193 ± 3,667</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2,072,889 ± 24,746</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">56,972 ± 5,287</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ops/s</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">30× slower</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>duplicateResources</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">68,922 ± 2,562</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2,164,904 ± 66,434</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">59,840 ± 1,532</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ops/s</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">31× slower</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>resourceStream</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">46,838 ± 1,091</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3,230 ± 56.7</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3,218 ± 26.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ops/s</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">15× faster</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>multiReleaseResource</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">853,552 ± 10,599</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">192,287 ± 921</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">124,604 ± 620</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ops/s</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4.4× faster</p></td>
 </tr>
 </tbody>
 </table>
 <div class="paragraph">
-<p>An unsupported combination (<code>evict-artifacts</code> off Linux, <code>drop-all</code> without passwordless <code>sudo</code>) fails at once
-with a usage error; there are no fallbacks. Every readiness snapshot also records <code>majorFaults</code> (<code>majflt</code> of
-<code>/proc/&lt;pid&gt;/stat</code>) and <code>readBytes</code> (<code>read_bytes</code> of <code>/proc/&lt;pid&gt;/io</code>), <code>null</code> off Linux. They confirm eviction:
-a cold launch reads its files from storage, and a memory-mapped Runner archive also takes major faults, while
-Shadow reads its JAR with <code>read</code> calls, which are not faults.</p>
+<p>Micro-benchmarks isolate mechanisms and are not startup results. Runner loses to the flat JAR on <code>localLookup</code>,
+<code>spreadLookup</code>, <code>missingLookup</code>, <code>serviceDiscovery</code> and <code>duplicateResources</code>; for the last two, the flat JAR returns
+one merged descriptor where Runner, like a multi-JAR class path, returns each JAR&#8217;s own.</p>
 </div>
 <div class="paragraph">
-<p><code>-Pbenchmarks.cpus=N</code> (Linux, needs <code>taskset</code>) runs every child JVM, the AOT-cache training and verification
-launches included, on the first <code>N</code> CPUs the harness may use, and pins the harness&#8217;s own threads to the rest
-once the variants are prepared. The one exception is the launch that records the preload rows' startup profile,
-which the build plugins' recorder starts itself, on every CPU; the class list barely depends on the CPU count. <code>N</code> must leave the harness at least one CPU. Before the sample build the harness
-starts a probe JVM under the limit, requires it to see exactly <code>N</code> CPUs and records its ergonomic flags, the
-collector among them: below two CPUs, JDK 25 selects SerialGC and fewer compiler threads, and Netty and the
-fork-join pool size themselves from the CPU count. A limited AOT cache has its own identity, so a cache trained
-without a limit is never reused under one. <code>taskset</code> models CPU <em>affinity</em>, not CFS quota throttling: <code>docker --cpus</code>
-and Kubernetes limits set <code>cpu.max</code>, where the JVM sees <code>ceil(quota)</code> CPUs but its threads can burst across every
-core and are then throttled once per period. If the one-CPU margins look odd, cross-check once with
-<code>docker run --cpus=1</code>. Both reports record the limit, the machine, child and harness CPU lists, the child CPUs'
-SMT siblings, the CPU model and the probe&#8217;s count and flags, along with the page-cache mode, the kernel and the
-storage under the work directory.</p>
+<p><strong>Packaging</strong> (same run, 10 rounds, 95% intervals), <code>runner-stored</code> − <code>shadow</code>: cold (<code>rerun</code>) -187.7 ms task action
+[-226.8, -113.8], -138.4 ms wall [-162.7, -84.6]; <code>edit</code> -164.2 ms [-203.9, -122.3], -145.1 ms [-186.4, -95.1].
+Compression-matched, <code>runner-stored</code> − <code>shadow-stored</code>: <code>rerun</code> +467.1 ms [+393.4, +517.7], +489.1 ms [+390.3,
++531.6]; <code>edit</code> +423.9 ms [+373.4, +524.9], +384.2 ms [+346.9, +481.2].</p>
 </div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="runnerVsShadow">When Runner beats a shaded JAR, and when it does not</h2>
+<div class="sectionbody">
 <div class="paragraph">
-<p><code>-Pbenchmarks.variants=a,b</code> builds and measures only the named rows, in report order. Naming an opt-in row
-builds it, so the property cannot be combined with <code>-Pbenchmarks.optionalRows</code>. A named row that derives from
-another (a cached row from its uncached twin, <code>runner-extracted</code> from <code>runner-stored</code>) builds that row too, but
-it is neither measured nor reported, and a declared comparison appears only when both of its rows were named.</p>
+<p>From the tables above, JDK 25.0.4.1+1-LTS unless named:</p>
 </div>
-<div class="paragraph">
-<p>From this change on, a pull request that adds threads to the application startup path links a paired
-<code>-Pbenchmarks.cpus=1</code> result. Packaging-time parallelism does not run in the application and no harness mode
-covers it: it is checked at one CPU by hand with <code>taskset -c 0</code>.</p>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>No JDK cache: Runner wins</strong>, <code>runner-stored</code> − <code>shadow</code> -464.0 ms (-479.9 to -453.1), -33.2%. Compression-matched,
+<code>runner-stored</code> − <code>shadow-stored</code> is -387.8 ms (-404.6 to -375.4) and <code>runner-preserve</code> − <code>shadow</code> -233.3 ms, against
+-80.5 ms for compression alone (<code>shadow-stored</code> − <code>shadow</code>): most of the lead is Runner&#8217;s layout and default steps.</p>
+</li>
+<li>
+<p><strong>Inflating classes</strong>: <code>runner-stored</code> − <code>runner-preserve</code> -220.1 ms (-248.1 to -209.3), which also includes the class
+transforms <code>runner-preserve</code> does not run. A step&#8217;s share is only its own line under "What each default buys".</p>
+</li>
+<li>
+<p><strong>Opt-in accelerators</strong>, each measured alone, never added up: preloading -136.1 ms (-148.6 to -127.9), -11.3 ms
+(-18.1 to -5.1) with the cache. Positional reads are slower, +26.8 ms (+16.3 to +33.3) and +23.2 ms (+9.6 to +28.2).
+The definition prefetch&#8217;s intervals include zero on these 4 vCPUs.</p>
+</li>
+<li>
+<p><strong>Trained caches</strong>: the cached headline is ahead, <code>runner-extracted-aot</code> − <code>shadow-aot</code> -27.1 ms (-30.7 to -16.9),
+with 8.8 MiB less private memory, but it is a directory of JARs plus a cache file. The single-file
+<code>runner-stored-aot</code>, already desugared, still loses on JDK 25: +17.4 ms (+12.1 to +22.5). On JDK 27 the layout stays
+ahead and the single JAR trails by 76.0 ms. <a href="#cdsAndAot">Class Data Sharing and the AOT Cache</a> has the JDK 27
+code-source rule and where the single JAR&#8217;s remaining cached gap goes. There, measured in local Apple Silicon sessions,
+the desugared single JAR led Shadow&#8217;s cache on JDK 25 and was level on JDK 27; on these runners it trails on both.</p>
+</li>
+<li>
+<p><a id="micronautAotResults"></a><strong>Micronaut AOT</strong>: <code>runner-maot</code> − <code>shadow-maot</code> -381.3 ms (-394.6 to -373.6); <code>runner-stored</code>
+− <code>shadow-maot</code> -348.6 ms (-354.1 to -321.0), so dropping Micronaut Launch&#8217;s default Micronaut AOT for Runner still
+starts sooner. With a JDK cache on both, Runner loses: <code>runner-maot-aot</code> − <code>shadow-maot-aot</code> +36.4 ms (+28.1 to
++43.2). See <a href="#micronautAot">Micronaut AOT</a>.</p>
+</li>
+<li>
+<p><strong>Size</strong>: <code>runner-stored</code> is 2.44 times <code>shadow</code> on disk but 0.67 times gzipped, as images and downloads travel;
+<code>runner-preserve</code> is 1.20 and 1.04 times.</p>
+</li>
+<li>
+<p><strong>Memory</strong>: RSS counts a mapped archive&#8217;s clean file-backed pages, so private memory is the like-for-like figure:
+61.8 MiB less for <code>runner-stored</code> than <code>shadow</code>, 8.8 MiB less for the cached headline.</p>
+</li>
+<li>
+<p><strong>Entry stub vs reflection</strong>: inconclusive; <code>runner-stored</code> − <code>runner-stored-reflection</code> spans zero at 20 pairs.</p>
+</li>
+<li>
+<p><strong>Mechanism</strong>: see <a href="#whyItIsFast">Why it is fast</a>; no matched ablation isolates the index, so it is not a measured
+cause.</p>
+</li>
+</ul>
 </div>
 </div>
-<div class="sect2">
-<h3 id="_trained_cache_matrix">Trained-cache matrix</h3>
-<div class="paragraph">
-<p>All the cache pairs, <code>runner-stored</code>/<code>runner-stored-aot</code>, <code>shadow</code>/<code>shadow-aot</code>,
-<code>runner-extracted</code>/<code>runner-extracted-aot</code> and the opt-in <code>shadow-maot</code>/<code>shadow-maot-aot</code> and
-<code>runner-maot</code>/<code>runner-maot-aot</code>, use the JDK AOT cache, so a trained Runner layout is never compared
-only with an untrained Shadow layout. Classes that Runner&#8217;s loader defines are cached but not AOT-linked. JDK AOT
-caching is not GraalVM Native Image.</p>
 </div>
-<div class="paragraph">
-<p>Training and verification are bounded build-time operations outside all timing samples. Training reaches
-HTTP readiness, exercises <code>/hello</code>, sends SIGTERM for an orderly shutdown, accepts exit status 0 or 143, requires a
-nonempty cache, then performs a strict diagnostic launch. Both launches go through the same harness code as the
-timed runs. The managed cache identity is a SHA-256 over a schema salt, the exact JDK runtime and VM build, the VM
-name, the architecture, the JDK&#8217;s AOT creation flags, the CPU count under <code>-Pbenchmarks.cpus</code>, the launch command
-after <code>java</code>, the readiness and workload paths, the training-only <code>-Dmicronaut.runner.aot.training=true</code> of a Runner
-single JAR, and each ordered launch input&#8217;s position, file name and content digest: for a Runner row that is the
-immutable final JAR, and therefore its embedded application and dependency bytes. A changed input selects a
-different cache. Trained caches are reused across
-runs while the inputs' bytes are unchanged, because the harness pins every launch input&#8217;s modification time,
-which the JDK also checks; <code>rm -rf benchmarks/build/tmp/startupBenchmark/managed-aot</code> forces a retrain.
-<code>results.json</code> records each cache&#8217;s <code>cacheSha256</code> and whether this run reused it (<code>cacheReused</code>), and
-<code>summary.md</code> names the reused and trained caches under the Runner vs Shadow table. A cached variant is measured only
-after a nonempty completed cache and a successful application-class verification launch; an unsupported JDK or
-any failed phase makes the variant unavailable, and the benchmark never silently substitutes a no-cache process.
-The launch cannot start without the trained cache file, so its bytes count toward the complete deployment;
-training cost and total preparation cost are reported separately from deployment bytes and readiness
-measurements. The cached variants require JDK 25 or later: training
-uses <code>-XX:AOTCacheOutput=&lt;cache&gt;</code> and measured use adds <code>-XX:AOTMode=on -XX:AOTCache=&lt;cache&gt;</code>, so a missing or
-unusable cache fails the launch. They launch the actual Shadow JAR, Runner JAR or extracted application JAR,
-with no helper or wrapper added to either paired class path. See <a href="#cdsAndAot">[cdsAndAot]</a> for the reproducible extraction
-and deployment workflow. These rows make the trained application cache mode explicit rather than
-inferring it from default JDK class sharing.</p>
-</div>
-<div class="paragraph">
-<p>Run it locally with:</p>
-</div>
+<div class="sect1">
+<h2 id="_running_it_yourself">Running it yourself</h2>
+<div class="sectionbody">
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">./gradlew :benchmarks:jmh
-./gradlew :benchmarks:packagingProfile
 ./gradlew :benchmarks:packagingComparison
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
-./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true
-./gradlew :benchmarks:startupBenchmark -Pbenchmarks.optionalRows=true -Pbenchmarks.iterations=40
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20 -Pbenchmarks.optionalRows=true
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20 -Pbenchmarks.cpus=1 -Pbenchmarks.variants=shadow,runner-stored</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>The <code>optionalRows</code> command adds the opt-in rows, such as the entry-stub ablation, the local-variable-table
-controls and the cached Micronaut AOT pair. Run it with 40 iterations: at 20, the stub effect&#8217;s interval still
-spanned zero. The last command measures one pair on one CPU; see <a href="#benchmarkConditions">Page cache, CPU limit and row selection</a>.</p>
-</div>
-<div class="paragraph">
-<p>The description of every Runner row says <code>static services: N slots (core V)</code> when its JAR carries a
-<a href="#staticServices">static service table</a>, and <code>dynamic service scan</code> when it does not.
-<code>-Pbenchmarks.micronautCore=&lt;version&gt;</code> builds the sample with every <code>io.micronaut</code> module aligned to that version,
-to measure the same application on another micronaut-core.</p>
-</div>
-<div class="paragraph">
-<p><code>-Pbenchmarks.workloads=no-manifest,small,representative,wide</code> selects packaging shapes and
-<code>-Pbenchmarks.packagingIterations=2</code> changes the number of independent packaging workers. The JMH resource
-benchmarks expose the same <code>workload</code> parameter. The startup task defaults to the larger
-<code>test-suite/samples/benchmark-large</code> application; use <code>-Pbenchmarks.sample=&lt;sample-directory-name&gt;</code> for an
-explicit sample. Short smoke runs must remain labelled descriptive rather than being promoted to release
-claims.</p>
-</div>
-<div class="paragraph">
-<p><code>packagingComparison</code> always uses <code>benchmark-large</code> and ignores <code>-Pbenchmarks.sample</code>. It runs 3 warm-up rounds
-and then 10 measured rounds, the fewest that give a 95% interval; <code>-Pbenchmarks.packagingComparisonIterations=20</code>
-changes the measured count. Each round runs one untimed <code>classes</code> build, then every variant in the <code>rerun</code>
-scenario and then in the <code>edit</code> scenario, each scenario in a fresh order shuffled from a seed that the report
-records. Its nested builds run with <code>--no-build-cache --no-configuration-cache</code> in a daemon that its unique JVM
-options keep apart from every other daemon and that stops itself 60 seconds after the task ends; the harness
-never runs <code>--stop</code>.</p>
-</div>
-<div class="paragraph">
-<p>Reports are written to <code>benchmarks/build/reports/</code>. The startup task builds its variants and trains its caches
-in <code>benchmarks/build/tmp/startupBenchmark</code>, and the packaging comparison builds its copy of the sample in
-<code>benchmarks/build/tmp/packagingComparison</code>. In CI the benchmarks run weekly and on demand rather than on every
-pull request, because shared runners are too noisy to gate a build on. The weekly and on-demand runs also start
-four <code>startup-cpu-matrix</code> legs, each measuring the Runner and Shadow comparison rows at one CPU, at two CPUs,
-unlimited, and unlimited with <code>evict-artifacts</code>. The legs run on different machines, so compare their paired
-Runner − Shadow differences, never their absolute times.</p>
-</div>
-<div class="paragraph">
-<p>The startup harness uses a required, fail-closed matrix by default. Every required packaging variant must
-be built and complete every requested measured iteration; otherwise the task exits nonzero <em>after</em> writing
-both <code>results.json</code> and <code>summary.md</code>. Both reports show requested, attempted, successful, failed and skipped
-counts separately for warm-up and measured phases. <code>results.json</code> also records every process attempt with
-its variant, iteration, global schedule order, phase, outcome, failure and exit information, and timing only
-when the attempt produced a valid measurement. A build-unavailable variant is skipped, not mislabeled as a
-failed process attempt. A warm-up failure is visible but does not by itself invalidate a complete measured
-matrix. Opt-in rows are built only with <code>-Pbenchmarks.optionalRows=true</code> or when named in
-<code>-Pbenchmarks.variants</code>, and their failures are reported but never change the exit code. With
-<code>-Pbenchmarks.variants</code>, the required variants are the named core rows. A selection that names only opt-in rows
-has no required variant: both reports say so instead of calling the run complete, and the task exits zero only
-when at least one measured attempt succeeded.</p>
-</div>
-<div class="paragraph">
-<p><code>results.json</code> has a versioned schema. It records the runner and sample revisions with their clean/dirty state, the
-JDK version, runtime version, vendor and VM name, the OS name and version, the architecture, the logical processor
-count (captured before <code>-Pbenchmarks.cpus</code> pins the harness) and the physical memory, the seed and the actual
-attempt order, each variant&#8217;s effective command, and the SHA-256 of every ordered launch input. Each attempt is
-recorded once, under <code>attempts</code>, and the constants every run shares are written once, under <code>policy</code>. The harness
-removes <code>JAVA_TOOL_OPTIONS</code>, <code>JDK_JAVA_OPTIONS</code>, <code>_JAVA_OPTIONS</code> and <code>JDK_AOT_VM_OPTIONS</code> from every child launch,
-AOT-cache training and verification included; nothing about them is recorded or redacted. Paths appear as tokens,
-the same ones in commands and in failure messages: <code>${java}</code>, <code>${input:N}</code> for a launch input, <code>${workdir}</code>,
-<code>${sample}</code>, <code>${work}</code>, <code>${output}</code> and <code>$/home/runner</code>. A reader can therefore identify the exact launched bytes and
-reconstruct successes and failures without depending on the original checkout location.</p>
-</div>
-<div class="paragraph">
-<p>For investigation only, <code>-Pbenchmarks.allowPartial=true</code> selects the explicit partial policy. An incomplete
-partial run is labelled as such in both reports and exits zero only when at least one measured attempt
-succeeds. Its timing distributions remain explicitly conditional on successful attempts; the harness never
-turns a timeout into a zero duration or retries until a favorable sample appears.</p>
-</div>
-<div class="paragraph">
-<p>The size column is the complete deployment boundary, not just the process&#8217;s launch artifact. It sums the
-logical lengths of every required regular file: the application and dependency components for thin and
-exploded layouts, the whole extracted layout, or the single complete archive for Shadow and Runner variants,
-plus the trained cache file for every cached variant. Both reports give two metrics for each component and for
-the reconciled total: raw logical bytes, and gzip -6 bytes, the sum of per-file gzip -6 lengths, an
-approximation of image-layer transfer size (tar headers and cross-file dictionary effects excluded). The gzip
-lengths are computed while variants are prepared, never during timed launches. Repeated normalized paths are
-counted once and attributed to the first component that names them. Symbolic links are not followed or
-counted, except that a required cache file which is a link is an error; distinct hard-linked paths are counted
-separately. Build workspaces, logs, reports and neighboring variants are outside the explicitly declared inputs
-and are never included. STORED stays the default and no resources-only deflate mode is planned: STORED&#8217;s raw
-archive is the larger one, but classes are about 94% of the benchmark sample&#8217;s uncompressed content, so
-compressing only resources could not close that gap.</p>
-</div>
-</div>
-</div>
-</div>
-<div class="sect1">
-<h2 id="micronautAotResults">Runner against Micronaut AOT&#8217;s Shadow JAR</h2>
-<div class="sectionbody">
-<div class="paragraph">
-<p>Micronaut Launch applies <code>io.micronaut.aot</code> and Shadow to every new Gradle application of the default type, so the fat
-JAR that Runner has to beat is <code>optimizedJitJarAll</code> (<code>shadow-maot</code>), not <code>shadowJar</code>. On <code>benchmark-large</code> (Micronaut 5.1.15, Netty
-4.2.18, Micronaut AOT 3.0.0 with the <code>aot { }</code> block of Micronaut Launch 5.2.0), on macOS 26.6.2 with 12 Apple Silicon
-CPUs and JDK 25.0.4.1, one interleaved run of 20 pairs gave these paired median differences, candidate − baseline:</p>
-</div>
-<table class="tableblock frame-all grid-all stretch">
-<colgroup>
-<col style="width: 33.3333%;">
-<col style="width: 16.6666%;">
-<col style="width: 25%;">
-<col style="width: 25.0001%;">
-</colgroup>
-<thead>
-<tr>
-<th class="tableblock halign-left valign-top">Comparison</th>
-<th class="tableblock halign-left valign-top">Δ readiness</th>
-<th class="tableblock halign-left valign-top">95% CI</th>
-<th class="tableblock halign-left valign-top">Medians</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot</code> − <code>shadow-maot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−77.8 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−85.1 to −70.2 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">391.0 against 465.7 ms</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored</code> − <code>shadow-maot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−57.8 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−73.6 to −48.2 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">412.3 against 465.7 ms</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot</code> − <code>runner-stored</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−24.3 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−44.9 to −13.7 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">391.0 against 412.3 ms</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>shadow-maot</code> − <code>shadow</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−48.2 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">−58.8 to −42.8 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">465.7 against 515.3 ms</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-maot-aot</code> − <code>shadow-maot-aot</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">+23.4 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">+17.3 to +27.1 ms</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">245.8 against 224.7 ms</p></td>
-</tr>
-</tbody>
-</table>
-<div class="paragraph">
-<p>A second complete session, limited to these rows with <code>-Pbenchmarks.variants</code>, gave medians of the same sign and
-intervals that overlap these: in the order of the table, −83.3 ms (−89.9 to −78.5), −66.8 ms (−74.7 to −56.4),
-−20.8 ms (−23.8 to −13.6), −53.7 ms (−62.6 to −42.9) and +22.8 ms (+21.1 to +26.6).</p>
-</div>
-<div class="paragraph">
-<p>Without a JDK cache, Runner beats Micronaut AOT&#8217;s Shadow JAR: by about 78 ms when both hold the AOT-optimized
-application, and by about 58 ms when the Runner JAR is the plain <code>-all.jar</code>. With a JDK AOT cache on both sides it does
-not: the single <code>-all-optimized.jar</code> was about 23 ms behind on JDK 25 (on JDK 27 and later, see <a href="#cdsAndAot">[cdsAndAot]</a>). The
-Runner rows used the packaging defaults of the day: STORED, the entry stub, stripped local-variable tables, precompiled
-Logback, which stands down in <code>runner-maot</code> for Micronaut AOT&#8217;s own configurator, and the static service table, which
-applies to both. That is why Micronaut AOT adds less to Runner than to Shadow, whose plain JAR still configures Logback
-with Joran. These runs predate lambda desugaring (<a href="#desugaredLambdas">Desugared lambdas</a>), now also a default, which
-changed the cached single JAR the most; these rows have not been measured again with it.</p>
-</div>
-<div class="paragraph">
-<p>Size and memory go the other way in places. The <code>runner-maot</code> JAR is 2.22 times the <code>shadow-maot</code> JAR on disk
-(32,815,589 against 14,773,677 B) and 0.64 times gzipped (8,368,963 against 13,083,293 B); with their caches the
-deployments are 78,019,045 against 64,007,597 B raw (1.22 times) and 19,033,547 against 24,704,764 B gzipped (0.77
-times). Private memory at readiness is not a paired result: the harness reports it as the difference of the two
-per-variant medians, with no interval, and the uncached gap moved between sessions. <code>runner-maot</code> used 16.4 MiB less
-than <code>shadow-maot</code> in the run above and 43.7 MiB less in the second session; <code>runner-maot-aot</code> used 17.7 and 17.1 MiB
-more than <code>shadow-maot-aot</code>.</p>
-</div>
-</div>
-</div>
-<div class="sect1">
-<h2 id="_publishing_results">Publishing results</h2>
-<div class="sectionbody">
-<div class="paragraph">
-<p>This guide does not retain the early prototype numbers because their raw samples and complete executable
-configuration were not archived publicly. They cannot substantiate a current speedup claim. In particular,
-allocation avoided by defining from a mapped buffer must not be restated as elapsed-time savings. A cold-cache
-result must name its page-cache mode and the storage the report recorded under the work directory: local NVMe
-can hide a difference that network block storage would not.</p>
-</div>
-<div class="paragraph">
-<p>A publishable result must link to an immutable source revision and the raw <code>results.json</code> and <code>summary.md</code>
-produced by that revision. It must identify the machine and operating system, exact JDK build, sample and
-dependency set, packaging variant, benchmark command and properties, warm-up and measured counts, timeout,
-the CPU limit, and application-cache and OS-page-cache conditions. Startup numbers must say whether the metric is external
-process-to-HTTP-readiness, process-to-startup-line, or framework-reported self-time.</p>
-</div>
-<div class="paragraph">
-<p>Attributing a difference to stored dependencies, merged discovery, mapped-buffer definition or another
-mechanism additionally requires a matched ablation that changes only that mechanism. Hash-collision,
-resource-resolution and merged-metadata fixtures validate behavior; they cannot prove a performance cause.
-Until a report meeting these requirements is archived at an immutable public URL, run the harness for the
-environment of interest and treat its output as local descriptive evidence rather than a published result.</p>
+<p>CI runs them weekly and on demand, never as a pull request gate: shared runners are too noisy for that.
+<a href="https://github.com/micronaut-projects/micronaut-runner/blob/master/benchmarks/README.md"><code>benchmarks/README.md</code></a> has every property and the
+harness details.</p>
 </div>
 </div>
 </div>
