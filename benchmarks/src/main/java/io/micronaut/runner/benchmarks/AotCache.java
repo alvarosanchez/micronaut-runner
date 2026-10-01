@@ -264,11 +264,11 @@ final class AotCache {
         // every child JVM.
         List<String> arguments = new ArrayList<>(creationFlags);
         arguments.add("-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize());
-        harness.exercise(source, arguments, request.workloadPaths());
+        String output = harness.exercise(source, arguments, request.workloadPaths());
         try {
             requireUsableCache(temporary);
         } catch (IOException failure) {
-            throw new IOException(failure.getMessage() + " after training", failure);
+            throw new IOException(failure.getMessage() + " after training" + output, failure);
         }
         try {
             Files.move(temporary, cache, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);

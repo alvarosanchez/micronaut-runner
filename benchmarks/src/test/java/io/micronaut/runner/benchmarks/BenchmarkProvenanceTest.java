@@ -65,9 +65,12 @@ class BenchmarkProvenanceTest {
         assertNotEquals(before, after);
     }
 
-    /** One relocation for commands and failure text: the same file gets the same token, and no home path is left. */
+    /**
+     * One relocation for commands, the diagnostic runs' commands and failure text: the same file gets the same token,
+     * and no home path is left.
+     */
     @Test
-    void commandsAndFailureTextUseTheSameTokensAndNoHomePath() {
+    void commandsAndFailureTextUseTheSameTokensAndNoHomePath(@TempDir Path written) throws Exception {
         String home = System.getProperty("user.home");
         RunContext context = BenchmarkFixtures.context(Path.of(home, "runner-relocation-fixture", "reports"), 1,
                 List.of(), CompletenessPolicy.REQUIRED, BenchmarkProvenance.unavailable());
@@ -91,6 +94,16 @@ class BenchmarkProvenanceTest {
                 + " ${output}" + separator + "summary.md, ${work}" + separator + "managed-aot and ${user-home}"
                 + separator + ".gradle", failure);
         assertNull(BenchmarkProvenance.relocate((String) null, context, variant));
+
+        Path log = context.outputDirectory().resolve("diagnostics").resolve("thin-jar-class-load.log");
+        Reports.write(written, context, List.of(BenchmarkFixtures.result(variant)), List.of(
+                new StartupHarness.DiagnosticRun("thin-jar", 42.0, StartupHarness.processCommand(List.of(),
+                        variant.command(), List.of("-Xlog:class+load=info:file=" + log)))));
+        String json = Files.readString(written.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
+        String escaped = separator.replace("\\", "\\\\");
+        assertTrue(json.contains("\"command\": [\"${java}\", \"-Xlog:class+load=info:file=${output}" + escaped
+                + "diagnostics" + escaped + "thin-jar-class-load.log\", \"-jar\", \"${input:0}\"]"), json);
+        assertFalse(json.contains(home.replace("\\", "\\\\")), json);
     }
 
     @Test

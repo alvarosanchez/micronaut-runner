@@ -87,19 +87,22 @@ class StartupHarnessTest {
     }
 
     /**
-     * Something that accepts the readiness connection and never answers, as a desktop application listening on the
-     * loopback address once did, costs one bounded poll at a time and fails the run at its timeout.
+     * A poll's request timeout ends it only until the response headers arrive. An answer whose body never ends, as
+     * a desktop application listening on the loopback address once sent, fails the run one poll timeout after its
+     * startup timeout instead of hanging it; an exercise's workload request is bounded by the startup timeout.
      */
     @Test
-    @Timeout(value = 30, unit = TimeUnit.SECONDS)
-    void aListenerThatNeverAnswersCannotHangTheRun(@TempDir Path directory) throws Exception {
-        try (ServerSocket silent = loopbackListener();
-             StartupHarness harness = new StartupHarness("/ready", Duration.ofSeconds(2),
-                     settings(Map.of(), ReadinessSnapshot::take, StartupHarness.BeforeLaunch.NONE,
-                             Duration.ofMillis(250), silent::getLocalPort))) {
-            StartupHarness.RunFailure failure = assertThrows(StartupHarness.RunFailure.class,
-                    () -> harness.run(fixture("hang", directory.resolve("silent.pid")), 0, false));
-            assertTrue(failure.getMessage().contains("did not answer"), failure.getMessage());
+    @Timeout(value = 60, unit = TimeUnit.SECONDS)
+    void anAnswerThatNeverEndsCannotHangTheRunOrTheExercise(@TempDir Path directory) throws Exception {
+        try (StartupHarness harness = new StartupHarness("/ready", Duration.ofSeconds(10), settings(Map.of(),
+                ReadinessSnapshot::take, StartupHarness.BeforeLaunch.NONE, Duration.ofMillis(250),
+                StartupHarness::freePort))) {
+            StartupHarness.RunFailure run = assertThrows(StartupHarness.RunFailure.class,
+                    () -> harness.run(fixture("stall", directory.resolve("run.pid")), 0, false));
+            assertTrue(run.getMessage().contains("a poll was still waiting for its response"), run.getMessage());
+            StartupHarness.RunFailure exercise = assertThrows(StartupHarness.RunFailure.class, () -> harness.exercise(
+                    fixture("stall-after-ready", directory.resolve("exercise.pid")), List.of(), List.of("/work")));
+            assertTrue(exercise.getMessage().contains("did not answer the workload request"), exercise.getMessage());
         }
     }
 
@@ -218,11 +221,14 @@ class StartupHarnessTest {
     @Test
     void anExerciseAnswersItsWorkloadAndEndsWithSigterm(@TempDir Path directory) throws Exception {
         Path lifecycle = directory.resolve("exercise.pid");
+        String output;
 
         try (StartupHarness harness = harness(Map.of())) {
-            harness.exercise(fixture("success", lifecycle), List.of("-Dfixture.exercise=true"), List.of("/work"));
+            output = harness.exercise(fixture("success", lifecycle), List.of("-Dfixture.exercise=true"),
+                    List.of("/work"));
         }
 
+        assertTrue(output.contains("Startup completed in 12ms"), output);
         assertStopped(lifecycle);
     }
 

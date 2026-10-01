@@ -357,12 +357,13 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
      * @param variant       the variant to start
      * @param extraJvmArgs  JVM arguments for this launch only, placed directly after the variant's {@code java}
      * @param workloadPaths the paths requested once the child is ready
+     * @return the last lines of the child's output, for a caller whose own check of the launch fails
      * @throws RunFailure           if the child fails to answer, a workload request fails, or the child does not
      *                              exit with 0 or 143 in time
      * @throws IOException          if the child cannot be started
      * @throws InterruptedException if a wait is interrupted
      */
-    void exercise(Variant variant, List<String> extraJvmArgs, List<String> workloadPaths)
+    String exercise(Variant variant, List<String> extraJvmArgs, List<String> workloadPaths)
             throws IOException, InterruptedException {
         int port = settings.portSupplier().getAsInt();
         ProcessBuilder builder = processBuilder(variant, extraJvmArgs, port);
@@ -401,6 +402,7 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
                         + tail(launch.capture), exitCode);
             }
             launch.drain.join(settings.shutdownGrace().toMillis());
+            return tail(launch.capture);
         } finally {
             if (launch.process != null && launch.process.isAlive()) {
                 launch.process.destroyForcibly().waitFor(settings.shutdownGrace().toMillis(), TimeUnit.MILLISECONDS);
@@ -465,8 +467,12 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
     /**
      * Spawns the child and polls it until it answers HTTP 200: the timed block of {@link #run}, which
      * {@link #exercise} shares. The clock starts immediately before {@link ProcessBuilder#start()}, and nothing
-     * but polling happens between the spawn and the first 200. Each poll is bounded by the poll timeout on its
-     * own, because the client's request timeout has been seen not to fire.
+     * but polling happens between the spawn and the first 200.
+     *
+     * <p>A poll's request timeout ends it when no response headers arrive, but not when the headers arrive and the
+     * body never ends, and a poll once hung for good with the timeout set. A {@link Watchdog}, armed before the clock
+     * starts and disarmed once the loop has ended, interrupts such a poll one poll timeout after the startup
+     * timeout. Until then its thread only waits, so every poll does exactly what it did without it.</p>
      *
      * @param variant the variant, for failure messages
      * @param builder the child process
@@ -480,64 +486,70 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
             throws IOException, InterruptedException {
         URI readiness = launch.readiness;
         HttpRequest request = launch.request;
-        long pollBound = launch.pollBound;
-        long start = System.nanoTime();
-        Process process = builder.start();
-        launch.process = process;
-        Capture capture = new Capture(start);
-        launch.capture = capture;
-        launch.drain = drain(process, capture);
+        Watchdog watchdog = Watchdog.arm(startupTimeout.plus(settings.pollTimeout()));
+        try {
+            long start = System.nanoTime();
+            Process process = builder.start();
+            launch.process = process;
+            Capture capture = new Capture(start);
+            launch.capture = capture;
+            launch.drain = drain(process, capture);
 
-        long deadline = start + startupTimeout.toNanos();
-        long lastFailureEnd = start;
-        long ready = -1;
-        long firstResponse = -1;
-        int lastStatus = -1;
-        String lastBody = "";
-        while (System.nanoTime() < deadline) {
-            if (!process.isAlive()) {
-                int exitCode = process.exitValue();
-                throw new RunFailure(variant.name() + " exited with status " + exitCode
-                        + " before answering " + readiness + tail(capture), exitCode);
-            }
-            CompletableFuture<HttpResponse<String>> poll =
-                    client.sendAsync(request, HttpResponse.BodyHandlers.ofString());
-            try {
-                HttpResponse<String> response = poll.get(pollBound, TimeUnit.NANOSECONDS);
-                if (response.statusCode() == 200) {
-                    ready = System.nanoTime();
-                    break;
+            long deadline = start + startupTimeout.toNanos();
+            long lastFailureEnd = start;
+            long ready = -1;
+            long firstResponse = -1;
+            int lastStatus = -1;
+            String lastBody = "";
+            while (System.nanoTime() < deadline) {
+                if (!process.isAlive()) {
+                    int exitCode = process.exitValue();
+                    throw new RunFailure(variant.name() + " exited with status " + exitCode
+                            + " before answering " + readiness + tail(capture), exitCode);
                 }
-                if (firstResponse < 0) {
-                    firstResponse = System.nanoTime();
+                try {
+                    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                    if (response.statusCode() == 200) {
+                        ready = System.nanoTime();
+                        break;
+                    }
+                    if (firstResponse < 0) {
+                        firstResponse = System.nanoTime();
+                    }
+                    lastStatus = response.statusCode();
+                    lastBody = response.body();
+                } catch (IOException e) {
+                    // Connection refused for most of the poll, because the server is not listening yet;
+                    // once in a while a connection that was accepted and then dropped mid-handshake.
+                    // Both mean the same thing here: not ready, try again.
                 }
-                lastStatus = response.statusCode();
-                lastBody = response.body();
-            } catch (ExecutionException e) {
-                // Connection refused for most of the poll, because the server is not listening yet;
-                // once in a while a connection that was accepted and then dropped mid-handshake.
-                // Both mean the same thing here: not ready, try again.
-            } catch (TimeoutException e) {
-                // Something accepted the connection and never answered; the next poll tries again.
-                poll.cancel(true);
+                if (firstResponse > 0 && System.nanoTime() - firstResponse > settings.servingGrace().toNanos()) {
+                    throw new RunFailure(variant.name() + " is serving " + readiness + " with HTTP "
+                            + lastStatus + " and has been for " + settings.servingGrace().toMillis() + "ms."
+                            + " The application started; it is not serving the readiness endpoint, which"
+                            + " points at the packaging rather than at a slow start. Response body: "
+                            + snippet(lastBody) + tail(capture), null);
+                }
+                lastFailureEnd = System.nanoTime();
+                Thread.sleep(settings.pollInterval().toMillis());
             }
-            if (firstResponse > 0 && System.nanoTime() - firstResponse > settings.servingGrace().toNanos()) {
-                throw new RunFailure(variant.name() + " is serving " + readiness + " with HTTP "
-                        + lastStatus + " and has been for " + settings.servingGrace().toMillis() + "ms."
-                        + " The application started; it is not serving the readiness endpoint, which"
-                        + " points at the packaging rather than at a slow start. Response body: "
-                        + snippet(lastBody) + tail(capture), null);
+            if (ready < 0) {
+                throw new RunFailure(variant.name() + " did not answer " + readiness + " within "
+                        + startupTimeout + tail(capture), null);
             }
-            lastFailureEnd = System.nanoTime();
-            Thread.sleep(settings.pollInterval().toMillis());
+            launch.start = start;
+            launch.ready = ready;
+            launch.lastFailureEnd = lastFailureEnd;
+        } catch (InterruptedException e) {
+            if (watchdog.fired()) {
+                throw new RunFailure(variant.name() + " did not answer " + readiness + " within " + startupTimeout
+                        + ": a poll was still waiting for its response " + settings.pollTimeout() + " later"
+                        + tail(launch.capture), null);
+            }
+            throw e;
+        } finally {
+            watchdog.disarm();
         }
-        if (ready < 0) {
-            throw new RunFailure(variant.name() + " did not answer " + readiness + " within "
-                    + startupTimeout + tail(capture), null);
-        }
-        launch.start = start;
-        launch.ready = ready;
-        launch.lastFailureEnd = lastFailureEnd;
     }
 
     /**
@@ -806,7 +818,6 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
 
         private final URI readiness;
         private final HttpRequest request;
-        private final long pollBound;
         private Process process;
         private Thread drain;
         private Capture capture;
@@ -817,10 +828,80 @@ final class StartupHarness implements StartupRunner, AutoCloseable {
         Launch(URI readiness, Duration pollTimeout) {
             this.readiness = readiness;
             this.request = HttpRequest.newBuilder(readiness).timeout(pollTimeout).GET().build();
-            this.pollBound = pollTimeout.toNanos();
         }
     }
 
+    /**
+     * Interrupts the thread that armed it once a bound has passed, unless it was disarmed first. Its thread is
+     * already waiting on the watchdog's monitor when {@link #arm} returns, before a launch's clock starts, and it
+     * wakes only when {@link #disarm()} is called after the readiness loop or when the bound has passed.
+     */
+    private static final class Watchdog implements Runnable {
+
+        private final Thread poller = Thread.currentThread();
+        private final long deadline;
+        private boolean waiting;
+        private boolean armed = true;
+        private boolean fired;
+
+        private Watchdog(Duration bound) {
+            this.deadline = System.nanoTime() + bound.toNanos();
+        }
+
+        static Watchdog arm(Duration bound) throws InterruptedException {
+            Watchdog watchdog = new Watchdog(bound);
+            Thread thread = new Thread(watchdog, "startup-benchmark-watchdog");
+            thread.setDaemon(true);
+            synchronized (watchdog) {
+                thread.start();
+                try {
+                    while (!watchdog.waiting) {
+                        watchdog.wait();
+                    }
+                } catch (InterruptedException e) {
+                    watchdog.armed = false;
+                    throw e;
+                }
+            }
+            return watchdog;
+        }
+
+        @Override
+        public synchronized void run() {
+            waiting = true;
+            notifyAll();
+            long remaining = deadline - System.nanoTime();
+            while (armed && remaining > 0) {
+                try {
+                    TimeUnit.NANOSECONDS.timedWait(this, remaining);
+                } catch (InterruptedException e) {
+                    return;
+                }
+                remaining = deadline - System.nanoTime();
+            }
+            if (armed) {
+                fired = true;
+                poller.interrupt();
+            }
+        }
+
+        synchronized boolean fired() {
+            return fired;
+        }
+
+        /** Stops the watchdog, and clears the interrupt it sent, if any: the loop it was sent to has ended. */
+        void disarm() {
+            boolean sent;
+            synchronized (this) {
+                armed = false;
+                notifyAll();
+                sent = fired;
+            }
+            if (sent) {
+                Thread.interrupted();
+            }
+        }
+    }
 
     /**
      * The result of a diagnostic run. Never mixed into the timing statistics.

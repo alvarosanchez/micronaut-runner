@@ -36,9 +36,7 @@ class BenchmarkClaimsTest {
                 List.of("exploded-cp", "runner-extracted-aot"));
         Reports.write(output, BenchmarkFixtures.context(output, 1, List.of(), CompletenessPolicy.REQUIRED,
                         BenchmarkProvenance.unavailable()),
-                unavailable.stream().map(BenchmarkFixtures::result).toList(),
-                List.of(new StartupHarness.DiagnosticRun("exploded-cp", 42.0,
-                        List.of("${java}", "-Xlog:class+load=info:file=${diagnostic-log}", "-jar", "${input:0}"))));
+                unavailable.stream().map(BenchmarkFixtures::result).toList(), List.of());
 
         String json = Files.readString(output.resolve(Reports.RESULTS_FILE), StandardCharsets.UTF_8);
         String policy = json.substring(json.indexOf("\"policy\": {"), json.indexOf("\"provenance\": {"));
@@ -47,7 +45,6 @@ class BenchmarkClaimsTest {
         assertTrue(json.contains("\"osPageCacheState\": \"uncontrolled\""));
         assertTrue(json.contains("\"applicationCacheMode\": \"aot\""));
         assertTrue(json.contains("aggregate shared counts do not prove trained application-class reuse"));
-        assertTrue(json.contains("-Xlog:class+load=info:file=${diagnostic-log}"));
 
         String summary = Files.readString(output.resolve(Reports.SUMMARY_FILE), StandardCharsets.UTF_8);
         assertTrue(summary.contains("**JVM process**: fresh for every sample"));
