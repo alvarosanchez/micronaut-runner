@@ -411,7 +411,7 @@ class MavenBasicSampleTest {
                         }
                         for (MethodModel method : ClassFile.of().parse(bytes).methods()) {
                             if (method.methodName().stringValue().startsWith("$runner$lambda$")) {
-                                bridges.add(layout.relativize(jar) + "!/" + entry.getName() + "#"
+                                bridges.add(relative(layout, jar) + "!/" + entry.getName() + "#"
                                         + method.methodName().stringValue());
                             }
                         }
@@ -422,14 +422,19 @@ class MavenBasicSampleTest {
         return bridges;
     }
 
-    /** The entries of the layout's JARs whose name has {@code $$Lambda$R}. */
+    /** A file's path relative to a directory, with {@code /} on every platform. */
+    private static String relative(Path directory, Path file) {
+        return directory.relativize(file).toString().replace('\\', '/');
+    }
+
+    /** The entries of the layout's JARs whose name has {@code $$Lambda$R}, as {@code jar!/entry}. */
     private static List<String> generatedLambdaClasses(Path layout) throws IOException {
         List<String> generated = new ArrayList<>();
         try (Stream<Path> walk = Files.walk(layout)) {
             for (Path jar : walk.filter(file -> file.toString().endsWith(".jar")).sorted().toList()) {
                 try (JarFile file = new JarFile(jar.toFile())) {
                     file.stream().map(JarEntry::getName).filter(name -> name.contains("$$Lambda$R"))
-                            .forEach(name -> generated.add(layout.relativize(jar) + "!/" + name));
+                            .forEach(name -> generated.add(relative(layout, jar) + "!/" + name));
                 }
             }
         }
