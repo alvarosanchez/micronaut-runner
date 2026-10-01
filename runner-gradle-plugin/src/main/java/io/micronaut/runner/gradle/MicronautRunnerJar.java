@@ -26,6 +26,7 @@ import io.micronaut.runner.build.RunnerJarSpec;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.file.ConfigurableFileCollection;
+import org.gradle.api.file.Directory;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.file.RegularFileProperty;
@@ -91,14 +92,23 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     /** Whether this task packages the layout-source JAR, as the plugin's internal task does. */
     private boolean layoutSource;
 
+    /**
+     * The directory of the layout-source JAR, which takes the place of {@link #getDestinationDirectory()}: set only
+     * by {@link #packageLayoutSource(Provider)}, so that a build script that sets the destination of every task of
+     * this type does not point the internal task at {@code micronautRunnerJar}'s archive.
+     */
+    private final DirectoryProperty layoutSourceDirectory;
+
     /** Creates the task, deriving the archive's location from its naming properties. */
     public MicronautRunnerJar() {
         // A property rather than a derived provider, so that Gradle records this task as its producer.
         archiveFile = getProject().getObjects().fileProperty();
-        archiveFile.set(getDestinationDirectory().file(getArchiveBaseName()
+        layoutSourceDirectory = getProject().getObjects().directoryProperty();
+        Provider<String> name = getArchiveBaseName()
                 .zip(getArchiveVersion().orElse(""), MicronautRunnerJar::appendNamePart)
                 .zip(getArchiveClassifier().orElse(""), MicronautRunnerJar::appendNamePart)
-                .map(name -> name + ".jar")));
+                .map(base -> base + ".jar");
+        archiveFile.set(layoutSourceDirectory.orElse(getDestinationDirectory()).zip(name, Directory::file));
         archiveFile.disallowChanges();
     }
 
@@ -413,8 +423,13 @@ public abstract class MicronautRunnerJar extends DefaultTask {
      * itself when it keeps every lambda. The plugin calls it on its internal layout-source task only. The flag is
      * an input of its own, so that the build cache never hands this task the archive of a packaging task with the
      * same inputs.
+     *
+     * @param directory where the JAR is written, under the name the naming properties give it, whatever
+     *                  {@link #getDestinationDirectory()} says
      */
-    void packageLayoutSource() {
+    void packageLayoutSource(Provider<Directory> directory) {
+        layoutSourceDirectory.set(directory);
+        layoutSourceDirectory.disallowChanges();
         layoutSource = true;
         getInputs().property(LAYOUT_SOURCE_INPUT, true);
     }

@@ -45,7 +45,8 @@ and goals therefore do not extract it: they package a second JAR from the same i
 `target/micronaut-runner/layout-source/`), and extract that one. It keeps the startup profile, which orders each
 nested JAR's entries hot-first, less the generated lambda classes the profile names and this JAR does not have. The
 Runner JAR they ship does not change. With `desugarLambdas=false` or `PRESERVE`, the layout is the Runner JAR's own
-extract. In Maven, list `layout` and `jdk-aot-cache` after `package` in the same build: they take its options from
+extract. A build that points `micronautRunnerJdkAotCache`'s `archiveFile` at another Runner JAR has that JAR
+extracted as it is. In Maven, list `layout` and `jdk-aot-cache` after `package` in the same build: they take its options from
 that run, and the first of them packages the second JAR for both. `aot-report.json` and `app.aot.properties` record
 the SHA-256 of both JARs, as `runnerJarSha256` and `layoutSourceSha256`. With the cache the difference is small: in
 the https://github.com/alvarosanchez/micronaut-runner/actions/runs/36882230170[CI run] of the harness (`benchmark-large`,

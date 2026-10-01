@@ -27,6 +27,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.MethodModel;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -49,6 +51,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -77,6 +80,27 @@ class MavenBasicSampleTest {
 
     /** How long the sample is given to start, print and exit. */
     private static final Duration RUN_TIMEOUT = Duration.ofMinutes(2);
+
+    /** The application JAR of {@code maven-basic}'s extracted layout, named after its Runner JAR. */
+    private static final String APPLICATION_JAR = "maven-basic-0.1.jar";
+
+    /** An application class with a lambda, which the layout test adds to its copy of {@code maven-basic}. */
+    private static final String APPLICATION_LAMBDA = """
+            package com.example;
+
+            import java.util.function.Supplier;
+
+            /** A lambda in the application, which the default Runner JAR desugars and the extracted layout keeps. */
+            public final class Greeting {
+
+                private Greeting() {
+                }
+
+                public static Supplier<String> of(String name) {
+                    return () -> "hello " + name;
+                }
+            }
+            """;
 
     /** Checksum sidecars Gradle publishes for every Maven artifact. */
     private static final Map<String, String> CHECKSUMS = Map.of(
@@ -274,9 +298,10 @@ class MavenBasicSampleTest {
     /**
      * {@code mn-runner:layout} and {@code mn-runner:jdk-aot-cache} extract the layout from a JAR with every lambda
      * kept, which the first of them packages from {@code mn-runner:package}'s spec and the second reuses; the cache
-     * names both JARs. For a build that keeps lambdas anyway, {@code desugarLambdas=false} or {@code PRESERVE}, the
-     * layout is the extract of that build's own archive, and the default layout is exactly that of
-     * {@code desugarLambdas=false}.
+     * names both JARs. The sample gets a class with a lambda, so the application JAR shows it as the dependencies'
+     * JARs do: the shipped JAR desugars both, and the layout keeps both. For a build that keeps lambdas anyway,
+     * {@code desugarLambdas=false} or {@code PRESERVE}, the layout is the extract of that build's own archive, and the
+     * default layout is exactly that of {@code desugarLambdas=false}.
      */
     @Test
     void writesTheLayoutWithLambdasKeptAndTrainsItsCache() throws Exception {
@@ -285,6 +310,7 @@ class MavenBasicSampleTest {
                 + Samples.VERSION + "/micronaut-runner-maven-plugin-" + Samples.VERSION + ".jar");
         requireMavenCanLoadThePlugin();
         Path sample = Samples.copySample(Samples.sample("maven-basic"), temporary.resolve("maven-basic-layout"));
+        Files.writeString(sample.resolve("src/main/java/com/example/Greeting.java"), APPLICATION_LAMBDA);
         Path archive = sample.resolve("target/maven-basic-0.1.jar");
         Path layout = sample.resolve("target/micronaut-runner/layout");
         Path cache = sample.resolve("target/micronaut-runner/jdk-aot-cache");
@@ -300,8 +326,12 @@ class MavenBasicSampleTest {
         Path source = sample.resolve("target/micronaut-runner/layout-source/maven-basic-0.1.jar");
         assertTrue(isRunnerJar(source), () -> "no layout-source JAR at " + source + ":\n" + log);
         Map<String, String> defaultLayout = digests(layout);
-        assertTrue(defaultLayout.containsKey("maven-basic-0.1.jar"), defaultLayout::toString);
+        assertTrue(defaultLayout.containsKey(APPLICATION_JAR), defaultLayout::toString);
         assertEquals(List.of(), generatedLambdaClasses(layout), "the layout keeps every lambda");
+        assertEquals(List.of(), lambdaBridges(layout), "and no class has a desugaring bridge");
+        try (JarFile application = new JarFile(layout.resolve(APPLICATION_JAR).toFile())) {
+            assertNotNull(application.getEntry("com/example/Greeting.class"), "the application's lambda is packaged");
+        }
         Map<String, String> cached = digests(cache);
         cached.keySet().retainAll(defaultLayout.keySet());
         assertEquals(defaultLayout, cached, "both goals extract the same JAR");
@@ -309,8 +339,17 @@ class MavenBasicSampleTest {
         assertTrue(report.contains("\"verdict\": \"passed\""), report);
         assertTrue(report.contains("\"runnerJarSha256\": \"" + sha256(archive) + "\""), report);
         assertTrue(report.contains("\"layoutSourceSha256\": \"" + sha256(source) + "\""), report);
-        assertFalse(defaultLayout.equals(extract(archive, temporary.resolve("extract-default"))),
-                "an extract of the shipped JAR keeps its desugared lambdas");
+        // A hand extract of the shipped JAR keeps the lambdas it desugared, the application's among them.
+        Path handExtract = temporary.resolve("extract-default");
+        Map<String, String> extracted = extract(archive, handExtract);
+        assertEquals(extracted.keySet(), defaultLayout.keySet());
+        List<String> desugared = generatedLambdaClasses(handExtract);
+        assertTrue(desugared.stream().anyMatch(name -> name.startsWith(APPLICATION_JAR
+                + "!/com/example/Greeting$$Lambda$R")), () -> "the application's lambda: " + desugared);
+        assertTrue(desugared.stream().anyMatch(name -> name.startsWith("lib/")), () -> "a dependency's: " + desugared);
+        assertFalse(lambdaBridges(handExtract).isEmpty(), "and bridges in a Java 8 dependency's lambda hosts");
+        assertNotEquals(extracted.get(APPLICATION_JAR), defaultLayout.get(APPLICATION_JAR),
+                "the layout's application JAR keeps its lambda");
 
         for (String option : List.of("-Dmicronaut.runner.desugarLambdas=false", "-Dmicronaut.runner.compression=PRESERVE")) {
             StringBuilder keptLog = new StringBuilder();
@@ -354,6 +393,33 @@ class MavenBasicSampleTest {
 
     private static String sha256(Path file) throws Exception {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+    }
+
+    /**
+     * The {@code $runner$lambda$} methods, which desugaring adds to a Java 8 host, of every class in the layout's
+     * JARs, as {@code jar!/entry#method}.
+     */
+    private static List<String> lambdaBridges(Path layout) throws IOException {
+        List<String> bridges = new ArrayList<>();
+        try (Stream<Path> walk = Files.walk(layout)) {
+            for (Path jar : walk.filter(file -> file.toString().endsWith(".jar")).sorted().toList()) {
+                try (JarFile file = new JarFile(jar.toFile())) {
+                    for (JarEntry entry : file.stream().filter(e -> e.getName().endsWith(".class")).toList()) {
+                        byte[] bytes;
+                        try (InputStream in = file.getInputStream(entry)) {
+                            bytes = in.readAllBytes();
+                        }
+                        for (MethodModel method : ClassFile.of().parse(bytes).methods()) {
+                            if (method.methodName().stringValue().startsWith("$runner$lambda$")) {
+                                bridges.add(layout.relativize(jar) + "!/" + entry.getName() + "#"
+                                        + method.methodName().stringValue());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return bridges;
     }
 
     /** The entries of the layout's JARs whose name has {@code $$Lambda$R}. */

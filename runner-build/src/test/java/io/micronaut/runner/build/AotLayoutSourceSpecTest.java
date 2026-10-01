@@ -99,19 +99,30 @@ class AotLayoutSourceSpecTest {
 
     @Test
     void toBuilderCopiesEveryValueOfTheSpec() throws IllegalAccessException {
+        // Every value differs from what a new builder starts with, so a value toBuilder leaves out shows.
         RunnerJarSpec spec = fullSpec(temp.resolve("app-all.jar"))
                 .startupClasses(temp.resolve("startup-classes.txt"))
                 .applicationManifest(temp.resolve("thin.jar"))
+                .compression(Compression.HYBRID)
+                .desugarLambdas(false)
+                .layoutSource(true)
+                .build();
+        RunnerJarSpec fresh = RunnerJarSpec.builder()
+                .mainClass("other.Main")
+                .applicationOutput(List.of(temp.resolve("other-classes")))
+                .output(temp.resolve("other-all.jar"))
                 .build();
 
         RunnerJarSpec copy = spec.toBuilder().build();
 
-        // Every field, so that one added to the spec without a line in toBuilder fails here.
+        // Every field, so that one added to the spec fails here until the fixture sets it and toBuilder copies it.
         for (Field field : RunnerJarSpec.class.getDeclaredFields()) {
             if (Modifier.isStatic(field.getModifiers())) {
                 continue;
             }
             field.setAccessible(true);
+            assertNotEquals(field.get(fresh), field.get(spec), () -> field.getName() + " has the value a new"
+                    + " builder starts with, so the fixture cannot show whether toBuilder copies it");
             assertEquals(field.get(spec), field.get(copy), field.getName());
         }
     }

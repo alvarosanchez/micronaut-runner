@@ -36,6 +36,7 @@ import org.gradle.api.plugins.ExtensionAware;
 import org.gradle.api.plugins.JavaApplication;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.plugins.JavaPluginExtension;
+import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.SourceSet;
@@ -291,10 +292,10 @@ public final class MicronautRunnerPlugin implements Plugin<Project> {
                             + ", with every lambda kept (internal)");
                     sameInputsAs(task, runnerJar.get());
                     // Its own directory, under micronautRunnerJar's file name, which names the layout's
-                    // application JAR.
-                    task.getDestinationDirectory().convention(project.getLayout().getBuildDirectory()
+                    // application JAR. No destinationDirectory setting reaches it, including one a build script
+                    // makes for every task of the type, so it never writes over micronautRunnerJar's archive.
+                    task.packageLayoutSource(project.getLayout().getBuildDirectory()
                             .dir("micronaut-runner/layout-source"));
-                    task.packageLayoutSource();
                     onlyIfEnabled(task, extension);
                 });
         project.getTasks().register(LAYOUT_TASK_NAME, MicronautRunnerLayout.class, task -> {
@@ -313,9 +314,11 @@ public final class MicronautRunnerPlugin implements Plugin<Project> {
                     task.setDescription("Trains and verifies a JDK AOT cache for the runner jar, in its own"
                             + " directory with a launch argfile (experimental)");
                     task.getArchiveFile().convention(runnerJar.flatMap(MicronautRunnerJar::getArchiveFile));
-                    // Only the layout target extracts it, so singleJar never packages it.
-                    task.getLayoutSourceFile().convention(layoutSourceOf(project, task.getJdkAotCache(),
-                            layoutSource));
+                    // Only the layout target of micronautRunnerJar's archive extracts it, so singleJar never
+                    // packages it.
+                    task.extractLayoutFrom(layoutSourceOf(task.getArchiveFile(), task.getJdkAotCache().getTarget(),
+                            runnerJar.flatMap(MicronautRunnerJar::getArchiveFile),
+                            layoutSource.flatMap(MicronautRunnerJar::getArchiveFile)));
                     task.getJavaLauncher().convention(toolchains.launcherFor(java.getToolchain()));
                     task.getJdkBuild().convention(task.getJavaLauncher().map(launcher ->
                             launcher.getMetadata().getJavaRuntimeVersion() + " / "
@@ -460,19 +463,35 @@ public final class MicronautRunnerPlugin implements Plugin<Project> {
     }
 
     /**
-     * The JAR {@code micronautRunnerJdkAotCache} extracts: the layout-source task's archive for the layout target,
-     * and nothing for any other, so that the single-JAR target does not package it.
+     * The JAR {@code micronautRunnerJdkAotCache} extracts its layout from: the layout-source task's archive for the
+     * layout target while the task's {@code archiveFile} is {@code micronautRunnerJar}'s archive, and the task's
+     * {@code archiveFile} itself otherwise. So the single-JAR target does not package the layout source, and a build
+     * that points {@code archiveFile} at another Runner JAR has that JAR extracted, as it had before the layout
+     * source existed, rather than a cache trained on the layout of {@code micronautRunnerJar}'s inputs.
      *
-     * @param project      the project
-     * @param spec         the task's cache settings
-     * @param layoutSource the layout-source task
-     * @return the archive, or no value
+     * @param archive      the task's {@code archiveFile}
+     * @param target       the task's target
+     * @param shipped      {@code micronautRunnerJar}'s archive
+     * @param layoutSource the layout-source task's archive
+     * @return the JAR, which always has a value when {@code archive} has one
      */
-    private static Provider<RegularFile> layoutSourceOf(Project project, JdkAotCacheSpec spec,
-                                                        TaskProvider<MicronautRunnerJar> layoutSource) {
-        RegularFileProperty none = project.getObjects().fileProperty();
-        return spec.getTarget().orElse(AotTarget.DEFAULT.value())
-                .flatMap(target -> isLayout(target) ? layoutSource.flatMap(MicronautRunnerJar::getArchiveFile) : none);
+    private static Provider<RegularFile> layoutSourceOf(RegularFileProperty archive, Property<String> target,
+                                                        Provider<RegularFile> shipped,
+                                                        Provider<RegularFile> layoutSource) {
+        return target.orElse(AotTarget.DEFAULT.value()).flatMap(value -> isLayout(value)
+                ? archive.flatMap(jar -> isSameFile(jar, shipped.getOrNull()) ? layoutSource : archive)
+                : archive);
+    }
+
+    /**
+     * Whether two locations are one file. Only the locations are read, never what a task writes there.
+     *
+     * @param file  a file
+     * @param other another file, or {@code null}
+     * @return whether both are the same file
+     */
+    private static boolean isSameFile(RegularFile file, @Nullable RegularFile other) {
+        return other != null && file.getAsFile().equals(other.getAsFile());
     }
 
     /**

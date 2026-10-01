@@ -256,6 +256,25 @@ class JdkAotCacheFunctionalTest extends AbstractFunctionalTest {
         assertFalse(LayoutSourceFunctionalTest.scheduled(dryRun, LAYOUT_SOURCE_TASK), dryRun::getOutput);
     }
 
+    /**
+     * A build that points {@code archiveFile} at another Runner JAR has the layout target extract that JAR, as
+     * before the layout source existed, so neither {@code micronautRunnerJar} nor the layout source is packaged.
+     */
+    @Test
+    void aRepointedArchiveIsExtractedAsItIs(@TempDir Path directory) throws IOException {
+        writeFixture(directory, """
+                tasks.named('micronautRunnerJdkAotCache') {
+                    archiveFile = layout.projectDirectory.file('prebuilt-all.jar')
+                }
+                """, "");
+
+        BuildResult dryRun = build(directory, "micronautRunnerJdkAotCache", "--dry-run");
+
+        assertTrue(LayoutSourceFunctionalTest.scheduled(dryRun, CACHE_TASK), dryRun::getOutput);
+        assertFalse(LayoutSourceFunctionalTest.scheduled(dryRun, RUNNER_JAR_TASK), dryRun::getOutput);
+        assertFalse(LayoutSourceFunctionalTest.scheduled(dryRun, LAYOUT_SOURCE_TASK), dryRun::getOutput);
+    }
+
     @Test
     void anUnknownTargetFailsNamingBoth(@TempDir Path directory) throws IOException {
         writeFixture(directory, "micronautRunner { jdkAotCache { target = 'nested' } }", "");

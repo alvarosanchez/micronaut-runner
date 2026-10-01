@@ -47,6 +47,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class MicronautRunnerPluginTest {
 
+    /** The plugin's internal task, which packages the JAR the extracted layout is written from. */
+    private static final String LAYOUT_SOURCE_TASK_NAME = "micronautRunnerLayoutSource";
+
     @Test
     void theExtensionIsMicronautRunnerWhenAMicronautPluginComesFirst(@TempDir Path directory) {
         Project project = ProjectBuilder.builder().withProjectDir(directory.toFile()).build();
@@ -153,6 +156,65 @@ class MicronautRunnerPluginTest {
         assertFalse(plain.getApplicationOutput().getBuildDependencies().getDependencies(null)
                 .contains(optimizedJitJar), "micronautRunnerJar builds optimizedJitJar");
         assertEquals(new File(libs, "demo-all.jar"), plain.getArchiveFile().get().getAsFile());
+    }
+
+    /**
+     * The internal layout-source task writes under {@code micronautRunnerJar}'s file name into a directory of its
+     * own, which a destination a build script sets for every task of the type does not move: it never writes over
+     * the shipped archive.
+     */
+    @Test
+    void theLayoutSourceKeepsItsDirectoryWhenEveryRunnerJarTaskIsMoved(@TempDir Path directory) {
+        Project project = ProjectBuilder.builder().withProjectDir(directory.toFile()).withName("demo").build();
+        project.getPluginManager().apply("java");
+        project.getPluginManager().apply(MicronautRunnerPlugin.class);
+        project.setVersion("1.2.3");
+        project.getTasks().withType(MicronautRunnerJar.class).configureEach(task -> {
+            task.getDestinationDirectory().set(project.getLayout().getBuildDirectory().dir("dist"));
+            task.getArchiveClassifier().set("app");
+        });
+        File build = project.getLayout().getBuildDirectory().get().getAsFile();
+
+        MicronautRunnerJar shipped = project.getTasks()
+                .named(MicronautRunnerPlugin.TASK_NAME, MicronautRunnerJar.class).get();
+        MicronautRunnerJar layoutSource = project.getTasks()
+                .named(LAYOUT_SOURCE_TASK_NAME, MicronautRunnerJar.class).get();
+
+        assertEquals(new File(build, "dist/demo-1.2.3-app.jar"), shipped.getArchiveFile().get().getAsFile());
+        assertEquals(new File(build, "micronaut-runner/layout-source/demo-1.2.3-app.jar"),
+                layoutSource.getArchiveFile().get().getAsFile(), "the naming properties apply, the directory not");
+    }
+
+    /**
+     * {@code micronautRunnerJdkAotCache} extracts the layout-source JAR for the layout target of
+     * {@code micronautRunnerJar}'s archive only: the single-JAR target extracts nothing it would package, and a
+     * build that points {@code archiveFile} at another Runner JAR has that JAR extracted.
+     */
+    @Test
+    void theCacheExtractsTheLayoutSourceOnlyForTheLayoutOfTheShippedArchive(@TempDir Path directory) {
+        Project project = ProjectBuilder.builder().withProjectDir(directory.toFile()).withName("demo").build();
+        project.getPluginManager().apply("java");
+        project.getPluginManager().apply(MicronautRunnerPlugin.class);
+        MicronautRunnerJdkAotCache cache = project.getTasks()
+                .named(MicronautRunnerPlugin.JDK_AOT_CACHE_TASK_NAME, MicronautRunnerJdkAotCache.class).get();
+        File shipped = project.getTasks().named(MicronautRunnerPlugin.TASK_NAME, MicronautRunnerJar.class).get()
+                .getArchiveFile().get().getAsFile();
+        File layoutSource = project.getTasks().named(LAYOUT_SOURCE_TASK_NAME, MicronautRunnerJar.class).get()
+                .getArchiveFile().get().getAsFile();
+
+        assertEquals(layoutSource, cache.layoutSourceFile().get().getAsFile(), "the default target is the layout");
+
+        cache.getJdkAotCache().getTarget().set("singleJar");
+        assertEquals(shipped, cache.layoutSourceFile().get().getAsFile());
+
+        cache.getJdkAotCache().getTarget().set("layout");
+        File other = project.file("other-all.jar");
+        cache.getArchiveFile().set(other);
+        assertEquals(other, cache.layoutSourceFile().get().getAsFile(), "a repointed archive is extracted as it is");
+
+        cache.getArchiveFile().set(project.getLayout().file(project.provider(() -> shipped)));
+        assertEquals(layoutSource, cache.layoutSourceFile().get().getAsFile(),
+                "micronautRunnerJar's archive, however it is set");
     }
 
     private static MicronautRunnerExtension extension(Project project) {
