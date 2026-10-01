@@ -210,10 +210,11 @@ startup profile, so the cache also holds what the preload loads. On `benchmark-l
 37.5 ms sooner than explicit CDS (95% CI 32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS, measured before
 the static service table (<<staticServices>>). With the table it was 25.6 to 32.4 ms later than the extracted layout and
 16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <<aotLayout>>). On JDK 27 (build 27),
-trained with the property, it served 1,844 of 1,850 non-lambda `io.micronaut` classes from the cache before the first
-request (13 of 1,927 without it) and was ready 99 to 109 ms sooner than the same JAR trained without it, at about 6 MiB
-more maximum RSS; it was 25 to 35 ms behind Shadow and 45 to 49 ms behind the extracted layout, each with its AOT cache
-(three runs of 20 pairs), so the layout (<<aotLayout>>) stays the faster option.
+with lambdas desugared (<<lambdaGap>>) and trained with the property, it served 1,838 of 1,844 non-lambda
+`io.micronaut` classes from the cache before the first request (13 of 1,923 without it) and was ready 107 to 109 ms
+sooner than the same JAR trained without it, at the same 135 MiB maximum RSS. It was level with Shadow (1.7 to 6.2 ms
+ahead, one of three intervals below zero) and 7 to 9 ms behind the extracted layout, each with its AOT cache (three runs
+of 20 pairs), so the layout (<<aotLayout>>) stays the faster option.
 
 [[lambdaGap]]
 === Closing the lambda gap on the single JAR
@@ -224,11 +225,11 @@ says. So Runner desugars lambdas when it packages (<<desugaredLambdas>>), on by 
 ordinary classes, and the cache holds them. On `benchmark-large` with JDK 25.0.4.1 (30 pairs), desugaring made the
 single JAR 38.0 ms faster with its AOT cache (95% CI 33.9 to 41.6 ms) and 38.9 ms faster without one (95% CI 30.2 to
 47.3 ms). With its cache it was then 16.0 ms ahead of Shadow's (95% CI 11.1 to 22.7 ms), at 144.4 MiB maximum RSS
-against Shadow's 133.6 MiB. The single-JAR figures above were taken before lambdas were desugared. The cached gain
-holds for JDK 25 and 26; on JDK 27 the single JAR's cache holds no application class (see the first section), and the
-extracted layout is the cached deployment. What is left of the cached difference: the 29 sites still excluded (none on
-this sample's startup path), about 40 string concatenation sites, the per-class cost of reusing unregistered classes,
-and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT cache
+against Shadow's 133.6 MiB. The JDK 25 single-JAR figures above were taken before lambdas were desugared. On JDK 27
+(build 27), with the cache trained with the property (<<aotSingleJar>>), desugaring made the single JAR 36.5 to 38.7 ms
+faster with its AOT cache (three runs of 20 pairs). What is left of the cached difference: the 29 sites still excluded
+(none on this sample's startup path), about 40 string concatenation sites, the per-class cost of reusing unregistered
+classes, and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT cache
 remains the parity option, with Shadow's RSS.
 
 == Zero-pipeline option: `-XX:+AutoCreateSharedArchive`
@@ -245,7 +246,8 @@ In the training script, use `CACHE=app.jsa` and `-XX:ArchiveClassesAtExit="$CACH
 `-XX:AOTCacheOutput="$CACHE"`; nothing else changes. Run with `-XX:SharedArchiveFile=app.jsa`, and `-Xshare:on` to
 require it. On `benchmark-large` with JDK 25.0.4.1 its archive was 31.4 MB against the AOT cache's 49.5 MB, for 37.5 ms
 later readiness and about 15 MiB more RSS. On JDK 27 (build 27) the single JAR's AOT cache, trained with the property
-(<<aotSingleJar>>), was ready 29 to 33 ms sooner than its dynamic CDS archive (three runs of 20 pairs).
+(<<aotSingleJar>>), was ready 27 to 32 ms sooner than its dynamic CDS archive, at 7 MiB less maximum RSS (three runs
+of 20 pairs, lambdas desugared).
 
 == Verifying that it worked
 
