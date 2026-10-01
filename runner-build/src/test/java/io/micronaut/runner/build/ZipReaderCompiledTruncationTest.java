@@ -163,8 +163,11 @@ class ZipReaderCompiledTruncationTest {
         return output;
     }
 
-    /** The forked JVM: warms the call up on a small entry, truncates a second archive under it and calls it. */
-    public static final class Probe {
+    /**
+     * The forked JVM: warms the call up on a small entry, truncates a second archive under it and calls it. Since
+     * JDK 25 the launcher runs a {@code main} method that is neither public nor in a public class.
+     */
+    static final class Probe {
 
         private static long sink;
 
@@ -177,7 +180,7 @@ class ZipReaderCompiledTruncationTest {
          * @param args the {@link Case} and the directory to write the two archives in
          * @throws Exception if the archives cannot be written
          */
-        public static void main(String[] args) throws Exception {
+        static void main(String[] args) throws Exception {
             Case probe = Case.valueOf(args[0]);
             Path directory = Path.of(args[1]);
             Path warm = archive(directory.resolve("warm-up.jar"), probe, probe.payload.bytes(4 * 1024));
