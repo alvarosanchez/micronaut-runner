@@ -15,7 +15,7 @@
  */
 package io.micronaut.runner.benchmarks;
 
-import io.micronaut.runner.build.AotCacheOutput;
+import io.micronaut.runner.RunnerClassLoader;
 import io.micronaut.runner.build.aotcache.AotCacheGate;
 import io.micronaut.runner.build.aotcache.JdkProbe;
 
@@ -39,6 +39,12 @@ import java.util.concurrent.TimeUnit;
  * environment, command prefix, port selection and readiness polling.
  */
 final class AotCache {
+
+    /**
+     * The launcher's AOT training mode, which the training launch of a source that enters through the Runner
+     * launcher adds, as runner-build's single-JAR target adds it to its recording launch.
+     */
+    private static final String AOT_TRAINING_ARGUMENT = "-D" + RunnerClassLoader.AOT_TRAINING_PROPERTY + "=true";
 
     /** The training JDK's probe result, taken once per harness run. */
     private static CreationProbe creationProbe;
@@ -151,7 +157,7 @@ final class AotCache {
      */
     static List<String> trainingArguments(Variant source) {
         return source.requestedEntryMode() == EntryMode.STANDARD_LOADER ? List.of()
-                : List.of(AotCacheOutput.AOT_TRAINING_ARGUMENT);
+                : List.of(AOT_TRAINING_ARGUMENT);
     }
 
     /**

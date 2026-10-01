@@ -60,97 +60,97 @@ import java.util.Set;
  * {@code io.micronaut.runner} replaces it, with the same task names and the same {@code micronaut { runner {} }}
  * block, and the two refuse to run in one build.</p>
  *
- * <p>The plugin creates the {@value #EXTENSION_NAME} extension, a {@link MicronautRunnerExtension}, which is
+ * <p>The plugin creates the {@code micronautRunner} extension, a {@link MicronautRunnerExtension}, which is
  * also {@code micronaut.runner} in a build that applies a Micronaut plugin. It registers the
- * {@value #TASK_NAME} task, wires it into {@code assemble} and exposes its archive as the
- * {@value #ELEMENTS_CONFIGURATION_NAME} configuration. It needs no configuration in a project that already
+ * {@code micronautRunnerJar} task, wires it into {@code assemble} and exposes its archive as the
+ * {@code micronautRunnerElements} configuration. It needs no configuration in a project that already
  * applies the {@code application} plugin: the main class comes from the {@code application} block, the
  * application classes and resources from the main source set's output, and the dependencies from the
  * runtime classpath in resolution order.</p>
  *
  * <p>A project that applies {@code io.micronaut.aot} together with a Micronaut application or library plugin
- * also gets {@value #OPTIMIZED_TASK_NAME}, in {@code assemble} too. It packages the archive of Micronaut AOT's
+ * also gets {@code optimizedMicronautRunnerJar}, in {@code assemble} too. It packages the archive of Micronaut AOT's
  * {@code optimizedJitJar} task as the application layer, with the same dependencies and options, into
  * {@code -all-optimized.jar}, as Shadow users get {@code optimizedJitJarAll} beside {@code shadowJar}.
- * {@value #TASK_NAME} never packages Micronaut AOT output, and this plugin never applies or runs Micronaut AOT
+ * {@code micronautRunnerJar} never packages Micronaut AOT output, and this plugin never applies or runs Micronaut AOT
  * on its own.</p>
  *
- * <p>Only a project that applies a Shadow plugin also gets {@value #SHADOW_COLLISION_TASK_NAME}, which each
+ * <p>Only a project that applies a Shadow plugin also gets {@code validateMicronautRunnerShadowOutputs}, which each
  * Runner task and the Shadow task that writes the same archive name by default depend on.</p>
  *
- * <p>It also registers {@value #RECORD_TASK_NAME}, which launches the archive and records the classes it loads
+ * <p>It also registers {@code recordStartupProfile}, which launches the archive and records the classes it loads
  * at startup to {@value io.micronaut.runner.build.StartupProfileRecorder#PROFILE_LOCATION}. The task runs only
  * when it is asked for. Once the file exists, the archive embeds it, and the launcher preloads its classes.</p>
  *
- * <p>Experimentally, and only in this interim plugin, it registers {@value #JDK_AOT_CACHE_TASK_NAME}, which trains
+ * <p>Experimentally, and only in this interim plugin, it registers {@code micronautRunnerJdkAotCache}, which trains
  * and verifies a JDK AOT cache for the archive's extracted layout (or the archive itself) with the project's
- * toolchain, and {@value #LAYOUT_TASK_NAME}, which writes the layout alone. {@code assemble} builds the cache only
+ * toolchain, and {@code micronautRunnerLayout}, which writes the layout alone. {@code assemble} builds the cache only
  * with {@code jdkAotCache.enabled = true}.</p>
  *
  * @since 1.0
  */
-public class MicronautRunnerPlugin implements Plugin<Project> {
+public final class MicronautRunnerPlugin implements Plugin<Project> {
 
     /** The name of the task this plugin registers in every project. */
-    public static final String TASK_NAME = "micronautRunnerJar";
+    static final String TASK_NAME = "micronautRunnerJar";
 
     /**
      * The task that packages the Micronaut AOT-optimized application. It exists only in a project that applies
      * {@code io.micronaut.aot} and a Micronaut application or library plugin, which is when Micronaut AOT
      * registers the {@code optimizedJitJar} task whose archive this one packages.
      */
-    public static final String OPTIMIZED_TASK_NAME = "optimizedMicronautRunnerJar";
+    static final String OPTIMIZED_TASK_NAME = "optimizedMicronautRunnerJar";
 
     /**
      * The task that records the startup profile. It launches the application, so it is never part of
      * {@code assemble}, {@code build} or {@code check}.
      */
-    public static final String RECORD_TASK_NAME = "recordStartupProfile";
+    static final String RECORD_TASK_NAME = "recordStartupProfile";
 
     /**
      * The task that writes the extracted layout, for a build that trains its JDK AOT cache elsewhere. Experimental,
      * and part of this interim plugin only.
      */
-    public static final String LAYOUT_TASK_NAME = "micronautRunnerLayout";
+    static final String LAYOUT_TASK_NAME = "micronautRunnerLayout";
 
     /**
      * The task that trains and verifies a JDK AOT cache. It is part of {@code assemble} only with
      * {@code jdkAotCache.enabled = true}. Experimental, and part of this interim plugin only.
      */
-    public static final String JDK_AOT_CACHE_TASK_NAME = "micronautRunnerJdkAotCache";
+    static final String JDK_AOT_CACHE_TASK_NAME = "micronautRunnerJdkAotCache";
 
     /**
      * The task that checks Runner and Shadow output locations before either producer executes. It exists
      * only in a project that applies a Shadow plugin.
      */
-    public static final String SHADOW_COLLISION_TASK_NAME = "validateMicronautRunnerShadowOutputs";
+    static final String SHADOW_COLLISION_TASK_NAME = "validateMicronautRunnerShadowOutputs";
 
     /** The name of the extension this plugin creates on the project. */
-    public static final String EXTENSION_NAME = "micronautRunner";
+    static final String EXTENSION_NAME = "micronautRunner";
 
     /**
      * The consumable configuration that carries the archive, for another project of the build or for a
      * publication.
      */
-    public static final String ELEMENTS_CONFIGURATION_NAME = "micronautRunnerElements";
+    static final String ELEMENTS_CONFIGURATION_NAME = "micronautRunnerElements";
 
     /**
      * The {@link Usage} of {@value #ELEMENTS_CONFIGURATION_NAME}. It is its own, so that no Java consumer
      * selects the runner jar by accident.
      */
-    public static final String USAGE = "micronaut-runner";
+    static final String USAGE = "micronaut-runner";
 
     /**
      * The default archive classifier. It matches the one the Shadow plugin uses, so build scripts,
      * Dockerfiles and CI jobs that already refer to the shaded artifact keep working unchanged.
      */
-    public static final String DEFAULT_CLASSIFIER = "all";
+    static final String DEFAULT_CLASSIFIER = "all";
 
     /**
      * The default archive classifier of {@value #OPTIMIZED_TASK_NAME}. It matches the one Micronaut AOT gives
      * {@code optimizedJitJarAll}, its Shadow JAR of the optimized application.
      */
-    public static final String OPTIMIZED_CLASSIFIER = "all-optimized";
+    static final String OPTIMIZED_CLASSIFIER = "all-optimized";
 
     /** The Micronaut Gradle plugin's Runner plugin, which replaces this one. */
     private static final String UPSTREAM_PLUGIN_ID = "io.micronaut.runner";

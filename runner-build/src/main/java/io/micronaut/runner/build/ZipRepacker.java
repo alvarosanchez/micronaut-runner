@@ -65,7 +65,7 @@ import java.util.zip.Deflater;
  *
  * <p>What a class transform changes: {@link #repack(ZipReader, OutputStream, ClassTransformPipeline.JarRun)}
  * runs the {@link ClassTransformPipeline} over the jar's classes, so a class a step rewrites keeps its name and
- * MS-DOS time and carries the size and CRC-32 of its new bytes. The public {@code repack} methods run no
+ * MS-DOS time and carries the size and CRC-32 of its new bytes. The other {@code repack} methods run no
  * transform, order nothing and keep every entry's bytes.</p>
  *
  * <p>What is dropped: every extra field, including ZIP64 ones, since {@link ZipWriter} re-derives what it
@@ -108,7 +108,7 @@ final class ZipRepacker {
      * @throws IOException if the source cannot be read, an entry's content does not match its recorded
      *                     CRC-32, or the target cannot be written
      */
-    public static RepackResult repack(ZipReader source, OutputStream target) throws IOException {
+    static RepackResult repack(ZipReader source, OutputStream target) throws IOException {
         return repack(source, target, null);
     }
 
@@ -390,7 +390,7 @@ final class ZipRepacker {
      * @return the entries of the produced jar, with offsets relative to its first byte
      * @throws IOException if either file cannot be read or written, or an entry fails its CRC-32 check
      */
-    public static RepackResult repack(Path source, Path target) throws IOException {
+    static RepackResult repack(Path source, Path target) throws IOException {
         Objects.requireNonNull(target, "target");
         try (ZipReader reader = ZipReader.open(source);
              OutputStream out = new BufferedOutputStream(Files.newOutputStream(target), COPY_BUFFER_SIZE)) {

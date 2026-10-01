@@ -15,7 +15,7 @@
  */
 package io.micronaut.runner.build.aotcache;
 
-import io.micronaut.core.annotation.Experimental;
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.training.TrainingDriver;
@@ -53,20 +53,23 @@ import java.util.regex.Pattern;
  *     <li><b>Coverage.</b> From that launch's class-load log, up to the end of its workload: at least
  *     {@link AotCacheSettings#minCoverage()} of the classes come from the cache, and every {@code io.micronaut}
  *     class that does not is a lambda proxy or one the recording named as skipped because it failed
- *     verification or is a JFR event class. With {@link AotCacheSettings#enforceCoverage()} off, the numbers are
- *     only reported.</li>
+ *     verification or is a JFR event class. With the settings' {@code enforceCoverage} off, the numbers are only
+ *     reported.</li>
  * </ol>
+ *
+ * <p>Internal: {@link #coverage(List, List)} is public only for Runner's own benchmarks, which count what a cached
+ * launch took from the cache. It may change in any release.</p>
  *
  * @since 1.0
  */
-@Experimental
+@Internal
 public final class AotCacheGate {
 
     /** The strict smoke launch's output, relative to the output directory. */
-    public static final String SMOKE_LOG = "aot-verify.log";
+    static final String SMOKE_LOG = "aot-verify.log";
 
     /** The strict smoke launch's class-load log, up to the end of its workload, relative to the output directory. */
-    public static final String CLASS_LOAD_LOG = "aot-verify-class-load.log";
+    static final String CLASS_LOAD_LOG = "aot-verify-class-load.log";
 
     /** The whole class-load log, which the JVM writes until it exits. */
     private static final String CLASS_LOAD_LOG_FULL = "aot-verify-class-load.full.log";
@@ -126,19 +129,19 @@ public final class AotCacheGate {
      *                              has been written
      * @throws InterruptedException if the thread is interrupted; every launch has been reaped by then
      */
-    public static AotCacheReport verify(AotCacheSettings settings,
-                                        JdkProbe jdk,
-                                        Path java,
-                                        Path directory,
-                                        String jarName,
-                                        TrainingSettings training,
-                                        String recordStop,
-                                        BuildLogger log) throws IOException, InterruptedException {
+    static AotCacheReport verify(AotCacheSettings settings,
+                                 JdkProbe jdk,
+                                 Path java,
+                                 Path directory,
+                                 String jarName,
+                                 TrainingSettings training,
+                                 String recordStop,
+                                 BuildLogger log) throws IOException, InterruptedException {
         Path dir = directory.toAbsolutePath().normalize();
         // Every launch runs in the directory, where a relative path would name another file.
         Path executable = java.toAbsolutePath();
         Map<String, String> identity = AotLaunchOptions.readIdentity(dir.resolve(AotLaunchOptions.IDENTITY_FILE));
-        Findings findings = new Findings(jdk, identity, recordStop, settings.verifyProbes());
+        Findings findings = new Findings(jdk, identity, jarName, recordStop, settings.verifyProbes());
 
         // 0. Identity, before any launch.
         String mismatch = identityMismatch(jdk, identity);
@@ -418,28 +421,76 @@ public final class AotCacheGate {
     /**
      * What a strict launch took from the cache.
      *
-     * @param classesLoaded         the classes it loaded
-     * @param classesFromCache      how many of them came from the cache
-     * @param micronautLoaded       the {@code io.micronaut} classes it loaded
-     * @param micronautFromCache    how many of them came from the cache
-     * @param micronautNotFromCache the names of the others, in load order
-     * @param unexpected            those of them that are neither lambda proxies nor skipped by the recording
-     * @param runtimeLambdas        the lambda proxy classes it spun instead of loading them from the cache
+     * <p>Internal: {@link #summary()} is public only for Runner's own benchmarks. It may change in any
+     * release.</p>
      */
-    public record Coverage(int classesLoaded,
-                           int classesFromCache,
-                           int micronautLoaded,
-                           int micronautFromCache,
-                           List<String> micronautNotFromCache,
-                           List<String> unexpected,
-                           int runtimeLambdas) {
+    @Internal
+    public static final class Coverage {
+
+        private final int classesLoaded;
+        private final int classesFromCache;
+        private final int micronautLoaded;
+        private final int micronautFromCache;
+        private final List<String> micronautNotFromCache;
+        private final List<String> unexpected;
+        private final int runtimeLambdas;
+
+        /**
+         * Counts what a strict launch took from the cache.
+         *
+         * @param classesLoaded         the classes it loaded
+         * @param classesFromCache      how many of them came from the cache
+         * @param micronautLoaded       the {@code io.micronaut} classes it loaded
+         * @param micronautFromCache    how many of them came from the cache
+         * @param micronautNotFromCache the names of the others, in load order
+         * @param unexpected            those of them that are neither lambda proxies nor skipped by the recording
+         * @param runtimeLambdas        the lambda proxy classes it spun instead of loading them from the cache
+         */
+        Coverage(int classesLoaded, int classesFromCache, int micronautLoaded, int micronautFromCache,
+                 List<String> micronautNotFromCache, List<String> unexpected, int runtimeLambdas) {
+            this.classesLoaded = classesLoaded;
+            this.classesFromCache = classesFromCache;
+            this.micronautLoaded = micronautLoaded;
+            this.micronautFromCache = micronautFromCache;
+            this.micronautNotFromCache = List.copyOf(micronautNotFromCache);
+            this.unexpected = List.copyOf(unexpected);
+            this.runtimeLambdas = runtimeLambdas;
+        }
+
+        int classesLoaded() {
+            return classesLoaded;
+        }
+
+        int classesFromCache() {
+            return classesFromCache;
+        }
+
+        int micronautLoaded() {
+            return micronautLoaded;
+        }
+
+        int micronautFromCache() {
+            return micronautFromCache;
+        }
+
+        List<String> micronautNotFromCache() {
+            return micronautNotFromCache;
+        }
+
+        List<String> unexpected() {
+            return unexpected;
+        }
+
+        int runtimeLambdas() {
+            return runtimeLambdas;
+        }
 
         /**
          * The share of the classes that came from the cache.
          *
          * @return from 0 to 1; 0 when nothing was loaded
          */
-        public double ratio() {
+        double ratio() {
             return classesLoaded == 0 ? 0 : (double) classesFromCache / classesLoaded;
         }
 
@@ -493,6 +544,7 @@ public final class AotCacheGate {
 
         private final JdkProbe jdk;
         private final Map<String, String> labels = new LinkedHashMap<>();
+        private final String jar;
         private final List<String> creationFlags;
         private final String recordStop;
         private final int probes;
@@ -501,8 +553,9 @@ public final class AotCacheGate {
         private int probeFailures;
         private Coverage coverage = new Coverage(0, 0, 0, 0, List.of(), List.of(), 0);
 
-        private Findings(JdkProbe jdk, Map<String, String> identity, String recordStop, int probes) {
+        private Findings(JdkProbe jdk, Map<String, String> identity, String jar, String recordStop, int probes) {
             this.jdk = jdk;
+            this.jar = jar;
             this.recordStop = recordStop;
             this.probes = probes;
             identity.forEach((name, value) -> {
@@ -526,10 +579,10 @@ public final class AotCacheGate {
         }
 
         private AotCacheReport report(String verdict) {
-            return new AotCacheReport(jdk.vmVersion(), jdk.osName(), jdk.osArch(), labels, creationFlags, recordStop,
-                    probes, probeFailures, coverage.classesLoaded(), coverage.classesFromCache(), coverage.ratio(),
-                    coverage.micronautLoaded(), coverage.micronautFromCache(), coverage.micronautNotFromCache(),
-                    coverage.runtimeLambdas(), warnings, failures, verdict);
+            return new AotCacheReport(jdk.vmVersion(), jdk.osName(), jdk.osArch(), labels, jar, creationFlags,
+                    recordStop, probes, probeFailures, coverage.classesLoaded(), coverage.classesFromCache(),
+                    coverage.ratio(), coverage.micronautLoaded(), coverage.micronautFromCache(),
+                    coverage.micronautNotFromCache(), coverage.runtimeLambdas(), warnings, failures, verdict);
         }
     }
 }

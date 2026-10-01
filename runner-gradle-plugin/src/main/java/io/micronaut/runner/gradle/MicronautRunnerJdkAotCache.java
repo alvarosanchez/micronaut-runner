@@ -19,7 +19,6 @@ import io.micronaut.runner.build.AotCacheOutput;
 import io.micronaut.runner.build.AotTarget;
 import io.micronaut.runner.build.aotcache.AotCacheReport;
 import io.micronaut.runner.build.aotcache.AotCacheSettings;
-import io.micronaut.runner.build.aotcache.AotLaunchOptions;
 import io.micronaut.runner.build.training.TrainingSettings;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
@@ -38,11 +37,9 @@ import org.gradle.jvm.toolchain.JavaLauncher;
 import org.gradle.work.DisableCachingByDefault;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 
 /**
  * Trains a JDK AOT cache for the Runner JAR and verifies it: stages the program in its output directory (the
@@ -151,20 +148,7 @@ public abstract class MicronautRunnerJdkAotCache extends DefaultTask {
             throw new GradleException("Training the JDK AOT cache was interrupted. Every process it started was"
                     + " stopped.", e);
         }
-        getLogger().lifecycle(String.format(Locale.ROOT, "Trained and verified the JDK AOT cache for the %s target"
-                        + " in %.1f s: %.1f%% of the classes and %d of %d io.micronaut classes from the cache, %d of %d"
-                        + " strict probes failed. Launch it from %s with: java @%s -jar %s", target,
-                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) / 1000.0, report.coverage() * 100,
-                report.micronautFromCache(), report.micronautLoaded(), report.probeFailures(), report.probes(), out,
-                AotLaunchOptions.ARGFILE, jarName(out)));
-    }
-
-    private static String jarName(Path out) throws IOException {
-        try (Stream<Path> files = Files.list(out)) {
-            return files.map(file -> file.getFileName().toString())
-                    .filter(name -> name.endsWith(".jar"))
-                    .findFirst()
-                    .orElse("<jar>");
-        }
+        getLogger().lifecycle(report.summary() + String.format(Locale.ROOT, " (in %s, %.1f s)", out,
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) / 1000.0));
     }
 }

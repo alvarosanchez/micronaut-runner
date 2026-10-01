@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.build.aotcache;
 
-import io.micronaut.core.annotation.Experimental;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.training.TrainingDriver;
@@ -40,7 +39,7 @@ import java.util.concurrent.TimeUnit;
  * <p>The caller stages the program as {@code <directory>/<jarName>}, which is launched with {@code -jar} from
  * that directory, so the cache is trained at the relative layout it runs from. One build is:</p>
  * <ol>
- *     <li><b>Record</b> through the {@link TrainingDriver}: readiness and workload with
+ *     <li><b>Record</b> through the {@code TrainingDriver}: readiness and workload with
  *     {@code -XX:AOTMode=record -XX:AOTConfiguration=app.aotconf -Xlog:aot=info}. The log names the classes the
  *     recording skips, which the gate's coverage check reads.</li>
  *     <li><b>End the recording</b> with {@code jcmd <pid> AOT.end_recording} when the JDK has {@code jcmd} and
@@ -48,29 +47,31 @@ import java.util.concurrent.TimeUnit;
  *     signal on Linux and macOS, the training {@code stopPath} on Windows.</li>
  *     <li><b>Create</b> the cache in its own launch,
  *     {@code -XX:AOTMode=create -XX:AOTConfiguration=app.aotconf -XX:AOTCache=app.aot}, with
- *     {@code -XX:+UnlockDiagnosticVMOptions -XX:+AOTCompatibleOopCompression} when the {@link JdkProbe} finds
+ *     {@code -XX:+UnlockDiagnosticVMOptions -XX:+AOTCompatibleOopCompression} when the {@code JdkProbe} finds
  *     the flag.</li>
- *     <li>Write the identity file and the launch argfile ({@link AotLaunchOptions}).</li>
- *     <li>Run the {@link AotCacheGate}. When it fails, the cache and the argfile are deleted and the logs stay.</li>
+ *     <li>Write the identity file and the launch argfile ({@code AotLaunchOptions}).</li>
+ *     <li>Run the {@code AotCacheGate}. When it fails, the cache and the argfile are deleted and the logs stay.</li>
  * </ol>
  *
- * <p>Every launch carries {@link AotCacheSettings#jvmArgs()} and none of the build's ambient JVM option
+ * <p>Every launch carries the settings' {@code jvmArgs} and none of the build's ambient JVM option
  * variables, and each phase is logged with its duration. The recording alone also carries the caller's
  * {@code recordJvmArgs}, which reach neither the creation, the checks nor the argfile.</p>
  *
+ * <p>Not for users: the class and {@link #build} are public only because {@code AotCacheOutput}, in another
+ * package of this library, calls it. Everything else is package-private.</p>
+ *
  * @since 1.0
  */
-@Experimental
 public final class AotCacheBuilder {
 
     /** The recording's output, relative to the output directory. */
-    public static final String RECORD_LOG = "aot-record.log";
+    static final String RECORD_LOG = "aot-record.log";
 
     /** The creation's output, relative to the output directory. */
-    public static final String CREATE_LOG = "aot-create.log";
+    static final String CREATE_LOG = "aot-create.log";
 
     /** The recorded configuration, relative to the output directory; deleted once the cache is created. */
-    public static final String CONFIGURATION_FILE = "app.aotconf";
+    static final String CONFIGURATION_FILE = "app.aotconf";
 
     /** What {@code jcmd} prints when the recording has ended and its configuration is written. */
     static final String RECORDING_ENDED = "Recording ended successfully.";

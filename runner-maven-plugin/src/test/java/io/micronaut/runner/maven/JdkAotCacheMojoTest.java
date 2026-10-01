@@ -16,6 +16,10 @@
 package io.micronaut.runner.maven;
 
 import io.micronaut.runner.build.AotTarget;
+import io.micronaut.runner.build.BuildLogger;
+import io.micronaut.runner.build.Dependency;
+import io.micronaut.runner.build.RunnerJarBuilder;
+import io.micronaut.runner.build.RunnerJarSpec;
 import io.micronaut.runner.build.aotcache.AotCacheSettings;
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
@@ -26,6 +30,7 @@ import org.apache.maven.plugin.logging.SystemStreamLog;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.toolchain.Toolchain;
 import org.apache.maven.toolchain.ToolchainManager;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -37,15 +42,21 @@ import java.lang.classfile.AnnotationElement;
 import java.lang.classfile.AnnotationValue;
 import java.lang.classfile.Attribute;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.CodeBuilder;
 import java.lang.classfile.FieldModel;
 import java.lang.classfile.attribute.RuntimeInvisibleAnnotationsAttribute;
 import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDescs;
+import java.lang.constant.MethodTypeDesc;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.jar.JarOutputStream;
+import java.util.zip.ZipEntry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -55,8 +66,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link JdkAotCacheMojo} and {@link LayoutMojo} as plain objects, with their parameters set by reflection, as
- * {@link PackageMojoTest} drives the packaging goal. Nothing is launched: the parameters' mapping onto the
- * packaging library's settings, the switch, the Runner JAR's path and the JDK are checked.
+ * {@link PackageMojoTest} drives the packaging goal. The parameters' mapping onto the packaging library's
+ * settings, the switch, the Runner JAR's path and the JDK are checked without launching anything; only the
+ * layout goal's log line takes one extraction of a small Runner JAR.
  */
 class JdkAotCacheMojoTest {
 
@@ -97,7 +109,10 @@ class JdkAotCacheMojoTest {
 
     @Test
     void unsetParametersLeaveTheLibrarysDefaults() throws MojoFailureException {
-        assertEquals(AotCacheSettings.defaults(), mojo.settings());
+        AotCacheSettings defaults = AotCacheSettings.defaults();
+        AotCacheSettings settings = mojo.settings();
+        assertEquals(List.of(defaults.strict(), defaults.jvmArgs(), defaults.verifyProbes(), defaults.minCoverage()),
+                List.of(settings.strict(), settings.jvmArgs(), settings.verifyProbes(), settings.minCoverage()));
         assertEquals(AotTarget.DEFAULT, mojo.target());
     }
 
@@ -124,7 +139,7 @@ class JdkAotCacheMojoTest {
         set(mojo, "jdkAotCacheVerifyProbes", null);
         AotCacheSettings partial = mojo.settings();
         assertFalse(partial.strict(), "only the parameters that are set replace a default");
-        assertEquals(AotCacheSettings.DEFAULT_VERIFY_PROBES, partial.verifyProbes());
+        assertEquals(AotCacheSettings.defaults().verifyProbes(), partial.verifyProbes());
     }
 
     @Test
@@ -196,6 +211,38 @@ class JdkAotCacheMojoTest {
         assertEquals(buildDirectory.resolve("demo-1.0-runner.jar").toFile(), layout.runnerJar());
         assertEquals(buildDirectory.resolve("micronaut-runner/jdk-aot-cache"), mojo.outputDirectoryOfTheCache());
         assertEquals(buildDirectory.resolve("micronaut-runner/layout"), layout.destination());
+    }
+
+    @Test
+    void theLayoutGoalLogsTheLayoutsSummary() throws Exception {
+        Assumptions.assumeTrue(RunnerJarBuilder.class.getResource("/META-INF/micronaut-runner/launcher.jar") != null,
+                "the bundled launcher jar is not on the test class path");
+        Path classes = temp.resolve("classes");
+        Path main = classes.resolve("com/example/App.class");
+        Files.createDirectories(main.getParent());
+        Files.write(main, ClassFile.of().build(ClassDesc.of("com.example.App"), type -> type
+                .withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER)
+                .withMethodBody("main", MethodTypeDesc.of(ConstantDescs.CD_void, ConstantDescs.CD_String.arrayType()),
+                        ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, CodeBuilder::return_)));
+        Path library = temp.resolve("repository/lib-1.0.jar");
+        Files.createDirectories(library.getParent());
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(library))) {
+            out.putNextEntry(new ZipEntry("com/example/lib/Library.class"));
+            out.write(new byte[64]);
+            out.closeEntry();
+        }
+        RunnerJarBuilder.build(RunnerJarSpec.builder()
+                .mainClass("com.example.App")
+                .applicationOutput(List.of(classes))
+                .dependencies(List.of(Dependency.of(library)))
+                .output(layout.runnerJar().toPath())
+                .build(), BuildLogger.noOp());
+
+        layout.execute();
+
+        // The packaging library's summary, which names the application JAR the layout keeps.
+        assertEquals(List.of("Wrote the layout demo-1.0.jar with 1 JARs in lib/ to "
+                + layout.destination().toAbsolutePath().normalize()), log.infos);
     }
 
     @Test

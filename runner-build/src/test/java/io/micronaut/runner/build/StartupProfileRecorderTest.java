@@ -193,7 +193,7 @@ class StartupProfileRecorderTest {
                 .startupClasses(profile)
                 .build(), packaging);
         assertTrue(packaging.warnings.isEmpty(), packaging.warnings::toString);
-        try (RunnerJarReader reader = RunnerJarReader.open(repackaged)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(repackaged)) {
             assertEquals(recorded, reader.index().preloadCount());
             assertEquals(jdkClasses, reader.index().jdkPreloadCount());
         }

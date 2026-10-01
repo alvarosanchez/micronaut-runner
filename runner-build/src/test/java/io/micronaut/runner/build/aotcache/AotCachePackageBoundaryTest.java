@@ -15,28 +15,38 @@
  */
 package io.micronaut.runner.build.aotcache;
 
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.runner.build.AotCacheOutput;
 import io.micronaut.runner.build.AotLayout;
 import io.micronaut.runner.build.AotTarget;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.lang.reflect.Modifier;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Keeps {@code io.micronaut.runner.build.aotcache} generic: its sources import nothing of Runner's but the build
- * logger and the training driver, and every public type there, and the Runner-specific types built on it, is
- * {@code @Experimental}. It reads the sources, so it runs from the project directory, as Gradle runs tests.
+ * Keeps {@code io.micronaut.runner.build.aotcache} generic and internal: its sources import nothing of Runner's
+ * but the build logger and the training driver, and every public type there, and the Runner-specific types built
+ * on it, nested types included, carries {@code @Internal}, which japicmp reads from the class files. The import
+ * check reads the sources, so it runs from the project directory, as Gradle runs tests.
  */
 class AotCachePackageBoundaryTest {
 
@@ -45,8 +55,15 @@ class AotCachePackageBoundaryTest {
     private static final Pattern RUNNER_IMPORT = Pattern.compile("^import\\s+(static\\s+)?(io\\.micronaut\\.runner\\.[\\w.*]+)\\s*;",
             Pattern.MULTILINE);
 
-    private static final Pattern PUBLIC_TYPE = Pattern.compile(
-            "^public\\s+(final\\s+|abstract\\s+|sealed\\s+)*(class|record|enum|interface)\\s+(\\w+)", Pattern.MULTILINE);
+    /** The Runner-specific types built on this package, which the build plugins call. */
+    private static final List<Class<?>> BUILD_TYPES = List.of(AotCacheOutput.class, AotLayout.class, AotTarget.class);
+
+    /**
+     * The public types of this package that are not {@code @Internal}: public only because {@code AotCacheOutput},
+     * in another package, calls them, and package-private once this package joins that one.
+     */
+    private static final Set<String> PACKAGE_PRIVATE_AFTER_MERGE = Set.of(AotCacheBuilder.class.getName(),
+            AotLaunchOptions.class.getName());
 
     @Test
     void thePackageImportsOnlyTheLoggerAndTheTrainingDriverOfRunner() throws IOException {
@@ -66,25 +83,89 @@ class AotCachePackageBoundaryTest {
     }
 
     @Test
-    void everyPublicTypeIsExperimental() throws IOException {
-        List<Path> checked = new ArrayList<>(sources());
-        for (Class<?> type : List.of(AotLayout.class, AotCacheOutput.class, AotTarget.class)) {
-            checked.add(SOURCES.resolve(type.getSimpleName() + ".java"));
-        }
+    void everyPublicTypeIsInternal() throws IOException, ClassNotFoundException {
+        Set<String> checked = new TreeSet<>();
         List<String> missing = new ArrayList<>();
-        for (Path source : checked) {
-            String text = Files.readString(source, StandardCharsets.UTF_8);
-            Matcher type = PUBLIC_TYPE.matcher(text);
-            if (!type.find()) {
+        for (String name : classNames()) {
+            boolean inScope = name.startsWith(getClass().getPackageName() + ".") || BUILD_TYPES.stream()
+                    .anyMatch(type -> name.equals(type.getName()) || name.startsWith(type.getName() + "$"));
+            if (!inScope || PACKAGE_PRIVATE_AFTER_MERGE.contains(name)) {
                 continue;
             }
-            String before = text.substring(0, type.start());
-            if (!before.contains("@Experimental") || !text.contains("import io.micronaut.core.annotation.Experimental;")) {
-                missing.add(type.group(3));
+            Class<?> type = Class.forName(name, false, getClass().getClassLoader());
+            if (!exported(type)) {
+                continue;
+            }
+            checked.add(type.getName());
+            // Its own annotation, as micronaut-build reads it: an @Internal enclosing type does not cover it.
+            if (type.getDeclaredAnnotation(Internal.class) == null) {
+                missing.add(type.getName());
             }
         }
-        assertFalse(checked.isEmpty());
-        assertTrue(missing.isEmpty(), () -> "not @Experimental: " + missing);
+        assertTrue(checked.containsAll(List.of(AotCacheOutput.class.getName(), AotLayout.class.getName(),
+                AotLayout.Result.class.getName(), AotTarget.class.getName(), AotCacheGate.class.getName(),
+                AotCacheGate.Coverage.class.getName(), AotCacheReport.class.getName(),
+                AotCacheSettings.class.getName(), AotCacheSettings.Builder.class.getName(), JdkProbe.class.getName())),
+                checked::toString);
+        assertTrue(missing.isEmpty(), () -> "public, and not @Internal: " + missing);
+    }
+
+    @Test
+    void theTwoExceptionsAreStillPublic() throws ClassNotFoundException {
+        for (String name : PACKAGE_PRIVATE_AFTER_MERGE) {
+            Class<?> type = Class.forName(name, false, getClass().getClassLoader());
+            assertTrue(exported(type), name + " is no longer public: drop it from the list");
+            assertEquals(getClass().getPackageName(), type.getPackageName());
+        }
+    }
+
+    /** Whether a type is public, and nested only in public types. */
+    private static boolean exported(Class<?> type) {
+        if (type.isAnonymousClass() || type.isLocalClass() || type.isSynthetic()) {
+            return false;
+        }
+        for (Class<?> current = type; current != null; current = current.getEnclosingClass()) {
+            if (!Modifier.isPublic(current.getModifiers())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Every class of runner-build's main code, read from where this test's class path loads it from. */
+    private static List<String> classNames() throws IOException {
+        Path location;
+        try {
+            location = Path.of(AotCacheSettings.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        } catch (URISyntaxException e) {
+            throw new IOException(e);
+        }
+        List<String> names = new ArrayList<>();
+        if (Files.isDirectory(location)) {
+            try (Stream<Path> files = Files.walk(location)) {
+                for (Path file : files.filter(file -> file.toString().endsWith(".class")).toList()) {
+                    names.add(className(location.relativize(file).toString()
+                            .replace(file.getFileSystem().getSeparator(), "/")));
+                }
+            }
+        } else {
+            try (JarFile jar = new JarFile(location.toFile())) {
+                Enumeration<JarEntry> entries = jar.entries();
+                while (entries.hasMoreElements()) {
+                    String entry = entries.nextElement().getName();
+                    if (entry.endsWith(".class") && !entry.startsWith("META-INF/")) {
+                        names.add(className(entry));
+                    }
+                }
+            }
+        }
+        names.removeIf(name -> name.endsWith("package-info") || name.endsWith("module-info"));
+        assertFalse(names.isEmpty(), () -> "no classes at " + location);
+        return names;
+    }
+
+    private static String className(String path) {
+        return path.substring(0, path.length() - ".class".length()).replace('/', '.');
     }
 
     private static List<Path> sources() throws IOException {

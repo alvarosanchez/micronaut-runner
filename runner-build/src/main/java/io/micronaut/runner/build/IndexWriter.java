@@ -124,7 +124,7 @@ final class IndexWriter {
     /**
      * Creates an empty writer.
      */
-    public IndexWriter() {
+    IndexWriter() {
     }
 
     /**
@@ -133,7 +133,7 @@ final class IndexWriter {
      * @param value the binary class name, or {@code null} when there is none
      * @return this writer
      */
-    public IndexWriter startClass(String value) {
+    IndexWriter startClass(String value) {
         this.startClass = value;
         return this;
     }
@@ -144,7 +144,7 @@ final class IndexWriter {
      * @param value the binary class name, or {@code null} when no stub was generated
      * @return this writer
      */
-    public IndexWriter entryStubClass(String value) {
+    IndexWriter entryStubClass(String value) {
         this.entryStubClass = value;
         return this;
     }
@@ -155,7 +155,7 @@ final class IndexWriter {
      * @param value the version, or {@code null} when it is unknown
      * @return this writer
      */
-    public IndexWriter launcherVersion(String value) {
+    IndexWriter launcherVersion(String value) {
         this.launcherVersion = value;
         return this;
     }
@@ -167,7 +167,7 @@ final class IndexWriter {
      * @param value a mask of {@code IndexFormat.HEADER_FLAG_*}
      * @return this writer
      */
-    public IndexWriter headerFlags(int value) {
+    IndexWriter headerFlags(int value) {
         this.headerFlags = value;
         return this;
     }
@@ -184,7 +184,7 @@ final class IndexWriter {
      * @return this writer
      * @throws NullPointerException if the list or an element is {@code null}
      */
-    public IndexWriter startupClasses(List<String> binaryNames) {
+    IndexWriter startupClasses(List<String> binaryNames) {
         this.startupClasses = List.copyOf(binaryNames);
         return this;
     }
@@ -201,7 +201,7 @@ final class IndexWriter {
      * @return this writer
      * @throws NullPointerException if the list or an element is {@code null}
      */
-    public IndexWriter jdkStartupClasses(List<String> binaryNames) {
+    IndexWriter jdkStartupClasses(List<String> binaryNames) {
         this.jdkStartupClasses = List.copyOf(new LinkedHashSet<>(binaryNames));
         return this;
     }
@@ -216,7 +216,7 @@ final class IndexWriter {
      * @throws NullPointerException     if {@code name} is {@code null}
      * @throws IllegalStateException    if the format's jar limit would be exceeded
      */
-    public JarSpec addJar(String name) {
+    JarSpec addJar(String name) {
         Objects.requireNonNull(name, "name");
         if (jars.size() > MAX_U16) {
             throw new IllegalStateException("A runner jar cannot hold more than " + (MAX_U16 + 1) + " jars");
@@ -231,7 +231,7 @@ final class IndexWriter {
      *
      * @return the jars, in index order, starting with the application layer
      */
-    public List<JarSpec> jars() {
+    List<JarSpec> jars() {
         return Collections.unmodifiableList(jars);
     }
 
@@ -248,7 +248,7 @@ final class IndexWriter {
      * @throws IllegalStateException if a name is too long for the format, or the hash table cannot be filled
      *                               within {@link IndexFormat#MAX_PROBE_LIMIT} probes
      */
-    public Layout layout() {
+    Layout layout() {
         List<Record> records = records();
         Map<String, List<Record>> chains = chains(records);
         flagDirectoryTwins(chains);
@@ -368,7 +368,7 @@ final class IndexWriter {
      * @throws IllegalArgumentException if the layout belongs to another writer, or a value does not fit the
      *                                  field the format stores it in
      */
-    public byte[] write(Layout layout, long outerFileLength) {
+    byte[] write(Layout layout, long outerFileLength) {
         Objects.requireNonNull(layout, "layout");
         if (layout.owner != this) {
             throw new IllegalArgumentException("The layout was produced by a different IndexWriter");
@@ -813,7 +813,7 @@ final class IndexWriter {
      * {@link IndexWriter#write(Layout, long)}. It holds no offsets of its own, which is why the length it
      * reports is final.</p>
      */
-    public static final class Layout {
+    static final class Layout {
 
         private final IndexWriter owner;
         private final List<Record> records;
@@ -880,7 +880,7 @@ final class IndexWriter {
          *
          * @return the length in bytes
          */
-        public int length() {
+        int length() {
             return jdkPreload.length == 0
                     ? preloadEnd() : jdkPreloadTableOffset() + jdkPreload.length * IndexFormat.PRELOAD_RECORD_SIZE;
         }
@@ -910,7 +910,7 @@ final class IndexWriter {
          *
          * @return the count, {@code 0} when there is no JDK list
          */
-        public int jdkPreloadCount() {
+        int jdkPreloadCount() {
             return jdkPreload.length;
         }
 
@@ -928,7 +928,7 @@ final class IndexWriter {
          *
          * @return the resolved count, {@code 0} when there is no list or none of its names is in the archive
          */
-        public int preloadCount() {
+        int preloadCount() {
             return preload.length;
         }
 
@@ -938,7 +938,7 @@ final class IndexWriter {
          *
          * @return the record count
          */
-        public int entryCount() {
+        int entryCount() {
             return records.size();
         }
 
@@ -947,7 +947,7 @@ final class IndexWriter {
          *
          * @return the package count
          */
-        public int packageCount() {
+        int packageCount() {
             return packageCount;
         }
 
@@ -956,7 +956,7 @@ final class IndexWriter {
          *
          * @return the number of slots, a power of two
          */
-        public int hashSlots() {
+        int hashSlots() {
             return hashTable.length;
         }
 
@@ -965,7 +965,7 @@ final class IndexWriter {
          *
          * @return the maximum probe length
          */
-        public int maxProbe() {
+        int maxProbe() {
             return maxProbe;
         }
     }
@@ -973,7 +973,7 @@ final class IndexWriter {
     /**
      * One jar of the index: the application layer, or a nested dependency.
      */
-    public static final class JarSpec {
+    static final class JarSpec {
 
         private final IndexWriter owner;
         private final String name;
@@ -1017,7 +1017,7 @@ final class IndexWriter {
          *
          * @return the jar id, {@code 0} for the application layer
          */
-        public int id() {
+        int id() {
             return id;
         }
 
@@ -1026,7 +1026,7 @@ final class IndexWriter {
          *
          * @return the jar name
          */
-        public String name() {
+        String name() {
             return name;
         }
 
@@ -1036,7 +1036,7 @@ final class IndexWriter {
          * @param value the coordinates, or {@code null} when they are unknown
          * @return this jar
          */
-        public JarSpec coordinates(String value) {
+        JarSpec coordinates(String value) {
             this.coordinates = value;
             return this;
         }
@@ -1047,7 +1047,7 @@ final class IndexWriter {
          * @param value a mask of {@code IndexFormat.JAR_FLAG_*}
          * @return this jar
          */
-        public JarSpec addFlags(int value) {
+        JarSpec addFlags(int value) {
             this.flags |= value;
             return this;
         }
@@ -1058,7 +1058,7 @@ final class IndexWriter {
          * @param value a mask of {@code IndexFormat.JAR_FLAG_*}
          * @return this jar
          */
-        public JarSpec flags(int value) {
+        JarSpec flags(int value) {
             this.flags = value;
             return this;
         }
@@ -1068,7 +1068,7 @@ final class IndexWriter {
          *
          * @return a mask of {@code IndexFormat.JAR_FLAG_*}
          */
-        public int flags() {
+        int flags() {
             return flags;
         }
 
@@ -1083,7 +1083,7 @@ final class IndexWriter {
          * @param localHeaderOffset the offset of the outer local file header introducing it
          * @return this jar
          */
-        public JarSpec location(long offset, long length, long localHeaderOffset) {
+        JarSpec location(long offset, long length, long localHeaderOffset) {
             this.dataOffset = offset;
             this.dataLength = length;
             this.localHeaderOffset = localHeaderOffset;
@@ -1101,9 +1101,9 @@ final class IndexWriter {
          * @param implementationVendor  the {@code Implementation-Vendor}
          * @return this jar
          */
-        public JarSpec manifest(String specificationTitle, String specificationVersion,
-                                String specificationVendor, String implementationTitle,
-                                String implementationVersion, String implementationVendor) {
+        JarSpec manifest(String specificationTitle, String specificationVersion,
+                         String specificationVendor, String implementationTitle,
+                         String implementationVersion, String implementationVendor) {
             this.specTitle = specificationTitle;
             this.specVersion = specificationVersion;
             this.specVendor = specificationVendor;
@@ -1123,7 +1123,7 @@ final class IndexWriter {
          * @throws NullPointerException  if {@code logicalName} is {@code null}
          * @throws IllegalStateException if the name is longer than the format allows
          */
-        public EntrySpec addEntry(String logicalName) {
+        EntrySpec addEntry(String logicalName) {
             Objects.requireNonNull(logicalName, "logicalName");
             EntrySpec spec = new EntrySpec(this, logicalName);
             entries.add(spec);
@@ -1140,7 +1140,7 @@ final class IndexWriter {
          * @return the entry, whose data offset still has to be set
          * @throws NullPointerException if an argument is {@code null}
          */
-        public EntrySpec addEntry(String logicalName, ZipEntryInfo entry) {
+        EntrySpec addEntry(String logicalName, ZipEntryInfo entry) {
             Objects.requireNonNull(entry, "entry");
             return addEntry(logicalName)
                     .method(entry.method())
@@ -1154,7 +1154,7 @@ final class IndexWriter {
          *
          * @return the entries, in the order they were added
          */
-        public List<EntrySpec> entries() {
+        List<EntrySpec> entries() {
             return Collections.unmodifiableList(entries);
         }
 
@@ -1165,7 +1165,7 @@ final class IndexWriter {
          * @return the section
          * @throws NullPointerException if {@code packageName} is {@code null}
          */
-        public PackageSpec addPackage(String packageName) {
+        PackageSpec addPackage(String packageName) {
             Objects.requireNonNull(packageName, "packageName");
             PackageSpec section = new PackageSpec(this, packageName);
             packages.add(section);
@@ -1177,7 +1177,7 @@ final class IndexWriter {
          *
          * @return the writer
          */
-        public IndexWriter end() {
+        IndexWriter end() {
             return owner;
         }
     }
@@ -1188,7 +1188,7 @@ final class IndexWriter {
      * <p>Everything but {@link #dataOffset(long)} is known before the archive is written; the offset is the
      * one value that has to wait for the layout to be fixed.</p>
      */
-    public static final class EntrySpec {
+    static final class EntrySpec {
 
         private final JarSpec jar;
         private final String name;
@@ -1210,7 +1210,7 @@ final class IndexWriter {
          *
          * @return the name relative to the jar
          */
-        public String name() {
+        String name() {
             return name;
         }
 
@@ -1222,7 +1222,7 @@ final class IndexWriter {
          * @param value the absolute offset
          * @return this entry
          */
-        public EntrySpec dataOffset(long value) {
+        EntrySpec dataOffset(long value) {
             this.dataOffset = value;
             return this;
         }
@@ -1232,7 +1232,7 @@ final class IndexWriter {
          *
          * @return the absolute offset of the entry data
          */
-        public long dataOffset() {
+        long dataOffset() {
             return dataOffset;
         }
 
@@ -1243,7 +1243,7 @@ final class IndexWriter {
          * @param uncompressed the number of bytes the entry expands to
          * @return this entry
          */
-        public EntrySpec sizes(long compressed, long uncompressed) {
+        EntrySpec sizes(long compressed, long uncompressed) {
             this.compressedSize = compressed;
             this.uncompressedSize = uncompressed;
             return this;
@@ -1256,7 +1256,7 @@ final class IndexWriter {
          * @return this entry
          * @throws IllegalArgumentException if the method is neither
          */
-        public EntrySpec method(int value) {
+        EntrySpec method(int value) {
             if (value != IndexFormat.METHOD_STORED && value != IndexFormat.METHOD_DEFLATED) {
                 throw new IllegalArgumentException("Entry '" + name + "' uses unsupported compression method "
                         + value);
@@ -1271,7 +1271,7 @@ final class IndexWriter {
          * @param value the checksum
          * @return this entry
          */
-        public EntrySpec crc32(long value) {
+        EntrySpec crc32(long value) {
             this.crc32 = value;
             return this;
         }
@@ -1285,7 +1285,7 @@ final class IndexWriter {
          * @param value the packed date and time
          * @return this entry
          */
-        public EntrySpec dosTime(long value) {
+        EntrySpec dosTime(long value) {
             this.dosTime = value & MAX_U32;
             return this;
         }
@@ -1296,7 +1296,7 @@ final class IndexWriter {
          * @param value a mask of {@code IndexFormat.ENTRY_FLAG_*}
          * @return this entry
          */
-        public EntrySpec flags(int value) {
+        EntrySpec flags(int value) {
             this.extraFlags |= value;
             return this;
         }
@@ -1306,7 +1306,7 @@ final class IndexWriter {
          *
          * @return the jar
          */
-        public JarSpec end() {
+        JarSpec end() {
             return jar;
         }
     }
@@ -1314,7 +1314,7 @@ final class IndexWriter {
     /**
      * One package override section, taken from a {@code Name: <package>/} section of a jar's manifest.
      */
-    public static final class PackageSpec {
+    static final class PackageSpec {
 
         private final JarSpec jar;
         private final String name;
@@ -1343,7 +1343,7 @@ final class IndexWriter {
          *
          * @return the package name in dotted form
          */
-        public String name() {
+        String name() {
             return name;
         }
 
@@ -1358,9 +1358,9 @@ final class IndexWriter {
          * @param implementationVendor  the {@code Implementation-Vendor}
          * @return this section
          */
-        public PackageSpec attributes(String specificationTitle, String specificationVersion,
-                                      String specificationVendor, String implementationTitle,
-                                      String implementationVersion, String implementationVendor) {
+        PackageSpec attributes(String specificationTitle, String specificationVersion,
+                               String specificationVendor, String implementationTitle,
+                               String implementationVersion, String implementationVendor) {
             this.specTitle = specificationTitle;
             this.specVersion = specificationVersion;
             this.specVendor = specificationVendor;
@@ -1376,7 +1376,7 @@ final class IndexWriter {
          * @param sealed the value of the attribute
          * @return this section
          */
-        public PackageSpec sealed(boolean sealed) {
+        PackageSpec sealed(boolean sealed) {
             this.flags |= IndexFormat.PACKAGE_FLAG_SEALED_SPECIFIED;
             if (sealed) {
                 this.flags |= IndexFormat.PACKAGE_FLAG_SEALED_VALUE;
@@ -1389,7 +1389,7 @@ final class IndexWriter {
          *
          * @return the jar
          */
-        public JarSpec end() {
+        JarSpec end() {
             return jar;
         }
     }

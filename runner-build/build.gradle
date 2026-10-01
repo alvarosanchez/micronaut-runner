@@ -47,8 +47,10 @@ sourceSets {
 }
 
 dependencies {
-    // Shares the index reader and ZIP primitives with the launcher (which has no dependencies of its own).
-    api projects.micronautRunnerLauncher
+    // Shares the index reader and ZIP primitives with the launcher (which has no dependencies of its own). No
+    // public signature of this library names a launcher type (PublicApiTest checks it), so the launcher is an
+    // implementation dependency: runtime scope in the POM, and off the compile class path of the build plugins.
+    implementation projects.micronautRunnerLauncher
     launcher projects.micronautRunnerLauncher
 
     // Only for io.micronaut.core.annotation.Internal, which japicmp's rules read from the class files. It is

@@ -66,6 +66,15 @@ Should not trigger:
 - If breaking public-facing changes are explicitly allowed, document them in the user guide under `src/main/docs/guide` with migration notes, and update `toc.yml` when adding new guide sections.
 - Mark non-user-facing APIs with `@io.micronaut.core.annotation.Internal`.
 - Keep visibility as narrow as possible for non-public internals.
+- Keep visibility and exposed API as small as possible (owner rule, Micronaut team practice): japicmp keeps every public or protected type, member, constant and constructor under SemVer, and users end up depending on whatever is public.
+  - Prefer private, then package-private.
+  - A type or member is public only when another package or module must use it. It is then `@Internal`, unless it is meant for users.
+  - No member is public or protected only for tests when package-private works. A test can sit in the same package.
+  - Duplicating a few lines in two packages is better than adding a public helper.
+  - micronaut-build's japicmp rules lower a change to a warning only for a type or member that carries `@Internal` itself (a public nested type needs its own) and for an `io.micronaut` type whose name contains `.internal.`. `@Experimental` is not kept in class files, so japicmp checks an experimental type as stable.
+  - A public record exposes its canonical constructor and every accessor: when callers outside its package need only some of them, make it a final class.
+  - A PASSTHROUGH packaging option gets no typed Java API: no builder setter, spec getter or result accessor, and a JDK value type. The minor release that makes it TYPED adds them.
+  - The launcher and runner-build pin their public API in `src/test/resources/public-api.txt`, checked by their `PublicApiTest`. From 1.0.0 a change to that file is a 1.x binary-compatibility decision.
 - When deprecating API, provide migration-friendly Javadoc and avoid silent behavioral breaks.
 
 ### 4) Keep Gradle/build changes convention-aligned

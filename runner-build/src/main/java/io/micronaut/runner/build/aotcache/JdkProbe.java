@@ -15,7 +15,7 @@
  */
 package io.micronaut.runner.build.aotcache;
 
-import io.micronaut.core.annotation.Experimental;
+import io.micronaut.core.annotation.Internal;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -34,41 +34,48 @@ import java.util.Objects;
  * Without it a JDK 27 cache fails strict launches intermittently with {@code incompatible
  * CompressedOops::base()}, depending on where ASLR places the heap.</p>
  *
- * @param vmVersion                the {@code java.vm.version} property, the exact VM build
- * @param runtimeVersion           the {@code java.runtime.version} property
- * @param osName                   the {@code os.name} property
- * @param osArch                   the {@code os.arch} property
- * @param compatibleOopCompression whether the flag list names {@code AOTCompatibleOopCompression}
+ * <p>Internal: {@link #probe(Path)} and {@link #creationFlags()} are public only for Runner's own benchmarks,
+ * which create caches of their own. It may change in any release.</p>
+ *
  * @since 1.0
  */
-@Experimental
-public record JdkProbe(String vmVersion,
-                       String runtimeVersion,
-                       String osName,
-                       String osArch,
-                       boolean compatibleOopCompression) {
+@Internal
+public final class JdkProbe {
 
     /** The creation flags of a JDK that has {@code AOTCompatibleOopCompression}. */
-    public static final List<String> COMPATIBLE_OOP_COMPRESSION = List.of(
+    private static final List<String> COMPATIBLE_OOP_COMPRESSION = List.of(
             "-XX:+UnlockDiagnosticVMOptions", "-XX:+AOTCompatibleOopCompression");
 
     /** How long the probe launch may take. */
     private static final Duration TIMEOUT = Duration.ofSeconds(60);
 
+    private final String vmVersion;
+    private final String runtimeVersion;
+    private final String osName;
+    private final String osArch;
+    private final boolean compatibleOopCompression;
+
     /**
-     * Checks that every component is there.
+     * Checks that every value is there.
      *
-     * @throws NullPointerException if a component is {@code null}
+     * @param vmVersion                the {@code java.vm.version} property, the exact VM build
+     * @param runtimeVersion           the {@code java.runtime.version} property
+     * @param osName                   the {@code os.name} property
+     * @param osArch                   the {@code os.arch} property
+     * @param compatibleOopCompression whether the flag list names {@code AOTCompatibleOopCompression}
+     * @throws NullPointerException if a value is {@code null}
      */
-    public JdkProbe {
-        Objects.requireNonNull(vmVersion, "vmVersion");
-        Objects.requireNonNull(runtimeVersion, "runtimeVersion");
-        Objects.requireNonNull(osName, "osName");
-        Objects.requireNonNull(osArch, "osArch");
+    JdkProbe(String vmVersion, String runtimeVersion, String osName, String osArch,
+             boolean compatibleOopCompression) {
+        this.vmVersion = Objects.requireNonNull(vmVersion, "vmVersion");
+        this.runtimeVersion = Objects.requireNonNull(runtimeVersion, "runtimeVersion");
+        this.osName = Objects.requireNonNull(osName, "osName");
+        this.osArch = Objects.requireNonNull(osArch, "osArch");
+        this.compatibleOopCompression = compatibleOopCompression;
     }
 
     /**
-     * Launches {@code java} once, with {@link #command(Path)}, and reads what it prints.
+     * Launches {@code java} once, with the probe's command, and reads what it prints.
      *
      * @param java the {@code java} executable
      * @return what the JDK reported
@@ -92,7 +99,7 @@ public record JdkProbe(String vmVersion,
      * @param java the {@code java} executable
      * @return the command
      */
-    public static List<String> command(Path java) {
+    static List<String> command(Path java) {
         return List.of(java.toString(), "-XX:+UnlockDiagnosticVMOptions", "-XX:+PrintFlagsFinal",
                 "-XshowSettings:properties", "-version");
     }
@@ -104,7 +111,7 @@ public record JdkProbe(String vmVersion,
      * @return what it reports
      * @throws IOException if a property the probe needs is missing
      */
-    public static JdkProbe parse(String output) throws IOException {
+    static JdkProbe parse(String output) throws IOException {
         Map<String, String> properties = new HashMap<>();
         boolean flag = false;
         for (String line : output.lines().toList()) {
@@ -130,10 +137,56 @@ public record JdkProbe(String vmVersion,
     /**
      * The flags cache creation needs on this JDK.
      *
-     * @return {@link #COMPATIBLE_OOP_COMPRESSION} when the JDK has the flag, otherwise nothing
+     * @return {@code -XX:+UnlockDiagnosticVMOptions -XX:+AOTCompatibleOopCompression} when the JDK has the flag,
+     *         otherwise nothing
      */
     public List<String> creationFlags() {
         return compatibleOopCompression ? COMPATIBLE_OOP_COMPRESSION : List.of();
+    }
+
+    /**
+     * The {@code java.vm.version} property, the exact VM build.
+     *
+     * @return the VM build
+     */
+    String vmVersion() {
+        return vmVersion;
+    }
+
+    /**
+     * The {@code java.runtime.version} property.
+     *
+     * @return the runtime version
+     */
+    String runtimeVersion() {
+        return runtimeVersion;
+    }
+
+    /**
+     * The {@code os.name} property.
+     *
+     * @return the operating system
+     */
+    String osName() {
+        return osName;
+    }
+
+    /**
+     * The {@code os.arch} property.
+     *
+     * @return the CPU architecture
+     */
+    String osArch() {
+        return osArch;
+    }
+
+    /**
+     * Whether the flag list names {@code AOTCompatibleOopCompression}.
+     *
+     * @return whether cache creation takes the flag
+     */
+    boolean compatibleOopCompression() {
+        return compatibleOopCompression;
     }
 
     private static String required(Map<String, String> properties, String name, String output) throws IOException {

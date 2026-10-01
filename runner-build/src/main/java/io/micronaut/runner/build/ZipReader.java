@@ -280,7 +280,7 @@ final class ZipReader implements Closeable {
      *                              including when it contains an entry name that is unsafe to extract
      * @throws NullPointerException if {@code path} is {@code null}
      */
-    public static ZipReader open(Path path) throws IOException {
+    static ZipReader open(Path path) throws IOException {
         Objects.requireNonNull(path, "path");
         return map(path);
     }
@@ -293,7 +293,7 @@ final class ZipReader implements Closeable {
      * @throws IOException          if the file cannot be read or mapped, or is not a well-formed ZIP archive
      * @throws NullPointerException if {@code file} is {@code null}
      */
-    public static ZipReader open(File file) throws IOException {
+    static ZipReader open(File file) throws IOException {
         Objects.requireNonNull(file, "file");
         return map(file.toPath());
     }
@@ -310,7 +310,7 @@ final class ZipReader implements Closeable {
      * @param name the candidate entry name
      * @return {@code true} when the name is safe
      */
-    public static boolean isSafeEntryName(String name) {
+    static boolean isSafeEntryName(String name) {
         if (name == null || name.isEmpty() || name.charAt(0) == '/') {
             return false;
         }
@@ -346,7 +346,7 @@ final class ZipReader implements Closeable {
      * @param archive a description of the archive the name came from, used in the error message
      * @throws IOException if the name is not safe
      */
-    public static void requireSafeEntryName(String name, String archive) throws IOException {
+    static void requireSafeEntryName(String name, String archive) throws IOException {
         if (!isSafeEntryName(name)) {
             throw new IOException("Unsafe entry name in " + archive + ": '" + name
                     + "'. Entry names must be relative, use '/' separators and contain no '.' or '..' segment");
@@ -364,7 +364,7 @@ final class ZipReader implements Closeable {
      * @return {@code true} for {@code META-INF/*.SF}, {@code *.DSA}, {@code *.RSA}, {@code *.EC} and
      *         {@code META-INF/SIG-*}
      */
-    public static boolean isSignatureFile(String name) {
+    static boolean isSignatureFile(String name) {
         if (name == null || name.length() <= META_INF.length()) {
             return false;
         }
@@ -390,7 +390,7 @@ final class ZipReader implements Closeable {
      * @param name the entry name
      * @return {@code true} for {@code META-INF/INDEX.LIST}
      */
-    public static boolean isIndexList(String name) {
+    static boolean isIndexList(String name) {
         return name != null && name.equalsIgnoreCase(INDEX_LIST_NAME);
     }
 
@@ -399,7 +399,7 @@ final class ZipReader implements Closeable {
      *
      * @return the archive path
      */
-    public Path path() {
+    Path path() {
         return path;
     }
 
@@ -408,7 +408,7 @@ final class ZipReader implements Closeable {
      *
      * @return the file length
      */
-    public long fileLength() {
+    long fileLength() {
         return fileLength;
     }
 
@@ -417,7 +417,7 @@ final class ZipReader implements Closeable {
      *
      * @return the comment, or the empty string when the archive has none
      */
-    public String comment() {
+    String comment() {
         return comment;
     }
 
@@ -429,7 +429,7 @@ final class ZipReader implements Closeable {
      *
      * @return an immutable list of entries
      */
-    public List<ZipEntryInfo> entries() {
+    List<ZipEntryInfo> entries() {
         return entries;
     }
 
@@ -440,7 +440,7 @@ final class ZipReader implements Closeable {
      * @return the entry, or empty when the archive has no such entry; when an archive contains the same name
      *         twice, the first occurrence in central directory order wins
      */
-    public Optional<ZipEntryInfo> entry(String name) {
+    Optional<ZipEntryInfo> entry(String name) {
         return Optional.ofNullable(byName.get(name));
     }
 
@@ -450,7 +450,7 @@ final class ZipReader implements Closeable {
      *
      * @return {@code true} when at least one entry matches {@link #isSignatureFile(String)}
      */
-    public boolean hasSignatureFiles() {
+    boolean hasSignatureFiles() {
         return signatureFiles;
     }
 
@@ -466,7 +466,7 @@ final class ZipReader implements Closeable {
      * @throws IOException if the manifest entry is larger than 16 MiB, cannot be read, does not match its
      *                     recorded CRC-32 or is not a valid manifest
      */
-    public Optional<Manifest> manifest() throws IOException {
+    Optional<Manifest> manifest() throws IOException {
         Optional<Manifest> parsed = manifest;
         if (parsed == null) {
             parsed = readManifest();
@@ -486,7 +486,7 @@ final class ZipReader implements Closeable {
      * @throws IOException if the data cannot be read, including when the file has been truncated since it was
      *                     opened, or the entry is larger than the largest Java array
      */
-    public byte[] readRaw(ZipEntryInfo entry) throws IOException {
+    byte[] readRaw(ZipEntryInfo entry) throws IOException {
         Objects.requireNonNull(entry, "entry");
         long size = entry.compressedSize();
         if (size > MAX_ARRAY_LENGTH) {
@@ -513,7 +513,7 @@ final class ZipReader implements Closeable {
      *                     deflated, or the deflate stream is truncated, corrupt, overproduces, or does not
      *                     consume its complete recorded compressed region
      */
-    public byte[] read(ZipEntryInfo entry) throws IOException {
+    byte[] read(ZipEntryInfo entry) throws IOException {
         Objects.requireNonNull(entry, "entry");
         int resultSize = checkedArraySize(entry, entry.uncompressedSize());
         requirePayload(entry);
@@ -579,7 +579,7 @@ final class ZipReader implements Closeable {
      * @return the verified uncompressed byte count
      * @throws IOException if the payload or its recorded metadata disagree, or either stream fails
      */
-    public synchronized long transfer(ZipEntryInfo entry, OutputStream target) throws IOException {
+    synchronized long transfer(ZipEntryInfo entry, OutputStream target) throws IOException {
         Objects.requireNonNull(entry, "entry");
         Objects.requireNonNull(target, "target");
         requirePayload(entry);

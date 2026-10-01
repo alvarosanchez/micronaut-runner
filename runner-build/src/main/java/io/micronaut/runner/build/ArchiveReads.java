@@ -27,9 +27,11 @@ import java.util.stream.Collectors;
  * per launch: {@code -Dmicronaut.runner.mmap=full} maps the whole archive whatever the packager chose, and
  * {@code -Dmicronaut.runner.mmap=index} reads positionally whatever it chose.</p>
  *
- * @since 1.0
+ * <p>The {@code archiveReads} option is {@link RunnerJarOption.Exposure#PASSTHROUGH PASSTHROUGH}, so a build sets
+ * it by name, as text, and this type is package-private. It becomes public, as the option's value type, in the
+ * minor release that makes the option {@link RunnerJarOption.Exposure#TYPED TYPED}.</p>
  */
-public enum ArchiveReads {
+enum ArchiveReads {
 
     /**
      * Map the whole archive and define every STORED class straight from the mapping.
@@ -58,9 +60,8 @@ public enum ArchiveReads {
      * @return the mode
      * @throws NullPointerException     if {@code value} is {@code null}
      * @throws IllegalArgumentException if {@code value} names no mode
-     * @since 1.0
      */
-    public static ArchiveReads parse(String value) {
+    static ArchiveReads parse(String value) {
         Objects.requireNonNull(value, "archiveReads");
         String name = value.trim().toUpperCase(Locale.ROOT);
         for (ArchiveReads reads : values()) {

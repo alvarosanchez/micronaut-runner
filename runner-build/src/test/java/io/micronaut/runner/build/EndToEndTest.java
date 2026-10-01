@@ -802,7 +802,7 @@ class EndToEndTest {
                 () -> "a list recorded from the same application has nothing to drop: " + result.warnings());
         int count;
         int jdkCount;
-        try (RunnerJarReader reader = RunnerJarReader.open(preloading)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(preloading)) {
             Index index = reader.index();
             count = index.preloadCount();
             jdkCount = index.jdkPreloadCount();
@@ -924,7 +924,7 @@ class EndToEndTest {
         assertEquals(LambdaDesugarer.NAME, desugared.step());
         assertEquals(0, desugared.fallbacks(), desugared::toString);
         assertTrue(desugared.rewritten() >= 4, desugared::toString);
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {
             assertTrue(reader.index().findClass("app.Main$$Lambda$R0") != io.micronaut.runner.IndexFormat.NO_INDEX,
                     "the application layer's lambdas are desugared too");
             assertTrue(reader.index().findClass("fix.Scenario$$Lambda$R0")
@@ -992,7 +992,7 @@ class EndToEndTest {
             assertEquals(io.micronaut.runner.IndexFormat.METHOD_DEFLATED, outer.method());
             sourceRegion = reader.readRaw(outer);
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {
             Index index = reader.index();
             int outer = index.findClass("nest.Outer");
             int inner = index.findClass("nest.Outer$Inner");

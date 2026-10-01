@@ -16,7 +16,6 @@
 package io.micronaut.runner.build.aotcache;
 
 import io.micronaut.runner.build.AotCacheOutput;
-import io.micronaut.runner.build.AotLayout;
 import io.micronaut.runner.build.AotTarget;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
@@ -65,6 +64,12 @@ class AotCacheBuilderTest {
 
     private static final String LIBRARY_JAR = "fixture-library.jar";
 
+    /** The label {@code AotCacheOutput} names the target with, in the identity file and the report. */
+    private static final String TARGET_LABEL = "target";
+
+    /** How the single-JAR target's warning that the cache left out the Runner JAR's classes starts. */
+    private static final String SINGLE_JAR_WARNING = "Fewer than half of the io.micronaut classes came from the cache";
+
     private static final List<String> WARNINGS = Collections.synchronizedList(new ArrayList<>());
 
     @TempDir
@@ -111,7 +116,7 @@ class AotCacheBuilderTest {
         assertTrue(layoutReport.passed(), layoutReport::toJson);
         assertTrue(layoutReport.coverage() >= 0.95, layoutReport::toJson);
         assertTrue(layoutReport.failures().isEmpty(), layoutReport::toJson);
-        assertEquals(AotTarget.LAYOUT.value(), layoutReport.labels().get(AotCacheOutput.TARGET_LABEL));
+        assertEquals(AotTarget.LAYOUT.value(), layoutReport.labels().get(TARGET_LABEL));
         assertEquals(AotCacheSettings.DEFAULT_VERIFY_PROBES, layoutReport.probes());
         assertEquals(0, layoutReport.probeFailures());
         assertTrue(layoutReport.micronautLoaded() > 0 && layoutReport.micronautNotFromCache().stream()
@@ -120,7 +125,12 @@ class AotCacheBuilderTest {
             assertEquals(AotCacheReport.STOP_JCMD, layoutReport.recordStop(), layoutReport::toJson);
         }
 
-        String jarName = AotLayout.applicationJarName(runnerJar);
+        String jarName = runnerJar.getFileName().toString();
+        assertEquals(jarName, layoutReport.jar(), "the layout's application JAR keeps the name, which ends in .jar");
+        assertTrue(layoutReport.summary().startsWith("Trained and verified the JDK AOT cache for the layout target: "),
+                layoutReport::summary);
+        assertTrue(layoutReport.summary().endsWith(" strict probes failed. Launch it from its directory with: java"
+                + " @app.jvmopts -jar " + jarName), layoutReport::summary);
         for (String file : List.of(jarName, "lib/" + LIBRARY_JAR, AotLaunchOptions.CACHE_FILE,
                 AotLaunchOptions.ARGFILE, AotLaunchOptions.IDENTITY_FILE, AotCacheReport.FILE,
                 AotCacheBuilder.RECORD_LOG, AotCacheBuilder.CREATE_LOG, AotCacheGate.SMOKE_LOG,
@@ -141,7 +151,7 @@ class AotCacheBuilderTest {
     void theSingleJarPassesTheEnforcedChecks() throws IOException {
         assertTrue(singleJarReport.passed(), singleJarReport::toJson);
         assertEquals(0, singleJarReport.probeFailures());
-        assertEquals("singleJar", singleJarReport.labels().get(AotCacheOutput.TARGET_LABEL));
+        assertEquals("singleJar", singleJarReport.labels().get(TARGET_LABEL));
         Path copy = singleJar.resolve(runnerJar.getFileName().toString());
         assertEquals(Files.getLastModifiedTime(runnerJar), Files.getLastModifiedTime(copy),
                 "the copy keeps the modification time");
@@ -177,8 +187,10 @@ class AotCacheBuilderTest {
         assertFalse(Files.readString(singleJar.resolve(AotLaunchOptions.ARGFILE)).contains("micronaut.runner.aot.training"));
         assertFalse(Files.readString(singleJar.resolve(AotLaunchOptions.IDENTITY_FILE))
                 .contains("micronaut.runner.aot.training"));
-        assertFalse(singleJarReport.warnings().contains(AotCacheOutput.SINGLE_JAR_WARNING), singleJarReport::toJson);
-        assertFalse(WARNINGS.contains(AotCacheOutput.SINGLE_JAR_WARNING), WARNINGS::toString);
+        assertTrue(singleJarReport.warnings().stream().noneMatch(warning -> warning.startsWith(SINGLE_JAR_WARNING)),
+                singleJarReport::toJson);
+        assertTrue(WARNINGS.stream().noneMatch(warning -> warning.startsWith(SINGLE_JAR_WARNING)),
+                WARNINGS::toString);
     }
 
     /**
@@ -194,7 +206,7 @@ class AotCacheBuilderTest {
         Files.copy(runnerJar, control.resolve(jarName), StandardCopyOption.COPY_ATTRIBUTES);
         AotCacheReport report = AotCacheBuilder.build(AotCacheSettings.builder().verifyProbes(1).enforceCoverage(false)
                         .build(), java, control, jarName, training().build(), List.of(),
-                Map.of(AotCacheOutput.TARGET_LABEL, "singleJar-control"), new RecordingLog());
+                Map.of(TARGET_LABEL, "singleJar-control"), new RecordingLog());
         assertTrue(report.passed(), report::toJson);
         String recordLog = Files.readString(control.resolve(AotCacheBuilder.RECORD_LOG), StandardCharsets.ISO_8859_1);
         assertFalse(recordLog.contains("AOT training mode"), recordLog);
@@ -249,7 +261,7 @@ class AotCacheBuilderTest {
 
         IOException failure = assertThrows(IOException.class, () -> AotCacheGate.verify(
                 AotCacheSettings.builder().verifyProbes(2).build(), JdkProbe.probe(java), relativeJava, copy,
-                AotLayout.applicationJarName(runnerJar), training().build(), AotCacheReport.STOP_JCMD,
+                runnerJar.getFileName().toString(), training().build(), AotCacheReport.STOP_JCMD,
                 new RecordingLog()));
 
         assertTrue(failure.getMessage().contains("2 of 2 strict probes failed"), failure.getMessage());

@@ -114,9 +114,9 @@ public final class Dependency {
      * build, or another module of a Maven reactor.
      *
      * <p>Unlike the coordinates, the flag changes how the archive is built. A project module is user code,
-     * whose locals users debug, so its classes are nested as they are: {@link
-     * RunnerJarSpec#stripLocalVariables()} never rewrites them, just as it never rewrites the application's
-     * own classes. {@link #of(Path)} and {@link #of(Path, String)} leave it unset.</p>
+     * whose locals users debug, so its classes are nested as they are: the {@code stripLocalVariables} option
+     * never rewrites them, just as it never rewrites the application's own classes. {@link #of(Path)} and
+     * {@link #of(Path, String)} leave it unset.</p>
      *
      * @return whether this dependency is a module of the same build
      */
@@ -126,7 +126,7 @@ public final class Dependency {
 
     /**
      * The file name of the dependency, which is the name the nested entry takes under
-     * {@link io.micronaut.runner.IndexFormat#LIB_PREFIX} unless another dependency already claimed it.
+     * {@code MICRONAUT-INF/lib/} unless another dependency already claimed it.
      *
      * @return the last element of the path
      */

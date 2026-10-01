@@ -91,6 +91,15 @@ class JdkAotCacheFunctionalTest extends AbstractFunctionalTest {
 
     private static final Pattern TOOLCHAIN_VERSION = Pattern.compile("TOOLCHAIN_RUNTIME_VERSION=(\\S+)");
 
+    /** The Runner JAR's file name, which the layout keeps. */
+    private static final String ARCHIVE_NAME = DEFAULT_ARCHIVE.substring("build/libs/".length());
+
+    /** The line the cache task logs: the report's summary, then the output directory and the time it took. */
+    private static final Pattern TRAINED = Pattern.compile("Trained and verified the JDK AOT cache for the layout"
+            + " target: [\\d.]+% of the classes and \\d+ of \\d+ io\\.micronaut classes from the cache, 0 of 2 strict"
+            + " probes failed\\. Launch it from its directory with: java @app\\.jvmopts -jar "
+            + Pattern.quote(ARCHIVE_NAME) + " \\(in .+, \\d+\\.\\d s\\)");
+
     @Test
     void trainsVerifiesAndStaysUpToDate(@TempDir Path directory) throws Exception {
         // The feature version of the JDK that runs the build, which Gradle finds as a toolchain without a download.
@@ -141,9 +150,9 @@ class JdkAotCacheFunctionalTest extends AbstractFunctionalTest {
         assertTrue(trained.getOutput().contains("Configuration cache entry stored"), trained::getOutput);
         assertFalse(trained.getOutput().toLowerCase(java.util.Locale.ROOT).contains("configuration cache problem"),
                 trained::getOutput);
-        assertTrue(trained.getOutput().contains("Trained and verified the JDK AOT cache for the layout target"),
-                trained::getOutput);
-        for (String file : List.of(DEFAULT_ARCHIVE.substring("build/libs/".length()), "lib/alpha.jar",
+        // The report's summary, which names the JAR, and what only the task knows: the directory and the time.
+        assertTrue(TRAINED.matcher(trained.getOutput()).find(), trained::getOutput);
+        for (String file : List.of(ARCHIVE_NAME, "lib/alpha.jar",
                 "lib/beta.jar", "app.aot", "app.jvmopts", "app.aot.properties", "aot-report.json")) {
             assertTrue(Files.isRegularFile(out.resolve(file)), () -> "no " + file + " in " + out);
         }
@@ -182,9 +191,11 @@ class JdkAotCacheFunctionalTest extends AbstractFunctionalTest {
         BuildResult layout = build(directory, "micronautRunnerLayout");
         assertEquals(TaskOutcome.SUCCESS, outcomeOf(layout, LAYOUT_TASK), layout::getOutput);
         Path layoutDirectory = directory.resolve("build/micronaut-runner/layout");
-        assertTrue(Files.isRegularFile(layoutDirectory.resolve(DEFAULT_ARCHIVE.substring("build/libs/".length())))
+        assertTrue(Files.isRegularFile(layoutDirectory.resolve(ARCHIVE_NAME))
                 && Files.isRegularFile(layoutDirectory.resolve("lib/alpha.jar")), layout::getOutput);
         assertFalse(Files.exists(layoutDirectory.resolve("app.aot")));
+        assertTrue(layout.getOutput().contains("Wrote the layout " + ARCHIVE_NAME + " with 2 JARs in lib/ to "),
+                layout::getOutput);
     }
 
     @Test

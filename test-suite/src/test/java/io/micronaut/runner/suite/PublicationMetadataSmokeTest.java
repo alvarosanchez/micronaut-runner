@@ -138,7 +138,9 @@ class PublicationMetadataSmokeTest {
         assertEquals("maven-plugin", childText(mavenPluginPom.getDocumentElement(), "packaging"));
         assertDependencyScope(mavenPluginPom, BUILD, "runtime");
         assertDependencyScope(parseXml(artifact(GROUP, GRADLE_PLUGIN, "pom")), BUILD, "runtime");
-        assertDependencyScope(parseXml(artifact(GROUP, BUILD, "pom")), LAUNCHER, "compile");
+        // No public signature of runner-build names a launcher type, so the launcher is a runtime dependency and
+        // stays off the compile class path of the build plugins.
+        assertDependencyScope(parseXml(artifact(GROUP, BUILD, "pom")), LAUNCHER, "runtime");
 
         Document bom = parseXml(artifact(GROUP, BOM, "pom"));
         assertCoordinates(bom, GROUP, BOM, VERSION);

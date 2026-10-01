@@ -60,8 +60,8 @@ import java.util.zip.CRC32;
  *
  * <p>The archive it writes is an ordinary ZIP file whose every entry is stored uncompressed, laid out in
  * the order {@code IndexFormat} documents: the manifest, the index, the launcher's classes, the merged
- * Micronaut service directory, the application layer exploded under {@link IndexFormat#CLASSES_PREFIX} and
- * finally the dependencies, each an intact nested jar under {@link IndexFormat#LIB_PREFIX}.</p>
+ * Micronaut service directory, the application layer exploded under {@code MICRONAUT-INF/classes/} and
+ * finally the dependencies, each an intact nested jar under {@code MICRONAUT-INF/lib/}.</p>
  *
  * <h2>Two passes, one archive</h2>
  * <p>The index stores the absolute offset of every entry's data, and the index is itself the second entry
@@ -90,20 +90,18 @@ import java.util.zip.CRC32;
  * buffers. A HYBRID stage also holds one {@code Deflater}, created for its jar, reset for each cold class and
  * ended when the jar is written, with the buffer it deflates into, which grows to one byte less than the largest
  * class it deflates; and, while it writes a cold class that keeps its original DEFLATE bytes, that entry's
- * compressed region and the class verified by inflating it. None of these arrays is larger than
- * {@link ClassTransformPipeline#MAX_CLASS_SIZE}.
+ * compressed region and the class verified by inflating it. None of these arrays is larger than 8 MiB.
  * In PRESERVE the reader reads the manifest at its exact size and never allocates its transfer buffers, so
  * the stage holds one: the buffer it checksums the dependency through. The archive's bytes do not depend on
  * the thread count: every nested jar's name and work file are fixed in class-path order before staging
  * starts, warnings are emitted in that order afterwards, and the outer archive is written on one thread.</p>
  *
  * <h2>Class transforms</h2>
- * <p>In STORED and HYBRID, each stage also runs the {@link ClassTransforms} of the build over its dependency's
- * classes, by default {@link RunnerJarSpec#desugarLambdas()} and then {@link RunnerJarSpec#stripLocalVariables()}.
- * Before staging, one scan task per dependency runs on the same threads, with its own {@code ZipReader}, into a
- * read-only {@link ClassPathModel} that every stage shares and that is discarded when {@code build} returns. A
- * staging thread then also holds the original and the rewritten bytes of one class, at most
- * {@link ClassTransformPipeline#MAX_CLASS_SIZE} each. With {@code desugarLambdas}, a stage plans its
+ * <p>In STORED and HYBRID, each stage also runs the class transforms of the build over its dependency's
+ * classes, by default {@code desugarLambdas} and then {@code stripLocalVariables}. Before staging, one scan task
+ * per dependency runs on the same threads, with its own {@code ZipReader}, into a read-only model of the class
+ * path that every stage shares and that is discarded when {@code build} returns. A staging thread then also holds
+ * the original and the rewritten bytes of one class, at most 8 MiB each. With {@code desugarLambdas}, a stage plans its
  * dependency's nests before it writes the first entry, so the thread also holds the planned nests of the jar
  * it is staging: the original and the accepted bytes of each class with a rewritten lambda call site, of its
  * nest host and of the classes generated for it, each released when the entry loop has written it. One jar's
@@ -114,13 +112,15 @@ import java.util.zip.CRC32;
  * {@code MICRONAUT-INF/transforms.txt} right after the launcher classes; with every transform off there is no
  * scan and no such entry.</p>
  *
- * <p>{@link LogbackPrecompiler} runs after the stages, because the staged dependencies decide whether it applies.
+ * <p>The Logback precompiler ({@code precompileLogback}) runs after the stages, because the staged dependencies
+ * decide whether it applies.
  * The two do not meet: its front end loads Logback from the dependencies' own files, not from the staged copies,
  * and the classes it generates join the application layer after the scan and after the application layer was
  * transformed, so no transform rewrites them.</p>
  *
- * <p>{@link DefinitionPrefetchPackager} runs once the Micronaut service entries are merged, which decide whether it
- * applies, and before the static service table, which has to list the prefetch's configurer.</p>
+ * <p>The bean definition prefetch ({@code definitionPrefetch}) is packaged once the Micronaut service entries are
+ * merged, which decide whether it applies, and before the static service table, which has to list the prefetch's
+ * configurer.</p>
  *
  * <h2>Application jars</h2>
  * <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
@@ -1655,7 +1655,7 @@ public final class RunnerJarBuilder {
      */
     private void verify(Path archive, IndexWriter.Layout layout) throws IOException {
         boolean all = "true".equals(System.getProperty(VERIFY_ALL_PROPERTY));
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {
             Index index = reader.index();
             if (index.jarCount() != writer.jars().size() || index.entryCount() != layout.entryCount()) {
                 throw new IOException("The index of " + output + " describes " + index.jarCount() + " jars and "
@@ -1689,7 +1689,7 @@ public final class RunnerJarBuilder {
         }
     }
 
-    private void verifyEntry(RunnerJarReader reader, Index index, int record, byte[] buffer) throws IOException {
+    private void verifyEntry(RunnerJarArchive reader, Index index, int record, byte[] buffer) throws IOException {
         if (!index.entryPhysical(record) || index.entryDirectory(record)) {
             return;
         }

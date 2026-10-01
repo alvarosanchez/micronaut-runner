@@ -77,7 +77,7 @@ import java.util.Set;
         defaultPhase = LifecyclePhase.PACKAGE,
         requiresDependencyResolution = ResolutionScope.RUNTIME,
         threadSafe = true)
-public class PackageMojo extends AbstractMojo {
+public final class PackageMojo extends AbstractMojo {
 
     /** The prefix of the properties that set a packaging option by name. */
     private static final String PROPERTY_PREFIX = "micronaut.runner.";

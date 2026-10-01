@@ -38,7 +38,11 @@ class AotCacheSettingsTest {
         assertEquals(10, defaults.verifyProbes());
         assertEquals(0.95, defaults.minCoverage());
         assertTrue(defaults.enforceCoverage());
-        assertEquals(defaults, AotCacheSettings.builder().build());
+        assertEquals(values(defaults), values(AotCacheSettings.builder().build()));
+        assertEquals(List.of(true, List.of("-Xmx512m"), 3, 0.5, false), values(AotCacheSettings.builder()
+                .strict(true).jvmArgs(List.of("-Xmx512m")).verifyProbes(3).minCoverage(0.5).enforceCoverage(false)
+                .build()));
+        assertEquals(List.of(false, List.of(), 10, 0.95, false), values(defaults.withEnforceCoverage(false)));
     }
 
     @Test
@@ -73,5 +77,11 @@ class AotCacheSettingsTest {
             assertTrue(failure.getMessage().contains("'layout'") && failure.getMessage().contains("'singleJar'"),
                     failure.getMessage());
         }
+    }
+
+    /** Every setting, in a list that compares by value. */
+    private static List<Object> values(AotCacheSettings settings) {
+        return List.of(settings.strict(), settings.jvmArgs(), settings.verifyProbes(), settings.minCoverage(),
+                settings.enforceCoverage());
     }
 }

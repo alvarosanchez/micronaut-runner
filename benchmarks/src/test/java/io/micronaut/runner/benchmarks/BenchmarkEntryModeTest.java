@@ -17,9 +17,7 @@ package io.micronaut.runner.benchmarks;
 
 import io.micronaut.runner.BenchmarkTestAccess;
 import io.micronaut.runner.IndexFormat;
-import io.micronaut.runner.build.ArchiveReads;
 import io.micronaut.runner.build.Compression;
-import io.micronaut.runner.build.RunnerJarReader;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -276,10 +274,10 @@ class BenchmarkEntryModeTest {
                 List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
 
         assertTrue(preload.buildNote().endsWith("; 1 recorded startup classes preloaded"), preload.buildNote());
-        try (RunnerJarReader reader = RunnerJarReader.open(preload.artifact())) {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(preload.artifact())) {
             assertEquals(1, reader.index().preloadCount());
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(plain.artifact())) {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(plain.artifact())) {
             assertEquals(0, reader.index().preloadCount(), "a row that sets no list preloads nothing");
         }
         IOException failure = assertThrows(IOException.class, () -> runnerJar(output,
@@ -516,15 +514,15 @@ class BenchmarkEntryModeTest {
 
         Variant positional = runnerJar(output, "runner-stored-positional", "fixture.PositionalMain",
                 List.of(classes), List.of(), Compression.STORED, EntryMode.STUB,
-                SampleBuild.RunnerJarOptions.DEFAULTS.withArchiveReads(ArchiveReads.POSITIONAL));
+                SampleBuild.RunnerJarOptions.DEFAULTS.withArchiveReads("POSITIONAL"));
         Variant mapped = runnerJar(output, "runner-stored", "fixture.PositionalMain",
                 List.of(classes), List.of(), Compression.STORED, EntryMode.STUB);
 
-        try (RunnerJarReader reader = RunnerJarReader.open(positional.artifact())) {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(positional.artifact())) {
             assertTrue(reader.index().positionalReads());
             assertTrue(BenchmarkTestAccess.largestStoredClass(reader.index()) > 0);
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(mapped.artifact())) {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(mapped.artifact())) {
             assertFalse(reader.index().positionalReads(), "a row that sets nothing follows the builder default");
         }
     }
@@ -551,10 +549,10 @@ class BenchmarkEntryModeTest {
         SampleBuild.RunnerJarOptions control = SampleBuild.RunnerJarOptions.DEFAULTS.withPrecompileLogback(false);
         assertNull(control.archiveReads(), "the control leaves the archive read mode at the builder default");
         assertNull(SampleBuild.RunnerJarOptions.DEFAULTS.precompileLogback());
-        assertEquals(Boolean.FALSE, control.withArchiveReads(ArchiveReads.POSITIONAL).precompileLogback(),
+        assertEquals(Boolean.FALSE, control.withArchiveReads("POSITIONAL").precompileLogback(),
                 "one option does not reset the other");
-        assertEquals(ArchiveReads.POSITIONAL, SampleBuild.RunnerJarOptions.DEFAULTS
-                .withArchiveReads(ArchiveReads.POSITIONAL).withPrecompileLogback(false).archiveReads());
+        assertEquals("POSITIONAL", SampleBuild.RunnerJarOptions.DEFAULTS
+                .withArchiveReads("POSITIONAL").withPrecompileLogback(false).archiveReads());
 
         // A fixture the precompiler really compiles: a logback.xml and the real Logback and SLF4J jars. Without
         // them no archive carries a configurator whatever the option says, and the control proves nothing.
@@ -583,7 +581,7 @@ class BenchmarkEntryModeTest {
                 "the control's option reached the packaging library");
         assertEquals(LaunchInputs.PINNED_MODIFICATION_TIME, Files.getLastModifiedTime(joran.artifact()),
                 "a trained cache of the -aot control stays valid across runs only if the jar's time is pinned");
-        try (RunnerJarReader reader = RunnerJarReader.open(joran.artifact())) {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(joran.artifact())) {
             assertFalse(reader.index().positionalReads());
         }
     }
@@ -779,7 +777,7 @@ class BenchmarkEntryModeTest {
         assertNull(SampleBuild.RunnerJarOptions.DEFAULTS.definitionPrefetch(),
                 "a row that sets nothing follows the builder default");
         assertNull(candidate.precompileLogback());
-        assertEquals(Boolean.TRUE, candidate.withArchiveReads(ArchiveReads.POSITIONAL).withPrecompileLogback(false)
+        assertEquals(Boolean.TRUE, candidate.withArchiveReads("POSITIONAL").withPrecompileLogback(false)
                 .withStripLocalVariables(false).definitionPrefetch(), "one option does not reset the other");
         assertEquals(Boolean.FALSE, SampleBuild.RunnerJarOptions.DEFAULTS.withStripLocalVariables(false)
                 .withDefinitionPrefetch(true).stripLocalVariables());
@@ -888,7 +886,7 @@ class BenchmarkEntryModeTest {
     }
 
     private static void assertRunnerIndex(Path artifact, boolean stubExpected) throws IOException {
-        try (RunnerJarReader reader = RunnerJarReader.open(artifact)) {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(artifact)) {
             if (stubExpected) {
                 assertEquals(GENERATED_ENTRY_STUB, reader.index().entryStubClass());
                 assertTrue(reader.index().findClass(GENERATED_ENTRY_STUB) != IndexFormat.NO_INDEX);

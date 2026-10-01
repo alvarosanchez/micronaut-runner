@@ -86,10 +86,8 @@ public abstract class MicronautRunnerLayout extends DefaultTask {
         Path java = getJavaLauncher().get().getExecutablePath().getAsFile().toPath();
         Path destination = getDestinationDirectory().get().getAsFile().toPath();
         try {
-            AotLayout.Result layout = AotLayout.write(java, getArchiveFile().get().getAsFile().toPath(), destination,
-                    AotLayout.DEFAULT_TIMEOUT);
-            getLogger().lifecycle("Wrote the layout " + layout.applicationJar().getFileName() + " with "
-                    + layout.libraries().size() + " JARs in " + AotLayout.LIBRARY_DIRECTORY + "/ to " + destination);
+            getLogger().lifecycle(AotLayout.write(java, getArchiveFile().get().getAsFile().toPath(), destination,
+                    AotLayout.DEFAULT_TIMEOUT).summary());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new GradleException("Writing the layout was interrupted", e);

@@ -82,19 +82,19 @@ import java.util.function.Consumer;
 final class EntryStubGenerator {
 
     /** Binary name of the generated class, which the index header records for the launcher. */
-    public static final String STUB_CLASS = IndexFormat.GENERATED_PACKAGE + ".AppEntry";
+    static final String STUB_CLASS = IndexFormat.GENERATED_PACKAGE + ".AppEntry";
 
     /** Major class file version of the generated class: {@code 69} is Java 25. */
-    public static final int CLASS_FILE_MAJOR_VERSION = 69;
+    static final int CLASS_FILE_MAJOR_VERSION = 69;
 
     /** Minor class file version of the generated class. */
-    public static final int CLASS_FILE_MINOR_VERSION = 0;
+    static final int CLASS_FILE_MINOR_VERSION = 0;
 
     /**
      * Logical name of the generated class inside the application layer, which is
      * {@code MICRONAUT-INF/classes/io/micronaut/runner/generated/AppEntry.class} in the outer archive.
      */
-    public static final String STUB_RESOURCE_NAME = STUB_CLASS.replace('.', '/') + ".class";
+    static final String STUB_RESOURCE_NAME = STUB_CLASS.replace('.', '/') + ".class";
 
     /** The method the application has to declare, and the method the stub calls. */
     private static final String MAIN_METHOD = "main";
@@ -135,7 +135,7 @@ final class EntryStubGenerator {
      * @throws IllegalArgumentException if the name is not a legal binary class name
      * @throws NullPointerException     if the name is {@code null}
      */
-    public static byte[] generate(String mainClass) {
+    static byte[] generate(String mainClass) {
         return generate(mainClass, false);
     }
 
@@ -155,7 +155,7 @@ final class EntryStubGenerator {
      * @throws IllegalArgumentException if the name is not a legal binary class name
      * @throws NullPointerException     if the name is {@code null}
      */
-    public static byte[] generate(String mainClass, boolean definitionPrefetch) {
+    static byte[] generate(String mainClass, boolean definitionPrefetch) {
         Objects.requireNonNull(mainClass, "mainClass");
         return ClassFile.of().build(STUB_TYPE, new StubClass(ClassDesc.of(mainClass), definitionPrefetch));
     }
@@ -177,7 +177,7 @@ final class EntryStubGenerator {
      *         "no entry stub was generated because ..."
      * @throws NullPointerException if an argument is {@code null}
      */
-    public static String ineligibilityReason(String mainClass, byte[] classFile) {
+    static String ineligibilityReason(String mainClass, byte[] classFile) {
         Objects.requireNonNull(mainClass, "mainClass");
         Objects.requireNonNull(classFile, "classFile");
         if (mainClass.indexOf('.') < 0) {

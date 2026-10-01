@@ -26,6 +26,14 @@
  * <p>Runner-only; the Micronaut Docker support trains inside images with plugin-local scripts
  * (micronaut-projects/micronaut-gradle-plugin#1379, micronaut-projects/micronaut-maven-plugin#1721).</p>
  *
- * <p>Every public type is experimental and outside the stable API: it may change in any release.</p>
+ * <p><b>Internal.</b> No type here is API: every public type is internal to Runner's interim build plugins and
+ * its benchmarks, and may change in any release. The types they reach carry {@code @Internal}, so the build's
+ * binary-compatibility check reports a change to them as a warning, not a failure:
+ * {@link io.micronaut.runner.build.aotcache.AotCacheSettings} with its {@code Builder} and
+ * {@link io.micronaut.runner.build.aotcache.AotCacheReport}, which the plugins use, and
+ * {@link io.micronaut.runner.build.aotcache.JdkProbe} and {@link io.micronaut.runner.build.aotcache.AotCacheGate}
+ * with its {@code Coverage}, which the benchmarks use. {@code AotCacheBuilder} and {@code AotLaunchOptions} are
+ * public only because {@code io.micronaut.runner.build.AotCacheOutput} calls them, and they become
+ * package-private once this package joins that one.</p>
  */
 package io.micronaut.runner.build.aotcache;

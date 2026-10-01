@@ -263,7 +263,8 @@ class RunnerJarSpecTest {
         assertEquals(ArchiveReads.MAPPED, complete(RunnerJarSpec.builder()).build().archiveReads(),
                 "positional reads missed the default gate, so they are opt-in");
         assertEquals(RunnerJarOption.Exposure.PASSTHROUGH, RunnerJarOption.ARCHIVE_READS.exposure());
-        assertEquals(ArchiveReads.class, RunnerJarOption.ARCHIVE_READS.valueType());
+        assertEquals(String.class, RunnerJarOption.ARCHIVE_READS.valueType(),
+                "a PASSTHROUGH option exposes no type of this library");
         assertEquals(java.util.Optional.of(ArchiveReads.MAPPED.name()), RunnerJarOption.ARCHIVE_READS.defaultValue());
         assertEquals(ArchiveReads.POSITIONAL, complete(RunnerJarSpec.builder()
                 .archiveReads(ArchiveReads.POSITIONAL)).build().archiveReads());
