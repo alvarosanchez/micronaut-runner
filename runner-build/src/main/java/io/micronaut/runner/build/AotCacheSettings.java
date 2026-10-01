@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.build.aotcache;
+package io.micronaut.runner.build;
 
 import io.micronaut.core.annotation.Internal;
 
@@ -26,8 +26,7 @@ import java.util.Objects;
  * {@link #defaults()} and replace only what the user set, so every default lives here.
  *
  * <p>Internal to Runner's interim build plugins: it may change in any release. It is a final class rather than
- * a record so that only what another package calls is public: the plugins read the defaults and build settings,
- * and {@code AotCacheOutput} reads {@link #jvmArgs()} and decides {@link #withEnforceCoverage(boolean)}.</p>
+ * a record so that only what the plugins call is public: they read the defaults and build settings.</p>
  *
  * @since 1.0
  */
@@ -116,7 +115,7 @@ public final class AotCacheSettings {
      * @param enforce whether the coverage checks fail the build
      * @return the settings
      */
-    public AotCacheSettings withEnforceCoverage(boolean enforce) {
+    AotCacheSettings withEnforceCoverage(boolean enforce) {
         return new AotCacheSettings(strict, jvmArgs, verifyProbes, minCoverage, enforce);
     }
 

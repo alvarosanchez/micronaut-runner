@@ -13,11 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.build.aotcache;
+package io.micronaut.runner.build;
 
 import io.micronaut.core.annotation.Nullable;
-import io.micronaut.runner.build.BuildLogger;
-import io.micronaut.runner.build.training.TrainingDriver;
 import io.micronaut.runner.build.training.TrainingSettings;
 
 import java.io.File;
@@ -57,12 +55,9 @@ import java.util.concurrent.TimeUnit;
  * variables, and each phase is logged with its duration. The recording alone also carries the caller's
  * {@code recordJvmArgs}, which reach neither the creation, the checks nor the argfile.</p>
  *
- * <p>Not for users: the class and {@link #build} are public only because {@code AotCacheOutput}, in another
- * package of this library, calls it. Everything else is package-private.</p>
- *
  * @since 1.0
  */
-public final class AotCacheBuilder {
+final class AotCacheBuilder {
 
     /** The recording's output, relative to the output directory. */
     static final String RECORD_LOG = "aot-record.log";
@@ -111,14 +106,14 @@ public final class AotCacheBuilder {
      * @throws IOException          if a phase fails or the gate does; the message says which, and the logs stay
      * @throws InterruptedException if the thread is interrupted; every process has been reaped by then
      */
-    public static AotCacheReport build(AotCacheSettings settings,
-                                       Path java,
-                                       Path directory,
-                                       String jarName,
-                                       TrainingSettings training,
-                                       List<String> recordJvmArgs,
-                                       Map<String, String> labels,
-                                       BuildLogger log) throws IOException, InterruptedException {
+    static AotCacheReport build(AotCacheSettings settings,
+                                Path java,
+                                Path directory,
+                                String jarName,
+                                TrainingSettings training,
+                                List<String> recordJvmArgs,
+                                Map<String, String> labels,
+                                BuildLogger log) throws IOException, InterruptedException {
         Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(java, "java");
         Objects.requireNonNull(training, "training");

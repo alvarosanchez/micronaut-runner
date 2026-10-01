@@ -16,8 +16,8 @@
 package io.micronaut.runner.benchmarks;
 
 import io.micronaut.runner.RunnerClassLoader;
-import io.micronaut.runner.build.aotcache.AotCacheGate;
-import io.micronaut.runner.build.aotcache.JdkProbe;
+import io.micronaut.runner.build.AotCacheGate;
+import io.micronaut.runner.build.JdkProbe;
 
 import java.io.IOException;
 import java.io.PrintStream;

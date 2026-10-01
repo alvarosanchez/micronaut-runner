@@ -23,7 +23,15 @@ on:
     paths:
       - '.github/workflows/jdk-aot-cache-guard.yml'
       - '.github/jdk-aot-cache-guard/**'
-      - 'runner-build/src/main/java/io/micronaut/runner/build/aotcache/**'
+      # The cache engine, which shares runner-build's package with the Runner JAR code (#233).
+      - 'runner-build/src/main/java/io/micronaut/runner/build/AotCacheBuilder.java'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/AotCacheGate.java'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/AotCacheReport.java'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/AotCacheSettings.java'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/AotLaunchOptions.java'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/Forks.java'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/JdkProbe.java'
+      - 'runner-build/src/main/java/io/micronaut/runner/build/TrainingDriver.java'
       - 'runner-build/src/main/java/io/micronaut/runner/build/AotCacheOutput.java'
       - 'runner-build/src/main/java/io/micronaut/runner/build/AotLayout.java'
       - 'runner-build/src/main/java/io/micronaut/runner/build/AotTarget.java'
@@ -31,7 +39,9 @@ on:
       - 'runner-launcher/src/main/java/io/micronaut/runner/RunnerClassLoader.java'
       - 'runner-launcher/src/main/java/io/micronaut/runner/Handlers.java'
       # The forked test this guard runs on the matrix JDK, and the convention that hands it that JDK.
-      - 'runner-build/src/test/java/io/micronaut/runner/build/aotcache/**'
+      - 'runner-build/src/test/java/io/micronaut/runner/build/AotCacheBuilderTest.java'
+      - 'runner-build/src/test/java/io/micronaut/runner/build/AotCacheFixture.java'
+      - 'runner-build/src/test/java/io/micronaut/runner/build/AotCacheFixtureLibrary.java'
       - 'buildSrc/src/main/groovy/io.micronaut.build.internal.runner-base.gradle'
 permissions:
   contents: read
@@ -172,7 +182,7 @@ jobs:
               fi
             done
             echo
-            xml=runner-build/build/test-results/test/TEST-io.micronaut.runner.build.aotcache.AotCacheBuilderTest.xml
+            xml=runner-build/build/test-results/test/TEST-io.micronaut.runner.build.AotCacheBuilderTest.xml
             if [ -f "$xml" ]; then
               suite=$(grep -o '<testsuite [^>]*>' "$xml" | head -1)
               attribute() { echo "$suite" | sed -n "s/.* $1=\"\([^\"]*\)\".*/\1/p"; }
@@ -193,7 +203,7 @@ jobs:
           name: jdk-aot-cache-guard-${{ matrix.os }}-${{ matrix.java }}
           path: |
             guard-reports/
-            runner-build/build/test-results/test/TEST-io.micronaut.runner.build.aotcache.AotCacheBuilderTest.xml
+            runner-build/build/test-results/test/TEST-io.micronaut.runner.build.AotCacheBuilderTest.xml
             test-suite/samples/benchmark-large/build/micronaut-runner/jdk-aot-cache/*.log
             test-suite/samples/benchmark-large/build/micronaut-runner/jdk-aot-cache/app.aot.properties
           if-no-files-found: warn

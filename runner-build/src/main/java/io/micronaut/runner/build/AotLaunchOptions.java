@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.build.aotcache;
+package io.micronaut.runner.build;
 
 import io.micronaut.runner.build.training.TrainingSettings;
 
@@ -36,19 +36,15 @@ import java.util.Properties;
  * <p>From that directory the application launches as {@code java @app.jvmopts -jar <jar>}: the argfile names
  * the cache by a relative path.</p>
  *
- * <p>Not for users: the class and its two file names are public only because {@code AotCacheOutput}, in another
- * package of this library, deletes those files when a build fails after training. Everything else is
- * package-private.</p>
- *
  * @since 1.0
  */
-public final class AotLaunchOptions {
+final class AotLaunchOptions {
 
     /** The cache, relative to the output directory. */
-    public static final String CACHE_FILE = "app.aot";
+    static final String CACHE_FILE = "app.aot";
 
     /** The launch argfile, relative to the output directory. */
-    public static final String ARGFILE = "app.jvmopts";
+    static final String ARGFILE = "app.jvmopts";
 
     /** The identity file, relative to the output directory. */
     static final String IDENTITY_FILE = "app.aot.properties";

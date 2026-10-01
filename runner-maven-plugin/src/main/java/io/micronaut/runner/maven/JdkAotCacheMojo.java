@@ -16,9 +16,9 @@
 package io.micronaut.runner.maven;
 
 import io.micronaut.runner.build.AotCacheOutput;
+import io.micronaut.runner.build.AotCacheReport;
+import io.micronaut.runner.build.AotCacheSettings;
 import io.micronaut.runner.build.AotTarget;
-import io.micronaut.runner.build.aotcache.AotCacheReport;
-import io.micronaut.runner.build.aotcache.AotCacheSettings;
 import io.micronaut.runner.build.training.TrainingSettings;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;

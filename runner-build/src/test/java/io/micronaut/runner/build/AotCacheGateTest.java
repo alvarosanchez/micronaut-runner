@@ -13,9 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.micronaut.runner.build.aotcache;
+package io.micronaut.runner.build;
 
-import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.training.TrainingSettings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

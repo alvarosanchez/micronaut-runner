@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.build;
 
-import io.micronaut.runner.build.aotcache.AotCacheFixture;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;

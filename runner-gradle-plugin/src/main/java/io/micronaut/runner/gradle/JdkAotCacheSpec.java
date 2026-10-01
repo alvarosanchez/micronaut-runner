@@ -15,8 +15,8 @@
  */
 package io.micronaut.runner.gradle;
 
+import io.micronaut.runner.build.AotCacheSettings;
 import io.micronaut.runner.build.AotTarget;
-import io.micronaut.runner.build.aotcache.AotCacheSettings;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;

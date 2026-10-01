@@ -16,7 +16,6 @@
 package io.micronaut.runner.build;
 
 import io.micronaut.runner.RunnerClassLoader;
-import io.micronaut.runner.build.training.TrainingDriver;
 import io.micronaut.runner.build.training.TrainingSettings;
 
 import java.io.IOException;
