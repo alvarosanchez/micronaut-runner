@@ -58,14 +58,27 @@ copies each dependency byte for byte instead.
 With a startup class list (`startupClasses`, which the recorded startup profile provides), re-packing also writes
 each nested JAR's startup classes first, in the order they were recorded, after `META-INF/` and the manifest. The
 bytes startup reads are then contiguous instead of scattered through every dependency. Nested JARs keep their
-places in the outer archive and class path order, so lookups and duplicate precedence do not change.
+places in the outer archive and class path order, so lookups and duplicate precedence do not change. On
+benchmark-large on Linux this left 10.7 MB less of the mapped archive resident at readiness, and with the page cache
+evicted it read 9.5 MB less and was ready 33 ms (95% CI 21 to 46 ms) sooner, without the preloader.
 
 The `HYBRID` option re-packs as `STORED` does, startup classes first, but keeps the other classes compressed. An
 unlisted class that no build-time transform changed keeps its original compressed bytes, and one a transform
 rewrote or generated is deflated afresh. Listed classes, resources, and the few classes the dependency stored or
-that do not get smaller stay stored.
+that do not get smaller stay stored. On benchmark-large:
 
-// HYBRID_TABLE: filled in from the measured runs of the pull request that adds HYBRID.
+[cols="2,1,1,2",options="header"]
+|===
+|Compression |Raw bytes |`gzip -6` bytes |Readiness minus `STORED`, median (95% CI)
+
+|`STORED` (default) |36,024,820 |8,782,001 |—
+|`PRESERVE` |17,709,783 |13,626,769 |+223.4 ms (+209.8 to +244.4)
+|`HYBRID` |26,646,740 |11,848,014 |−3.0 ms (−14.3 to +17.5)
+|===
+
+GitHub `ubuntu-latest` runner (4 vCPUs, AMD EPYC 7763), Temurin JDK 25.0.4.1, commit `0871050`, 20 paired iterations,
+page cache uncontrolled; the `HYBRID` JAR packages the startup profile recorded in the same run and starts with the
+preloader off.
 
 Use `HYBRID` only where on-disk or unpacked size matters more than transfer size: DEFLATE bytes do not compress
 again, so a `HYBRID` image layer is larger after gzip than a `STORED` one. It needs the startup profile (see
