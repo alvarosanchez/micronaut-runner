@@ -78,6 +78,7 @@ loadScripts(document, 'script');</script>
 <li><a href="#startupClasses(java.nio.file.Path)" tabindex="0">startupClasses(Path)</a></li>
 <li><a href="#staticServices(boolean)" tabindex="0">staticServices(boolean)</a></li>
 <li><a href="#desugarLambdas(boolean)" tabindex="0">desugarLambdas(boolean)</a></li>
+<li><a href="#definitionPrefetch(boolean)" tabindex="0">definitionPrefetch(boolean)</a></li>
 <li><a href="#option(java.lang.String,java.lang.String)" tabindex="0">option(String, String)</a></li>
 <li><a href="#timestamp(java.time.Instant)" tabindex="0">timestamp(Instant)</a></li>
 <li><a href="#build()" tabindex="0">build()</a></li>
@@ -181,77 +182,82 @@ first and its generic options last.</p></div>
 <div class="block">Sets how the nested dependencies are stored.</div>
 </div>
 <div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#dependencies(java.util.List)" class="member-name-link">dependencies</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="Dependency.html" title="class in io.micronaut.runner.build">Dependency</a>&gt;&nbsp;value)</code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#definitionPrefetch(boolean)" class="member-name-link">definitionPrefetch</a><wbr>(boolean&nbsp;value)</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
-<div class="block">Sets the dependencies to nest, in class path order.</div>
+<div class="block">Requests the bean definition prefetch.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#desugarLambdas(boolean)" class="member-name-link">desugarLambdas</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#dependencies(java.util.List)" class="member-name-link">dependencies</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html" title="class or interface in java.util" class="external-link">List</a>&lt;<a href="Dependency.html" title="class in io.micronaut.runner.build">Dependency</a>&gt;&nbsp;value)</code></div>
 <div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="block">Sets the dependencies to nest, in class path order.</div>
+</div>
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#desugarLambdas(boolean)" class="member-name-link">desugarLambdas</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets whether lambda and method-reference call sites are replaced with classes generated at packaging
 time.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#enableNativeAccess(boolean)" class="member-name-link">enableNativeAccess</a><wbr>(boolean&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#enableNativeAccess(boolean)" class="member-name-link">enableNativeAccess</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Enables native access for the unnamed module.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryStub(boolean)" class="member-name-link">entryStub</a><wbr>(boolean&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#entryStub(boolean)" class="member-name-link">entryStub</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Requests a generated entry stub.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#mainClass(java.lang.String)" class="member-name-link">mainClass</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#mainClass(java.lang.String)" class="member-name-link">mainClass</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the application main class.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#manifestAttributes(java.util.Map)" class="member-name-link">manifestAttributes</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#manifestAttributes(java.util.Map)" class="member-name-link">manifestAttributes</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html" title="class or interface in java.util" class="external-link">Map</a>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>,<wbr><a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets extra main attributes for the manifest.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#multiRelease(boolean)" class="member-name-link">multiRelease</a><wbr>(boolean&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#multiRelease(boolean)" class="member-name-link">multiRelease</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Declares the application layer multi-release.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#option(java.lang.String,java.lang.String)" class="member-name-link">option</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#option(java.lang.String,java.lang.String)" class="member-name-link">option</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;name,
  <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets a packaging option by its <a href="RunnerJarOption.html#optionName()">name</a>, whether it has a
 typed setter or not.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#output(java.nio.file.Path)" class="member-name-link">output</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#output(java.nio.file.Path)" class="member-name-link">output</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the file the runner jar is written to.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#precompileLogback(boolean)" class="member-name-link">precompileLogback</a><wbr>(boolean&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#precompileLogback(boolean)" class="member-name-link">precompileLogback</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Requests that the application's <code>logback.xml</code> be compiled into a Logback <code>Configurator</code> when
 it is packaged.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#startupClasses(java.nio.file.Path)" class="member-name-link">startupClasses</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#startupClasses(java.nio.file.Path)" class="member-name-link">startupClasses</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html" title="class or interface in java.nio.file" class="external-link">Path</a>&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the recorded startup class list the launcher preloads on a background thread.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#staticServices(boolean)" class="member-name-link">staticServices</a><wbr>(boolean&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#staticServices(boolean)" class="member-name-link">staticServices</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Requests the static service table.</div>
 </div>
-<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stripLocalVariables(boolean)" class="member-name-link">stripLocalVariables</a><wbr>(boolean&nbsp;value)</code></div>
-<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#stripLocalVariables(boolean)" class="member-name-link">stripLocalVariables</a><wbr>(boolean&nbsp;value)</code></div>
+<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Drops the local-variable tables of dependency classes when they are re-packed.</div>
 </div>
-<div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
-<div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
-<div class="col-last odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
+<div class="col-first even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></code></div>
+<div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4"><code><a href="#timestamp(java.time.Instant)" class="member-name-link">timestamp</a><wbr>(<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html" title="class or interface in java.time" class="external-link">Instant</a>&nbsp;value)</code></div>
+<div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab4">
 <div class="block">Sets the instant every entry is dated with.</div>
 </div>
 </div>
@@ -731,6 +737,54 @@ nests every dependency byte for byte, the option has no effect.</p>
 <dl class="notes">
 <dt>Parameters:</dt>
 <dd><code>value</code> - whether to desugar lambdas</dd>
+<dt>Returns:</dt>
+<dd>this builder</dd>
+</dl>
+</div>
+</section>
+</li>
+<li>
+<section class="detail" id="definitionPrefetch(boolean)">
+<h3>definitionPrefetch</h3>
+<div class="horizontal-scroll">
+<div class="member-signature"><span class="modifiers">public</span>&nbsp;<span class="return-type"><a href="RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></span>&nbsp;<span class="element-name">definitionPrefetch</span><wbr><span class="parameters">(boolean&nbsp;value)</span></div>
+<div class="block">Requests the bean definition prefetch. The packager leaves it out, and logs why, whenever the
+application cannot use it; see <a href="RunnerJarSpec.html#definitionPrefetch()"><code>RunnerJarSpec.definitionPrefetch()</code></a>.
+
+<p>Micronaut loads and initialises almost every bean definition before the application is ready, in
+parallel on the common pool, but only after the main thread has configured logging and created the
+context builder. With the prefetch, the entry stub starts that same work before the application's
+<code>main</code>: Micronaut's own <code>DefaultBeanDefinitionsProvider</code> runs on the common pool while the
+main thread does the rest, and the first application context built through an
+<code>ApplicationContextBuilder</code> receives what it returned, or the exception it threw, unchanged.
+Which failures of a bean definition Micronaut ignores and which ones stop the application is therefore
+decided as it is without the prefetch.</p>
+
+<p>What changes observably when it is packaged:</p>
+<ul>
+    <li><code>ConversionService</code>, with its <code>TypeConverterRegistrar</code> services, and the static
+    initialisers of the bean definitions run on common pool threads, before the body of <code>main</code>
+    and before any other <code>ApplicationContextConfigurer</code>;</li>
+    <li>the common pool is created before <code>main</code>, so
+    <code>java.util.concurrent.ForkJoinPool.common.*</code> properties that <code>main</code> sets
+    programmatically no longer take effect, while the same properties on the command line do;</li>
+    <li>an application that creates its context without a builder, or replaces the builder's
+    <code>BeanDefinitionsProvider</code>, does not receive the result; the first should not be packaged
+    with this option, or has to be started with <code>-Dmicronaut.runner.prefetch=false</code>.</li>
+</ul>
+
+<p>At run time the prefetch does not start with <code>-Dmicronaut.runner.prefetch=false</code> or
+<code>-Dmicronaut.runner.static-services.verify=true</code>, when the common pool has fewer than three
+threads, which is a JVM with fewer than four processors, or in the extracted layout, which has no entry
+stub. Without this option the two classes and the service registration are not in the archive at
+all.</p>
+
+<p>Defaults to <code>false</code>. On the benchmark sample the prefetch shortens a start without a JDK AOT
+cache, a start with one by a few milliseconds at most, and a start with three processors not at all;
+the user guide's section on the bean definition prefetch has the measurements.</p></div>
+<dl class="notes">
+<dt>Parameters:</dt>
+<dd><code>value</code> - whether to package the bean definition prefetch</dd>
 <dt>Returns:</dt>
 <dd>this builder</dd>
 </dl>

@@ -578,6 +578,27 @@ destroying the process.</div>
 <div class="block">The value the option has when nothing sets it, in the grammar
 <a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#option(java.lang.String,java.lang.String)"><code>RunnerJarSpec.Builder.option(String, String)</code></a> reads.</div>
 </dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarOption.html#DEFINITION_PREFETCH" class="member-name-link">DEFINITION_PREFETCH</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
+<dd>
+<div class="block">Whether to package the bean definition prefetch, which the entry stub starts before the application's
+<code>main</code>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#definitionPrefetch()" class="member-name-link">definitionPrefetch()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
+<dd>
+<div class="block">Whether the build packaged the bean definition prefetch, which <a href="io/micronaut/runner/build/RunnerJarSpec.html#definitionPrefetch()"><code>RunnerJarSpec.definitionPrefetch()</code></a>
+requests: the entry stub then starts Micronaut's bean definition loading before the application's
+<code>main</code>.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#definitionPrefetch()" class="member-name-link">definitionPrefetch()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>
+<dd>
+<div class="block">Whether the bean definition prefetch was requested: the entry stub then starts Micronaut's own bean
+definition loading on the common pool before it enters the application, and a generated
+<code>ApplicationContextConfigurer</code> hands the result to the first application context.</div>
+</dd>
+<dt><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html#definitionPrefetch(boolean)" class="member-name-link">definitionPrefetch(boolean)</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></dt>
+<dd>
+<div class="block">Requests the bean definition prefetch.</div>
+</dd>
 <dt><a href="io/micronaut/runner/RunnerClassLoader.html#delegation-order-heading" class="search-tag-link">Delegation order</a> - Section in class io.micronaut.runner.RunnerClassLoader</dt>
 <dd>&nbsp;</dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarSpec.html#dependencies()" class="member-name-link">dependencies()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></dt>

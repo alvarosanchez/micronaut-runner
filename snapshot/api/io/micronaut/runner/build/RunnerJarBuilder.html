@@ -140,6 +140,9 @@ The two do not meet: its front end loads Logback from the dependencies' own file
 and the classes it generates join the application layer after the scan and after the application layer was
 transformed, so no transform rewrites them.</p>
 
+<p><code>DefinitionPrefetchPackager</code> runs once the Micronaut service entries are merged, which decide whether it
+applies, and before the static service table, which has to list the prefetch's configurer.</p>
+
 <h2 id="application-jars-heading">Application jars</h2>
 <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
 archive has been written. Its entries are streamed from it into the archive, each inflated and checked

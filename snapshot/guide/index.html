@@ -368,6 +368,9 @@ Micronaut AOT-optimized application into <code>build/libs/my-app-0.1-all-optimiz
 
         // On by default for STORED; 'false' keeps lambdas as invokedynamic call sites. See Build-Time Transformations.
         // options.put('desugarLambdas', 'false')
+
+        // Off by default. Packages the bean definition prefetch, which can shorten a start without an AOT cache.
+        // options.put('definitionPrefetch', 'true')
     }
 }</code></pre>
 </div>
@@ -494,6 +497,13 @@ tool resolve the path against the project and, in Gradle, rebuild the archive wh
 <td class="tableblock halign-left valign-top"><p class="tableblock">passthrough</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
 </tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>definitionPrefetch</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">boolean</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">passthrough</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.0</p></td>
+</tr>
 </tbody>
 </table>
 <div class="paragraph">
@@ -513,6 +523,11 @@ and invalid entries fail packaging.</p>
 <div class="paragraph">
 <p><code>precompileLogback</code> compiles <code>logback.xml</code> into a Logback <code>Configurator</code> when it is packaged, and leaves any file it
 cannot reproduce exactly to Logback; see <a href="#precompiledLogback">[precompiledLogback]</a>.</p>
+</div>
+<div class="paragraph">
+<p><code>definitionPrefetch</code> packages two classes that start Micronaut&#8217;s bean definition loading before <code>main</code>, on the common
+pool, and hand the result to the first application context. It is off unless you set it; see <a href="#definitionPrefetch">[definitionPrefetch]</a>
+for what it changes and when it pays off.</p>
 </div>
 <div class="paragraph">
 <p>The application&#8217;s <code>Implementation-*</code>, <code>Specification-*</code> and <code>Sealed</code> attributes and package sections come from the
@@ -652,7 +667,12 @@ Dependency local-variable tables are dropped by default (see <a href="#localVari
 <code>-Dmicronaut.runner.stripLocalVariables=false</code> to keep them. Lambdas are desugared by default (see
 <a href="#desugaredLambdas">Desugared lambdas</a>); to keep them as <code>invokedynamic</code> call sites, pass
 <code>-Dmicronaut.runner.desugarLambdas=false</code> or set
-<code>&lt;runnerOptions&gt;&lt;desugarLambdas&gt;false&lt;/desugarLambdas&gt;&lt;/runnerOptions&gt;</code>.</p>
+<code>&lt;runnerOptions&gt;&lt;desugarLambdas&gt;false&lt;/desugarLambdas&gt;&lt;/runnerOptions&gt;</code>.
+To package the bean definition prefetch (<a href="#definitionPrefetch">[definitionPrefetch]</a>), pass
+<code>-Dmicronaut.runner.definitionPrefetch=true</code> or set
+<code>&lt;runnerOptions&gt;&lt;definitionPrefetch&gt;true&lt;/definitionPrefetch&gt;&lt;/runnerOptions&gt;</code>. That property is read while
+packaging; the switch that turns a packaged prefetch off for one launch is <code>-Dmicronaut.runner.prefetch=false</code> on
+the <code>java</code> command line.</p>
 </div>
 <div class="paragraph">
 <p>To map only the index and read classes with pooled positional reads, for a lower RSS and a slightly slower start,
@@ -1473,6 +1493,18 @@ fails that lookup, so the application does not start.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Set to <code>true</code> to print every lookup the table is asked for to standard error, as
 <code>get &lt;type&gt; &#8594; &lt;count&gt;</code>, <code>empty</code> or <code>dynamic</code>.</p></td>
 </tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.prefetch</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code> starts the application without the bean definition prefetch (<a href="#definitionPrefetch">Bean definition prefetch</a>). It has to be set on
+the command line, because the prefetch starts before <code>main</code>. It has no effect on an archive without one, which is
+every archive not packaged with the <code>definitionPrefetch</code> option.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.prefetch.trace</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set to <code>true</code> to print to standard error whether the application context took the prefetched bean definitions.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -1560,6 +1592,95 @@ loader, as the main thread does. Otherwise Micronaut does not find the table, an
 </li>
 <li>
 <p>An extracted application keeps the table, and so registers its beans in the order its runner JAR does.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="definitionPrefetch">Bean definition prefetch</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Micronaut loads and initialises almost every bean definition before the application is ready, on the common
+fork/join pool, but only after the main thread has configured logging and created the context builder. A runner JAR
+packaged with the <code>definitionPrefetch</code> option (<a href="#quickStart">[quickStart]</a>) starts that work earlier: its entry stub runs
+Micronaut&#8217;s own <code>DefaultBeanDefinitionsProvider</code> on the common pool before <code>main</code>, and the first application context
+built through an <code>ApplicationContextBuilder</code> (<code>Micronaut.run</code>, <code>ApplicationContext.run</code> or <code>builder()</code>,
+<code>PicocliRunner</code>) receives what it returned, or the exception it threw, unchanged. Which failing bean definitions
+Micronaut skips and which ones stop the application does not change.</p>
+</div>
+<div class="paragraph">
+<p>The option is off by default, because what the prefetch gains depends on the machine and is small next to a JDK AOT
+cache. On <code>benchmark-large</code> with JDK 25 and its static service table, measured with paired, interleaved starts:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>with lambdas desugared (<a href="#desugaredLambdas">Desugared lambdas</a>), the default, one run on a 12-processor Mac made
+the start 20 ms shorter without an AOT cache and 9 ms shorter with one; the measurements below were taken before
+lambdas were desugared;</p>
+</li>
+<li>
+<p>without an AOT cache, it made the start 26 to 35 ms shorter on a 12-processor Mac, and in a Linux container 2 to
+10 ms shorter with four processors, 19 to 33 ms with five and 22 ms with six;</p>
+</li>
+<li>
+<p>with an AOT cache, the start was 0 to 7 ms shorter on the Mac, where one of two runs could not tell the difference
+from zero, and 1 to 8 ms shorter in those containers, where five of seven runs could not either, among them three
+of the four with four processors; the resident set at readiness was at most about 2 MB larger;</p>
+</li>
+<li>
+<p>with three processors, in a measurement before the static service table, it made the start about 50 ms longer,
+because Micronaut then loads the definitions on one thread fewer. So the prefetch starts only when the common pool
+has at least three threads, which takes four processors.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>It is packaged when the archive has an entry stub, micronaut-inject 5.0 or later and at least one bean definition,
+and it runs from the single JAR only. <code>-Dmicronaut.runner.prefetch=false</code> turns a packaged prefetch off for one
+launch. So does <code>-Dmicronaut.runner.static-services.verify=true</code>, so that the static service table&#8217;s check
+(<a href="#staticServices">Static service table</a>) runs on the main thread, where a mismatch names the differences.</p>
+</div>
+<div class="paragraph">
+<p>The prefetch and the static service table work together. The table is generated after the prefetch, so it lists the
+prefetch&#8217;s <code>ApplicationContextConfigurer</code>, and the prefetch thread has the application&#8217;s class loader as its context
+class loader, so the lookups it makes are answered by the table. The same holds for Micronaut AOT: the archive of
+<code>optimizedMicronautRunnerJar</code> (<a href="#micronautAot">[micronautAot]</a>) takes the option from <code>micronautRunnerJar</code>, its service file lists the
+prefetch&#8217;s configurer after Micronaut AOT&#8217;s own, and the static optimizations Micronaut AOT registers as
+<code>StaticOptimizations</code> loaders are found from the prefetch thread.</p>
+</div>
+<div class="paragraph">
+<p>What it changes:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>The common pool is created before <code>main</code> runs, so <code>java.util.concurrent.ForkJoinPool.common.*</code> properties that
+<code>main</code> sets programmatically no longer take effect. <code>-D</code> flags still do.</p>
+</li>
+<li>
+<p><code>ConversionService</code>, with its <code>TypeConverterRegistrar</code> services, and the static initialisers of the bean
+definitions run on common pool threads, before the body of <code>main</code> and before any other
+<code>ApplicationContextConfigurer</code>. An initialiser that depends on state <code>main</code> sets up sees it unset.</p>
+</li>
+<li>
+<p>A class with a static SLF4J logger that such an initialiser loads while <code>main</code> is still configuring Logback would
+get a logger that replays its events later. No class of the measured samples does.</p>
+</li>
+<li>
+<p>An application that creates its context without a builder (<code>BeanContext.run()</code>, <code>new DefaultBeanContext(&#8230;&#8203;)</code>)
+must not be packaged with the option, or must be started with <code>-Dmicronaut.runner.prefetch=false</code>. It gets
+neither the prefetched definitions nor the guard that keeps the prefetch from deadlocking with the context&#8217;s own
+class initialisation.</p>
+</li>
+<li>
+<p>If the application replaces the builder&#8217;s <code>BeanDefinitionsProvider</code>, the prefetch&#8217;s work is wasted, and a bean
+definition that failed on the prefetch thread is reported by one line of Runner&#8217;s on standard error, not by
+Micronaut.</p>
+</li>
+<li>
+<p>The extracted layout keeps the two prefetch classes and never starts the prefetch.</p>
 </li>
 </ul>
 </div>
@@ -2846,6 +2967,16 @@ JDK AOT cache</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-extracted-lambdas-aot</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating control: the <code>runner-stored-lambdas</code> JAR extracted and launched by the JDK&#8217;s built-in loader,
 with a trained, application-class-verified JDK AOT cache; compared with <code>runner-extracted-aot</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-prefetch</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: the same stored Runner JAR inputs packaged with <code>definitionPrefetch=true</code>, so the entry stub
+starts loading the bean definitions before <code>main</code> (see <a href="#definitionPrefetch">[definitionPrefetch]</a>); compared with <code>runner-stored</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-stored-prefetch-aot</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Opt-in, non-gating: that prefetching Runner JAR with a trained, application-class-verified JDK AOT cache; compared
+with <code>runner-stored-aot</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>runner-preserve</code></p></td>
