@@ -652,7 +652,7 @@ public final class Index {
 
     /**
      * Opens one indexed entry after performing its jar's lazy staleness check. Every stream of an entry,
-     * whether for the class loader, a {@link NestedJarFile} or a {@code jar:} URL, is opened here.
+     * whether for the class loader, a {@code NestedJarFile} view or a {@code jar:} URL, is opened here.
      *
      * <p>When {@code micronaut.runner.verify} was {@code "true"} as this index was opened, every
      * byte returned or skipped contributes to the CRC-32, and the checksum is compared as soon as the

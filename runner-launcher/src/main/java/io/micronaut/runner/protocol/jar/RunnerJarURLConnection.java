@@ -19,8 +19,6 @@ import io.micronaut.runner.ArchiveSource;
 import io.micronaut.runner.Handlers;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
-import io.micronaut.runner.NestedJarEntry;
-import io.micronaut.runner.NestedJarFile;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -48,7 +46,7 @@ import java.util.jar.Manifest;
  * <ul>
  *   <li>{@code getJarFileURL()} is {@code jar:file:/app.jar!/MICRONAUT-INF/lib/dep.jar}</li>
  *   <li>{@code getEntryName()} is {@code a/B.class}</li>
- *   <li>{@code getJarFile()} is the {@link NestedJarFile} of that dependency</li>
+ *   <li>{@code getJarFile()} is the {@code NestedJarFile} view of that dependency</li>
  *   <li>{@code getJarEntry()} is that jar's entry {@code a/B.class}</li>
  * </ul>
  * <p>For an entry of the application layer, {@code jar:file:/app.jar!/MICRONAUT-INF/classes/a/B.class},
@@ -69,7 +67,7 @@ import java.util.jar.Manifest;
  * launcher classes, the manifest and the index itself, are read through a real {@link JarFile} of the outer
  * archive: one close-protected, process-lifetime handle that every connection shares, opened on demand.
  * It is also the jar {@link #getJarFile()} reports for every URL outside a nested jar, and closing it is a
- * no-op under either cache setting, exactly as it is for a {@link NestedJarFile}. Every call to
+ * no-op under either cache setting, exactly as it is for a {@code NestedJarFile} view. Every call to
  * {@link #getInputStream()} returns a fresh stream, because micronaut-core reads service files by
  * disabling caches and then asking for the stream.</p>
  *
@@ -210,10 +208,10 @@ final class RunnerJarURLConnection extends JarURLConnection {
     }
 
     /**
-     * The jar this connection reads from, whatever the cache setting: the shared {@link NestedJarFile} view
+     * The jar this connection reads from, whatever the cache setting: the shared {@code NestedJarFile} view
      * of a nested jar, or the one shared handle on the outer archive. Closing either is a no-op.
      *
-     * @return the {@link NestedJarFile} of a nested entry, or the outer archive
+     * @return the {@code NestedJarFile} view of a nested entry, or the outer archive
      * @throws IOException if the jar cannot be opened
      */
     @Override
@@ -266,7 +264,7 @@ final class RunnerJarURLConnection extends JarURLConnection {
     }
 
     /**
-     * Describes the resolved index record as a {@link JarEntry}, the way {@link NestedJarEntry} describes
+     * Describes the resolved index record as a {@link JarEntry}, the way {@code NestedJarEntry} describes
      * a record of a nested jar.
      *
      * @return the entry, named after the outer entry that physically holds the bytes
@@ -280,7 +278,7 @@ final class RunnerJarURLConnection extends JarURLConnection {
         entry.setSize(index.entryUncompressedSize(record));
         entry.setCompressedSize(index.entryCompressedSize(record));
         entry.setCrc(index.entryCrc32(record));
-        long time = NestedJarEntry.dosTimeToMillis(index.entryDosTime(record));
+        long time = DosTime.toMillis(index.entryDosTime(record));
         if (time >= 0) {
             entry.setTime(time);
         }
@@ -414,7 +412,7 @@ final class RunnerJarURLConnection extends JarURLConnection {
             return 0;
         }
         if (record != IndexFormat.NO_INDEX) {
-            long time = NestedJarEntry.dosTimeToMillis(index.entryDosTime(record));
+            long time = DosTime.toMillis(index.entryDosTime(record));
             if (time >= 0) {
                 return time;
             }
@@ -450,7 +448,7 @@ final class RunnerJarURLConnection extends JarURLConnection {
      * Every {@link #getInputStream()} returns a fresh stream. Outer-only entries (the launcher classes, the
      * manifest and the index) are read through the one close-protected, process-lifetime {@link JarFile} of
      * the outer archive under either setting, and closing the jar that {@link #getJarFile()} returns is a
-     * no-op under either setting, exactly as for a {@link NestedJarFile}.</p>
+     * no-op under either setting, exactly as for a {@code NestedJarFile} view.</p>
      *
      * @param useCaches whether caches may be used
      */

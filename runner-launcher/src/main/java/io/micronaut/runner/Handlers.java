@@ -126,8 +126,12 @@ public final class Handlers {
      * opened, which a normal start never does before {@code main}.
      */
     private static JarFile outerJarFile;
-    /** The nested jar views, allocated on first use so that {@link NestedJarFile} does not load before main. */
-    private static NestedJarFile[] nestedJarFiles;
+    /**
+     * The nested jar views, allocated on first use. Like the outer handle above, they are kept as
+     * {@link JarFile} and created through a static method, {@link NestedJarFile#open}, so that neither
+     * verifying this class nor registering an archive loads {@link NestedJarFile} before main.
+     */
+    private static JarFile[] nestedJarFiles;
 
     /**
      * The URL form of the archive, {@code file:/abs/app.jar}. Written last and read first, so that a thread
@@ -383,12 +387,12 @@ public final class Handlers {
     }
 
     /**
-     * The shared {@link NestedJarFile} view of one nested jar. Views are created once and cached, because
-     * they are immutable, because each one holds a handle on the outer file, and because a library that
-     * scans the classpath asks for the same jar over and over.
+     * The shared view of one nested jar, a package-private {@code NestedJarFile} served from the index. Views
+     * are created once and cached, because they are immutable, because each one holds a handle on the outer
+     * file, and because a library that scans the classpath asks for the same jar over and over.
      *
      * <p>The cache is allocated on first use rather than at registration, so that a normal start does not
-     * load {@link NestedJarFile} before {@code main}. Registration is checked under the class lock, so a
+     * load {@code NestedJarFile} before {@code main}. Registration is checked under the class lock, so a
      * concurrent {@link #unregister()} yields the {@link IOException} rather than a
      * {@link NullPointerException}.</p>
      *
@@ -397,20 +401,20 @@ public final class Handlers {
      * @throws IOException if no archive is registered, the archive has no such nested jar, or the outer
      *                     archive cannot be opened
      */
-    public static NestedJarFile nestedJarFile(int jarId) throws IOException {
+    public static JarFile nestedJarFile(int jarId) throws IOException {
         synchronized (LOCK) {
             Index index = archiveIndex;
             if (archiveUrl == null || jarId <= IndexFormat.APPLICATION_JAR_ID || jarId >= index.jarCount()) {
                 throw new IOException("No nested jar " + jarId + " in the registered archive");
             }
-            NestedJarFile[] cache = nestedJarFiles;
+            JarFile[] cache = nestedJarFiles;
             if (cache == null) {
-                cache = new NestedJarFile[index.jarCount()];
+                cache = new JarFile[index.jarCount()];
                 nestedJarFiles = cache;
             }
-            NestedJarFile jar = cache[jarId];
+            JarFile jar = cache[jarId];
             if (jar == null) {
-                jar = new NestedJarFile(archiveFile, index, archiveSource, jarId);
+                jar = NestedJarFile.open(archiveFile, index, archiveSource, jarId);
                 cache[jarId] = jar;
             }
             return jar;
@@ -423,8 +427,9 @@ public final class Handlers {
      *
      * <p>This is the one process-lifetime handle on the outer archive, opened on demand because a normal
      * application start never needs it, and returned to every caller whatever its cache setting. Its
-     * {@code close()} is a no-op, like {@link NestedJarFile}'s, so a caller that closes the jar a connection
-     * handed it cannot break another connection; only {@link #unregister()} really closes it.</p>
+     * {@code close()} is a no-op, like that of a {@link #nestedJarFile(int)} view, so a caller that closes the
+     * jar a connection handed it cannot break another connection; only {@link #unregister()} really closes
+     * it.</p>
      *
      * @return the shared jar file
      * @throws IOException if no archive is registered or the archive cannot be opened
@@ -483,12 +488,13 @@ public final class Handlers {
             jarPrefixes = null;
             jarNames = null;
             canonicalPath = null;
-            NestedJarFile[] nested = nestedJarFiles;
+            JarFile[] nested = nestedJarFiles;
             nestedJarFiles = null;
             if (nested != null) {
                 for (int i = 0; i < nested.length; i++) {
                     if (nested[i] != null) {
-                        nested[i].closeNested();
+                        // The verifier does not load a checkcast operand, so this does not load NestedJarFile.
+                        ((NestedJarFile) nested[i]).closeNested();
                     }
                 }
             }

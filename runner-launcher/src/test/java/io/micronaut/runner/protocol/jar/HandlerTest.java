@@ -20,7 +20,6 @@ import io.micronaut.runner.Handlers;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
 import io.micronaut.runner.LauncherTestAccess;
-import io.micronaut.runner.NestedJarFile;
 import io.micronaut.runner.TestArchiveBuilder;
 import io.micronaut.runner.TestIndexBuilder;
 
@@ -354,8 +353,8 @@ class HandlerTest {
         assertEquals("a/B.class", connection.getEntryName());
 
         JarFile jar = connection.getJarFile();
-        assertInstanceOf(NestedJarFile.class, jar);
-        assertEquals(1, LauncherTestAccess.jarId((NestedJarFile) jar));
+        assertTrue(LauncherTestAccess.isNestedJarFile(jar), () -> jar.getClass().getName());
+        assertEquals(1, LauncherTestAccess.jarId(jar));
 
         JarEntry entry = connection.getJarEntry();
         assertEquals("a/B.class", entry.getName());
@@ -377,7 +376,7 @@ class HandlerTest {
         assertEquals(fileUrl(), connection.getJarFileURL().toString());
         assertEquals(IndexFormat.CLASSES_PREFIX + "app.txt", connection.getEntryName());
         JarFile jar = connection.getJarFile();
-        assertFalse(jar instanceof NestedJarFile);
+        assertFalse(LauncherTestAccess.isNestedJarFile(jar));
         assertEquals(archive.getPath(), jar.getName());
         assertEquals(connection.getEntryName(), connection.getJarEntry().getName());
         assertArrayEquals(APP_TEXT, read(url));
@@ -628,7 +627,8 @@ class HandlerTest {
 
     @Test
     void nestedJarFileWorksWhileRegisteredAndFailsAfterUnregistering() throws IOException {
-        NestedJarFile jar = Handlers.nestedJarFile(1);
+        JarFile jar = Handlers.nestedJarFile(1);
+        assertTrue(LauncherTestAccess.isNestedJarFile(jar), () -> jar.getClass().getName());
         assertEquals(1, LauncherTestAccess.jarId(jar));
         assertSame(jar, Handlers.nestedJarFile(1));
         assertNotNull(jar.getJarEntry("a/B.class"));
@@ -683,7 +683,7 @@ class HandlerTest {
         JarURLConnection connection = (JarURLConnection) withSeparator.openConnection();
         assertNull(connection.getEntryName());
         assertNull(connection.getJarEntry());
-        assertInstanceOf(NestedJarFile.class, connection.getJarFile());
+        assertTrue(LauncherTestAccess.isNestedJarFile(connection.getJarFile()));
         assertEquals("x-java/jar", connection.getContentType());
         assertEquals(entryNames(withSeparator), entryNames(Handlers.jarFileUrlFor(1)));
 

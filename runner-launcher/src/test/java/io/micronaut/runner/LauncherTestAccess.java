@@ -16,6 +16,7 @@
 package io.micronaut.runner;
 
 import java.net.URL;
+import java.util.jar.JarFile;
 
 /**
  * Test-only access, for the tests of {@code io.micronaut.runner.protocol.jar}, to the launcher members that are
@@ -59,13 +60,35 @@ public final class LauncherTestAccess {
     }
 
     /**
+     * Whether a jar is a {@link NestedJarFile} view, which {@link Handlers#nestedJarFile(int)} and a connection's
+     * {@code getJarFile()} return typed as {@link JarFile}.
+     *
+     * @param jar the jar
+     * @return {@code true} for a nested jar view
+     */
+    public static boolean isNestedJarFile(JarFile jar) {
+        return jar instanceof NestedJarFile;
+    }
+
+    /**
      * See {@link NestedJarFile#jarId()}.
      *
-     * @param jar the nested jar view
+     * @param jar the nested jar view, typed as {@link JarFile}
      * @return the jar it is a view of
+     * @throws ClassCastException if {@code jar} is not a nested jar view
      */
-    public static int jarId(NestedJarFile jar) {
-        return jar.jarId();
+    public static int jarId(JarFile jar) {
+        return ((NestedJarFile) jar).jarId();
+    }
+
+    /**
+     * See {@link NestedJarEntry#dosTimeToMillis(long)}.
+     *
+     * @param dosTime the packed MS-DOS date and time
+     * @return the instant in epoch milliseconds, or {@code -1} when the word records no time
+     */
+    public static long dosTimeToMillis(long dosTime) {
+        return NestedJarEntry.dosTimeToMillis(dosTime);
     }
 
     /**

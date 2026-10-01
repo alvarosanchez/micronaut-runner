@@ -15,8 +15,6 @@
  */
 package io.micronaut.runner;
 
-import io.micronaut.core.annotation.Internal;
-
 import java.io.IOException;
 import java.security.CodeSigner;
 import java.security.cert.Certificate;
@@ -38,13 +36,12 @@ import java.util.jar.Manifest;
  * and {@link #getRealName()} is the {@code META-INF/versions/<n>/...} entry that actually holds the bytes,
  * which is exactly the distinction {@code JarFile} draws for a versioned entry of an ordinary jar.</p>
  *
- * <p>The class is public because {@code io.micronaut.runner.protocol.jar} hands these entries out;
- * applications see them as {@link JarEntry}s, and the type itself is not API for them.</p>
+ * <p>The class is package-private: applications reach these entries through a {@link NestedJarFile}, which
+ * they in turn see only as a {@link java.util.jar.JarFile}, so they see the entries as {@link JarEntry}s.</p>
  *
  * @since 1.0
  */
-@Internal
-public final class NestedJarEntry extends JarEntry {
+final class NestedJarEntry extends JarEntry {
 
     /** Epoch milliseconds of 1980-01-01T00:00:00Z, the start of the MS-DOS timestamp range. */
     private static final long DOS_EPOCH = 315532800000L;
@@ -90,10 +87,14 @@ public final class NestedJarEntry extends JarEntry {
      * arithmetic is the civil-from-days algorithm, so nothing on this path loads {@code java.time} or a
      * calendar.</p>
      *
+     * <p>{@code io.micronaut.runner.protocol.jar.DosTime} keeps a copy of this method and of
+     * {@link #daysFromCivil} for that package's connections, so that this class does not have to be public for
+     * them. {@code DosTimeTest} checks that the two copies agree on every date the format can express.</p>
+     *
      * @param dosTime the packed date and time, as {@link Index#entryDosTime(int)} returns it
      * @return the instant in epoch milliseconds, or {@code -1} when the word records no time
      */
-    public static long dosTimeToMillis(long dosTime) {
+    static long dosTimeToMillis(long dosTime) {
         if (dosTime == 0) {
             return -1;
         }
