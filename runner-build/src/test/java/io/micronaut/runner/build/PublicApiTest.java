@@ -450,9 +450,9 @@ class PublicApiTest {
 
     /**
      * The main class files of the module a class belongs to, read from where this test's class path loads it
-     * from: a compiled classes directory in this build, or a jar.
+     * from: a compiled classes directory in this build, or a jar. {@code AotCacheBoundaryTest} reads them too.
      */
-    private static Map<String, byte[]> classFiles(Class<?> member) throws IOException {
+    static Map<String, byte[]> classFiles(Class<?> member) throws IOException {
         Path location;
         try {
             location = Path.of(member.getProtectionDomain().getCodeSource().getLocation().toURI());

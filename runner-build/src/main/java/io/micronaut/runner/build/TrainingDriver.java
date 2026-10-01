@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.build;
 
-import io.micronaut.core.annotation.Internal;
 import io.micronaut.runner.build.training.TrainingSettings;
 
 import java.io.File;
@@ -61,14 +60,12 @@ import java.util.stream.Stream;
  * arguments that make it a recording or a cache training, and reads the result in its
  * {@link AfterWorkload} callback.</p>
  *
- * <p>Internal to runner-build: the startup-profile recorder and the JDK AOT-cache code in other packages launch
- * through it, which is why it is public. It is not part of the stable API and may change in any release; build
- * plugins call {@code StartupProfileRecorder} with {@link TrainingSettings} instead.</p>
+ * <p>{@link StartupProfileRecorder} and the JDK AOT-cache code launch through it; build plugins call the
+ * recorder with {@link TrainingSettings}.</p>
  *
  * @since 1.0
  */
-@Internal
-public final class TrainingDriver {
+final class TrainingDriver {
 
     /**
      * The environment variables through which a JVM takes options nobody passed it. They are removed from the
@@ -76,7 +73,7 @@ public final class TrainingDriver {
      * does not take part in the run. A caller that starts other JVMs of the same run, such as a JDK tool
      * aimed at the application, removes them too.
      */
-    public static final List<String> AMBIENT_JVM_OPTIONS = List.of(
+    static final List<String> AMBIENT_JVM_OPTIONS = List.of(
             "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "JDK_AOT_VM_OPTIONS");
 
     /** The exit status of a JVM ended by SIGTERM: 128 + 15. */
@@ -137,14 +134,14 @@ public final class TrainingDriver {
      *                              the launch and the log, and quotes the end of the log
      * @throws InterruptedException if the thread is interrupted; every process has been reaped by then
      */
-    public static Outcome run(Path java,
-                              Path jar,
-                              List<String> jvmArguments,
-                              TrainingSettings settings,
-                              Path workingDirectory,
-                              Path logFile,
-                              AfterWorkload afterWorkload,
-                              BuildLogger log) throws IOException, InterruptedException {
+    static Outcome run(Path java,
+                       Path jar,
+                       List<String> jvmArguments,
+                       TrainingSettings settings,
+                       Path workingDirectory,
+                       Path logFile,
+                       AfterWorkload afterWorkload,
+                       BuildLogger log) throws IOException, InterruptedException {
         Objects.requireNonNull(java, "java");
         Objects.requireNonNull(jar, "jar");
         Objects.requireNonNull(jvmArguments, "jvmArguments");
@@ -315,9 +312,8 @@ public final class TrainingDriver {
      * What a training run does between its workload and its stop: read what the application recorded, or
      * tell the JVM to finish a recording.
      */
-    @Internal
     @FunctionalInterface
-    public interface AfterWorkload {
+    interface AfterWorkload {
 
         /** The callback of a run that has nothing to do at this point. */
         AfterWorkload NOTHING = _ -> {
@@ -348,8 +344,7 @@ public final class TrainingDriver {
      *                   the exit
      * @param total      the time from the launch to the exit
      */
-    @Internal
-    public record Outcome(int exitStatus, boolean forced, boolean destroyed, Duration readiness, Duration total) {
+    record Outcome(int exitStatus, boolean forced, boolean destroyed, Duration readiness, Duration total) {
 
         /**
          * Fails unless the application shut down in an orderly way: with status 0, or with the status of a
@@ -361,7 +356,7 @@ public final class TrainingDriver {
          *
          * @throws IOException if the application was killed or exited with another status
          */
-        public void requireOrderlyExit() throws IOException {
+        void requireOrderlyExit() throws IOException {
             if (forced) {
                 throw new IOException("The application did not stop in time and was killed");
             }

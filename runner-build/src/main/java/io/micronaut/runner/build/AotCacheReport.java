@@ -33,9 +33,7 @@ import java.util.Objects;
  * What the verification gate found, written as {@code aot-report.json} next to the cache.
  *
  * <p>Internal to Runner's interim build plugins, which log its {@link #summary()}: it may change in any
- * release. It is a final class rather than a record so that only what another package calls is public:
- * {@code AotCacheOutput} reads {@link #micronautLoaded()} and {@link #micronautFromCache()}, adds a warning and
- * writes the report again.</p>
+ * release. It is a final class rather than a record so that the summary is all that is public.</p>
  *
  * @since 1.0
  */
@@ -153,7 +151,7 @@ public final class AotCacheReport {
      *
      * @return the number of classes
      */
-    public int micronautLoaded() {
+    int micronautLoaded() {
         return micronautLoaded;
     }
 
@@ -162,7 +160,7 @@ public final class AotCacheReport {
      *
      * @return the number of classes
      */
-    public int micronautFromCache() {
+    int micronautFromCache() {
         return micronautFromCache;
     }
 
@@ -334,7 +332,7 @@ public final class AotCacheReport {
      * @param warning the warning
      * @return the report
      */
-    public AotCacheReport withWarning(String warning) {
+    AotCacheReport withWarning(String warning) {
         List<String> all = new ArrayList<>(warnings);
         all.add(warning);
         return new AotCacheReport(jdk, os, arch, labels, jar, creationFlags, recordStop, probes, probeFailures,
@@ -401,7 +399,7 @@ public final class AotCacheReport {
      * @return the file
      * @throws IOException if it cannot be written
      */
-    public Path write(Path directory) throws IOException {
+    Path write(Path directory) throws IOException {
         Path file = directory.resolve(FILE);
         Files.writeString(file, toJson(), StandardCharsets.UTF_8);
         return file;

@@ -48,7 +48,21 @@ import java.util.concurrent.TimeUnit;
  * only as long as the JARs keep their size and modification time, so a copy of the directory keeps its times,
  * as {@code cp -p} and Docker {@code COPY} do.</p>
  *
- * <p>Internal to Runner's interim build plugins, which call {@link #write}: it may change in any release.</p>
+ * <p>The cache engine behind it trains, verifies and describes a JDK AOT cache (JEP 483, JEP 514) for any
+ * application launched with {@code java -jar}: a two-step recording and creation through the
+ * {@code TrainingDriver}, a verification gate, the launch argfile and the identity file. That engine,
+ * {@code AotCacheBuilder}, {@code AotCacheGate}, {@code AotCacheReport}, {@code AotCacheSettings},
+ * {@code AotLaunchOptions}, {@code Forks} and {@code JdkProbe}, knows nothing about the Runner JAR, although it
+ * shares this package with it: it takes a directory and the name of the JAR to launch in it, and it uses
+ * {@code java.base}, {@link BuildLogger}, {@link TrainingSettings} and the {@code TrainingDriver} only, which a
+ * test checks in the class files. Runner-only; the Micronaut Docker support trains inside images with
+ * plugin-local scripts (micronaut-projects/micronaut-gradle-plugin#1379,
+ * micronaut-projects/micronaut-maven-plugin#1721).</p>
+ *
+ * <p>Internal to Runner's interim build plugins, which call {@link #write}: it may change in any release. Of the
+ * engine, {@link AotCacheSettings} with its {@code Builder} and {@link AotCacheReport} are public for the plugins,
+ * and {@link JdkProbe} and {@link AotCacheGate} with its {@code Coverage} for Runner's benchmarks. Each of them is
+ * {@code @Internal}, and the rest of the engine is package-private.</p>
  *
  * @since 1.0
  */

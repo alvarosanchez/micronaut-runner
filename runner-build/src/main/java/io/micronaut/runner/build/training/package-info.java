@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 /**
- * Training runs: one launch of an application from the archive a build produced, to learn something from it,
- * such as the classes it loads at startup or a JDK cache.
+ * The settings of a training run: one launch of an application from the archive a build produced, to learn
+ * something from it, such as the classes it loads at startup or a JDK cache.
  *
  * <p><b>Stable API.</b> {@link io.micronaut.runner.build.training.TrainingSettings} and its
  * {@link io.micronaut.runner.build.training.TrainingSettings.Builder Builder} are stable API for all of 1.x,
@@ -23,14 +23,7 @@
  * one 1.x release runs against any later one. From 1.0.0 the build's binary-compatibility check compares them
  * with the last release and fails on an incompatible change.</p>
  *
- * <p><b>Internal.</b> {@link io.micronaut.runner.build.training.TrainingDriver}, with its nested
- * {@code Outcome} and {@code AfterWorkload}, is {@code @Internal}: runner-build's own launcher of training
- * runs, public only because code in other packages of runner-build uses it. It may change in any release: the
- * binary-compatibility check still compares it, but reports an incompatible change as a warning, not a
- * failure.</p>
- *
- * <p>No annotation marks what is stable: Micronaut's {@code Experimental} annotation is not kept in class files
- * or shown in the Javadoc, so this text says it, and {@code @Internal}, which is kept and shown, marks the
- * rest.</p>
+ * <p>No annotation marks them as stable: Micronaut's {@code Experimental} annotation is not kept in class files
+ * or shown in the Javadoc, so this text says it.</p>
  */
 package io.micronaut.runner.build.training;

@@ -118,14 +118,6 @@ io.micronaut.runner.build.RunnerJarSpec$Builder#timestamp(Ljava/time/Instant;)Li
 io.micronaut.runner.build.StartupProfileRecorder
 io.micronaut.runner.build.StartupProfileRecorder#PROFILE_LOCATION:Ljava/lang/String;
 io.micronaut.runner.build.StartupProfileRecorder#record(Ljava/nio/file/Path;Ljava/nio/file/Path;Lio/micronaut/runner/build/training/TrainingSettings;Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/lang/String;Lio/micronaut/runner/build/BuildLogger;)I
-# Not for users: AotCacheBuilder.build and AotLaunchOptions' two file names are public only because AotCacheOutput,
-# in io.micronaut.runner.build, calls them. They become package-private once the aotcache package joins that one,
-# and these lines go.
-io.micronaut.runner.build.aotcache.AotCacheBuilder
-io.micronaut.runner.build.aotcache.AotCacheBuilder#build(Lio/micronaut/runner/build/aotcache/AotCacheSettings;Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/lang/String;Lio/micronaut/runner/build/training/TrainingSettings;Ljava/util/List;Ljava/util/Map;Lio/micronaut/runner/build/BuildLogger;)Lio/micronaut/runner/build/aotcache/AotCacheReport;
-io.micronaut.runner.build.aotcache.AotLaunchOptions
-io.micronaut.runner.build.aotcache.AotLaunchOptions#ARGFILE:Ljava/lang/String;
-io.micronaut.runner.build.aotcache.AotLaunchOptions#CACHE_FILE:Ljava/lang/String;
 io.micronaut.runner.build.training.TrainingSettings
 io.micronaut.runner.build.training.TrainingSettings#URL_VARIABLE:Ljava/lang/String;
 io.micronaut.runner.build.training.TrainingSettings#builder()Lio/micronaut/runner/build/training/TrainingSettings$Builder;

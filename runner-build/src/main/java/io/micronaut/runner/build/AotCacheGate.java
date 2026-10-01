@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
  *     {@link AotCacheSettings#verifyProbes()} times. All of them run, and one failure fails the gate: some
  *     failures depend on where ASLR puts the heap.</li>
  *     <li><b>Strict smoke launch.</b> The application launched with the cache in strict mode, through the
- *     {@link TrainingDriver}, reaches readiness and serves the workload.</li>
+ *     {@code TrainingDriver}, reaches readiness and serves the workload.</li>
  *     <li><b>Coverage.</b> From that launch's class-load log, up to the end of its workload: at least
  *     {@link AotCacheSettings#minCoverage()} of the classes come from the cache, and every {@code io.micronaut}
  *     class that does not is a lambda proxy or one the recording named as skipped because it failed
