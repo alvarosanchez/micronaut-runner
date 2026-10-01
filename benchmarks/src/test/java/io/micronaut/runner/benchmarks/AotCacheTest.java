@@ -45,8 +45,8 @@ class AotCacheTest {
     private static final SampleBuild.VariantSpec CACHED = SampleBuild.spec("runner-stored-aot");
 
     @Test
-    void identityChangesWithOrderedInputsJdkArchitectureCommandReadinessAndCpuLimit(@TempDir Path directory)
-            throws Exception {
+    void identityChangesWithOrderedInputsJdkArchitectureCommandReadinessCpuLimitAndTrainingMode(
+            @TempDir Path directory) throws Exception {
         Path application = Files.writeString(directory.resolve("app.jar"), "application-one", StandardCharsets.UTF_8);
         Path dependency = Files.writeString(directory.resolve("dependency.jar"), "dependency-one",
                 StandardCharsets.UTF_8);
@@ -81,6 +81,15 @@ class AotCacheTest {
         String plain = AotCache.identity(source, "/hello", unlimited, List.of());
         assertNotEquals(plain, AotCache.identity(source, "/hello", oneCpu, List.of()));
         assertNotEquals(plain, AotCache.identity(source, "/ready", unlimited, List.of()));
+
+        // A Runner single JAR trains in the launcher's AOT training mode, which enters the identity; a source the
+        // JDK's own loaders run trains without it, and the measured launch never carries it.
+        Variant shadow = BenchmarkFixtures.variant("shadow", source.command(), directory, null, application);
+        assertEquals(List.of("-Dmicronaut.runner.aot.training=true"), AotCache.trainingArguments(source));
+        assertEquals(List.of(), AotCache.trainingArguments(shadow));
+        assertNotEquals(plain, AotCache.identity(shadow, "/hello", unlimited, List.of()));
+        assertTrue(AotCache.launchCommand(source, application).stream()
+                .noneMatch(argument -> argument.contains("micronaut.runner.aot.training")));
     }
 
     /**

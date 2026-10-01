@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.benchmarks;
 
+import io.micronaut.runner.build.AotCacheOutput;
 import io.micronaut.runner.build.aotcache.AotCacheGate;
 import io.micronaut.runner.build.aotcache.JdkProbe;
 
@@ -140,6 +141,20 @@ final class AotCache {
     }
 
     /**
+     * What only the training launch of a cache adds, which is also part of the cache's identity: the launcher's AOT
+     * training mode for a source that enters through the Runner launcher, so that its classes report the archive's
+     * {@code file:} URL, which JDK 27 and later require to cache them (JDK-8380291). A source whose classes the JDK's
+     * own loaders define gets nothing. The measured and verified launches never carry it.
+     *
+     * @param source the variant the cache is trained on
+     * @return the arguments, placed after {@code -XX:AOTCacheOutput}
+     */
+    static List<String> trainingArguments(Variant source) {
+        return source.requestedEntryMode() == EntryMode.STANDARD_LOADER ? List.of()
+                : List.of(AotCacheOutput.AOT_TRAINING_ARGUMENT);
+    }
+
+    /**
      * The identity of the cache a request trains for a variant on this JDK. The command prefix is not part of it;
      * a CPU limit enters through {@link Request#relevantJvmFlags()}.
      *
@@ -157,6 +172,7 @@ final class AotCache {
         flags.addAll(source.command().subList(1, source.command().size()));
         flags.add("readiness=" + readinessPath);
         request.workloadPaths().forEach(path -> flags.add("workload=" + path));
+        trainingArguments(source).forEach(argument -> flags.add("training=" + argument));
         return identity(source.launchInputs(),
                 System.getProperty("java.runtime.version", "<unavailable>") + "|"
                         + System.getProperty("java.vm.version", "<unavailable>"),
@@ -179,7 +195,8 @@ final class AotCache {
      * @param jdkBuild      the exact JDK and VM build
      * @param vmName        the VM name
      * @param architecture  the CPU architecture
-     * @param relevantFlags the launch options, readiness path and workload that shape the trained cache
+     * @param relevantFlags the launch options, readiness path, workload and training-only arguments that shape the
+     *                      trained cache
      * @return the lowercase hexadecimal identity
      * @throws IOException if an input is missing, cannot be pinned or cannot be read
      */
@@ -264,6 +281,7 @@ final class AotCache {
         // every child JVM.
         List<String> arguments = new ArrayList<>(creationFlags);
         arguments.add("-XX:AOTCacheOutput=" + temporary.toAbsolutePath().normalize());
+        arguments.addAll(trainingArguments(source));
         String output = harness.exercise(source, arguments, request.workloadPaths());
         try {
             requireUsableCache(temporary);

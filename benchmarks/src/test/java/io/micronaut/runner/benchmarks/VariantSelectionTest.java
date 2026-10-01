@@ -235,6 +235,29 @@ class VariantSelectionTest {
                 List.copyOf(steps.calls.keySet()));
     }
 
+    /**
+     * The table hands every cache of a Runner single JAR a source that trains in the launcher's AOT training mode,
+     * and none of a Shadow JAR or an extracted layout, whose classes the JDK's own loaders load.
+     */
+    @Test
+    void onlyTheCachesOfRunnerSingleJarsTrainInTheLaunchersTrainingMode() {
+        FakeSteps steps = new FakeSteps();
+        List<String> cached = SampleBuild.allVariantNames().stream()
+                .filter(name -> SampleBuild.spec(name).aotCache()).toList();
+
+        SampleBuild.variants(steps, cached, log());
+
+        Map<String, List<String>> expected = new LinkedHashMap<>();
+        for (String name : cached) {
+            boolean runnerSingleJar = name.startsWith("runner-") && !name.startsWith("runner-extracted");
+            expected.put(name, runnerSingleJar ? List.of("-Dmicronaut.runner.aot.training=true") : List.of());
+        }
+        assertEquals(expected, steps.trainingArguments);
+        assertEquals(List.of("shadow-aot", "runner-extracted-lambdas-aot", "runner-extracted-aot", "shadow-maot-aot"),
+                expected.entrySet().stream().filter(entry -> entry.getValue().isEmpty()).map(Map.Entry::getKey)
+                        .toList());
+    }
+
     @Test
     void aCachedMicronautAotRowBuildsItsUncachedTwinWithoutReportingIt() {
         FakeSteps steps = new FakeSteps();
@@ -362,6 +385,9 @@ class VariantSelectionTest {
 
         final Map<String, Integer> calls = new LinkedHashMap<>();
 
+        /** The training-only arguments of each cached row's source. */
+        final Map<String, List<String>> trainingArguments = new LinkedHashMap<>();
+
         void note(String call) {
             calls.merge(call, 1, Integer::sum);
         }
@@ -414,6 +440,7 @@ class VariantSelectionTest {
 
         @Override
         public Variant aotCache(Variant source, SampleBuild.VariantSpec spec) throws IOException {
+            trainingArguments.put(spec.name(), AotCache.trainingArguments(source));
             return variant("aotCache:" + source.name() + "->" + spec.name(), spec);
         }
 

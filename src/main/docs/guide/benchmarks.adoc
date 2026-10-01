@@ -299,9 +299,10 @@ HTTP readiness, exercises `/hello`, sends SIGTERM for an orderly shutdown, accep
 nonempty cache, then performs a strict diagnostic launch. Both launches go through the same harness code as the
 timed runs. The managed cache identity is a SHA-256 over a schema salt, the exact JDK runtime and VM build, the VM
 name, the architecture, the JDK's AOT creation flags, the CPU count under `-Pbenchmarks.cpus`, the launch command
-after `java`, the readiness and workload paths, and each ordered launch input's position, file name and content
-digest: for a Runner row that is the immutable final JAR, and therefore its embedded application and dependency
-bytes. A changed input selects a different cache. Trained caches are reused across
+after `java`, the readiness and workload paths, the training-only `-Dmicronaut.runner.aot.training=true` of a Runner
+single JAR, and each ordered launch input's position, file name and content digest: for a Runner row that is the
+immutable final JAR, and therefore its embedded application and dependency bytes. A changed input selects a
+different cache. Trained caches are reused across
 runs while the inputs' bytes are unchanged, because the harness pins every launch input's modification time,
 which the JDK also checks; `rm -rf benchmarks/build/tmp/startupBenchmark/managed-aot` forces a retrain.
 `results.json` records each cache's `cacheSha256` and whether this run reused it (`cacheReused`), and
