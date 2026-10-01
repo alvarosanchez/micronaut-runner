@@ -180,8 +180,7 @@ The definition prefetch's intervals include zero on these 4 vCPUs.
 with 8.8 MiB less private memory, but it is a directory of JARs plus a cache file. The single-file
 `runner-stored-aot`, already desugared, still loses on JDK 25: +17.4 ms (+12.1 to +22.5). On JDK 27 the layout stays
 ahead and the single JAR trails by 76.0 ms. <<cdsAndAot,Class Data Sharing and the AOT Cache>> has the JDK 27
-code-source rule and where the single JAR's remaining cached gap goes. There, measured in local Apple Silicon sessions,
-the desugared single JAR led Shadow's cache on JDK 25 and was level on JDK 27; on these runners it trails on both.
+code-source rule and where the single JAR's remaining cached gap goes.
 * [[micronautAotResults]]*Micronaut AOT*: `runner-maot` − `shadow-maot` -381.3 ms (-394.6 to -373.6); `runner-stored`
 − `shadow-maot` -348.6 ms (-354.1 to -321.0), so dropping Micronaut Launch's default Micronaut AOT for Runner still
 starts sooner. With a JDK cache on both, Runner loses: `runner-maot-aot` − `shadow-maot-aot` +36.4 ms (+28.1 to
