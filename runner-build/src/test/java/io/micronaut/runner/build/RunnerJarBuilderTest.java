@@ -3559,23 +3559,28 @@ class RunnerJarBuilderTest {
                 "PRESERVE keeps each entry's own method");
     }
 
-    @ParameterizedTest(name = "transforms on: {0}")
-    @ValueSource(booleans = {false, true})
-    void aHybridBuildFailsOnABrokenColdClassAsAStoredBuildDoes(boolean transforms) throws IOException {
+    @Test
+    void aHybridBuildFailsOnABrokenColdClassAsAStoredBuildDoes() throws IOException {
+        // With every transform off, HYBRID verifies the cold class's original bytes as it writes them. With a
+        // transform on, the class path scan reads every class before any stage runs and fails first, in both
+        // modes alike; ZipRepackerTest covers the pipeline's own read of a broken cold class. Another dependency
+        // holds the listed class, so the HYBRID staging has a hot entry and does not fall back to STORED.
+        Path hot = ClassFixtures.jar(fixtures.resolve("libs/hybrid-hot.jar"),
+                Map.of("y/Hot.class", ZipReaderTest.repeat("a-hot-class-", 40)));
         Path trailing = deflatedWithTrailingByte(fixtures.resolve("libs/hybrid-trailing.jar"), "x/Cold.class",
                 ZipReaderTest.repeat("a-cold-class-", 40));
         Path overproduced = ZipReaderTest.deflatedWithRecordedContent(fixtures.resolve("libs/hybrid-over.jar"),
                 "x/Cold.class", ZipReaderTest.repeat("a-cold-class-", 40), ZipReaderTest.repeat("a-cold-class-", 20));
-        Path list = startupClasses("x.Hot\n");
+        Path list = startupClasses("y.Hot\n");
         for (Path dependency : List.of(trailing, overproduced)) {
             List<String> messages = new ArrayList<>();
             for (Compression compression : new Compression[] {Compression.STORED, Compression.HYBRID}) {
                 IOException failure = assertThrows(IOException.class, () -> RunnerJarBuilder.build(spec(output())
-                        .dependencies(List.of(Dependency.of(dependency)))
+                        .dependencies(List.of(Dependency.of(hot), Dependency.of(dependency)))
                         .compression(compression)
                         .startupClasses(list)
-                        .desugarLambdas(transforms)
-                        .stripLocalVariables(transforms)
+                        .desugarLambdas(false)
+                        .stripLocalVariables(false)
                         .build(), BuildLogger.noOp()));
                 messages.add(failure.getMessage());
             }

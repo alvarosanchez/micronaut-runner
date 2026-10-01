@@ -737,6 +737,39 @@ class ZipRepackerTest {
                 "two classes rewritten and one fallback");
     }
 
+    @ParameterizedTest(name = "a step applies: {0}")
+    @ValueSource(booleans = {true, false})
+    void hybridFailsOnABrokenColdClassExactlyAsTheStoredRepackDoes(boolean stepApplies) throws IOException {
+        // With a step, the pipeline reads the cold class's compressed region and inflates it for the step; without
+        // one, the class keeps its original bytes and is verified as it is written. Either way, a broken stream
+        // fails with the message the streaming STORED repack gives.
+        byte[] content = repeat("a-cold-class-", 40);
+        List<Path> broken = List.of(
+                deflatedWithTrailingByte(temp.resolve("trailing/cold.jar"), "x/Cold.class", content),
+                deflatedWithRecordedContent(temp.resolve("overproduced/cold.jar"), "x/Cold.class", content,
+                        repeat("a-cold-class-", 20)));
+        ClassTransformPipeline.Options options = ClassTransformPipeline.Options.of(List.of("x.Hot"), true);
+        for (Path source : broken) {
+            ClassTransformPipeline.JarRun run = stepApplies
+                    ? new ClassTransformPipeline(List.of(new RewriteStep(Set.of("x/Cold.class"), Set.of())),
+                            modelOf(Map.of()), options).start(LAYER)
+                    : ClassTransformPipeline.ordering(options).start(LAYER);
+            try (ZipReader reader = ZipReader.open(source)) {
+                ZipEntryInfo cold = reader.entries().get(0);
+                assertEquals(IndexFormat.METHOD_DEFLATED, cold.method());
+                assertTrue(cold.compressedSize() < cold.uncompressedSize(),
+                        "the class would keep its original bytes");
+                assertEquals(stepApplies, run.reads(cold.uncompressedSize()));
+                IOException stored = assertThrows(IOException.class,
+                        () -> ZipRepacker.repack(reader, new ByteArrayOutputStream()));
+                IOException hybrid = assertThrows(IOException.class,
+                        () -> ZipRepacker.repack(reader, new ByteArrayOutputStream(), run));
+                assertEquals(stored.getMessage(), hybrid.getMessage(), source::toString);
+                assertTrue(hybrid.getMessage().contains("x/Cold.class"), hybrid.getMessage());
+            }
+        }
+    }
+
     @ParameterizedTest(name = "deflated in the dependency: {0}")
     @ValueSource(booleans = {false, true})
     void aClassAboveTheSizeLimitIsStreamedAsItIsAndCountedUnchanged(boolean deflated) throws Exception {
