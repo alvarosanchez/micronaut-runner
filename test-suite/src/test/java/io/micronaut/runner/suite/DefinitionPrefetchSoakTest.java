@@ -215,7 +215,7 @@ class DefinitionPrefetchSoakTest {
      */
     private static void awaitReady(ForkedApplication application, int port, String what) throws Exception {
         long deadline = System.nanoTime() + READINESS_TIMEOUT.toNanos();
-        URI uri = URI.create("http://localhost:" + port + "/hello");
+        URI uri = URI.create(Samples.loopback(port) + "/hello");
         try (HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(5)).GET().build();
             while (System.nanoTime() < deadline) {

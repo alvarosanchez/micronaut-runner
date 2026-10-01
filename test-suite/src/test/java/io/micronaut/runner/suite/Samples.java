@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Assumptions;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.ServerSocket;
 import java.nio.file.Files;
@@ -262,21 +263,56 @@ final class Samples {
         return Path.of(System.getProperty("runner.test.javaHome", System.getProperty("java.home")));
     }
 
+    /** The address the tests reach a sample at, which {@link #freePort()} checks: IPv4 loopback, never a name. */
+    static final String LOOPBACK = "127.0.0.1";
+
     /**
-     * Picks a port nothing is listening on, by binding it and letting it go again. There is a window in
-     * which something else could take it, which is why the port is never hard-coded: a stale hard-coded
-     * port fails every run on a busy machine, this one fails approximately never.
+     * Picks a port nothing is listening on, on any address, by binding it and letting it go again. There is a
+     * window in which something else could take it, which is why the port is never hard-coded: a stale
+     * hard-coded port fails every run on a busy machine, this one fails approximately never.
+     *
+     * <p>The tests reach a sample at {@link #LOOPBACK}. A listener bound to the loopback address alone does not
+     * stop a wildcard bind that reuses addresses on macOS, and another local process then answered in the
+     * sample's place. So the port is chosen without address reuse, and kept only if the loopback address can be
+     * bound on it as well.</p>
      *
      * @return a port that was free a moment ago
      */
     static int freePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            socket.setReuseAddress(true);
-            return socket.getLocalPort();
+        try {
+            for (int attempt = 0; attempt < 20; attempt++) {
+                int port = bindExclusively(new InetSocketAddress(0));
+                try {
+                    bindExclusively(new InetSocketAddress(LOOPBACK, port));
+                    return port;
+                } catch (IOException taken) {
+                    // Something listens on the loopback address alone; try another port.
+                }
+            }
+            throw new IOException("no port was free on the loopback address as well");
         } catch (IOException e) {
             throw new UncheckedIOException("Could not find a free port", e);
         }
     }
+
+    /**
+     * The base URI of a sample listening on a port, at the address {@link #freePort()} checked.
+     *
+     * @param port the sample's port
+     * @return {@code http://127.0.0.1:<port>}
+     */
+    static String loopback(int port) {
+        return "http://" + LOOPBACK + ":" + port;
+    }
+
+    private static int bindExclusively(InetSocketAddress address) throws IOException {
+        try (ServerSocket socket = new ServerSocket()) {
+            socket.setReuseAddress(false);
+            socket.bind(address);
+            return socket.getLocalPort();
+        }
+    }
+
 
     /**
      * Deletes a directory tree if it is there, so that a stale artifact from an earlier run of a module

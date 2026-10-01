@@ -193,7 +193,7 @@ class PublicationMetadataSmokeTest {
         ForkedApplication application = ForkedApplication.start(archive, sample,
                 Map.of("SERVER_PORT", Integer.toString(port)));
         try {
-            String body = application.awaitBody(URI.create("http://localhost:" + port + "/hello"),
+            String body = application.awaitBody(URI.create(Samples.loopback(port) + "/hello"),
                     Duration.ofMinutes(2));
             assertEquals("hello from RunnerClassLoader", body, application::describe);
         } finally {

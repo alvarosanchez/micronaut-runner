@@ -185,7 +185,7 @@ class HelloNettySampleTest {
                 List.of("-Xlog:class+load=info:file=" + CLASS_LOAD_LOG));
         try {
             String body = application.awaitBody(
-                    URI.create("http://localhost:" + port + "/hello"), STARTUP_TIMEOUT);
+                    URI.create(Samples.loopback(port) + "/hello"), STARTUP_TIMEOUT);
             assertEquals("hello from RunnerClassLoader", body,
                     () -> "the application answered, but not from the runner class loader"
                             + application.describe());
@@ -348,7 +348,7 @@ class HelloNettySampleTest {
         ForkedApplication application = ForkedApplication.start(cache.resolve("hello-netty-0.1-all.jar"), cache,
                 Map.of("SERVER_PORT", Integer.toString(port)), List.of("@app.jvmopts", "-XX:AOTMode=on"));
         try {
-            String body = application.awaitBody(URI.create("http://localhost:" + port + "/hello"), STARTUP_TIMEOUT);
+            String body = application.awaitBody(URI.create(Samples.loopback(port) + "/hello"), STARTUP_TIMEOUT);
             assertEquals("hello from AppClassLoader", body, application::describe);
         } finally {
             application.close();
@@ -389,7 +389,7 @@ class HelloNettySampleTest {
         String body = null;
         try {
             if (Integer.toString(port).equals(childEnvironment.get("SERVER_PORT"))) {
-                body = application.awaitBody(URI.create("http://localhost:" + port + "/hello"), STARTUP_TIMEOUT);
+                body = application.awaitBody(URI.create(Samples.loopback(port) + "/hello"), STARTUP_TIMEOUT);
             } else {
                 // Expected to fail on its own: let it print everything and exit.
                 application.awaitExit(STARTUP_TIMEOUT);
@@ -506,7 +506,7 @@ class HelloNettySampleTest {
         ForkedApplication application = ForkedApplication.start(jar, sample, Map.of(
                 "SERVER_PORT", Integer.toString(port)), List.of(option, "-Drunner.test.bean-order=" + file));
         try {
-            String body = application.awaitBody(URI.create("http://localhost:" + port + "/hello"), STARTUP_TIMEOUT);
+            String body = application.awaitBody(URI.create(Samples.loopback(port) + "/hello"), STARTUP_TIMEOUT);
             assertTrue(body.startsWith("hello from "), () -> "unexpected answer " + body + application.describe());
             String output = application.output();
             assertEquals(verified, output.contains(VERIFIED) && output.contains(NO_MISMATCH),
