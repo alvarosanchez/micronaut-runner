@@ -2047,6 +2047,19 @@ class RunnerJarBuilderTest {
                 assertFalse(name.startsWith("io/micronaut/runner/") && !name.endsWith(".class"),
                         "only the launcher's classes are copied, not " + name);
             }
+            // The bundled launcher.jar, which is the published artifact, compiled with -g:source,lines: every
+            // application carries these classes, and they run on every start.
+            int launcherClasses = 0;
+            int launcherMethods = 0;
+            for (ZipEntryInfo entry : archive.entries()) {
+                if (entry.name().startsWith("io/micronaut/runner/") && entry.name().endsWith(".class")) {
+                    launcherClasses++;
+                    launcherMethods += ClassFixtures.assertLineNumbersWithoutLocalVariables(entry.name(),
+                            archive.read(entry));
+                }
+            }
+            assertTrue(launcherClasses > 1, "launcher classes: " + launcherClasses);
+            assertTrue(launcherMethods > launcherClasses, "launcher methods with code: " + launcherMethods);
             assertFalse(names.contains("META-INF/services/com.example.Service"),
                     "plain service files stay in the jar they came from");
 

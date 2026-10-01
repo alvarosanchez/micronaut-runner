@@ -333,7 +333,10 @@ class LocalVariableStripperTest {
         byte[] configurator = Files.readAllBytes(run.resolve("classes").resolve(LogbackPrecompiler.CONFIGURATOR_ENTRY));
         byte[] fallback = Files.readAllBytes(run.resolve("classes").resolve(LogbackPrecompiler.FALLBACK_ENTRY));
         assertEquals(List.of(), List.copyOf(debugTables(configurator)), "generated without debug tables");
-        assertTrue(debugTables(fallback).contains("LineNumberTable"), "javac output, with its tables as compiled");
+        assertEquals(List.of("LineNumberTable"), List.copyOf(debugTables(fallback)),
+                "javac output, compiled with line numbers and without local-variable tables");
+        assertEquals(3, ClassFixtures.assertLineNumbersWithoutLocalVariables(LogbackPrecompiler.FALLBACK_ENTRY,
+                fallback), "the constructor, defaultLookup and location");
 
         // The generated classes and the stripped jars, as the archive nests them, with nothing else but the JDK.
         try (URLClassLoader loader = new URLClassLoader(classPath.toArray(URL[]::new),

@@ -190,7 +190,7 @@ file lists the prefetch's configurer after Micronaut AOT's own, and the static o
 
 What it changes:
 
-* The common pool is created before `main` runs, so `java.util.concurrent.ForkJoinPool.common.*` properties that
+* The common pool is created before `main` runs, so `+java.util.concurrent.ForkJoinPool.common.*+` properties that
 `main` sets programmatically no longer take effect. `-D` flags still do.
 * `ConversionService`, with its `TypeConverterRegistrar` services, and the static initialisers of the bean
 definitions run on common pool threads, before the body of `main` and before any other

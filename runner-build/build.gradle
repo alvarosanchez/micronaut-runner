@@ -85,6 +85,8 @@ tasks.named('compileLogbackFrontendJava', JavaCompile) {
     options.release = 25
     // JoranFallback is copied into applications verbatim: no invokedynamic string concatenation in it.
     options.compilerArgs.addAll(['-XDstringConcat=inline'])
+    // Line numbers for stack traces, no local variable tables: every application carries JoranFallback.
+    options.debugOptions.debugLevel = 'source,lines'
 }
 
 def logbackFrontendJar = tasks.register('logbackFrontendJar', Jar) {
@@ -99,6 +101,8 @@ tasks.named('compilePrefetchJava', JavaCompile) {
     // The prefetch classes are copied into applications verbatim and run before main: no invokedynamic string
     // concatenation in them.
     options.compilerArgs.addAll(['-XDstringConcat=inline'])
+    // Line numbers for stack traces, no local variable tables: every application that asks carries these classes.
+    options.debugOptions.debugLevel = 'source,lines'
 }
 
 // A jar, not loose class files: Gradle rewrites the class files of a plugin class path when it instruments it
