@@ -86,7 +86,7 @@ public final class BoundedMemoryPackagingProbe {
                 .output(output)
                 .build(), BuildLogger.noOp(), DEPENDENCY_COUNT);
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             if (index.jarCount() != 1 + DEPENDENCY_COUNT) {
                 throw new AssertionError("expected " + DEPENDENCY_COUNT + " nested jars, found "

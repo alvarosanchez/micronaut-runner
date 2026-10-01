@@ -124,7 +124,7 @@ class JdkAotCacheMojoTest {
         set(mojo, "jdkAotCacheVerifyProbes", null);
         AotCacheSettings partial = mojo.settings();
         assertFalse(partial.strict(), "only the parameters that are set replace a default");
-        assertEquals(AotCacheSettings.DEFAULT_VERIFY_PROBES, partial.verifyProbes());
+        assertEquals(AotCacheSettings.defaults().verifyProbes(), partial.verifyProbes());
     }
 
     @Test

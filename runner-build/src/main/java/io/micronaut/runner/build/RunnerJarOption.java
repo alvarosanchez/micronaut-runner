@@ -36,8 +36,16 @@ import java.util.stream.Collectors;
  *     <li>Options are added only in Runner minor releases.</li>
  *     <li>A new option starts as {@link Exposure#PASSTHROUGH}: a build sets it by name, through the plugin's
  *     generic options map, and it needs no plugin release.</li>
+ *     <li>A {@link Exposure#PASSTHROUGH} option has no typed Java API: no setter on
+ *     {@link RunnerJarSpec.Builder}, no getter on {@link RunnerJarSpec}, and a {@linkplain #valueType() value type}
+ *     from the JDK, {@link String} for a choice of values. {@link RunnerJarSpec#effectiveOptions()} reports its
+ *     value.</li>
  *     <li>An option becomes {@link Exposure#TYPED} only in a Runner minor release, once its default is
- *     settled. The Micronaut build plugins then add its typed property in their next minor release.</li>
+ *     settled. That release adds its typed setter and getter, and the Micronaut build plugins then add its typed
+ *     property in their next minor release.</li>
+ *     <li>In 1.x no constant leaves this table, a {@link Exposure#PASSTHROUGH} one included: the build's
+ *     binary-compatibility check covers enum constants, so an option that goes is deprecated instead, and removed
+ *     only in the next major release.</li>
  * </ul>
  *
  * <h2>Value grammar</h2>
@@ -47,7 +55,8 @@ import java.util.stream.Collectors;
  *     <li>{@link Boolean}: {@code true} or {@code false}, ignoring case and surrounding whitespace. Anything
  *     else fails.</li>
  *     <li>{@link Compression}: as {@link Compression#parse(String)} reads it.</li>
- *     <li>{@link ArchiveReads}: as {@link ArchiveReads#parse(String)} reads it.</li>
+ *     <li>{@link String}: one of the values the option's constant lists, ignoring case and surrounding
+ *     whitespace. Anything else fails.</li>
  *     <li>{@link List}: comma-separated. Entries are trimmed and empty entries dropped, so the empty string
  *     is the empty list.</li>
  *     <li>{@link Map}: one {@code Name: value} pair per line, as in {@code MANIFEST.MF} but without
@@ -106,20 +115,34 @@ public enum RunnerJarOption {
     MANIFEST_ATTRIBUTES("manifestAttributes", Map.class, "", Exposure.TYPED, "1.0"),
 
     /**
-     * How the launcher reads the archive when {@code micronaut.runner.mmap} does not say, an
-     * {@link ArchiveReads} name. See {@link RunnerJarSpec.Builder#archiveReads(ArchiveReads)}.
+     * How the launcher reads the archive when {@code micronaut.runner.mmap} does not say, one of:
+     * <ul>
+     *     <li>{@code MAPPED}, the default: map the whole archive and define every STORED class straight from the
+     *     mapping. It starts fastest, and the pages a class read touches count in the process's resident set
+     *     size;</li>
+     *     <li>{@code POSITIONAL}: map only the index and read each STORED class with one positional read into a
+     *     pooled buffer. The resident set size is lower, and startup slightly slower.</li>
+     * </ul>
+     * <p>The choice is recorded as a flag of the index header; {@code -Dmicronaut.runner.mmap=full} or
+     * {@code index} overrides it per launch.</p>
      */
-    ARCHIVE_READS("archiveReads", ArchiveReads.class, "MAPPED", Exposure.PASSTHROUGH, "1.0"),
+    ARCHIVE_READS("archiveReads", String.class, "MAPPED", Exposure.PASSTHROUGH, "1.0"),
 
     /**
      * Whether to compile the application's {@code logback.xml} into a Logback {@code Configurator} when it is
-     * packaged. See {@link RunnerJarSpec.Builder#precompileLogback(boolean)}.
+     * packaged, so that the application does not parse XML and run Joran at every start. On by default. The
+     * packager generates nothing, and logs why, whenever it cannot prove that the generated configurator reproduces
+     * Joran's result; {@code -Dmicronaut.runner.logback.precompiled=false} leaves {@code logback.xml} to Joran at
+     * run time.
      */
     PRECOMPILE_LOGBACK("precompileLogback", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
 
     /**
-     * Whether to drop the local-variable tables of dependency classes when they are re-packed. See
-     * {@link RunnerJarSpec.Builder#stripLocalVariables(boolean)}.
+     * Whether to drop the local-variable tables of dependency classes when they are re-packed, which makes them
+     * smaller to read and define. On by default; it has no effect with {@link Compression#PRESERVE} and never
+     * touches the application's own classes or a project module. Line numbers, parameter names and every
+     * annotation reflection sees are kept, and stripping is turned off for the build, with a warning, when a
+     * library that reads local-variable tables at run time is on the class path.
      */
     STRIP_LOCAL_VARIABLES("stripLocalVariables", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
 
@@ -131,21 +154,25 @@ public enum RunnerJarOption {
     STARTUP_CLASSES("startupClasses", Path.class, null, Exposure.TYPED, "1.0"),
 
     /**
-     * Whether to generate the static service table that answers Micronaut's service lookups from names
-     * computed at packaging time. See {@link RunnerJarSpec.Builder#staticServices(boolean)}.
+     * Whether to generate the static service table, classes that answer Micronaut's service lookups from names
+     * computed at packaging time, so that the application does not scan its class path for them when it starts.
+     * On by default. The packager generates one only for micronaut-core {@code [5.1.10, 5.2)}, and logs why
+     * otherwise; {@code -Dmicronaut.runner.static-services=false} turns it off at run time.
      */
     STATIC_SERVICES("staticServices", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
 
     /**
      * Whether to replace lambda and method-reference call sites with classes generated when the application is
-     * packaged. It applies to {@link Compression#STORED} and {@link Compression#HYBRID}. See
-     * {@link RunnerJarSpec.Builder#desugarLambdas(boolean)}.
+     * packaged, so that they are not linked at every start and a JDK AOT cache can hold them. On by default; it
+     * applies to {@link Compression#STORED} and {@link Compression#HYBRID}. A rewritten lambda's class is not
+     * hidden, has a stable name and adds one frame to stack traces.
      */
     DESUGAR_LAMBDAS("desugarLambdas", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
 
     /**
-     * Whether to package the bean definition prefetch, which the entry stub starts before the application's
-     * {@code main}. Off unless a build asks for it. See {@link RunnerJarSpec.Builder#definitionPrefetch(boolean)}.
+     * Whether to package the bean definition prefetch, which the entry stub starts on the common pool before the
+     * application's {@code main}. Off unless a build asks for it. The packager leaves it out, and logs why, when
+     * the application cannot use it; {@code -Dmicronaut.runner.prefetch=false} turns it off at run time.
      */
     DEFINITION_PREFETCH("definitionPrefetch", Boolean.class, "false", Exposure.PASSTHROUGH, "1.0");
 
@@ -183,7 +210,7 @@ public enum RunnerJarOption {
 
     /**
      * The type of the option's value, which decides how its text is read: {@link Boolean},
-     * {@link Compression}, {@link ArchiveReads}, {@link List}, {@link Map} or {@link Path}.
+     * {@link Compression}, {@link String}, {@link List}, {@link Map} or {@link Path}.
      *
      * @return the value type
      */

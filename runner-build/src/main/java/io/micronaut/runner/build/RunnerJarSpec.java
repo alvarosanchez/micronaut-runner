@@ -288,7 +288,7 @@ public final class RunnerJarSpec {
      *
      * @return the read mode, {@link ArchiveReads#MAPPED} unless configured otherwise
      */
-    public ArchiveReads archiveReads() {
+    ArchiveReads archiveReads() {
         return archiveReads;
     }
 
@@ -316,7 +316,7 @@ public final class RunnerJarSpec {
      *
      * @return whether to precompile {@code logback.xml}
      */
-    public boolean precompileLogback() {
+    boolean precompileLogback() {
         return precompileLogback;
     }
 
@@ -328,7 +328,7 @@ public final class RunnerJarSpec {
      *
      * @return whether local-variable tables are stripped, {@code true} unless configured otherwise
      */
-    public boolean stripLocalVariables() {
+    boolean stripLocalVariables() {
         return stripLocalVariables;
     }
 
@@ -370,7 +370,7 @@ public final class RunnerJarSpec {
      *
      * @return whether a static service table was requested
      */
-    public boolean staticServices() {
+    boolean staticServices() {
         return staticServices;
     }
 
@@ -385,7 +385,7 @@ public final class RunnerJarSpec {
      *
      * @return whether lambdas are desugared, {@code true} unless configured otherwise
      */
-    public boolean desugarLambdas() {
+    boolean desugarLambdas() {
         return desugarLambdas;
     }
 
@@ -406,7 +406,7 @@ public final class RunnerJarSpec {
      *
      * @return whether the bean definition prefetch was requested, {@code false} unless configured otherwise
      */
-    public boolean definitionPrefetch() {
+    boolean definitionPrefetch() {
         return definitionPrefetch;
     }
 
@@ -471,10 +471,11 @@ public final class RunnerJarSpec {
      * <p>The builder is mutable and is not thread safe; {@link #build()} takes a snapshot of it, so it can
      * be reused afterwards.</p>
      *
-     * <p>Every packaging option can be set in two ways: through its typed setter, such as
-     * {@link #compression(Compression)}, or by name through {@link #option(String, String)}. Each call
-     * replaces whatever was set before, so the last one wins. A plugin therefore applies its typed values
-     * first and its generic options last.</p>
+     * <p>A {@link RunnerJarOption.Exposure#TYPED TYPED} packaging option can be set in two ways: through its
+     * typed setter, such as {@link #compression(Compression)}, or by name through
+     * {@link #option(String, String)}. Each call replaces whatever was set before, so the last one wins. A plugin
+     * therefore applies its typed values first and its generic options last. A
+     * {@link RunnerJarOption.Exposure#PASSTHROUGH PASSTHROUGH} option is set by name only.</p>
      */
     public static final class Builder {
 
@@ -758,7 +759,7 @@ public final class RunnerJarSpec {
          * @return this builder
          * @throws NullPointerException if {@code value} is {@code null}
          */
-        public Builder archiveReads(ArchiveReads value) {
+        Builder archiveReads(ArchiveReads value) {
             this.archiveReads = Objects.requireNonNull(value, "archiveReads");
             return this;
         }
@@ -774,7 +775,7 @@ public final class RunnerJarSpec {
          * @param value whether to precompile {@code logback.xml}
          * @return this builder
          */
-        public Builder precompileLogback(boolean value) {
+        Builder precompileLogback(boolean value) {
             this.precompileLogback = value;
             return this;
         }
@@ -825,7 +826,7 @@ public final class RunnerJarSpec {
          * @param value whether to strip the local-variable tables of dependency classes
          * @return this builder
          */
-        public Builder stripLocalVariables(boolean value) {
+        Builder stripLocalVariables(boolean value) {
             this.stripLocalVariables = value;
             return this;
         }
@@ -866,7 +867,7 @@ public final class RunnerJarSpec {
          * @param value whether to generate the table when the application is eligible
          * @return this builder
          */
-        public Builder staticServices(boolean value) {
+        Builder staticServices(boolean value) {
             this.staticServices = value;
             return this;
         }
@@ -917,7 +918,7 @@ public final class RunnerJarSpec {
          * @param value whether to desugar lambdas
          * @return this builder
          */
-        public Builder desugarLambdas(boolean value) {
+        Builder desugarLambdas(boolean value) {
             this.desugarLambdas = value;
             return this;
         }
@@ -961,7 +962,7 @@ public final class RunnerJarSpec {
          * @param value whether to package the bean definition prefetch
          * @return this builder
          */
-        public Builder definitionPrefetch(boolean value) {
+        Builder definitionPrefetch(boolean value) {
             this.definitionPrefetch = value;
             return this;
         }

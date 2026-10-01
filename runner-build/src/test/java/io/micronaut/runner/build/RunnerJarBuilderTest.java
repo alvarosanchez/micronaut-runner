@@ -97,7 +97,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * End to end tests for {@link RunnerJarBuilder}: real class files compiled by the JDK, real dependency jars
- * written with {@code java.util.zip}, packaged and then read back through {@link RunnerJarReader}, which is
+ * written with {@code java.util.zip}, packaged and then read back through {@link RunnerJarArchive}, which is
  * the launcher's own reader.
  *
  * <p>The assertions that matter most are the ones that compare the index with the archive it describes: the
@@ -344,7 +344,7 @@ class RunnerJarBuilderTest {
                     .startupClasses(list)
                     .build(), BuildLogger.noOp());
 
-            try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
                 Index index = reader.index();
                 List<String> names = logicalNames(index, 1);
                 assertEquals(2, names.stream().filter("dup/same.txt"::equals).count(),
@@ -460,7 +460,7 @@ class RunnerJarBuilderTest {
                 .toList();
         assertEquals(1, mentions.size(), () -> "the POM must be reported exactly once: " + result.warnings());
         assertTrue(mentions.get(0).contains("is not a JAR file and was skipped"), mentions::toString);
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             assertEquals(4, reader.index().jarCount());
         }
     }
@@ -487,7 +487,7 @@ class RunnerJarBuilderTest {
 
             assertEquals(1, result.dependencyCount(), compression::toString);
             assertTrue(result.warnings().isEmpty(), () -> compression + ": " + result.warnings());
-            try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
                 assertEquals("MICRONAUT-INF/lib/empty.jar", reader.index().jarName(1), compression::toString);
                 assertEquals(0, RunnerBuildTestAccess.jarEntryCount(reader.index(), 1), compression::toString);
             }
@@ -684,7 +684,7 @@ class RunnerJarBuilderTest {
                 for (TransformReport report : parallelResult.transforms()) {
                     assertTrue(report.rewritten() > 0, parallelResult.transforms()::toString);
                 }
-                try (RunnerJarReader reader = RunnerJarReader.open(parallel)) {
+                try (RunnerJarArchive reader = RunnerJarArchive.open(parallel)) {
                     assertTrue(reader.index().findClass("com.example.caller.Caller$$Lambda$R0")
                             != IndexFormat.NO_INDEX, "the call site into the other dependency is desugared");
                     assertTrue(reader.index().findClass("com.example.callee.Callee$$Lambda$R0")
@@ -706,7 +706,7 @@ class RunnerJarBuilderTest {
             assertEquals(Set.of(Thread.currentThread()), pooled.warningThreads,
                     compression + ": warnings come from the calling thread only");
             assertNoStagingThreads();
-            try (RunnerJarReader reader = RunnerJarReader.open(parallel)) {
+            try (RunnerJarArchive reader = RunnerJarArchive.open(parallel)) {
                 assertEquals("MICRONAUT-INF/lib/dep-lib-1.jar", reader.index().jarName(7),
                         compression + ": the second dep-lib.jar gets a unique name");
             }
@@ -766,10 +766,10 @@ class RunnerJarBuilderTest {
             assertTrue(transforms.contains("lambdas\tMICRONAUT-INF/lib/lambda-lib.jar\trewritten=1\tgenerated=1"
                     + "\tbridges=0\tnestFallbacks=0\tleft=0\n"), transforms);
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(on)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(on)) {
             assertTrue(reader.index().findClass("com.example.lambda.Lambdas$$Lambda$R0") != IndexFormat.NO_INDEX);
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(off)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(off)) {
             assertEquals(IndexFormat.NO_INDEX, reader.index().findClass("com.example.lambda.Lambdas$$Lambda$R0"));
         }
     }
@@ -910,7 +910,7 @@ class RunnerJarBuilderTest {
                 .dependencies(List.of())
                 .build(), BuildLogger.noOp());
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals("STORED", new String(reader.read(index.find("stored.txt")), StandardCharsets.UTF_8));
             assertEquals("DEFLATED", new String(reader.read(index.find("deflated.txt")), StandardCharsets.UTF_8));
@@ -940,7 +940,7 @@ class RunnerJarBuilderTest {
                 .build(), BuildLogger.noOp());
 
         Path nested = directory.resolve("nested.jar");
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertTrue(RunnerBuildTestAccess.nestedStored(index));
             int record = index.find(name);
@@ -987,7 +987,7 @@ class RunnerJarBuilderTest {
                 .compression(compression)
                 .build(), BuildLogger.noOp());
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             for (Map.Entry<String, byte[]> entry : contents.entrySet()) {
                 assertArrayEquals(entry.getValue(), reader.read(index.find(entry.getKey())), entry.getKey());
@@ -1283,7 +1283,7 @@ class RunnerJarBuilderTest {
                         name + " carries the bytes of the link's target");
             }
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             for (Map.Entry<String, byte[]> entry : expected.entrySet()) {
                 int record = reader.index().find(entry.getKey());
                 assertNotEquals(IndexFormat.NO_INDEX, record, entry.getKey() + " should resolve at runtime");
@@ -1450,7 +1450,7 @@ class RunnerJarBuilderTest {
                             name + " carries the bytes of the junction's target");
                 }
             }
-            try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+            try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
                 for (Map.Entry<String, byte[]> entry : expected.entrySet()) {
                     int record = reader.index().find(entry.getKey());
                     assertNotEquals(IndexFormat.NO_INDEX, record, entry.getKey() + " should resolve at runtime");
@@ -1667,7 +1667,7 @@ class RunnerJarBuilderTest {
             assertEquals(0, archive.entry(SERVICE_DIRECTORY + "com.example.Marker").orElseThrow()
                     .uncompressedSize(), "a marker entry stays empty");
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals("IMPORTANT-APP-CONTENT", new String(
                     reader.read(index.resolveInJar(index.find("META-INF/micronaut/notes.txt"),
@@ -1904,7 +1904,7 @@ class RunnerJarBuilderTest {
                 .dependencies(List.of(Dependency.of(dependency)))
                 .build(), BuildLogger.noOp());
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals("", RunnerBuildTestAccess.jarImplTitle(index, 1), "present but empty is not absent");
             assertEquals("", RunnerBuildTestAccess.jarSpecVersion(index, 1));
@@ -1939,7 +1939,7 @@ class RunnerJarBuilderTest {
                 .dependencies(List.of(Dependency.of(dependency)))
                 .build(), BuildLogger.noOp());
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals("lz-base", resolved(reader, index, "m/leadingzero.txt"),
                     "META-INF/versions/09 is not a version directory, so the base entry wins");
@@ -1956,7 +1956,7 @@ class RunnerJarBuilderTest {
         }
     }
 
-    private static String resolved(RunnerJarReader reader, Index index, String name) throws IOException {
+    private static String resolved(RunnerJarArchive reader, Index index, String name) throws IOException {
         int record = RunnerBuildTestAccess.resolve(index, index.find(name), Index.effectiveMultiReleaseVersion());
         assertNotEquals(IndexFormat.NO_INDEX, record, name + " should resolve");
         return new String(reader.read(record), StandardCharsets.UTF_8);
@@ -1971,7 +1971,7 @@ class RunnerJarBuilderTest {
             assertArrayEquals(expected, archive.read(archive.entry(name).orElseThrow()),
                     "the root merged copy preserves the selected contributor");
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             int record = reader.index().find(name);
             assertNotEquals(IndexFormat.NO_INDEX, record, name + " should resolve at runtime");
             assertArrayEquals(expected, reader.read(record),
@@ -2319,7 +2319,7 @@ class RunnerJarBuilderTest {
         Path mapped = output();
         RunnerJarBuilder.build(spec(mapped).build(), BuildLogger.noOp());
 
-        try (RunnerJarReader reader = RunnerJarReader.open(positional)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(positional)) {
             Index index = reader.index();
             assertTrue(index.positionalReads());
             assertTrue(RunnerBuildTestAccess.nestedStored(index), "POSITIONAL leaves the compression alone");
@@ -2333,7 +2333,7 @@ class RunnerJarBuilderTest {
             assertTrue(RunnerBuildTestAccess.largestStoredClass(index) > 0, "the fixture has STORED classes");
             assertEquals(expected, RunnerBuildTestAccess.largestStoredClass(index));
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(mapped)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(mapped)) {
             assertFalse(reader.index().positionalReads());
             assertEquals(0, RunnerBuildTestAccess.largestStoredClass(reader.index()));
         }
@@ -2344,7 +2344,7 @@ class RunnerJarBuilderTest {
         Path output = output();
         RunnerJarBuilder.build(spec(output).option("archiveReads", "positional").build(), BuildLogger.noOp());
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             assertTrue(reader.index().positionalReads(), "the index header carries the positional-reads flag");
             assertTrue(RunnerBuildTestAccess.largestStoredClass(reader.index()) > 0,
                     "a positional archive records the largest STORED class");
@@ -2404,7 +2404,7 @@ class RunnerJarBuilderTest {
             assertNull(main.getValue("Multi-Release"));
         }
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals(4, index.jarCount());
             assertEquals(result.entryCount(), index.entryCount());
@@ -2463,7 +2463,7 @@ class RunnerJarBuilderTest {
                     "a directory is written before what it contains");
         }
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             int merged = index.find(SERVICE_DIRECTORY + "com.example.dep.DepBean");
             assertNotEquals(IndexFormat.NO_INDEX, merged);
@@ -2485,7 +2485,7 @@ class RunnerJarBuilderTest {
         Path output = output();
         RunnerJarBuilder.build(spec(output).build(), BuildLogger.noOp());
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertTrue(index.jarMultiRelease(2));
             assertFalse(index.jarMultiRelease(1));
@@ -2522,7 +2522,7 @@ class RunnerJarBuilderTest {
                         "the application layer stores no directory entries inside it, " + name + " is one");
             }
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             for (String name : new String[] {"com/", "com/example/", "static/", SERVICE_DIRECTORY}) {
                 int record = index.find(name);
@@ -2541,7 +2541,7 @@ class RunnerJarBuilderTest {
 
         assertTrue(result.warnings().stream().anyMatch(warning -> warning.contains("signed-lib.jar")),
                 "the build warns that a signature was dropped: " + result.warnings());
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals("MICRONAUT-INF/lib/signed-lib.jar", index.jarName(3));
             assertTrue((RunnerBuildTestAccess.jarFlags(index, 3) & IndexFormat.JAR_FLAG_SIGNED_ORIGINAL) != 0);
@@ -2560,7 +2560,7 @@ class RunnerJarBuilderTest {
         Path output = output();
         RunnerJarBuilder.build(spec(output).build(), BuildLogger.noOp());
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals("dep-lib", RunnerBuildTestAccess.jarImplTitle(index, 1));
             assertEquals("2.0.1", RunnerBuildTestAccess.jarImplVersion(index, 1));
@@ -2609,7 +2609,7 @@ class RunnerJarBuilderTest {
             assertEquals("java.base/jdk.internal.misc", main.getValue("Add-Exports"));
             assertEquals("ALL-UNNAMED", main.getValue("Enable-Native-Access"));
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals("demo", RunnerBuildTestAccess.jarImplTitle(index, 0));
             assertTrue(RunnerBuildTestAccess.jarSealedByDefault(index, 0));
@@ -2623,7 +2623,7 @@ class RunnerJarBuilderTest {
         Path output = output();
         RunnerJarBuilder.build(spec(output).build(), BuildLogger.noOp());
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output);
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output);
              ZipReader archive = ZipReader.open(output)) {
             Index index = reader.index();
             assertEquals(Files.size(output), RunnerBuildTestAccess.outerFileLength(index));
@@ -2668,7 +2668,7 @@ class RunnerJarBuilderTest {
         RunnerJarBuilder.build(spec(output).compression(Compression.PRESERVE).build(), BuildLogger.noOp());
 
         byte[] original = Files.readAllBytes(plainDependency);
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertFalse(RunnerBuildTestAccess.nestedStored(index));
             assertEquals(original.length, index.jarDataLength(1));
@@ -2705,7 +2705,7 @@ class RunnerJarBuilderTest {
                         ? List.of("launcher.jar")
                         : List.of("launcher.jar", "lib-0.jar", "lib-1.jar", "lib-2.jar"),
                 workFiles);
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals("from the jar",
                     new String(reader.read(index.find("application.yml")), StandardCharsets.UTF_8));
@@ -2805,7 +2805,7 @@ class RunnerJarBuilderTest {
 
         assertTrue(result.warnings().stream().anyMatch(warning -> warning.contains("application.yml")),
                 "the duplicate is reported: " + result.warnings());
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals("micronaut:\n  application:\n    name: test\n",
                     new String(reader.read(index.find("application.yml")), StandardCharsets.UTF_8));
@@ -2890,7 +2890,7 @@ class RunnerJarBuilderTest {
         assertEquals(1, build.logback().size(), build.logback()::toString);
         assertTrue(build.logback().get(0).startsWith("Precompiled logback.xml (application layer) into "
                 + LogbackPrecompiler.CONFIGURATOR_CLASS + ": 1 appender, 1 pattern, "), build.logback()::toString);
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             for (String name : GENERATED_LOGBACK_ENTRIES) {
                 assertNotEquals(IndexFormat.NO_INDEX, index.find(name), name);
@@ -2916,8 +2916,8 @@ class RunnerJarBuilderTest {
 
         assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(second));
         assertTrue(preserve.result().logbackPrecompiled());
-        try (RunnerJarReader stored = RunnerJarReader.open(first);
-             RunnerJarReader nested = RunnerJarReader.open(preserved)) {
+        try (RunnerJarArchive stored = RunnerJarArchive.open(first);
+             RunnerJarArchive nested = RunnerJarArchive.open(preserved)) {
             for (String name : GENERATED_LOGBACK_ENTRIES) {
                 assertArrayEquals(stored.read(stored.index().find(name)), nested.read(nested.index().find(name)),
                         name);
@@ -2947,7 +2947,7 @@ class RunnerJarBuilderTest {
         assertEquals(1, build.logback().size(), build.logback()::toString);
         assertTrue(build.logback().get(0).startsWith("Precompiled logback.xml (logging-configuration.jar) into "
                 + LogbackPrecompiler.CONFIGURATOR_CLASS + ": 1 appender, 1 pattern, "), build.logback()::toString);
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             for (String name : GENERATED_LOGBACK_ENTRIES) {
                 int entry = index.find(name);
@@ -3257,7 +3257,7 @@ class RunnerJarBuilderTest {
                 spec(output).dependencies(dependencies).startupClasses(list).build(), logger);
 
         List<String> expected = List.of("com.example.mr.Feature", "com.example.dep.Dep", "com.example.Application");
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals(expected.size(), index.preloadCount());
             for (int position = 0; position < expected.size(); position++) {
@@ -3307,7 +3307,7 @@ class RunnerJarBuilderTest {
 
         RunnerJarBuilder.build(spec(output).startupClasses(list).build(), logger);
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals(3, index.preloadCount());
             assertEquals(index.findClass("com.example.Application"), index.preloadRecord(0));
@@ -3340,7 +3340,7 @@ class RunnerJarBuilderTest {
 
         RunnerJarResult result = RunnerJarBuilder.build(spec(output).startupClasses(list).build(), logger);
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             assertEquals(0, reader.index().preloadCount());
             assertEquals(0, reader.index().jdkPreloadCount(), "nothing of such a recording is embedded");
         }
@@ -3890,7 +3890,7 @@ class RunnerJarBuilderTest {
                 + " (none left to Micronaut's scan) for micronaut-core " + version + " in "), generated::toString);
         assertTrue(generated.get(0).endsWith(" ms"), generated::toString);
 
-        try (RunnerJarReader reader = RunnerJarReader.open(output); ZipReader archive = ZipReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output); ZipReader archive = ZipReader.open(output)) {
             Index index = reader.index();
             List<String> application = logicalNames(index, 0);
             assertTrue(application.contains(GENERATED_SERVICES + "RunnerStaticServices.class"), application::toString);
@@ -3992,7 +3992,7 @@ class RunnerJarBuilderTest {
         assertEquals(List.of("No static Micronaut service table was generated because the application output"
                 + " already carries '" + GENERATED_SERVICES + "RunnerStaticServices.class'; Micronaut will scan for"
                 + " its services when the application starts"), result.warnings());
-        try (RunnerJarReader reader = RunnerJarReader.open(output); ZipReader archive = ZipReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output); ZipReader archive = ZipReader.open(output)) {
             assertEquals(List.of(GENERATED_SERVICES + "RunnerStaticServices.class"),
                     logicalNames(reader.index(), 0).stream()
                             .filter(name -> name.startsWith(GENERATED_SERVICES) && !name.endsWith("/")).toList());
@@ -4043,7 +4043,7 @@ class RunnerJarBuilderTest {
     }
 
     private static void assertNoStaticServiceTable(Path output) throws IOException {
-        try (RunnerJarReader reader = RunnerJarReader.open(output); ZipReader archive = ZipReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output); ZipReader archive = ZipReader.open(output)) {
             for (String name : logicalNames(reader.index(), 0)) {
                 assertFalse(name.startsWith(GENERATED_SERVICES), name);
                 assertNotEquals(LOADER_REGISTRATION, name, "no loader line without a table");

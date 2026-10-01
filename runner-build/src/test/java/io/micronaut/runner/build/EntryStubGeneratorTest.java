@@ -466,7 +466,7 @@ class EntryStubGeneratorTest {
         Path archive = output();
         RunnerJarBuilder.build(spec(archive).entryStub(true).build(), logger);
 
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {
             Index index = reader.index();
             assertEquals(EntryStubGenerator.STUB_CLASS, index.entryStubClass(),
                     "the header is what sends the launcher to the stub");
@@ -527,7 +527,7 @@ class EntryStubGeneratorTest {
         RunnerJarBuilder.build(spec(archive)
                 .applicationOutput(List.of(classes, collision)).entryStub(true).build(), logger);
 
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {
             Index index = reader.index();
             assertNull(index.entryStubClass(),
                     "the packager must not claim a class it did not write");
@@ -595,7 +595,7 @@ class EntryStubGeneratorTest {
                 .build(), BuildLogger.noOp());
 
         assertNoStub(archive);
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {
             assertEquals(APPLICATION_CLASS, reader.index().startClass(),
                     "the configured main, not the application JAR manifest main, is launched");
         }
@@ -708,7 +708,7 @@ class EntryStubGeneratorTest {
     }
 
     private static void assertNoStub(Path archive) throws IOException {
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {
             Index index = reader.index();
             assertNull(index.entryStubClass(), "the header field stays empty, so the launcher reflects");
             assertEquals(IndexFormat.NO_INDEX, index.findClass(EntryStubGenerator.STUB_CLASS),
@@ -717,7 +717,7 @@ class EntryStubGeneratorTest {
     }
 
     private static void assertHasStub(Path archive) throws IOException {
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {
             Index index = reader.index();
             assertEquals(EntryStubGenerator.STUB_CLASS, index.entryStubClass());
             assertTrue(index.findClass(EntryStubGenerator.STUB_CLASS) != IndexFormat.NO_INDEX,

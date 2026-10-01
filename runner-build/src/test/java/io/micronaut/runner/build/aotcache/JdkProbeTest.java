@@ -76,7 +76,10 @@ class JdkProbeTest {
     void jdk25HasNoCompatibleOopCompression() throws IOException {
         JdkProbe probe = JdkProbe.parse(JDK_25);
 
-        assertEquals(new JdkProbe("25.0.4.1", "25.0.4.1", "Mac OS X", "aarch64", false), probe);
+        assertEquals("25.0.4.1", probe.vmVersion());
+        assertEquals("25.0.4.1", probe.runtimeVersion());
+        assertEquals("Mac OS X", probe.osName());
+        assertEquals("aarch64", probe.osArch());
         assertFalse(probe.compatibleOopCompression());
         assertEquals(List.of(), probe.creationFlags());
     }

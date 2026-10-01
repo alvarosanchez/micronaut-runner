@@ -134,7 +134,7 @@ class RunnerJarBuilderPrefetchTest {
         Map<String, byte[]> shipped = DefinitionPrefetchPackager.classes();
         assertEquals(List.of(DefinitionPrefetchPackager.TASK_ENTRY, DefinitionPrefetchPackager.CONFIGURER_ENTRY),
                 List.copyOf(shipped.keySet()));
-        try (RunnerJarReader reader = RunnerJarReader.open(with)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(with)) {
             Index index = reader.index();
             assertNotEquals(IndexFormat.NO_INDEX, index.findClass(DefinitionPrefetchPackager.TASK_CLASS));
             assertNotEquals(IndexFormat.NO_INDEX, index.findClass(DefinitionPrefetchPackager.CONFIGURER_CLASS));
@@ -180,7 +180,7 @@ class RunnerJarBuilderPrefetchTest {
         assertTrue(build.result().definitionPrefetch());
         assertEquals(List.of("Packaged the bean definition prefetch for 1 bean definition references"),
                 build.prefetch());
-        try (RunnerJarReader reader = RunnerJarReader.open(with)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(with)) {
             assertEquals(existing + (existing.endsWith("\n") ? "" : "\n") + CONFIGURER_LINE, new String(
                     reader.read(reader.index().find(DefinitionPrefetchPackager.SERVICE_ENTRY)),
                     StandardCharsets.UTF_8));
@@ -339,7 +339,7 @@ class RunnerJarBuilderPrefetchTest {
         assertEquals(1, build.result().warnings().size(), build.result().warnings()::toString);
         assertTrue(build.result().warnings().get(0).startsWith("The application output already carries '" + taken
                 + "'; no bean definition prefetch was packaged"), build.result().warnings()::toString);
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             assertEquals(IndexFormat.NO_INDEX, index.find(DefinitionPrefetchPackager.TASK_ENTRY));
             assertEquals(IndexFormat.NO_INDEX, index.find(DefinitionPrefetchPackager.SERVICE_ENTRY));
@@ -401,7 +401,7 @@ class RunnerJarBuilderPrefetchTest {
             assertFalse(name.startsWith(DefinitionPrefetchPackager.PACKAGE_PATH), name);
             assertNotEquals(DefinitionPrefetchPackager.SERVICE_ENTRY, name);
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
             int record = index.find(EntryStubGenerator.STUB_RESOURCE_NAME);
             if (stub) {

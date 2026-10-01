@@ -17,12 +17,10 @@ package io.micronaut.runner.benchmarks;
 
 import io.micronaut.runner.IndexFormat;
 import io.micronaut.runner.build.AotLayout;
-import io.micronaut.runner.build.ArchiveReads;
 import io.micronaut.runner.build.BuildLogger;
 import io.micronaut.runner.build.Compression;
 import io.micronaut.runner.build.Dependency;
 import io.micronaut.runner.build.RunnerJarBuilder;
-import io.micronaut.runner.build.RunnerJarReader;
 import io.micronaut.runner.build.RunnerJarResult;
 import io.micronaut.runner.build.RunnerJarSpec;
 import io.micronaut.runner.build.StartupProfileRecorder;
@@ -342,7 +340,7 @@ final class SampleBuild implements SampleSteps {
             row("runner-stored-positional", "Runner jar, nested dependencies re-packed uncompressed; archiveReads"
                     + " POSITIONAL (index mapped only)", EntryMode.STUB, OPT_IN, null,
                     (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
-                            RunnerJarOptions.DEFAULTS.withArchiveReads(ArchiveReads.POSITIONAL))),
+                            RunnerJarOptions.DEFAULTS.withArchiveReads("POSITIONAL"))),
             cached("runner-stored-positional-aot", "The same POSITIONAL Runner jar with a verified JDK AOT cache",
                     EntryMode.STUB, OPT_IN, "runner-stored-positional"),
             row("runner-stored-joran", "The same stored Runner jar with precompileLogback=false: logback.xml read by"
@@ -875,7 +873,7 @@ final class SampleBuild implements SampleSteps {
      * @throws IOException if the archive cannot be read
      */
     static boolean logbackPrecompiled(Path archive) throws IOException {
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(archive)) {
             return reader.index().findClass(GENERATED_LOGBACK_CONFIGURATOR) != IndexFormat.NO_INDEX;
         }
     }
@@ -914,7 +912,7 @@ final class SampleBuild implements SampleSteps {
      * @throws IOException if the archive cannot be read
      */
     static boolean definitionPrefetch(Path archive) throws IOException {
-        try (RunnerJarReader reader = RunnerJarReader.open(archive)) {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(archive)) {
             return reader.index().findClass(PREFETCH_CONFIGURER) != IndexFormat.NO_INDEX;
         }
     }
@@ -948,24 +946,25 @@ final class SampleBuild implements SampleSteps {
                 .output(output)
                 .compression(compression)
                 .entryStub(spec.entryMode() == EntryMode.STUB);
+        // The PASSTHROUGH options are set by name, as a build sets them through a plugin's generic options.
         if (options.archiveReads() != null) {
-            builder.archiveReads(options.archiveReads());
+            builder.option("archiveReads", options.archiveReads());
         }
         if (options.precompileLogback() != null) {
-            builder.precompileLogback(options.precompileLogback());
+            builder.option("precompileLogback", options.precompileLogback().toString());
         }
         if (options.stripLocalVariables() != null) {
-            builder.stripLocalVariables(options.stripLocalVariables());
+            builder.option("stripLocalVariables", options.stripLocalVariables().toString());
         }
         builder.startupClasses(options.startupClasses());
         if (options.staticServices() != null) {
-            builder.staticServices(options.staticServices());
+            builder.option("staticServices", options.staticServices().toString());
         }
         if (options.desugarLambdas() != null) {
-            builder.desugarLambdas(options.desugarLambdas());
+            builder.option("desugarLambdas", options.desugarLambdas().toString());
         }
         if (options.definitionPrefetch() != null) {
-            builder.definitionPrefetch(options.definitionPrefetch());
+            builder.option("definitionPrefetch", options.definitionPrefetch().toString());
         }
         RunnerJarSpec jarSpec = builder.build();
         RunnerJarResult result = RunnerJarBuilder.build(jarSpec, new HarnessLogger(log, spec.name()));
@@ -976,7 +975,7 @@ final class SampleBuild implements SampleSteps {
         // Rebuilt in every run with the same bytes; the pin keeps the time a trained cache recorded.
         LaunchInputs.pin(output);
         EntryMode effectiveEntryMode = inspectEntryMode(output, spec.entryMode());
-        inspectArchiveReads(output, jarSpec.archiveReads());
+        inspectArchiveReads(output, jarSpec.effectiveOptions().get("archiveReads"));
         int preloaded = inspectPreload(output, options.startupClasses());
         // Counted only for HYBRID: reading every nested jar as a stream inflates each deflated entry it skips.
         int[] methods = compression == Compression.HYBRID ? nestedMethods(output) : null;
@@ -1030,10 +1029,10 @@ final class SampleBuild implements SampleSteps {
      * Fails a row whose jar does not carry the archive read mode it asked for, so that a row meant to measure
      * positional reads is reported unavailable rather than measuring the mapped launch under its name.
      */
-    private static void inspectArchiveReads(Path output, ArchiveReads requested) throws IOException {
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+    private static void inspectArchiveReads(Path output, String requested) throws IOException {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(output)) {
             boolean positional = reader.index().positionalReads();
-            if (positional != (requested == ArchiveReads.POSITIONAL)) {
+            if (positional != "POSITIONAL".equals(requested)) {
                 throw new IOException("archiveReads " + requested + " was requested, but the index of " + output
                         + (positional ? " asks for positional reads" : " does not ask for positional reads"));
             }
@@ -1050,7 +1049,7 @@ final class SampleBuild implements SampleSteps {
         if (startupClasses == null) {
             return 0;
         }
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(output)) {
             int count = reader.index().preloadCount();
             if (count == 0) {
                 throw new IOException("a startup class list was requested, but the index of " + output
@@ -1065,7 +1064,8 @@ final class SampleBuild implements SampleSteps {
      * the builder default in place, so a row that does not set an option measures whatever default the option
      * table declares. A row that needs another option adds a field here rather than another overload.
      *
-     * @param archiveReads        how the launcher reads the archive, or {@code null} for the builder default
+     * @param archiveReads        how the launcher reads the archive, as the option's text such as
+     *                            {@code POSITIONAL}, or {@code null} for the builder default
      * @param precompileLogback   whether to precompile {@code logback.xml}, or {@code null} for the builder
      *                            default
      * @param stripLocalVariables whether dependency classes lose their local-variable tables, or {@code null}
@@ -1080,7 +1080,7 @@ final class SampleBuild implements SampleSteps {
      * @param preload             whether the launcher preloads the embedded startup classes, or {@code null} for
      *                            its default; {@code false} launches with {@code -Dmicronaut.runner.preload=false}
      */
-    record RunnerJarOptions(ArchiveReads archiveReads, Boolean precompileLogback, Boolean stripLocalVariables,
+    record RunnerJarOptions(String archiveReads, Boolean precompileLogback, Boolean stripLocalVariables,
                             Path startupClasses, Boolean staticServices, Boolean desugarLambdas,
                             Boolean definitionPrefetch, Boolean preload) {
 
@@ -1090,10 +1090,10 @@ final class SampleBuild implements SampleSteps {
         /**
          * These options with another archive read mode.
          *
-         * @param value the archive read mode
+         * @param value the archive read mode, as the option's text such as {@code POSITIONAL}
          * @return the new options
          */
-        RunnerJarOptions withArchiveReads(ArchiveReads value) {
+        RunnerJarOptions withArchiveReads(String value) {
             return new RunnerJarOptions(value, precompileLogback, stripLocalVariables, startupClasses,
                     staticServices, desugarLambdas, definitionPrefetch, preload);
         }
@@ -1179,7 +1179,7 @@ final class SampleBuild implements SampleSteps {
     }
 
     private static EntryMode inspectEntryMode(Path output, EntryMode requestedEntryMode) throws IOException {
-        try (RunnerJarReader reader = RunnerJarReader.open(output)) {
+        try (RunnerJarIndex reader = RunnerJarIndex.open(output)) {
             String indexedStub = reader.index().entryStubClass();
             boolean generatedClassPresent = reader.index().findClass(GENERATED_ENTRY_STUB)
                     != IndexFormat.NO_INDEX;

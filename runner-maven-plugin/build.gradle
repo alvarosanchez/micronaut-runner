@@ -10,4 +10,8 @@ dependencies {
     // Reads project.build.outputTimestamp exactly as maven-jar-plugin does in the same build. It needs
     // plexus-archiver and plexus-interpolation at runtime, which it brings along.
     implementation libs.maven.archiver
+
+    // PackageMojoTest reads the index format of the jars it packages; runner-build keeps the launcher off the
+    // plugin's compile class path.
+    testImplementation projects.micronautRunnerLauncher
 }

@@ -76,7 +76,7 @@ record ZipEntryInfo(
      * @throws NullPointerException     if {@code name} is {@code null}
      * @throws IllegalArgumentException if a size, an offset or the CRC-32 is out of range
      */
-    public ZipEntryInfo {
+    ZipEntryInfo {
         Objects.requireNonNull(name, "name");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("Entry name must not be empty");
@@ -99,7 +99,7 @@ record ZipEntryInfo(
      *
      * @return {@code true} when the compression method is {@link IndexFormat#METHOD_STORED}
      */
-    public boolean stored() {
+    boolean stored() {
         return method == IndexFormat.METHOD_STORED;
     }
 
@@ -114,7 +114,7 @@ record ZipEntryInfo(
      * @return the shifted entry, or this instance when {@code delta} is zero
      * @throws IllegalArgumentException if the shift would make an offset negative
      */
-    public ZipEntryInfo shift(long delta) {
+    ZipEntryInfo shift(long delta) {
         if (delta == 0) {
             return this;
         }

@@ -15,6 +15,8 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.core.annotation.Internal;
+
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -246,7 +248,7 @@ public final class RunnerJarResult {
      *
      * @return whether the archive carries a precompiled Logback configuration
      */
-    public boolean logbackPrecompiled() {
+    boolean logbackPrecompiled() {
         return logbackPrecompiled;
     }
 
@@ -259,17 +261,21 @@ public final class RunnerJarResult {
      *
      * @return the reports, unmodifiable
      */
-    public List<TransformReport> transforms() {
+    List<TransformReport> transforms() {
         return transforms;
     }
 
     /**
-     * The number of implementation names the static service table lists, which
-     * {@link RunnerJarSpec#staticServices()} requests. It is {@code 0} when no table was generated; the build
-     * log names the reason.
+     * The number of implementation names the static service table lists, which the {@code staticServices}
+     * option requests. It is {@code 0} when no table was generated; the build log names the reason.
+     *
+     * <p>Internal: it is public only for the build note of Runner's own benchmarks,
+     * {@code static services: N slots (core V)}, and may change in any release. A packaging option gets a public
+     * result accessor of its own when it becomes {@link RunnerJarOption.Exposure#TYPED TYPED}.</p>
      *
      * @return the slot count of the static service table
      */
+    @Internal
     public int staticServiceSlots() {
         return staticServiceSlots;
     }
@@ -278,8 +284,12 @@ public final class RunnerJarResult {
      * The micronaut-core version the static service table was generated for, as that JAR's manifest states
      * it.
      *
+     * <p>Internal: it is public only for the build note of Runner's own benchmarks,
+     * {@code static services: N slots (core V)}, and may change in any release.</p>
+     *
      * @return the version, or empty when no table was generated
      */
+    @Internal
     public Optional<String> staticServicesCoreVersion() {
         return Optional.ofNullable(staticServicesCoreVersion);
     }
@@ -292,7 +302,7 @@ public final class RunnerJarResult {
      *
      * @return whether the archive carries the bean definition prefetch
      */
-    public boolean definitionPrefetch() {
+    boolean definitionPrefetch() {
         return definitionPrefetch;
     }
 

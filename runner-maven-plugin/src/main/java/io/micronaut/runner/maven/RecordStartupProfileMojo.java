@@ -48,7 +48,7 @@ import java.util.concurrent.TimeUnit;
  * @since 1.0
  */
 @Mojo(name = "record-startup-profile", threadSafe = true)
-public class RecordStartupProfileMojo extends AbstractTrainingMojo {
+public final class RecordStartupProfileMojo extends AbstractTrainingMojo {
 
     /** The command that runs this goal again, which the profile's header carries. */
     static final String RERECORD_COMMAND = "mvn package mn-runner:record-startup-profile";

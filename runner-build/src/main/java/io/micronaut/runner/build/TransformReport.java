@@ -28,11 +28,11 @@ import java.util.Objects;
  * bytes verified worse than the original; the class is then nested as the other transforms left it, and the
  * build log says why. A class a transform generates is not counted: it only lowers {@link #bytesSaved()}.</p>
  *
- * <p>Only the builder creates a report, so later releases can add accessors without breaking callers.</p>
- *
- * @since 1.0
+ * <p>Package-private, like the result accessor that returns it: the transforms are
+ * {@link RunnerJarOption.Exposure#PASSTHROUGH PASSTHROUGH} options, and a report becomes public API only with the
+ * release that makes one of them {@link RunnerJarOption.Exposure#TYPED TYPED}.</p>
  */
-public final class TransformReport {
+final class TransformReport {
 
     private final String step;
     private final int rewritten;
@@ -68,7 +68,7 @@ public final class TransformReport {
      *
      * @return the name
      */
-    public String step() {
+    String step() {
         return step;
     }
 
@@ -77,7 +77,7 @@ public final class TransformReport {
      *
      * @return the rewritten count
      */
-    public int rewritten() {
+    int rewritten() {
         return rewritten;
     }
 
@@ -87,7 +87,7 @@ public final class TransformReport {
      *
      * @return the unchanged count
      */
-    public int unchanged() {
+    int unchanged() {
         return unchanged;
     }
 
@@ -96,7 +96,7 @@ public final class TransformReport {
      *
      * @return the fallback count
      */
-    public int fallbacks() {
+    int fallbacks() {
         return fallbacks;
     }
 
@@ -106,7 +106,7 @@ public final class TransformReport {
      *
      * @return the bytes saved
      */
-    public long bytesSaved() {
+    long bytesSaved() {
         return bytesSaved;
     }
 
@@ -115,7 +115,7 @@ public final class TransformReport {
      *
      * @return {@code rewritten() + unchanged() + fallbacks()}
      */
-    public int classes() {
+    int classes() {
         return rewritten + unchanged + fallbacks;
     }
 

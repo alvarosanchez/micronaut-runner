@@ -19,7 +19,6 @@ import io.micronaut.runner.build.AotCacheOutput;
 import io.micronaut.runner.build.AotTarget;
 import io.micronaut.runner.build.aotcache.AotCacheReport;
 import io.micronaut.runner.build.aotcache.AotCacheSettings;
-import io.micronaut.runner.build.aotcache.AotLaunchOptions;
 import io.micronaut.runner.build.training.TrainingSettings;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -58,7 +57,7 @@ import java.util.concurrent.TimeUnit;
  * @since 1.0
  */
 @Mojo(name = "jdk-aot-cache", defaultPhase = LifecyclePhase.PACKAGE, threadSafe = true)
-public class JdkAotCacheMojo extends AbstractTrainingMojo {
+public final class JdkAotCacheMojo extends AbstractTrainingMojo {
 
     /** Whether the goal trains the cache. Unset, {@code false}: the goal logs one line and does nothing. */
     @Parameter(property = "micronaut.runner.jdkAotCache.enabled", defaultValue = "false")
@@ -149,12 +148,8 @@ public class JdkAotCacheMojo extends AbstractTrainingMojo {
             throw new MojoExecutionException("Training the JDK AOT cache was interrupted. Every process it started"
                     + " was stopped.", e);
         }
-        getLog().info(String.format(Locale.ROOT, "Trained and verified the JDK AOT cache for the %s target in %.1f"
-                        + " s: %.1f%% of the classes and %d of %d io.micronaut classes from the cache, %d of %d strict"
-                        + " probes failed. Launch it from %s with: java @%s -jar <jar>", target,
-                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) / 1000.0, report.coverage() * 100,
-                report.micronautFromCache(), report.micronautLoaded(), report.probeFailures(), report.probes(), out,
-                AotLaunchOptions.ARGFILE));
+        getLog().info(report.summary() + String.format(Locale.ROOT, " (in %s, %.1f s)", out,
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) / 1000.0));
     }
 
     /**

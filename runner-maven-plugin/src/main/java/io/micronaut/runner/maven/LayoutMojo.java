@@ -43,7 +43,7 @@ import java.nio.file.Path;
  * @since 1.0
  */
 @Mojo(name = "layout", defaultPhase = LifecyclePhase.PACKAGE, threadSafe = true)
-public class LayoutMojo extends AbstractMojo {
+public final class LayoutMojo extends AbstractMojo {
 
     /** The project whose Runner JAR is extracted. */
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
@@ -90,10 +90,8 @@ public class LayoutMojo extends AbstractMojo {
         }
         Path destination = destination();
         try {
-            AotLayout.Result layout = AotLayout.write(java(), archive.toPath(), destination,
-                    AotLayout.DEFAULT_TIMEOUT);
-            getLog().info("Wrote the layout " + layout.applicationJar().getFileName() + " with "
-                    + layout.libraries().size() + " JARs in " + AotLayout.LIBRARY_DIRECTORY + "/ to " + destination);
+            getLog().info(AotLayout.write(java(), archive.toPath(), destination, AotLayout.DEFAULT_TIMEOUT)
+                    .summary());
         } catch (IOException e) {
             throw new MojoExecutionException("Could not write the layout: " + e.getMessage(), e);
         } catch (InterruptedException e) {

@@ -15,15 +15,18 @@
  */
 package io.micronaut.runner.build;
 
-import io.micronaut.core.annotation.Experimental;
+import io.micronaut.core.annotation.Internal;
 
 /**
  * What a JDK AOT cache is trained for: the extracted layout, which every JDK caches in full, or a copy of the
  * single Runner JAR, whose nested classes JDK 27 and later do not cache.
  *
+ * <p>Internal to Runner's interim build plugins, which read their {@code target} setting with {@link #parse}: it
+ * may change in any release.</p>
+ *
  * @since 1.0
  */
-@Experimental
+@Internal
 public enum AotTarget {
 
     /** The extracted layout: the application JAR and {@code lib/}, run by the JDK's own class loader. */

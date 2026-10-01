@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.build.aotcache;
 
-import io.micronaut.core.annotation.Experimental;
 import io.micronaut.runner.build.training.TrainingSettings;
 
 import java.io.IOException;
@@ -37,9 +36,12 @@ import java.util.Properties;
  * <p>From that directory the application launches as {@code java @app.jvmopts -jar <jar>}: the argfile names
  * the cache by a relative path.</p>
  *
+ * <p>Not for users: the class and its two file names are public only because {@code AotCacheOutput}, in another
+ * package of this library, deletes those files when a build fails after training. Everything else is
+ * package-private.</p>
+ *
  * @since 1.0
  */
-@Experimental
 public final class AotLaunchOptions {
 
     /** The cache, relative to the output directory. */
@@ -49,25 +51,25 @@ public final class AotLaunchOptions {
     public static final String ARGFILE = "app.jvmopts";
 
     /** The identity file, relative to the output directory. */
-    public static final String IDENTITY_FILE = "app.aot.properties";
+    static final String IDENTITY_FILE = "app.aot.properties";
 
     /** The identity entry that holds the exact VM build. */
-    public static final String VM_VERSION = "java.vm.version";
+    static final String VM_VERSION = "java.vm.version";
 
     /** The identity entry that holds the runtime version. */
-    public static final String RUNTIME_VERSION = "java.runtime.version";
+    static final String RUNTIME_VERSION = "java.runtime.version";
 
     /** The identity entry that holds the operating system. */
-    public static final String OS_NAME = "os.name";
+    static final String OS_NAME = "os.name";
 
     /** The identity entry that holds the CPU architecture. */
-    public static final String OS_ARCH = "os.arch";
+    static final String OS_ARCH = "os.arch";
 
     /** The identity entry that holds the creation flags, as argfile tokens separated by spaces. */
-    public static final String CREATION_FLAGS = "creationFlags";
+    static final String CREATION_FLAGS = "creationFlags";
 
     /** The identity entry that holds {@link AotCacheSettings#jvmArgs()}, as argfile tokens separated by spaces. */
-    public static final String JVM_ARGS = "jvmArgs";
+    static final String JVM_ARGS = "jvmArgs";
 
     /** The entries every identity file has; the others are the caller's labels. */
     static final List<String> IDENTITY_ENTRIES = List.of(VM_VERSION, RUNTIME_VERSION, OS_NAME, OS_ARCH,
@@ -84,7 +86,7 @@ public final class AotLaunchOptions {
      * @param settings the cache settings
      * @return the options
      */
-    public static List<String> options(AotCacheSettings settings) {
+    static List<String> options(AotCacheSettings settings) {
         List<String> options = new ArrayList<>(settings.jvmArgs().size() + 2);
         options.add("-XX:AOTCache=" + CACHE_FILE);
         if (settings.strict()) {
@@ -101,7 +103,7 @@ public final class AotLaunchOptions {
      * @param settings the cache settings
      * @return the content, with {@code \n} line endings
      */
-    public static String argfile(AotCacheSettings settings) {
+    static String argfile(AotCacheSettings settings) {
         StringBuilder content = new StringBuilder();
         for (String option : options(settings)) {
             content.append(quote(option)).append('\n');
@@ -119,7 +121,7 @@ public final class AotLaunchOptions {
      * @param training the user's training settings
      * @return the copy
      */
-    public static TrainingSettings trainingSettings(AotCacheSettings settings, TrainingSettings training) {
+    static TrainingSettings trainingSettings(AotCacheSettings settings, TrainingSettings training) {
         return training.toBuilder().jvmArgs(settings.jvmArgs()).build();
     }
 
@@ -132,8 +134,8 @@ public final class AotLaunchOptions {
      * @param labels        what the caller adds, such as the {@code target}
      * @return the entries
      */
-    public static Map<String, String> identity(JdkProbe jdk, List<String> creationFlags, List<String> jvmArgs,
-                                               Map<String, String> labels) {
+    static Map<String, String> identity(JdkProbe jdk, List<String> creationFlags, List<String> jvmArgs,
+                                        Map<String, String> labels) {
         Map<String, String> identity = new LinkedHashMap<>();
         identity.put(VM_VERSION, jdk.vmVersion());
         identity.put(RUNTIME_VERSION, jdk.runtimeVersion());
@@ -153,7 +155,7 @@ public final class AotLaunchOptions {
      * @param identity the entries, in order
      * @throws IOException if it cannot be written
      */
-    public static void writeIdentity(Path file, Map<String, String> identity) throws IOException {
+    static void writeIdentity(Path file, Map<String, String> identity) throws IOException {
         StringBuilder content = new StringBuilder("# The JDK AOT cache app.aot is valid only for this JDK build,"
                 + " operating system and architecture.\n");
         identity.forEach((name, value) -> content.append(escape(name, true)).append('=')
@@ -168,7 +170,7 @@ public final class AotLaunchOptions {
      * @return the entries
      * @throws IOException if it cannot be read
      */
-    public static Map<String, String> readIdentity(Path file) throws IOException {
+    static Map<String, String> readIdentity(Path file) throws IOException {
         Properties properties = new Properties();
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             properties.load(reader);

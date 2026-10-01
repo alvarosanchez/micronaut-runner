@@ -15,7 +15,7 @@
  */
 package io.micronaut.runner.build.aotcache;
 
-import io.micronaut.core.annotation.Experimental;
+import io.micronaut.core.annotation.Internal;
 
 import java.util.List;
 import java.util.Locale;
@@ -24,6 +24,8 @@ import java.util.Objects;
 /**
  * How a JDK AOT cache is built and how strictly it is verified. Both build plugins start from
  * {@link #defaults()} and replace only what the user set, so every default lives here.
+ *
+ * <p>Internal to Runner's interim build plugins: it may change in any release.</p>
  *
  * @param strict          whether the launch argfile also carries {@code -XX:AOTMode=on}, which turns a cache
  *                        that no longer matches, such as one whose JARs' modification times were rewritten, into
@@ -38,7 +40,7 @@ import java.util.Objects;
  * @param enforceCoverage whether the coverage checks fail the build; without it they are only reported
  * @since 1.0
  */
-@Experimental
+@Internal
 public record AotCacheSettings(boolean strict,
                                List<String> jvmArgs,
                                int verifyProbes,
@@ -46,10 +48,10 @@ public record AotCacheSettings(boolean strict,
                                boolean enforceCoverage) {
 
     /** The default of {@link #verifyProbes()}. */
-    public static final int DEFAULT_VERIFY_PROBES = 10;
+    static final int DEFAULT_VERIFY_PROBES = 10;
 
     /** The default of {@link #minCoverage()}. */
-    public static final double DEFAULT_MIN_COVERAGE = 0.95;
+    static final double DEFAULT_MIN_COVERAGE = 0.95;
 
     /** The options the build sets itself, which {@link #jvmArgs()} must not name. */
     private static final List<String> RESERVED = List.of("-XX:AOTMode", "-XX:AOTCache", "-XX:AOTCacheOutput",
@@ -87,8 +89,7 @@ public record AotCacheSettings(boolean strict,
     }
 
     /**
-     * The defaults: not strict, no JVM arguments, {@value #DEFAULT_VERIFY_PROBES} probes, a coverage of at
-     * least {@value #DEFAULT_MIN_COVERAGE}, enforced.
+     * The defaults: not strict, no JVM arguments, 10 probes, a coverage of at least 0.95, enforced.
      *
      * @return the defaults
      */
@@ -118,7 +119,10 @@ public record AotCacheSettings(boolean strict,
     /**
      * Collects cache settings, starting from the defaults. A setter that is not called leaves the default in
      * place.
+     *
+     * <p>Internal to Runner's interim build plugins: it may change in any release.</p>
      */
+    @Internal
     public static final class Builder {
 
         private boolean strict;
@@ -180,7 +184,7 @@ public record AotCacheSettings(boolean strict,
          * @param value whether the coverage checks fail the build
          * @return this builder
          */
-        public Builder enforceCoverage(boolean value) {
+        Builder enforceCoverage(boolean value) {
             this.enforceCoverage = value;
             return this;
         }

@@ -15,7 +15,7 @@
  */
 package io.micronaut.runner.build;
 
-import io.micronaut.core.annotation.Experimental;
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.build.training.TrainingDriver;
 
@@ -48,19 +48,21 @@ import java.util.stream.Stream;
  * carries the modification time {@code 1980-02-01T00:00:00Z}, so a layout copied with its times kept, or
  * extracted again from the same JAR, still matches a cache trained on it.</p>
  *
+ * <p>Internal to Runner's interim build plugins, which call {@link #write}: it may change in any release.</p>
+ *
  * @since 1.0
  */
-@Experimental
+@Internal
 public final class AotLayout {
 
     /** How long an extraction may take unless the caller says otherwise. */
     public static final Duration DEFAULT_TIMEOUT = Duration.ofMinutes(5);
 
     /** The modification time of every file of the layout. */
-    public static final FileTime FILE_TIME = FileTime.from(Instant.parse("1980-02-01T00:00:00Z"));
+    static final FileTime FILE_TIME = FileTime.from(Instant.parse("1980-02-01T00:00:00Z"));
 
     /** The directory of the dependencies, relative to the layout. */
-    public static final String LIBRARY_DIRECTORY = "lib";
+    static final String LIBRARY_DIRECTORY = "lib";
 
     /** How much of the extraction's output a failure quotes. */
     private static final int TAIL_CHARS = 4_000;
@@ -140,7 +142,7 @@ public final class AotLayout {
      * @return the application JAR and the dependencies, in class-path order
      * @throws IOException if the layout does not match; the message names the first offending entry
      */
-    public static Result verify(Path destination, Path runnerJar) throws IOException {
+    static Result verify(Path destination, Path runnerJar) throws IOException {
         Path layout = destination.toAbsolutePath().normalize();
         Path applicationJar = layout.resolve(applicationJarName(runnerJar));
         if (!Files.isRegularFile(applicationJar)) {
@@ -148,7 +150,7 @@ public final class AotLayout {
                     + applicationJar.getFileName());
         }
         List<String> expected = new ArrayList<>();
-        try (RunnerJarReader reader = RunnerJarReader.open(runnerJar)) {
+        try (RunnerJarArchive reader = RunnerJarArchive.open(runnerJar)) {
             Index index = reader.index();
             for (int jarId = 1; jarId < index.jarCount(); jarId++) {
                 String name = index.jarName(jarId);
@@ -202,7 +204,7 @@ public final class AotLayout {
      * @param runnerJar the Runner JAR
      * @return the file name
      */
-    public static String applicationJarName(Path runnerJar) {
+    static String applicationJarName(Path runnerJar) {
         Path file = runnerJar.getFileName();
         String name = file == null ? "" : file.toString();
         int dot = name.lastIndexOf('.');
@@ -244,6 +246,18 @@ public final class AotLayout {
      * @param applicationJar the application JAR, which {@code java -jar} launches
      * @param libraries      the dependencies, in class-path order
      */
+    @Internal
     public record Result(Path applicationJar, List<Path> libraries) {
+
+        /**
+         * One line that reports the layout, for a plugin to log:
+         * {@code Wrote the layout <jar> with N JARs in lib/ to <directory>}.
+         *
+         * @return the summary
+         */
+        public String summary() {
+            return "Wrote the layout " + applicationJar.getFileName() + " with " + libraries.size() + " JARs in "
+                    + LIBRARY_DIRECTORY + "/ to " + applicationJar.getParent();
+        }
     }
 }

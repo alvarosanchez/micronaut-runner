@@ -15,7 +15,6 @@
  */
 package io.micronaut.runner.benchmarks;
 
-import io.micronaut.runner.build.ArchiveReads;
 import io.micronaut.runner.build.Compression;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -156,7 +155,7 @@ class VariantSelectionTest {
         assertEquals(List.of("runner-stored-positional-aot"), names(variants));
         assertEquals(Map.of("runnerJar:runner-stored-positional", 1,
                 "aotCache:runner-stored-positional->runner-stored-positional-aot", 1), steps.calls);
-        assertEquals(List.of(SampleBuild.RunnerJarOptions.DEFAULTS.withArchiveReads(ArchiveReads.POSITIONAL)),
+        assertEquals(List.of(SampleBuild.RunnerJarOptions.DEFAULTS.withArchiveReads("POSITIONAL")),
                 packaged);
 
         packaged.clear();

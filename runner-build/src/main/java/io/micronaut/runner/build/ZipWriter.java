@@ -74,7 +74,7 @@ final class ZipWriter implements Closeable {
      * <p>The MS-DOS date field cannot represent a year before 1980, so the usual 1970 epoch is unusable;
      * the first of February keeps the value clear of any time zone rounding into 1979.</p>
      */
-    public static final Instant DEFAULT_TIMESTAMP = Instant.parse("1980-02-01T00:00:00Z");
+    static final Instant DEFAULT_TIMESTAMP = Instant.parse("1980-02-01T00:00:00Z");
 
     /** Size of a local file header, before the name and the extra field. */
     private static final int LOCAL_HEADER_SIZE = 30;
@@ -137,7 +137,7 @@ final class ZipWriter implements Closeable {
      *            {@link BufferedOutputStream} is usually the right thing to hand in
      * @throws NullPointerException if {@code out} is {@code null}
      */
-    public ZipWriter(OutputStream out) {
+    ZipWriter(OutputStream out) {
         this(out, DEFAULT_TIMESTAMP);
     }
 
@@ -149,7 +149,7 @@ final class ZipWriter implements Closeable {
      * @throws NullPointerException     if an argument is {@code null}
      * @throws IllegalArgumentException if the instant is outside the range MS-DOS time can represent
      */
-    public ZipWriter(OutputStream out, Instant timestamp) {
+    ZipWriter(OutputStream out, Instant timestamp) {
         this(out, timestamp, true);
     }
 
@@ -171,7 +171,7 @@ final class ZipWriter implements Closeable {
      * @throws NullPointerException     if an argument is {@code null}
      * @throws IllegalArgumentException if the instant is outside the range MS-DOS time can represent
      */
-    public ZipWriter(OutputStream out, Instant timestamp, boolean uniqueNames) {
+    ZipWriter(OutputStream out, Instant timestamp, boolean uniqueNames) {
         this(out, timestamp, uniqueNames, false);
     }
 
@@ -201,7 +201,7 @@ final class ZipWriter implements Closeable {
      * @throws NullPointerException     if an argument is {@code null}
      * @throws IllegalArgumentException if the instant is outside the range MS-DOS time can represent
      */
-    public static ZipWriter create(Path file, Instant timestamp) throws IOException {
+    static ZipWriter create(Path file, Instant timestamp) throws IOException {
         Objects.requireNonNull(file, "file");
         return new ZipWriter(new BufferedOutputStream(Files.newOutputStream(file), COPY_BUFFER_SIZE), timestamp);
     }
@@ -219,7 +219,7 @@ final class ZipWriter implements Closeable {
      * @throws IllegalArgumentException if the year is before 1980 or after 2107, which MS-DOS time cannot
      *                                  represent
      */
-    public static int toDosTime(Instant timestamp) {
+    static int toDosTime(Instant timestamp) {
         Objects.requireNonNull(timestamp, "timestamp");
         LocalDateTime time = LocalDateTime.ofInstant(timestamp, ZoneOffset.UTC);
         int year = time.getYear();
@@ -240,7 +240,7 @@ final class ZipWriter implements Closeable {
      *
      * @return the current offset in the archive
      */
-    public long offset() {
+    long offset() {
         return written;
     }
 
@@ -249,7 +249,7 @@ final class ZipWriter implements Closeable {
      *
      * @return the entry count
      */
-    public int entryCount() {
+    int entryCount() {
         return records.size();
     }
 
@@ -258,7 +258,7 @@ final class ZipWriter implements Closeable {
      *
      * @return the fixed MS-DOS date and time
      */
-    public int dosTime() {
+    int dosTime() {
         return defaultDosTime;
     }
 
@@ -271,7 +271,7 @@ final class ZipWriter implements Closeable {
      * @return the absolute offset of the entry's first data byte
      * @throws IOException if the name is unsafe or duplicated, or the stream cannot be written
      */
-    public long writeEntry(String name, byte[] data) throws IOException {
+    long writeEntry(String name, byte[] data) throws IOException {
         Objects.requireNonNull(data, "data");
         return writeEntry(name, data, 0, data.length, defaultDosTime);
     }
@@ -286,7 +286,7 @@ final class ZipWriter implements Closeable {
      * @return the absolute offset of the entry's first data byte
      * @throws IOException if the name is unsafe or duplicated, or the stream cannot be written
      */
-    public long writeEntry(String name, byte[] data, int offset, int length) throws IOException {
+    long writeEntry(String name, byte[] data, int offset, int length) throws IOException {
         return writeEntry(name, data, offset, length, defaultDosTime);
     }
 
@@ -301,7 +301,7 @@ final class ZipWriter implements Closeable {
      * @return the absolute offset of the entry's first data byte
      * @throws IOException if the name is unsafe or duplicated, or the stream cannot be written
      */
-    public long writeEntry(String name, byte[] data, int offset, int length, int dosTime) throws IOException {
+    long writeEntry(String name, byte[] data, int offset, int length, int dosTime) throws IOException {
         Objects.requireNonNull(data, "data");
         Objects.checkFromIndexSize(offset, length, data.length);
         CRC32 crc = new CRC32();
@@ -382,7 +382,7 @@ final class ZipWriter implements Closeable {
      * @throws IOException if the name is unsafe or duplicated, the source ends early, or the stream cannot
      *                     be written
      */
-    public long writeEntry(String name, InputStream source, long length, long crc32, int dosTime)
+    long writeEntry(String name, InputStream source, long length, long crc32, int dosTime)
             throws IOException {
         Objects.requireNonNull(source, "source");
         if (length < 0) {
@@ -405,7 +405,7 @@ final class ZipWriter implements Closeable {
      * @return the absolute offset of the entry's first data byte
      * @throws IOException if the source payload is invalid or cannot be read or written
      */
-    public long writeEntry(String name, ZipReader source, ZipEntryInfo sourceEntry, int dosTime)
+    long writeEntry(String name, ZipReader source, ZipEntryInfo sourceEntry, int dosTime)
             throws IOException {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(sourceEntry, "sourceEntry");
@@ -446,7 +446,7 @@ final class ZipWriter implements Closeable {
      * @return the absolute offset of the entry's first data byte
      * @throws IOException if the name is unsafe or duplicated, or either file cannot be read or written
      */
-    public long writeEntry(String name, Path source) throws IOException {
+    long writeEntry(String name, Path source) throws IOException {
         Objects.requireNonNull(source, "source");
         long length = Files.size(source);
         long crc = crc32(source, length);
@@ -465,7 +465,7 @@ final class ZipWriter implements Closeable {
      * @return the absolute offset of the entry's (empty) data
      * @throws IOException if the name is unsafe or duplicated, or the stream cannot be written
      */
-    public long writeDirectoryEntry(String name) throws IOException {
+    long writeDirectoryEntry(String name) throws IOException {
         return writeDirectoryEntry(name, defaultDosTime);
     }
 
@@ -477,7 +477,7 @@ final class ZipWriter implements Closeable {
      * @return the absolute offset of the entry's (empty) data
      * @throws IOException if the name is unsafe or duplicated, or the stream cannot be written
      */
-    public long writeDirectoryEntry(String name, int dosTime) throws IOException {
+    long writeDirectoryEntry(String name, int dosTime) throws IOException {
         Objects.requireNonNull(name, "name");
         if (!name.endsWith("/")) {
             throw new IOException("Directory entry name must end with '/': '" + name + "'");
@@ -491,7 +491,7 @@ final class ZipWriter implements Closeable {
      *
      * @throws IOException if the stream cannot be written
      */
-    public void finish() throws IOException {
+    void finish() throws IOException {
         if (finished) {
             return;
         }

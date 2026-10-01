@@ -15,7 +15,7 @@
  */
 package io.micronaut.runner.build;
 
-import io.micronaut.core.annotation.Experimental;
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.runner.RunnerClassLoader;
 import io.micronaut.runner.build.aotcache.AotCacheBuilder;
 import io.micronaut.runner.build.aotcache.AotCacheReport;
@@ -43,31 +43,33 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>With {@link AotTarget#LAYOUT} the program is the extracted layout ({@link AotLayout}), which every JDK
  * caches in full. With {@link AotTarget#SINGLE_JAR} it is a copy of the Runner JAR with its modification time
- * kept, and its recording launch, and no other launch, runs with {@link #AOT_TRAINING_ARGUMENT}: the classes
- * {@code RunnerClassLoader} defines then report the archive's {@code file:} URL, which JDK 27 and later require
- * to cache them (JDK-8380291). Its coverage is reported but not enforced, and a warning says when the JDK still
- * did not cache most of those classes.</p>
+ * kept, and its recording launch, and no other launch, runs with {@code -Dmicronaut.runner.aot.training=true}:
+ * the classes {@code RunnerClassLoader} defines then report the archive's {@code file:} URL, which JDK 27 and
+ * later require to cache them (JDK-8380291). Its coverage is reported but not enforced, and a warning says when
+ * the JDK still did not cache most of those classes.</p>
  *
  * <p>From the directory the application launches as {@code java @app.jvmopts -jar <jar>}. The cache is valid
  * only as long as the JARs keep their size and modification time, so a copy of the directory keeps its times,
  * as {@code cp -p} and Docker {@code COPY} do.</p>
  *
+ * <p>Internal to Runner's interim build plugins, which call {@link #write}: it may change in any release.</p>
+ *
  * @since 1.0
  */
-@Experimental
+@Internal
 public final class AotCacheOutput {
 
     /** The label of the identity file and the report that names the target. */
-    public static final String TARGET_LABEL = "target";
+    static final String TARGET_LABEL = "target";
 
     /**
      * What the single-JAR target's recording launch adds, and no other launch: the launcher's AOT training mode,
      * {@link RunnerClassLoader#AOT_TRAINING_PROPERTY}.
      */
-    public static final String AOT_TRAINING_ARGUMENT = "-D" + RunnerClassLoader.AOT_TRAINING_PROPERTY + "=true";
+    static final String AOT_TRAINING_ARGUMENT = "-D" + RunnerClassLoader.AOT_TRAINING_PROPERTY + "=true";
 
     /** What the single-JAR target warns when the JDK left most of the Runner JAR's classes out of the cache. */
-    public static final String SINGLE_JAR_WARNING = "Fewer than half of the io.micronaut classes came from the cache,"
+    static final String SINGLE_JAR_WARNING = "Fewer than half of the io.micronaut classes came from the cache,"
             + " although the training run reported file: code sources, as JDK 27 and later require (JDK-8380291)."
             + " The cache left out most of the classes RunnerClassLoader defines; use the layout target.";
 
@@ -91,8 +93,8 @@ public final class AotCacheOutput {
      * @return the gate's report
      * @throws IOException              if staging, training or verification fails; the cache and the argfile are
      *                                  deleted then, and the logs stay
-     * @throws IllegalArgumentException if the settings' {@code jvmArgs} set {@link #AOT_TRAINING_ARGUMENT}'s
-     *                                  property, which would reach {@code app.jvmopts}; nothing is staged then
+     * @throws IllegalArgumentException if the settings' {@code jvmArgs} set {@code micronaut.runner.aot.training},
+     *                                  which would reach {@code app.jvmopts}; nothing is staged then
      * @throws InterruptedException     if the thread is interrupted; every process has been reaped by then
      */
     public static AotCacheReport write(AotTarget target,
