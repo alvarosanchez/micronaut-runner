@@ -23,11 +23,11 @@ together. It pays off only with its cache: uncached, the layout reached readines
 *With the build plugins.* Runner's interim Gradle and Maven plugins build the whole deployment, as experimental tasks
 and goals of those plugins only: `./gradlew micronautRunnerJdkAotCache` and `mvn package` with the `jdk-aot-cache` goal
 extract the Runner JAR into `build/micronaut-runner/jdk-aot-cache/` (Maven: `target/micronaut-runner/jdk-aot-cache/`),
-train the cache there with the training settings (<<trainingSettings>>), verify it, and write the launch argfile
-`app.jvmopts`. Launch from that directory with `java @app.jvmopts -jar my-app-0.1-all.jar`, or in a Dockerfile with
-`WORKDIR /app` and `ENTRYPOINT ["java", "@app.jvmopts", "-jar", "my-app-0.1-all.jar"]`. `micronautRunnerLayout` and
-`mn-runner:layout` write only the layout, to `build/micronaut-runner/layout/` (Maven: `target/micronaut-runner/layout/`),
-for a cache trained elsewhere.
+train the cache there with the training settings (<<trainingSettings,Training settings>>), verify it, and write the
+launch argfile `app.jvmopts`. Launch from that directory with `java @app.jvmopts -jar my-app-0.1-all.jar`, or in a
+Dockerfile with `WORKDIR /app` and `ENTRYPOINT ["java", "@app.jvmopts", "-jar", "my-app-0.1-all.jar"]`.
+`micronautRunnerLayout` and `mn-runner:layout` write only the layout, to `build/micronaut-runner/layout/` (Maven:
+`target/micronaut-runner/layout/`), for a cache trained elsewhere.
 
 [source,groovy]
 ----
@@ -51,9 +51,9 @@ In Maven, list `jdk-aot-cache` after `package` in the plugin's `<goals>` (Maven 
 order) and enable it with `-Dmicronaut.runner.jdkAotCache.enabled=true` or `<jdkAotCacheEnabled>true</jdkAotCacheEnabled>`;
 each setting above is the property `micronaut.runner.jdkAotCache.<name>` and the parameter `jdkAotCache<Name>`.
 
-*By hand.* Extract with `java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination app` (<<runtime>>),
-run the script below as `bash train.sh` with `JAR=app/my-app-0.1-all.jar`, then launch
-`java -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar`.
+*By hand.* Extract with `java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination app`
+(<<runtime,Running a Runner JAR>>), run the script below as `bash train.sh` with `JAR=app/my-app-0.1-all.jar`, then
+launch `java -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar`.
 
 [[trainingSnippet]]
 [source,bash]
@@ -96,7 +96,7 @@ endpoint), and create the cache in a separate launch, with the JDK 27 creation f
 the creation and the checks, and into `app.jvmopts`, so the flags the cache depends on are the same in training and
 production; `training.jvmArgs` belong to the startup profile only. With `target = 'singleJar'` the recording alone also
 runs with `-Dmicronaut.runner.aot.training=true`, which `jdkAotCache.jvmArgs` must not name. The other training
-settings are in <<trainingSettings>>.
+settings are in <<trainingSettings,Training settings>>.
 
 *What the build checks* before it keeps the cache, as `aot-report.json` records:
 
@@ -113,13 +113,13 @@ A failed check deletes `app.aot` and `app.jvmopts` and keeps the logs. `strict =
 uncached one.
 
 On `benchmark-large` (Micronaut 5.1.15, Netty 4.2.18; macOS on Apple silicon, a shared machine; 20 pairs per run) with
-JDK 25.0.4.1, the cached layout, which keeps the static service table (<<staticServices>>), was ready 25.6 to 32.4 ms
-sooner than the single JAR with its cache and 1.5 to 14.4 ms before a Shadow JAR with its cache over six runs; in the
-four least loaded runs, the lead over Shadow was 9.1 to 14.4 ms with each 95% CI below zero. Its maximum RSS was about
-121 MiB, against 163 to 165 MiB for the single JAR and 134 MiB for Shadow. Without the table it was 1.8 to 6.8 ms
-behind Shadow. On JDK 27 (build 27) it was level with Shadow without the table (−0.5 ms, 95% CI −11.1 to +7.1) and 14.9
-to 26.0 ms ahead with it over three runs, the largest lead under the heaviest load, at about 115 against 127 MiB.
-Training and verifying it with `micronautRunnerJdkAotCache` took about 4 s of build time.
+JDK 25.0.4.1, the cached layout, which keeps the static service table (<<staticServices,Static service table>>), was
+ready 25.6 to 32.4 ms sooner than the single JAR with its cache and 1.5 to 14.4 ms before a Shadow JAR with its cache
+over six runs; in the four least loaded runs, the lead over Shadow was 9.1 to 14.4 ms with each 95% CI below zero. Its
+maximum RSS was about 121 MiB, against 163 to 165 MiB for the single JAR and 134 MiB for Shadow. Without the table it
+was 1.8 to 6.8 ms behind Shadow. On JDK 27 (build 27) it was level with Shadow without the table (−0.5 ms, 95% CI −11.1
+to +7.1) and 14.9 to 26.0 ms ahead with it over three runs, the largest lead under the heaviest load, at about 115
+against 127 MiB. Training and verifying it with `micronautRunnerJdkAotCache` took about 4 s of build time.
 
 *Modification times.* The cache records each class-path JAR (the application JAR and each `lib/` JAR, or the single
 Runner JAR) by position, size and modification time. Extract stamps every file and directory with 1980-02-01T00:00:00Z,
@@ -187,12 +187,12 @@ table omits the JDK 25.0.4.1 cache (52.3 MB, 12.4 MB gzipped, from one training,
 |===
 
 *What differs in the layout.* Every class of the application layer carries over except the generated entry stub, so a
-precompiled Logback configuration (<<precompiledLogback>>) and the static service table (<<staticServices>>) still
-apply. What the launcher and the stub do at startup
-does not run: the startup profile's preload (<<preload>>) has no effect, and a JAR built with it trains the same layout
-cache. The JDK's class loader replaces `RunnerClassLoader` and resolves classes in the same order; each JAR keeps its own
-`META-INF/micronaut`, a dependency's own manifest `Class-Path` becomes active, and the code sources are the `lib/` JARs'
-`file:` URLs.
+precompiled Logback configuration (<<precompiledLogback,Precompiled Logback configuration>>) and the static service
+table (<<staticServices,Static service table>>) still apply. What the launcher and the stub do at startup does not run:
+the startup profile's preload (<<preload,Preloading the startup classes>>) has no effect, and a JAR built with it trains
+the same layout cache. The JDK's class loader replaces `RunnerClassLoader` and resolves classes in the same order; each
+JAR keeps its own `META-INF/micronaut`, a dependency's own manifest `Class-Path` becomes active, and the code sources
+are the `lib/` JARs' `file:` URLs.
 
 [[aotSingleJar]]
 == Single-file option: the AOT cache on the single JAR
@@ -208,20 +208,20 @@ front of `bash train.sh` in the `RUN` step, never in `ENV`. Production launches 
 (<<aotLayout>>) trains and checks it on a copy of the Runner JAR that `micronautRunnerJar` built, with its committed
 startup profile, so the cache also holds what the preload loads. On `benchmark-large` with JDK 25.0.4.1 this was ready
 37.5 ms sooner than explicit CDS (95% CI 32.6 to 40.7 ms, 20 pairs) with about 15 MiB less maximum RSS, measured before
-the static service table (<<staticServices>>). With the table it was 25.6 to 32.4 ms later than the extracted layout and
-16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <<aotLayout>>). On JDK 27 (build 27),
-with lambdas desugared (<<lambdaGap>>) and trained with the property, it served 1,838 of 1,844 non-lambda
-`io.micronaut` classes from the cache before the first request (13 of 1,923 without it) and was ready 107 to 109 ms
-sooner than the same JAR trained without it, at the same 135 MiB maximum RSS. It was level with Shadow (1.7 to 6.2 ms
-ahead, one of three intervals below zero) and 7 to 9 ms behind the extracted layout, each with its AOT cache (three runs
-of 20 pairs), so the layout (<<aotLayout>>) stays the faster option.
+the static service table (<<staticServices,Static service table>>). With the table it was 25.6 to 32.4 ms later than the
+extracted layout and 16.8 to 39.1 ms behind Shadow, each with its AOT cache (six runs of 20 pairs, <<aotLayout>>). On
+JDK 27 (build 27), with lambdas desugared (<<lambdaGap>>) and trained with the property, it served 1,838 of 1,844
+non-lambda `io.micronaut` classes from the cache before the first request (13 of 1,923 without it) and was ready 107 to
+109 ms sooner than the same JAR trained without it, at the same 135 MiB maximum RSS. It was level with Shadow (1.7 to
+6.2 ms ahead, one of three intervals below zero) and 7 to 9 ms behind the extracted layout, each with its AOT cache
+(three runs of 20 pairs), so the layout (<<aotLayout>>) stays the faster option.
 
 [[lambdaGap]]
 === Closing the lambda gap on the single JAR
 
 Every lambda the single JAR's classes run would otherwise be linked at every start, cache or not, as the first section
-says. So Runner desugars lambdas when it packages (<<desugaredLambdas>>), on by default with `STORED`; set the
-`desugarLambdas` option to `false` to opt out. Train with the snippet above unchanged: the generated classes are
+says. So Runner desugars lambdas when it packages (<<desugaredLambdas,Desugared lambdas>>), on by default with `STORED`;
+set the `desugarLambdas` option to `false` to opt out. Train with the snippet above unchanged: the generated classes are
 ordinary classes, and the cache holds them. On `benchmark-large` with JDK 25.0.4.1 (30 pairs), desugaring made the
 single JAR 38.0 ms faster with its AOT cache (95% CI 33.9 to 41.6 ms) and 38.9 ms faster without one (95% CI 30.2 to
 47.3 ms). With its cache it was then 16.0 ms ahead of Shadow's (95% CI 11.1 to 22.7 ms), at 144.4 MiB maximum RSS
@@ -229,8 +229,8 @@ against Shadow's 133.6 MiB. The JDK 25 single-JAR figures above were taken befor
 (build 27), with the cache trained with the property (<<aotSingleJar>>), desugaring made the single JAR 36.5 to 38.7 ms
 faster with its AOT cache (three runs of 20 pairs). What is left of the cached difference: the 29 sites still excluded
 (none on this sample's startup path), about 40 string concatenation sites, the per-class cost of reusing unregistered
-classes, and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT cache
-remains the parity option, with Shadow's RSS.
+classes, and the clean file-backed pages of the mapped JAR, which count towards RSS. The extracted layout with its AOT
+cache remains the parity option, with Shadow's RSS.
 
 == Zero-pipeline option: `-XX:+AutoCreateSharedArchive`
 

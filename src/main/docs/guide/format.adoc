@@ -56,7 +56,7 @@ layer's lambdas are rewritten the same way; see <<desugaredLambdas,Desugared lam
 copies each dependency byte for byte instead.
 
 Shadow can also write `STORED` entries (`entryCompression = ZipEntryCompression.STORED`), so the gain from not
-inflating is not specific to this format; <<benchmarks>> measures the two effects separately.
+inflating is not specific to this format; <<benchmarks,Benchmarks>> measures the two effects separately.
 
 == The index
 
@@ -146,4 +146,4 @@ application layer: a few classes under `io/micronaut/runner/generated/services/`
 `META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader` that registers them, put in front of the
 application's own file when it has one. The table lists, for each service type, the names in every JAR's
 `META-INF/services/` file and in the merged directory, in the order Micronaut's scan finds them, so that Micronaut
-reads neither when the application starts. See <<staticServices>>.
+reads neither when the application starts. See <<staticServices,Static service table>>.

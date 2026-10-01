@@ -42,7 +42,7 @@ archives under one name. The plugin fails the build if it detects that.
 
 A project that also applies `io.micronaut.aot` gets a second task, `optimizedMicronautRunnerJar`, which packages the
 Micronaut AOT-optimized application into `build/libs/my-app-0.1-all-optimized.jar`; `micronautRunnerJar` and its
-`-all.jar` stay the plain application. See <<micronautAot>>.
+`-all.jar` stay the plain application. See <<micronautAot,Micronaut AOT>>.
 
 === Configuration
 
@@ -145,11 +145,11 @@ Otherwise the packager reports why and the launcher calls `main` through reflect
 and invalid entries fail packaging.
 
 `precompileLogback` compiles `logback.xml` into a Logback `Configurator` when it is packaged, and leaves any file it
-cannot reproduce exactly to Logback; see <<precompiledLogback>>.
+cannot reproduce exactly to Logback; see <<precompiledLogback,Precompiled Logback configuration>>.
 
 `definitionPrefetch` packages two classes that start Micronaut's bean definition loading before `main`, on the common
-pool, and hand the result to the first application context. It is off unless you set it; see <<definitionPrefetch>>
-for what it changes and when it pays off.
+pool, and hand the result to the first application context. It is off unless you set it; see
+<<definitionPrefetch,Bean definition prefetch>> for what it changes and when it pays off.
 
 The application's `+Implementation-*+`, `+Specification-*+` and `Sealed` attributes and package sections come from the
 `jar` task's manifest configuration, including `manifest.from(...)` merges; `micronautRunnerJar` does not build the
@@ -263,7 +263,7 @@ Dependency local-variable tables are dropped by default (see <<localVariableTabl
 <<desugaredLambdas,Desugared lambdas>>); to keep them as `invokedynamic` call sites, pass
 `-Dmicronaut.runner.desugarLambdas=false` or set
 `<runnerOptions><desugarLambdas>false</desugarLambdas></runnerOptions>`.
-To package the bean definition prefetch (<<definitionPrefetch>>), pass
+To package the bean definition prefetch (<<definitionPrefetch,Bean definition prefetch>>), pass
 `-Dmicronaut.runner.definitionPrefetch=true` or set
 `<runnerOptions><definitionPrefetch>true</definitionPrefetch></runnerOptions>`. That property is read while
 packaging; the switch that turns a packaged prefetch off for one launch is `-Dmicronaut.runner.prefetch=false` on
