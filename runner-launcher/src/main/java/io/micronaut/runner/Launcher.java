@@ -56,13 +56,6 @@ import java.security.ProtectionDomain;
  */
 public final class Launcher {
 
-    /**
-     * System property selecting what the launcher does with the archive: {@value #MODE_RUN} (the default)
-     * starts the application, the other modes hand the archive to a tool class of this package and never
-     * load application code.
-     */
-    static final String MODE_PROPERTY = "micronaut.runner.mode";
-
     /** Default mode: start the application. */
     static final String MODE_RUN = "run";
 
@@ -76,14 +69,21 @@ public final class Launcher {
     static final String MODE_LIST = "list";
 
     /**
+     * System property selecting what the launcher does with the archive: {@value #MODE_RUN} (the default)
+     * starts the application, the other modes hand the archive to a tool class of this package and never
+     * load application code.
+     */
+    private static final String MODE_PROPERTY = "micronaut.runner.mode";
+
+    /**
      * System property that prints elapsed time checkpoints to standard error when set to exactly
      * {@code "true"}. The measurement is {@link System#nanoTime()} from the first statement of
      * {@link #main(String[])}, so it covers the launcher and nothing before it.
      */
-    static final String TIMING_PROPERTY = "micronaut.runner.timing";
+    private static final String TIMING_PROPERTY = "micronaut.runner.timing";
 
     /** Exit status for a launcher level failure, as opposed to an exception out of the application. */
-    static final int EXIT_LAUNCHER_ERROR = 2;
+    private static final int EXIT_LAUNCHER_ERROR = 2;
 
     /**
      * Prefix of the classes the non-run modes are implemented in. They are package-private classes of this

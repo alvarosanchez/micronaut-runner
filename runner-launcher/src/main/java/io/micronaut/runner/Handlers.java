@@ -79,8 +79,8 @@ import java.util.jar.JarFile;
  * {@code HandlerTest} checks that guarantee once, together with the fields of every URL shape against its
  * re-parsed string form, instead of every call paying for it.</p>
  *
- * <p>The class is public because {@code io.micronaut.runner.protocol.jar}, the runner-build tooling and the
- * benchmarks call it; it is not API for applications.</p>
+ * <p>The class is public because {@code io.micronaut.runner.protocol.jar} and the benchmarks call it; it is
+ * not API for applications.</p>
  *
  * @since 1.0
  */
