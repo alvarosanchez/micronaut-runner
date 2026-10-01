@@ -228,7 +228,7 @@ Without a JDK cache, yes: on `benchmark-large` with JDK 25, `-all-optimized.jar`
 AOT's `optimizedJitJarAll`, and even Runner's plain `-all.jar` was about 58 ms ahead of it. With a JDK AOT cache on both
 sides, no: the single `-all-optimized.jar` was about 23 ms behind `optimizedJitJarAll` on JDK 25, and on JDK 27 the
 cache stores a single Runner JAR's application classes only when it is trained as the
-<<aotSingleJar,single-JAR section>> of <<cdsAndAot,Class Data Sharing and the AOT Cache>> describes.
-<<micronautAotResults,Benchmarks>> has the numbers, the sizes and the second session. They were taken before Runner
-desugared lambdas by default (<<desugaredLambdas,Desugared lambdas>>), which made the cached single JAR faster, and have
-not been measured again since.
+<<aotSingleJar,single-JAR section>> of <<cdsAndAot,Class Data Sharing and the AOT Cache>> describes. These figures
+come from a local macOS session taken before Runner desugared lambdas by default
+(<<desugaredLambdas,Desugared lambdas>>). The CI run in <<micronautAotResults,Benchmarks>>, with desugaring on, points
+the same way on all three pairs.

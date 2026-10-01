@@ -35,6 +35,7 @@ Because the boundaries survive, so do the semantics. Duplicate resources stay di
 classpath order, each JAR keeps its own manifest and package metadata, sealed packages are still enforced,
 and multi-release JARs still resolve per JAR against the running JDK.
 
+[[whyItIsFast]]
 == Why it is fast
 
 Reading nested JARs is normally *slower* than an ordinary classpath, which is why the usual advice for
@@ -48,7 +49,9 @@ linear probing up to the longest probe sequence recorded by the builder, followe
 Same-name records are then resolved in classpath order and per JAR against the effective multi-release
 version. No central directory is parsed, no nested archive is opened, nothing is extracted to disk, and no
 temporary files are written. Dependencies are stored uncompressed by default, so a class is defined straight
-from the mapped bytes with no intermediate array and no decompression.
+from the mapped bytes with no intermediate array and no decompression. That makes the default archive larger than
+a shaded JAR on disk but smaller gzipped, 2.44 and 0.67 times Shadow's in the <<benchmarkResults,benchmark>>;
+`PRESERVE`, which copies each dependency byte for byte, is the size-first option.
 
 The launcher itself is written to keep off the JVM's slow paths: no lambdas, no string concatenation
 through `invokedynamic`, no reflection on the entry path, and no `java.util.logging`. It is a handful of
