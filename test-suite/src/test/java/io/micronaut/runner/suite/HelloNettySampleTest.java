@@ -171,7 +171,7 @@ class HelloNettySampleTest {
                 () -> "the packaging task did not run:\n" + result.getOutput());
         assertTrue(Files.isRegularFile(archive),
                 () -> "the plugin did not write " + archive + ":\n" + result.getOutput());
-        assertDependencyClassesWereStripped(archive);
+        assertDefaultDependencyTransforms(archive);
         Path unicodeArchive = sample.resolve("build/unicode-é/apps with a space/app.jar");
         Files.createDirectories(unicodeArchive.getParent());
         Files.copy(archive, unicodeArchive, StandardCopyOption.REPLACE_EXISTING);
@@ -594,13 +594,13 @@ class HelloNettySampleTest {
     }
 
     /**
-     * The default build strips the local-variable tables of dependency classes, and records what it did in
-     * {@code MICRONAUT-INF/transforms.txt}: one tab-separated line per nested jar and step, whose third column
-     * counts the classes that step rewrote.
+     * The default build desugars the lambdas of dependency classes and keeps their local-variable tables, and
+     * records what it did in {@code MICRONAUT-INF/transforms.txt}: one tab-separated line per nested jar and step,
+     * whose second column names the step and whose third counts the classes that step rewrote.
      *
      * @param archive the runner jar
      */
-    private static void assertDependencyClassesWereStripped(Path archive) throws IOException {
+    private static void assertDefaultDependencyTransforms(Path archive) throws IOException {
         try (JarFile jar = new JarFile(archive.toFile())) {
             JarEntry entry = jar.getJarEntry("MICRONAUT-INF/transforms.txt");
             assertNotNull(entry, () -> archive + " records no build transforms");
@@ -608,11 +608,17 @@ class HelloNettySampleTest {
             try (InputStream in = jar.getInputStream(entry)) {
                 text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
-            long rewritten = text.lines()
+            List<String[]> dependencies = text.lines()
                     .filter(line -> line.startsWith("MICRONAUT-INF/lib/"))
-                    .mapToLong(line -> Long.parseLong(line.split("\t")[2]))
+                    .map(line -> line.split("\t"))
+                    .toList();
+            assertTrue(dependencies.stream().noneMatch(fields -> fields[1].equals("stripLocalVariables")),
+                    () -> "local-variable tables were stripped by default:\n" + text);
+            long desugared = dependencies.stream()
+                    .filter(fields -> fields[1].equals("desugarLambdas"))
+                    .mapToLong(fields -> Long.parseLong(fields[2]))
                     .sum();
-            assertTrue(rewritten > 0, () -> "no dependency class was rewritten:\n" + text);
+            assertTrue(desugared > 0, () -> "no dependency class was desugared:\n" + text);
         }
     }
 

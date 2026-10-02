@@ -256,6 +256,7 @@ class LocalVariableStripperTest {
                 .dependencies(List.of(Dependency.of(dependency)))
                 .output(temp.resolve("preserve/app.jar"))
                 .compression(Compression.PRESERVE)
+                .stripLocalVariables(true)
                 .build(), logger);
 
         assertEquals(List.of(), result.transforms());
@@ -269,10 +270,10 @@ class LocalVariableStripperTest {
     }
 
     /**
-     * Both build-time transformations at their defaults, on the real Logback jars. The transform pass runs while
-     * the dependencies are staged; the Logback precompiler runs after it, reads the dependencies as published and
-     * adds its classes to the application layer, which no step rewrites. So the generated classes are the ones a
-     * build without stripping carries, and they configure a Logback whose classes have been stripped.
+     * Logback precompilation at its default and stripping turned on, on the real Logback jars. The transform pass
+     * runs while the dependencies are staged; the Logback precompiler runs after it, reads the dependencies as
+     * published and adds its classes to the application layer, which no step rewrites. So the generated classes are
+     * the ones a build without stripping carries, and they configure a Logback whose classes have been stripped.
      */
     @Test
     void thePrecompiledLogbackClassesAreNotRewrittenAndConfigureAStrippedLogback() throws Exception {
@@ -455,6 +456,7 @@ class LocalVariableStripperTest {
                 .applicationOutput(List.of(applicationClasses))
                 .dependencies(List.of(Dependency.of(dependency)))
                 .output(output)
+                .stripLocalVariables(true)
                 .build(), BuildLogger.noOp(), parallelism);
 
         Map<String, byte[]> nested = nestedClasses(output, "MICRONAUT-INF/lib/bad.jar");

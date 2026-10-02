@@ -98,7 +98,7 @@ import java.util.zip.CRC32;
  *
  * <h2>Class transforms</h2>
  * <p>In STORED and HYBRID, each stage also runs the class transforms of the build over its dependency's
- * classes, by default {@code desugarLambdas} and then {@code stripLocalVariables}. Before staging, one scan task
+ * classes: {@code desugarLambdas}, then the opt-in {@code stripLocalVariables}. Before staging, one scan task
  * per dependency runs on the same threads, with its own {@code ZipReader}, into a read-only model of the class
  * path that every stage shares and that is discarded when {@code build} returns. A staging thread then also holds
  * the original and the rewritten bytes of one class, at most 8 MiB each. With {@code desugarLambdas}, a stage plans its

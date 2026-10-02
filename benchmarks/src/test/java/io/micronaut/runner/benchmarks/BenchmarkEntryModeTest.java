@@ -79,8 +79,8 @@ class BenchmarkEntryModeTest {
             "runner-stored-positional-aot",
             "runner-stored-joran",
             "runner-stored-joran-aot",
-            "runner-stored-keepdebug",
-            "runner-stored-keepdebug-aot",
+            "runner-stored-stripdebug",
+            "runner-stored-stripdebug-aot",
             "runner-stored-dynamic-services",
             "runner-stored-dynamic-services-aot",
             "runner-stored-lambdas",
@@ -248,7 +248,7 @@ class BenchmarkEntryModeTest {
                 "runner-stored-aot - runner-stored-lambdas-aot",
                 "runner-extracted-aot - runner-extracted-lambdas-aot"), pairs.subList(lambdas, lambdas + 3),
                 "and the three lambda comparisons follow each other later");
-        assertTrue(first > pairs.indexOf("runner-stored-aot - runner-stored-keepdebug-aot"), pairs::toString);
+        assertTrue(first > pairs.indexOf("runner-stored-stripdebug-aot - runner-stored-aot"), pairs::toString);
     }
 
     @Test
@@ -639,7 +639,7 @@ class BenchmarkEntryModeTest {
     }
 
     @Test
-    void theLocalVariableTableControlKeepsTheTablesTheDefaultStrips(@TempDir Path output) throws Exception {
+    void theStripRowDropsTheTablesTheDefaultKeeps(@TempDir Path output) throws Exception {
         Path classes = compile(output.resolve("eligible"), "fixture.EligibleMain", """
                 package fixture;
                 public final class EligibleMain {
@@ -655,21 +655,23 @@ class BenchmarkEntryModeTest {
             jar.closeEntry();
         }
 
-        Variant stripped = runnerJar(output, "runner-stored", "fixture.EligibleMain",
+        Variant kept = runnerJar(output, "runner-stored", "fixture.EligibleMain",
                 List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB);
-        Variant kept = runnerJar(output, "runner-stored-keepdebug", "fixture.EligibleMain",
+        Variant stripped = runnerJar(output, "runner-stored-stripdebug", "fixture.EligibleMain",
                 List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB,
-                SampleBuild.RunnerJarOptions.DEFAULTS.withStripLocalVariables(false));
+                SampleBuild.RunnerJarOptions.DEFAULTS.withStripLocalVariables(true));
 
         assertNull(SampleBuild.RunnerJarOptions.DEFAULTS.stripLocalVariables(),
                 "a row that sets nothing follows the builder default");
+        assertFalse(entryNames(kept.artifact()).contains("MICRONAUT-INF/transforms.txt"),
+                "the default keeps the tables of the -g compiled dependency");
         assertTrue(entryNames(stripped.artifact()).contains("MICRONAUT-INF/transforms.txt"),
-                "the default strips the -g compiled dependency");
-        assertFalse(entryNames(kept.artifact()).contains("MICRONAUT-INF/transforms.txt"));
-        assertTrue(SampleBuild.comparisons().contains(new SampleBuild.ComparisonSpec("runner-stored",
-                "runner-stored-keepdebug", "Local-variable tables stripped vs kept")));
-        assertTrue(SampleBuild.comparisons().stream().anyMatch(spec -> spec.candidate().equals("runner-stored-aot")
-                && spec.baseline().equals("runner-stored-keepdebug-aot")));
+                "the strip row strips them");
+        assertTrue(SampleBuild.comparisons().contains(new SampleBuild.ComparisonSpec("runner-stored-stripdebug",
+                "runner-stored", "Local-variable tables stripped vs kept, the default")));
+        assertTrue(SampleBuild.comparisons().stream()
+                .anyMatch(spec -> spec.candidate().equals("runner-stored-stripdebug-aot")
+                        && spec.baseline().equals("runner-stored-aot")));
     }
 
     @Test

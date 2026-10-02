@@ -48,16 +48,19 @@ class RunnerJarSpecTest {
     }
 
     @Test
-    void stripsLocalVariablesByDefaultAndTheOptionTurnsItOff() {
-        assertTrue(complete(RunnerJarSpec.builder()).build().stripLocalVariables());
-        assertFalse(complete(RunnerJarSpec.builder().stripLocalVariables(false)).build().stripLocalVariables());
-        RunnerJarSpec off = complete(RunnerJarSpec.builder().option("stripLocalVariables", "false")).build();
-        assertFalse(off.stripLocalVariables());
-        assertEquals("false", off.effectiveOptions().get("stripLocalVariables"));
-        assertEquals("true", complete(RunnerJarSpec.builder()).build().effectiveOptions().get("stripLocalVariables"));
+    void keepsLocalVariablesByDefaultAndTheOptionTurnsStrippingOn() {
+        assertFalse(complete(RunnerJarSpec.builder()).build().stripLocalVariables());
+        assertEquals("false", complete(RunnerJarSpec.builder()).build().effectiveOptions().get("stripLocalVariables"));
         assertEquals(RunnerJarOption.Exposure.PASSTHROUGH, RunnerJarOption.STRIP_LOCAL_VARIABLES.exposure());
-        assertEquals("true", RunnerJarOption.STRIP_LOCAL_VARIABLES.defaultValue().orElseThrow());
-        assertTrue(complete(RunnerJarSpec.builder().compression(Compression.PRESERVE)).build().stripLocalVariables(),
+        assertEquals("false", RunnerJarOption.STRIP_LOCAL_VARIABLES.defaultValue().orElseThrow());
+        assertTrue(complete(RunnerJarSpec.builder().stripLocalVariables(true)).build().stripLocalVariables());
+        RunnerJarSpec on = complete(RunnerJarSpec.builder().option("stripLocalVariables", "true")).build();
+        assertTrue(on.stripLocalVariables());
+        assertEquals("true", on.effectiveOptions().get("stripLocalVariables"));
+        assertFalse(complete(RunnerJarSpec.builder().option("stripLocalVariables", "true")
+                .option("stripLocalVariables", "false")).build().stripLocalVariables(), "the last setting wins");
+        assertTrue(complete(RunnerJarSpec.builder().compression(Compression.PRESERVE)
+                .option("stripLocalVariables", "true")).build().stripLocalVariables(),
                 "PRESERVE accepts the option, which then has no effect");
     }
 

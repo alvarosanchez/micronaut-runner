@@ -326,7 +326,7 @@ public final class RunnerJarSpec {
      * <p>See {@link Builder#stripLocalVariables(boolean)} for what is dropped, what is kept and what changes
      * as a result.</p>
      *
-     * @return whether local-variable tables are stripped, {@code true} unless configured otherwise
+     * @return whether local-variable tables are stripped, {@code false} unless configured otherwise
      */
     boolean stripLocalVariables() {
         return stripLocalVariables;
@@ -821,7 +821,8 @@ public final class RunnerJarSpec {
          * an attribute the JDK does not know, and {@code module-info} are left alone too. With
          * {@link Compression#PRESERVE}, which nests every dependency byte for byte, the option has no effect.</p>
          *
-         * <p>Defaults to {@code true}.</p>
+         * <p>Defaults to {@code false}: dependency classes keep their local-variable tables unless a build asks
+         * for them to be dropped.</p>
          *
          * @param value whether to strip the local-variable tables of dependency classes
          * @return this builder

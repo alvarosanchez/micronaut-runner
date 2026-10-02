@@ -594,7 +594,8 @@ class RunnerJarBuilderTest {
         try (ZipWriter writer = ZipWriter.create(large, ZipWriter.DEFAULT_TIMESTAMP)) {
             writer.writeEntry("large/payload.bin", payload);
         }
-        // Compiled with -g, so the strip step rewrites its classes and the pipeline runs inside the stages.
+        // Compiled with -g, so the strip step, which the builds below turn on, rewrites its classes and the
+        // pipeline runs inside the stages.
         Path debug = ClassFixtures.jar(directory.resolve("debug-lib.jar"), ClassFixtures.classes(
                 ClassFixtures.compile(directory.resolve("debug-src"), directory.resolve("debug-classes"),
                         List.of("-g", "--release", "25"), Map.of(
@@ -660,11 +661,14 @@ class RunnerJarBuilderTest {
             StagingLogger inline = new StagingLogger();
             StagingLogger pooled = new StagingLogger();
             RunnerJarResult sequentialResult = RunnerJarBuilder.build(spec(sequential)
-                    .dependencies(dependencies).compression(compression).startupClasses(list).build(), inline, 1);
+                    .dependencies(dependencies).compression(compression).startupClasses(list)
+                    .stripLocalVariables(true).build(), inline, 1);
             RunnerJarResult parallelResult = RunnerJarBuilder.build(spec(parallel)
-                    .dependencies(dependencies).compression(compression).startupClasses(list).build(), pooled, 4);
+                    .dependencies(dependencies).compression(compression).startupClasses(list)
+                    .stripLocalVariables(true).build(), pooled, 4);
             RunnerJarResult widerResult = RunnerJarBuilder.build(spec(wider)
-                    .dependencies(dependencies).compression(compression).startupClasses(list).build(),
+                    .dependencies(dependencies).compression(compression).startupClasses(list)
+                    .stripLocalVariables(true).build(),
                     BuildLogger.noOp(), 8);
 
             assertEquals(-1, Files.mismatch(sequential, parallel), compression + ": the same bytes");
@@ -3452,7 +3456,8 @@ class RunnerJarBuilderTest {
         Path list = startupClasses("hyapp.Main\nhy.Listed\n");
         Path output = output();
         RecordingLogger logger = new RecordingLogger();
-        RunnerJarBuilder.build(fixture.spec(output, Compression.HYBRID).startupClasses(list).build(), logger);
+        RunnerJarBuilder.build(fixture.spec(output, Compression.HYBRID).startupClasses(list).stripLocalVariables(true)
+                .build(), logger);
         assertEquals(List.of(), logger.warnings);
 
         Map<String, byte[]> raw = rawRegions(fixture.dependency());
