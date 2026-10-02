@@ -24,7 +24,7 @@ jdkAotCache:
   jdkAotCacheVerify: Verifying a Cache
 micronautAot: Micronaut AOT
 configuration:
-  title: Configuration Reference
+  title: Options Reference
   configurationOptions: Packaging Options
   compression: Compression Modes
   archiveReads: Mapped or Positional Reads

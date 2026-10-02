@@ -1,6 +1,5 @@
-When the build packages a Runner JAR, some work moves from every start to the build. Each step is on by default and
-can be turned off. The build log says what each step did, and why when it did nothing; in Gradle, run with `--info`
-to see these lines.
+When the build packages a Runner JAR, some work moves from every start to the build. Each step is on by default where
+your versions support it, and can be turned off. The build log says what each step did, and why when it did nothing.
 
 [cols="3,2,4,3",options="header"]
 |===
@@ -8,7 +7,8 @@ to see these lines.
 
 |<<precompiledLogback,Precompiled Logback configuration>>, from Micronaut AOT
 |On
-|A `logger.config` set outside the archive is not applied.
+|A `logger.config` that only Micronaut sees, such as one in a mounted `application.yml`, is not applied;
+`-Dlogger.config` and `LOGGER_CONFIG` still are.
 |`precompileLogback`
 
 |<<desugaredLambdas,Lambdas generated at build time>>
@@ -17,7 +17,8 @@ to see these lines.
 |`desugarLambdas`
 
 |<<staticServices,Precomputed service lookups>>
-|On, for micronaut-core 5.1.10 up to 5.2
+|Only with micronaut-core 5.1.10 up to 5.2 (Micronaut platform 5.1). With micronaut-core 5.2 or later it does
+nothing, and the build log says so.
 |A service provider added after packaging is not seen.
 |`staticServices`
 |===
@@ -30,9 +31,9 @@ One more class rewrite is off unless you turn it on: dropping the local-variable
 (<<localVariableTables,Opt-in: Dependency Local-Variable Names>>).
 
 To turn steps off, set their options to `false`. To rule these steps out while you track down a problem, turn off all
-three:
+three: in Gradle, in `micronaut { runner { } }`; in Maven, in the `<configuration>` of `micronaut-maven-plugin`.
 
-[source.multi-language-sample,groovy]
+[source.multi-language-sample,gradle-groovy]
 ----
 micronaut {
     runner {
@@ -43,7 +44,7 @@ micronaut {
 }
 ----
 
-[source.multi-language-sample,kotlin]
+[source.multi-language-sample,gradle-kotlin]
 ----
 micronaut {
     runner {
@@ -54,9 +55,7 @@ micronaut {
 }
 ----
 
-In Maven, in the `<configuration>` of `micronaut-maven-plugin`:
-
-[source,xml]
+[source.multi-language-sample,maven]
 ----
 <configuration>
     <runnerOptions>
@@ -72,8 +71,8 @@ command line. `PRESERVE` compression turns off only the class rewrites (<<compre
 
 Other differences from a shaded JAR do not come from these steps:
 
-* A library does not find your dependencies' classes if it looks for them through the system class loader, in the
-single JAR, or by scanning only the files that `java.class.path` names, in either layout. Micronaut does neither
+* In the single JAR, a library that looks up your dependencies' classes through the system class loader does not find
+them; in either layout, neither does one that scans only the files `java.class.path` names. Micronaut does neither
 (<<compatibility,Compatibility and Limitations>>).
 * Signed dependencies are not verified in the single JAR, which matters to a signed JCE provider on Oracle JDK or
 Oracle GraalVM (<<compatibility,Compatibility and Limitations>>).

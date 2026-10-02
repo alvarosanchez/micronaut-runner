@@ -3,11 +3,14 @@ Runner JAR, please https://github.com/{githubSlug}/issues[report it].
 
 == The build fails
 
+Gradle does not find the plugin `io.micronaut.runner`, or Maven reports `Unknown packaging: runner`:: The version of
+the Micronaut Gradle or Maven plugin that your build uses has no Runner support. Use a version that has it, such as the
+one Micronaut Launch generates.
 Shadow and Runner write the same `-all.jar`:: The build fails before either archive is written, naming both tasks.
 Remove the Shadow plugin, or give its JARs another classifier (<<quickStartGradle,Quick Start for Gradle>>).
-`The dependency ... is a directory, and Micronaut Runner nests only JAR files`:: A dependency is a classes
+`The dependency +...+ is a directory, and Micronaut Runner nests only JAR files`:: A dependency is a classes
 directory. Package it as a JAR first; in a Maven reactor, run the build through the `package` phase.
-`Unknown Micronaut Runner option '...'`:: A misspelled option, or one that a newer version of Runner added. The
+`Unknown Micronaut Runner option '+...+'`:: A misspelled option, or one that a newer version of Runner added. The
 message lists the options this version knows.
 A Maven module that depends on the application fails to build:: A Runner JAR is not a library. Set
 `micronaut.runner.classifier` in the application module, so that the Runner JAR is attached next to its main artifact
@@ -18,9 +21,9 @@ A Maven module that depends on the application fails to build:: A Runner JAR is 
 The build log says that no Logback configuration was precompiled:: Only a notice: Logback reads `logback.xml` at
 startup, as without precompilation. The reason says what kept it from being compiled
 (<<precompiledLogback,Precompiled Logback Configuration>>).
-`The startup profile looks stale; re-record it ...`:: The application changed since the profile was recorded. Record it
-again and commit it (<<startupProfile,Startup Profile>>).
-`No local-variable table was stripped, because ... reads local-variable tables at run time`:: You turned on
+`The startup profile looks stale; re-record it +...+`:: The application changed since the profile was recorded. Record
+it again and commit it (<<startupProfile,Startup Profile>>).
+`No local-variable table was stripped, because +...+ reads local-variable tables at run time`:: You turned on
 `stripLocalVariables`, but a library such as Paranamer, AspectJ or an old Spring needs the tables, so Runner keeps
 them. To silence the warning, turn the option off again.
 
@@ -28,7 +31,8 @@ them. To silence the warning, turn the option off again.
 
 The logging configuration in a mounted `application.yml`, `micronaut.config.files` or `--logger.config` is ignored::
 Logback was precompiled, and the packaged `logback.xml` applies instead; `logger.levels.*` properties still apply. Set
-the location with `-Dlogger.config` or `LOGGER_CONFIG`, or package with `precompileLogback=false`.
+the location with `-Dlogger.config` or `LOGGER_CONFIG`, or package with `precompileLogback=false` and, if you turned
+on the Micronaut plugins' Logback precompilation for other packagings, with that off too.
 `-Dmicronaut.logback.precompiled=false` does not help here
 (<<precompiledLogback,Precompiled Logback Configuration>>).
 A `NullPointerException` says `"<local1>" is null`, or a debugger shows no local variables:: The archive was
@@ -55,12 +59,15 @@ the threads of the common `ForkJoinPool` have the system class loader as their c
 <<extract,extracted layout>>.
 A library finds no dependencies through `java.class.path`:: A known limitation
 (<<compatibility,Compatibility and Limitations>>). The library needs to use the context class loader instead.
-`JCE cannot authenticate the provider ...`:: The JDK enforces JCE provider signing, as Oracle JDK and Oracle GraalVM
+`JCE cannot authenticate the provider +...+`:: The JDK enforces JCE provider signing, as Oracle JDK and Oracle GraalVM
 do. The provider's signature is verified only in an extracted layout of an archive packaged with `PRESERVE`: not in
 the single JAR, and not in the extracted layout of a `STORED` or `HYBRID` archive. Package with `PRESERVE` and deploy
 an <<extract,extracted layout>> (<<compatibility,Compatibility and Limitations>>).
 `InaccessibleObjectException`, or warnings about `--add-opens`:: Add the packages to the `addOpens` or `addExports`
 option (<<configurationOptions,Packaging Options>>).
+`WARNING: A restricted method in +...+ has been called`:: A dependency loads native code. Set `enableNativeAccess`
+(<<configurationOptions,Packaging Options>>), which writes `Enable-Native-Access: ALL-UNNAMED` to the archive's
+manifest.
 `SecurityException: sealing violation`:: Two dependencies contribute classes to one sealed package. A shaded JAR hid
 that conflict; exclude one of the duplicate dependencies.
 A resource is not found, or the wrong one is found:: Resources resolve in class path order: your application first,
@@ -78,6 +85,9 @@ this start. `timestamp has changed` means a JAR's modification time changed; `in
 means the cache was created on JDK 27 or later without the <<aotCreationFlags,creation flags>>; other messages name a
 different JDK build, garbage collector or heap size. Train again where the application runs, with the flags it uses
 (<<jdkAotCacheRules,What a Cache Depends On>>).
+The image build fails in `bash train.sh`:: The application did not answer on port 8080 within a minute, a path in
+`PATHS` answered with an error status, or the application needs a database or another service to start. Run the
+script locally with the same `JAR` to see its output (<<jdkAotCacheByHand,Training a Cache>>).
 
 == The application does not start, or starts slowly
 
@@ -98,5 +108,6 @@ OS page cache instead, or use `POSITIONAL` reads (<<archiveReads,Mapped or Posit
 == Narrowing a problem down
 
 To tell the build-time steps from the packaging itself, package once with `precompileLogback`, `desugarLambdas` and
-`staticServices` set to `false`, and without `stripLocalVariables` if you turned it on. If the problem remains,
+`staticServices` set to `false`, without `stripLocalVariables` if you turned it on, and without the Micronaut plugins'
+Logback precompilation if you turned it on for other packagings. If the problem remains,
 compare with `./gradlew run` or `mvn mn:run`, which use no Runner JAR.

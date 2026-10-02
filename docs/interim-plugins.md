@@ -1,6 +1,7 @@
 # Runner's interim Gradle and Maven plugins
 
-The [user guide](https://micronaut-projects.github.io/micronaut-runner/latest/guide/) describes Runner as it works
+<!-- TEMPORARY (revert on transfer to micronaut-projects): the guide is published from this fork until then. -->
+The [user guide](https://alvarosanchez.github.io/micronaut-runner/snapshot/guide/) describes Runner as it works
 once its support in Micronaut Launch and in the Micronaut build plugins has shipped:
 
 | Work in progress | Issue or pull request |
@@ -15,6 +16,9 @@ Until then, Runner ships two interim plugins of its own. They call the same pack
 with the same defaults, so they build the same archive. Everything in the guide applies to them, except what this page
 lists. Once the Micronaut plugins have shipped Runner support in a Micronaut platform release, the interim plugins are
 deprecated, and Runner 2.0 removes them.
+
+Runner itself is not released yet, so neither plugin is on the Gradle Plugin Portal or Maven Central until its first
+release.
 
 ## Gradle: `io.micronaut.runner.standalone`
 
@@ -48,11 +52,19 @@ How it differs from the guide's `io.micronaut.runner`:
   micronautRunnerJar output`. Applying `io.micronaut.runner` from the Micronaut Gradle plugin as well fails with
   `The io.micronaut.runner plugin from micronaut-gradle-plugin builds the Runner JAR in this build`: remove
   `io.micronaut.runner.standalone`, and move any `micronautRunner { }` settings into `micronaut { runner { } }`.
+- **Build log.** The lines that say what each build-time step did, and why when it did nothing, are logged at info
+  level: run with `--info` to see them.
 - **JDK AOT cache tasks.** Experimental, and only in this plugin: see [below](#jdk-aot-cache-tasks-and-goals).
 
-To move to the Micronaut Gradle plugin, replace `id 'io.micronaut.runner.standalone'` with `id 'io.micronaut.runner'`
-at the version of `io.micronaut.application`, move `micronautRunner { }` settings into `micronaut { runner { } }`,
-and remove the `jdkAotCache { }` block and any use of its tasks.
+To move to the Micronaut Gradle plugin:
+
+1. Replace `id 'io.micronaut.runner.standalone'` with `id 'io.micronaut.runner'` at the version of
+   `io.micronaut.application`.
+2. Move `micronautRunner { }` settings into `micronaut { runner { } }`.
+3. Move option values set on `micronautRunnerJar` or `optimizedMicronautRunnerJar` into `micronaut { runner { } }`,
+   and a `mainClass` set on a task into the `application` block. Only the archive-name properties, such as
+   `archiveClassifier`, stay on the task.
+4. Remove the `jdkAotCache { }` block and any use of its tasks.
 
 ## Maven: `micronaut-runner-maven-plugin`
 
@@ -101,23 +113,35 @@ How it differs from the guide's `runner` packaging:
 
 - **The packaging stays `jar`,** and this plugin's `package` goal builds the Runner JAR. Its goal prefix is
   `mn-runner`, not `mn`.
-- **Configuration.** The `micronaut.runner.*` properties are the same. In this plugin's `<configuration>`, the
-  options of the guide's first table are also parameters of their own names, such as `<compression>`, next to
-  `<addOpens>`, `<addExports>`, `<manifestEntries>` and `<runnerOptions>`; `<classifier>`, `<mainClass>` and `<skip>`
-  are the parameters of `micronaut.runner.classifier`, `micronaut.runner.mainClass` and `micronaut.runner.skip`.
+- **Configuration.** The `micronaut.runner.*` properties are the same. This plugin's `<configuration>` also takes
+  `<compression>`, `<entryStub>`, `<multiRelease>`, `<enableNativeAccess>` and `<startupClasses>` as parameters, next
+  to `<addOpens>`, `<addExports>`, `<manifestEntries>` and `<runnerOptions>`. `<classifier>`, `<mainClass>` and
+  `<skip>` are the parameters of `micronaut.runner.classifier`, `micronaut.runner.mainClass` and
+  `micronaut.runner.skip`.
 - **The startup profile.** Record it with `mvn package mn-runner:record-startup-profile`. In `<configuration>`, each
   training setting is a parameter with the `training` prefix, such as `<trainingReadinessPath>` and
   `<trainingWorkloadPaths>`; the `micronaut.runner.training.*` properties are the same.
 - **`runner` packaging.** In a project that uses the Micronaut Maven plugin's `runner` packaging, this plugin's
   `package` goal fails with `micronaut-maven-plugin builds the Runner JAR in runner packaging; remove this plugin's
   execution`.
+- **No check for modules that depend on the application.** Without `micronaut.runner.classifier`, such a module of
+  the same build receives the Runner JAR and fails to compile against it. Set the classifier.
 - **JDK AOT cache goals.** Experimental, and only in this plugin: see [below](#jdk-aot-cache-tasks-and-goals).
 
-To move to the Micronaut Maven plugin, remove this plugin and the `default-shade` override, set the packaging to
-`runner`, and move `<addOpens>`, `<addExports>`, `<manifestEntries>` and `<runnerOptions>` to the
-`micronaut-maven-plugin` entry. Command lines change from `mn-runner:package` to plain `package`, and from
-`mn-runner:record-startup-profile` to `mn:runner-startup-profile`; `mn-runner:layout` and `mn-runner:jdk-aot-cache`
-have no counterpart.
+To move to the Micronaut Maven plugin:
+
+1. Remove this plugin and the `default-shade` override, and set the packaging to `runner`.
+2. Move `<addOpens>`, `<addExports>`, `<manifestEntries>` and `<runnerOptions>` to the `micronaut-maven-plugin`
+   entry.
+3. Replace this plugin's other parameters: `<compression>`, `<entryStub>`, `<multiRelease>`, `<enableNativeAccess>`
+   and `<startupClasses>` with the `micronaut.runner.*` property of the same name (or, except `startupClasses`, a
+   `<runnerOptions>` entry); `<classifier>` and `<skip>` with `micronaut.runner.classifier` and
+   `micronaut.runner.skip`; `<mainClass>`, or the `micronaut.runner.mainClass` property, with the `exec.mainClass` property; and the `<training*>` parameters with
+   the `micronaut.runner.training.*` properties.
+4. If the project uses Micronaut AOT, copy `aot-jar.properties` to `aot-runner.properties`: with `jar` packaging,
+   Micronaut AOT read the first; with `runner` packaging, it reads the second.
+5. Change command lines from `mn-runner:package` to plain `package`, and from `mn-runner:record-startup-profile` to
+   `mn:runner-startup-profile`. `mn-runner:layout` and `mn-runner:jdk-aot-cache` have no counterpart.
 
 ## Logback precompilation
 

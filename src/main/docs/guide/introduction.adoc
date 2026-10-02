@@ -1,21 +1,34 @@
-WARNING: Runner support in Micronaut Launch
-(https://github.com/micronaut-projects/micronaut-starter/issues/3134[micronaut-starter#3134]) and in the Micronaut
-Gradle and Maven plugins
-(https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1378[micronaut-gradle-plugin#1378],
-https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1720[micronaut-maven-plugin#1720]) is in progress.
-So are Logback precompilation in Micronaut AOT
-(https://github.com/micronaut-projects/micronaut-aot/pull/517[micronaut-aot#517]), which those plugins apply
+[WARNING]
+====
+This guide describes Runner as Micronaut Launch and the Micronaut Gradle and Maven plugins will provide it. Not
+shipped yet:
+
+* The `runner` feature of Micronaut Launch
+(https://github.com/micronaut-projects/micronaut-starter/issues/3134[micronaut-starter#3134]), the `io.micronaut.runner`
+plugin of the Micronaut Gradle plugin
+(https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1378[micronaut-gradle-plugin#1378]) and the
+`runner` packaging of the Micronaut Maven plugin
+(https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1720[micronaut-maven-plugin#1720]). Meanwhile,
+build Runner JARs with Runner's own interim plugins, as
+https://github.com/{githubSlug}/blob/master/docs/interim-plugins.md[the interim plugins page] describes.
+* Logback precompilation from Micronaut AOT
+(https://github.com/micronaut-projects/micronaut-aot/pull/517[micronaut-aot#517]), applied by the Micronaut plugins
 (https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1380[micronaut-gradle-plugin#1380],
-https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1722[micronaut-maven-plugin#1722]), and the JDK
-AOT cache in their Docker images
+https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1722[micronaut-maven-plugin#1722]). Meanwhile, a
+Runner JAR precompiles `logback.xml` with Runner's own copy of the same engine, and its run-time switch is
+`-Dmicronaut.runner.logback.precompiled=false`.
+* A JDK AOT cache trained by `./gradlew dockerBuild` and `mvn package -Dpackaging=docker`
 (https://github.com/micronaut-projects/micronaut-gradle-plugin/pull/1381[micronaut-gradle-plugin#1381],
-https://github.com/micronaut-projects/micronaut-maven-plugin/pull/1723[micronaut-maven-plugin#1723]). This guide
-describes Runner once they have shipped. Until then, build Runner JARs with Runner's own interim Gradle and Maven
-plugins: https://github.com/{githubSlug}/blob/master/docs/interim-plugins.md[Runner's interim plugins] explains how,
-and how they differ from this guide.
+https://github.com/micronaut-projects/micronaut-maven-plugin/pull/1723[micronaut-maven-plugin#1723]). Meanwhile, train
+one by hand, in an image that holds the Runner JAR (<<jdkAotCacheByHand,Training a Cache>>).
+
+The interim plugins page lists every difference from this guide. Runner itself is not released yet, so neither interim
+plugin is on the Gradle Plugin Portal or Maven Central.
+====
 
 Micronaut Runner packages a Micronaut application as one executable JAR that you run with `java -jar`. Compared with
-a Shadow or Shade JAR, it starts noticeably faster and uses less memory, at the cost of a slower, more thorough build
+a Shadow or Shade JAR, it starts noticeably faster without a JDK AOT cache, and uses less of the memory that a
+process does not share with the OS page cache, at the cost of a slower, more thorough build
 (<<performance,Performance>>). Unlike a shaded JAR, it keeps every dependency as a separate JAR inside it.
 
 Gradle Shadow and Maven Shade flatten all dependencies into one namespace, which loses information:
@@ -55,7 +68,7 @@ my-app-0.1-all.jar
 The index is built when the archive is packaged, so nothing is scanned at startup. The launcher maps the archive
 into memory once and extracts nothing. By default, dependencies are stored uncompressed, so classes are defined
 straight from the archive. Packaging also does once what a shaded JAR repeats at every start: it generates the
-classes for lambdas, precomputes Micronaut's service lookups and compiles `logback.xml`
+classes for lambdas, precomputes Micronaut's service lookups on micronaut-core 5.1, and compiles `logback.xml`
 (<<whatChanges,What Changes for Your Application>>). The archive is larger on disk than a shaded JAR, but smaller
 compressed.
 
@@ -69,6 +82,9 @@ application, and reads at every later start (<<jdkAotCache,The JDK AOT Cache>>).
 * You deploy a serverless function, such as on AWS Lambda, Google Cloud Functions, Azure Functions or Oracle
 Functions. The function host loads your handler itself and never runs the archive's main class.
 * Your build relies on Shadow relocation to rename packages. Runner never relocates.
+* You deploy only the container image that `./gradlew dockerBuild` or `mvn package -Dpackaging=docker` builds. That
+image is built in layers from your classes and dependency JARs, not from the Runner JAR, so Runner changes nothing in
+it.
 
 A few third-party libraries behave differently in a Runner JAR. <<compatibility,Compatibility and Limitations>> lists
 them, with the workaround when there is one.

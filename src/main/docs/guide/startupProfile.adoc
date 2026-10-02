@@ -24,7 +24,11 @@ and `inspect` shows the number of `Preload classes`. Recording never runs as par
 The workload decides part of the list, so point it at the paths your application serves in production. Without one,
 recording sends a single `GET /` and the build warns.
 
-[source.multi-language-sample,groovy]
+In Gradle, the settings go in `micronaut { runner { training { } } }`. In Maven, each setting is the property
+`micronaut.runner.training.<name>`, in `<properties>` or on the command line; lists are comma-separated, and timeouts
+are in seconds.
+
+[source.multi-language-sample,gradle-groovy]
 ----
 micronaut {
     runner {
@@ -36,7 +40,7 @@ micronaut {
 }
 ----
 
-[source.multi-language-sample,kotlin]
+[source.multi-language-sample,gradle-kotlin]
 ----
 micronaut {
     runner {
@@ -48,10 +52,7 @@ micronaut {
 }
 ----
 
-In Maven, each setting is the property `micronaut.runner.training.<name>`, in `<properties>` or on the command line.
-Lists are comma-separated, and timeouts are in seconds:
-
-[source,xml]
+[source.multi-language-sample,maven]
 ----
 <properties>
     <micronaut.runner.training.readinessPath>/health</micronaut.runner.training.readinessPath>
@@ -72,7 +73,7 @@ Lists are comma-separated, and timeouts are in seconds:
 |`jvmArgs` |none |JVM arguments of the recording.
 |`environment` |none |Environment variables of the recording; in Maven, `NAME=value` entries.
 |`portVariable` |`MICRONAUT_SERVER_PORT` |The environment variable that receives the port.
-|`readinessTimeout`, `workloadTimeout`, `stopTimeout` |60, 60 and 30 seconds |In Gradle, a `java.time.Duration`.
+|`readinessTimeout`, `workloadTimeout`, `stopTimeout` |60, 60 and 30 seconds |How long to wait for readiness, the workload and the stop. In Gradle, a `java.time.Duration`; in Maven, seconds.
 |===
 
 Recording ignores `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_AOT_VM_OPTIONS` from the

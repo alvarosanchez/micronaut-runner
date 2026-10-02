@@ -3,8 +3,8 @@ definitions, type converters and other services. A Runner JAR's class path is fi
 precomputes the result of that scan, in generated classes under `io.micronaut.runner.generated`, and Micronaut reads
 them instead of scanning.
 
-Runner does this for micronaut-core from 5.1.10 up to, but not including, 5.2. For other versions the build log says
-that it did not.
+Runner does this for micronaut-core from 5.1.10 up to, but not including, 5.2, as in the Micronaut platform 5.1. With
+any other version, including micronaut-core 5.2 and later, it does nothing, and the build log says so.
 
 What changes:
 

@@ -1,13 +1,13 @@
 In Gradle, the archive's name is a property of the task:
 
-[source.multi-language-sample,groovy]
+[source.multi-language-sample,gradle-groovy]
 ----
 tasks.named('micronautRunnerJar') {
     archiveClassifier = 'executable'        // defaults to all
 }
 ----
 
-[source.multi-language-sample,kotlin]
+[source.multi-language-sample,gradle-kotlin]
 ----
 tasks.micronautRunnerJar {
     archiveClassifier = "executable"        // defaults to all
@@ -17,7 +17,8 @@ tasks.micronautRunnerJar {
 The task writes `<archiveBaseName>-<archiveVersion>-<archiveClassifier>.jar` to `destinationDirectory`, which default
 respectively to the project's archive name, its version, `all` and the project's `build/libs` directory. Do not
 choose the classifier `runner`: the Micronaut Gradle plugin already writes a `-runner.jar` for its Docker tasks. The
-main class is the `application` block's `mainClass`.
+main class is the `application` block's `mainClass`. To skip the Runner JAR tasks, set `enabled = false` in
+`micronaut { runner { } }`.
 
 The archive's manifest takes the application's `+Implementation-*+`, `+Specification-*+` and `Sealed` attributes from
 the `jar` task's manifest configuration. If the `jar` task adds attributes in `doFirst` or `doLast`, or merges a file

@@ -1,7 +1,7 @@
 Apply the Micronaut Gradle plugin's `io.micronaut.runner` plugin, at the version of the Micronaut plugins your build
 already applies:
 
-[source.multi-language-sample,groovy]
+[source.multi-language-sample,gradle-groovy]
 ----
 plugins {
     id 'io.micronaut.application' version '<version>'
@@ -9,7 +9,7 @@ plugins {
 }
 ----
 
-[source.multi-language-sample,kotlin]
+[source.multi-language-sample,gradle-kotlin]
 ----
 plugins {
     id("io.micronaut.application") version "<version>"
@@ -23,7 +23,7 @@ Applying the plugin is the opt-in; it needs no configuration. Its settings go in
 If your build also applies the Shadow plugin, `com.gradleup.shadow`, both write the same `-all.jar` file, and the
 build fails before either writes it. Remove the Shadow plugin, or give the Shadow JARs another classifier:
 
-[source.multi-language-sample,groovy]
+[source.multi-language-sample,gradle-groovy]
 ----
 tasks.named('shadowJar') {
     archiveClassifier = 'shadow'
@@ -34,7 +34,7 @@ tasks.named { it == 'optimizedJitJarAll' }.configureEach {
 }
 ----
 
-[source.multi-language-sample,kotlin]
+[source.multi-language-sample,gradle-kotlin]
 ----
 tasks.named<Jar>("shadowJar") {
     archiveClassifier = "shadow"
@@ -65,8 +65,8 @@ Everything else stays the same: `./gradlew run` and the tests do not use the Run
 
 To build a container image, run `./gradlew dockerBuild`, as without Runner. The image does not hold the Runner JAR:
 the Micronaut Gradle plugin builds it from your application's classes and the dependency JARs, in separate layers, so
-that a change to your code rebuilds only your application's layers. For a faster start, let the image build train a
-<<jdkAotCache,JDK AOT cache>> with `micronaut { docker { jdkAotCache { enabled = true } } }`; the Micronaut Gradle
-plugin's documentation describes the option.
+that a change to your code rebuilds only your application's layers. With or without Runner, the image build can train
+a <<jdkAotCache,JDK AOT cache>> for a faster start: `micronaut { docker { jdkAotCache { enabled = true } } }`; the
+Micronaut Gradle plugin's documentation describes the option.
 
 To go back to Shadow, remove the plugin, and restore the Shadow plugin or its classifier.

@@ -2,7 +2,7 @@ In Gradle, the `io.micronaut.runner` plugin exposes the archive as the `micronau
 Another project of the build takes it with `project(path: ':app', configuration: 'micronautRunnerElements')`. To
 publish it with `maven-publish`, add it to the publication:
 
-[source.multi-language-sample,groovy]
+[source.multi-language-sample,gradle-groovy]
 ----
 publishing {
     publications {
@@ -17,7 +17,7 @@ publishing {
 }
 ----
 
-[source.multi-language-sample,kotlin]
+[source.multi-language-sample,gradle-kotlin]
 ----
 publishing {
     publications {

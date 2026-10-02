@@ -1,10 +1,11 @@
 Training needs a Java runtime, `bash` and `curl`. Extract the Runner JAR (<<extract,Extracting to a Directory>>), then
-run this script with `JAR` set to the path production starts:
+run this script with `JAR` set to the path production starts, and `PATHS` to the paths your application serves in
+production:
 
 [source,bash]
 ----
 java -Dmicronaut.runner.mode=extract -jar build/libs/my-app-0.1-all.jar --destination app
-JAR=app/my-app-0.1-all.jar bash train.sh
+JAR=app/my-app-0.1-all.jar PATHS='/hello /orders' bash train.sh
 java -XX:+UseG1GC -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar
 ----
 
@@ -15,6 +16,7 @@ java -XX:+UseG1GC -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar
 set -eu
 JAR=${JAR:-my-app-0.1-all.jar}           # the exact path production starts
 JAVA_FLAGS=${JAVA_FLAGS:--XX:+UseG1GC}   # the same GC and heap flags as production
+PATHS=${PATHS:-/hello}                   # the paths production serves, space-separated
 CACHE=app.aot
 URL=http://localhost:8080                # the application's base URL
 
@@ -22,12 +24,12 @@ java $JAVA_FLAGS -XX:AOTCacheOutput="$CACHE" -jar "$JAR" &
 pid=$!
 trap 'kill -KILL "$pid" 2>/dev/null || true' EXIT   # never leave the JVM behind on failure
 i=0
-until curl -fs -o /dev/null "$URL/hello"; do         # readiness: any path that answers 200, for up to a minute
+until curl -s -o /dev/null "$URL/"; do              # readiness: the port answers HTTP, whatever the status
   i=$((i + 1))
   [ "$i" -le 300 ] && kill -0 "$pid" 2>/dev/null || exit 1
   sleep 0.2
 done
-curl -fs -o /dev/null "$URL/hello"                   # workload: request the paths production uses
+for p in $PATHS; do curl -fs -o /dev/null "$URL$p"; done   # workload: an error status fails training
 kill -TERM "$pid"                                    # an orderly shutdown writes the cache
 wait "$pid" || [ $? -eq 143 ]                        # 143 is the exit status after SIGTERM
 test -s "$CACHE"
@@ -61,9 +63,10 @@ USER app
 ENTRYPOINT ["java", "-XX:+UseG1GC", "-XX:AOTCache=app.aot", "-jar", "my-app-0.1-all.jar"]
 ----
 
-The loop checks the cache ten times (<<jdkAotCacheVerify,Verifying a Cache>>). A failed training run or check fails
-the image build. The application JAR of the layout has the Runner JAR's file name, so with Maven it is
-`my-app-0.1.jar`: set `JAR` to it, and use it in the probe and the `ENTRYPOINT`.
+Set `PATHS`, and `JAR` when it differs, in front of `bash train.sh`. The loop checks the cache ten times
+(<<jdkAotCacheVerify,Verifying a Cache>>). A failed training run or check fails the image build. The application JAR
+of the layout has the Runner JAR's file name, so with Maven it is `my-app-0.1.jar`: set `JAR` to it, and use it in the
+probe and the `ENTRYPOINT`.
 
 [[aotCreationFlags]]
 === JDK 27 and later

@@ -54,8 +54,9 @@ The guide is for application developers. Behaviour that they cannot act on, such
 or the entry stub's conditions, belongs in `docs/format.md` or the Javadoc.
 
 The guide describes Runner as the Micronaut Gradle and Maven plugins and Micronaut Launch provide it. The one WARNING
-at the top of the Introduction says that this support is in progress; it is the only interim text in the guide, and
-it goes once that support ships. Anything specific to Runner's own interim plugins goes in `docs/interim-plugins.md`.
+at the top of the Introduction lists what has not shipped yet and what to use meanwhile; it is the only interim text
+in the guide, and it goes once that support ships. Its sentence on Runner's own release goes in the release pull
+request. Anything specific to Runner's own interim plugins goes in `docs/interim-plugins.md`.
 
 To also build the Javadocs, run `./gradlew docs`.
 
@@ -84,7 +85,7 @@ Never commit raw benchmark output (JMH JSON, startup or packaging reports). Summ
 
 Quote startup comparisons as paired-difference medians with their 95% confidence intervals from one interleaved run. With fewer than 10 measured samples per variant, label the result descriptive.
 
-The user guide contains no measured values: no milliseconds, MiB, bytes, CI run links or confidence intervals. Its Performance section states a few rounded, relative claims, and it is the only page with percentages. Refresh them only from a quiet run on a maintainer's machine, never from CI, and update the "Claims in the user guide" table of `benchmarks/README.md` in the same pull request. Packaging time is not a goal: never present it as a feature or compare it with Shadow.
+The user guide contains no measured values: no milliseconds, MiB, bytes, CI run links or confidence intervals. Its Performance section states a few rounded, relative claims, and it is the only page with numeric percentages; other pages compare in words, such as "a few percent" or "slightly slower". Refresh them only from a quiet run on a maintainer's machine, never from CI, and update the "Claims in the user guide" table of `benchmarks/README.md` in the same pull request. Packaging time is not a goal: never present it as a feature or compare it with Shadow.
 
 ## Creating a pull request
 

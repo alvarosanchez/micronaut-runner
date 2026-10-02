@@ -63,6 +63,6 @@ To add a JDK AOT cache, train it on `-all-optimized.jar` itself, as
 
 == Which archive to deploy
 
-Without a JDK AOT cache, `-all-optimized.jar` starts fastest, and even `-all.jar` starts faster than Micronaut AOT's
-optimized Shadow JAR. With a JDK AOT cache, the two archives start in about the same time, so `-all.jar`, which keeps
-the plain application's behaviour, is the simpler choice.
+In Gradle, without a JDK AOT cache, `-all-optimized.jar` starts fastest, and even `-all.jar` starts faster than
+Micronaut AOT's optimized Shadow JAR. With a JDK AOT cache, the two archives start in about the same time, so
+`-all.jar`, which keeps the plain application's behaviour, is the simpler choice.

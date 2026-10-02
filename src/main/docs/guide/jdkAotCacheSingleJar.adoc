@@ -13,6 +13,6 @@ WARNING: Set `micronaut.runner.aot.training` only on the training run: in the Do
 source, which production must not see. On JDK 27 and later, a cache trained without it leaves most of your
 application's classes out, and the start takes much longer.
 
-On JDK 27 and later, add the <<aotCreationFlags,creation flags>> in front of the same command. If the archive carries
-a <<startupProfile,startup profile>>, package it first and then train, so that the cache also holds what the
-profile loads.
+On JDK 27 and later, add the <<aotCreationFlags,creation flags>> in front of the same command. If you use a
+<<startupProfile,startup profile>>, commit it and rebuild the archive before you train, so the cache also holds the
+classes the profile preloads.

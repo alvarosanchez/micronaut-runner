@@ -19,7 +19,7 @@ A Runner JAR can be deployed in several ways. Choose by what your pipeline can d
 |Single JAR with a <<jdkAotCache,JDK AOT cache>>
 |One JAR and a cache file
 |Much faster; about the same as a cached shaded JAR
-|Higher RSS, because the archive is mapped
+|Higher RSS than a cached shaded JAR, because the archive is mapped; less private memory
 |Your image build can train the application, and the application must stay one file.
 
 |Extracted layout with a JDK AOT cache
@@ -46,5 +46,16 @@ where the application runs, usually in the image build (<<jdkAotCacheRules,What 
 A container image that the Micronaut plugins build, with `./gradlew dockerBuild` or `mvn package -Dpackaging=docker`,
 is none of these: it keeps your application and its dependencies in separate layers and does not hold the Runner JAR
 (<<quickStartGradle,Quick Start for Gradle>>, <<quickStartMaven,Quick Start for Maven>>). To ship a Runner JAR in an
-image, copy it onto a Java 25 runtime image, as the container example in <<jdkAotCacheByHand,Training a Cache>>
-shows.
+image, copy it onto a Java 25 or later runtime image:
+
+[source,dockerfile]
+----
+FROM eclipse-temurin:25-jre
+RUN useradd --system --no-create-home app
+WORKDIR /app
+COPY build/libs/my-app-0.1-all.jar ./
+USER app
+ENTRYPOINT ["java", "-jar", "my-app-0.1-all.jar"]
+----
+
+With Maven, copy `target/my-app-0.1.jar`. To add a JDK AOT cache, see <<jdkAotCacheByHand,Training a Cache>>.

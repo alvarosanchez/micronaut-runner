@@ -61,6 +61,11 @@ Micronaut AOT's switch, and works in every packaging (<<precompiledLogback,Preco
 |`micronaut.runner.prefetch`
 |`true`, when packaged with `definitionPrefetch`
 |With `false`, start without the <<definitionPrefetch,bean definition prefetch>>.
+
+|`micronaut.runner.aot.training`
+|`false`
+|With `true`, only for the run that trains a JDK AOT cache on the single JAR, never in production
+(<<jdkAotCacheSingleJar,The Cache on the Single JAR>>).
 |===
 
 Write `true` and `false` in lower case: most switches do not recognise `FALSE` or `True`.

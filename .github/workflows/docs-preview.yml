@@ -35,8 +35,14 @@ jobs:
       - name: "🔧 Setup Gradle"
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
 
+      # The guide links issues, releases and docs/interim-plugins.md through {githubSlug}, which names
+      # micronaut-projects/micronaut-runner. That repository does not exist until the transfer, so the
+      # preview links this one instead. The docs build reads gradle.properties itself: -PgithubSlug does
+      # not change the links.
       - name: "📖 Build the guide"
-        run: ./gradlew docs --no-daemon
+        run: |
+          sed -i "s|^githubSlug=.*|githubSlug=${{ github.repository }}|" gradle.properties
+          ./gradlew docs --no-daemon
 
       # Published by hand rather than with micronaut-projects/github-pages-deploy-action: that action
       # builds its remote as https://$TOKEN@github.com/..., which git reads as a username with no

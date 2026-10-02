@@ -23,20 +23,20 @@ merged.
 
 == Known limitations
 
-Libraries that use the system class loader:: Runner's class loader loads your application and its dependencies. It is
-the context class loader of the main thread and of every thread your application starts. The threads of the JDK's
-common `ForkJoinPool` are an exception: they have the system class loader as their context class loader. Micronaut
-loads classes and services through Runner's loader, so Micronaut is not affected. Neither is a library that uses its
-own classes' loader, or that uses the context class loader outside the common pool. In the single JAR,
-`ClassLoader.getSystemClassLoader()` sees only the Runner JAR itself, so a library that loads a dependency's class
-through it does not find the class. The same holds for the JDK's own lookups through that loader, such as security
-providers listed in the `java.security` file, file system providers for `Path.of(URI)`, and `java.util.logging`
-handlers named in `logging.properties`. All of them work in an <<extract,extracted layout>>, whose class path holds
-every dependency. In the single JAR, a security provider can instead be registered in code, with
-`Security.addProvider`. In the single JAR, a library that loads a class or service through the context class loader
-inside a parallel stream, or inside a `CompletableFuture` task started without an executor, does not find your
-dependencies' classes. Give the task an executor of your own, such as one of Micronaut's `TaskExecutors`, or deploy an
-<<extract,extracted layout>>.
+Lookups through the system class loader (single JAR):: Micronaut is not affected: it loads classes and services
+through Runner's class loader, which is also the context class loader of the main thread and of every thread your
+application starts. Neither is a library that uses its own classes' loader, or the context class loader outside the
+common `ForkJoinPool` (next entry). In the single
+JAR, `ClassLoader.getSystemClassLoader()` sees only the Runner JAR itself, so a library that loads a dependency's
+class through it does not find the class. The same holds for the JDK's own lookups through that loader, such as
+security providers listed in the `java.security` file, file system providers for `Path.of(URI)`, and
+`java.util.logging` handlers named in `logging.properties`. Register a security provider in code with
+`Security.addProvider` instead, or deploy an <<extract,extracted layout>>, whose class path holds every dependency.
+The common `ForkJoinPool` (single JAR):: Micronaut is not affected. The threads of the JDK's common `ForkJoinPool`
+have the system class loader as their context class loader, not Runner's. In the single JAR, a library that loads a
+class or service through the context class loader inside a parallel stream, or inside a `CompletableFuture` task
+started without an executor, therefore does not find your dependencies' classes. Give the task an executor of your
+own, such as one of Micronaut's `TaskExecutors`, or deploy an <<extract,extracted layout>>.
 Libraries that read `java.class.path`:: In the single JAR, the property names only the Runner JAR, in which your
 dependencies are nested JARs, so a library that finds classes by scanning the files it names does not find theirs. In
 an <<extract,extracted layout>>, it names only the application JAR, as for any JAR started with `java -jar`, and that

@@ -26,9 +26,9 @@ With `STORED` and `HYBRID` compression, each dependency is re-packed:
 - Its own entries are written `STORED` (`HYBRID`: only the startup classes and resources; see below).
 - Signature files (`META-INF/*.SF`, `*.DSA`, `*.RSA`, `*.EC`, `META-INF/SIG-*`) and `META-INF/INDEX.LIST` are dropped.
 - Manifests are never rewritten, so package metadata and sealing survive.
-- The build-time class transforms run: local-variable stripping on dependency classes, and lambda desugaring, which
-  adds a generated `$$Lambda$R<n>` class after each host. Rewritten entries get new CRC-32 values. The
-  application layer's lambdas are desugared the same way.
+- The build-time class transforms run: lambda desugaring, which adds a generated `$$Lambda$R<n>` class after each
+  host, and local-variable stripping on dependency classes when `stripLocalVariables` is on. Rewritten entries get
+  new CRC-32 values. The application layer's lambdas are desugared the same way.
 
 `PRESERVE` copies each dependency byte for byte and runs no class transform.
 
