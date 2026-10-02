@@ -16,8 +16,8 @@ Add the plugin to the `<build><plugins>` of your POM and bind its `package` goal
 </plugin>
 ----
 
-A project built on `micronaut-parent`, as Micronaut Launch generates it, also runs Maven Shade in the `package`
-phase. Turn that execution off, so that only Runner packages the application:
+If your build also runs Maven Shade in the `package` phase, as the Micronaut Maven plugin's `jar` packaging does,
+turn that execution off, so that only Runner packages the application:
 
 [source,xml]
 ----

@@ -12,8 +12,8 @@ and the Micronaut Gradle plugin's Runner plugin are applied. Remove `io.micronau
 `micronaut-maven-plugin builds the Runner JAR in runner packaging; remove this plugin's execution`:: The project
 uses the Micronaut Maven plugin's `runner` packaging. Remove the `micronaut-runner-maven-plugin` execution.
 The plugin cannot be resolved or loaded:: Gradle reports that it needs JVM runtime version 25, or Maven reports class
-file version 69.0. The build runs on an older JVM: run Gradle or Maven itself on Java 25
-(<<requirements,Requirements and Status>>).
+file version 69.0. The build runs on an older JVM: run Gradle or Maven itself on Java 25, as Micronaut 5's own plugins
+also require (<<requirements,Requirements and Status>>).
 `The dependency ... is a directory, and Micronaut Runner nests only JAR files`:: A dependency is a classes
 directory. Package it as a JAR first; in a Maven reactor, run the build through the `package` phase.
 `Unknown Micronaut Runner option '...'`:: A misspelled option, or one that a newer version of Runner added. The

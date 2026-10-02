@@ -1,8 +1,8 @@
-* *Java 25 or later*, in two places: the JVM that runs Gradle or Maven, and the JVM that runs the application. A
-compilation toolchain does not change the JVM that runs the build, so check `./gradlew --version` or `mvn -version`
-as well as `java -version`.
-* *Gradle 9.1 or later*, or *Maven 3.9*.
+Runner needs nothing that a Micronaut 5 build does not already have:
+
 * *Micronaut 5*. The plugins are tested with Micronaut Platform 5.1, on micronaut-core 5.1 and 5.2.
+* *Java 25 or later*, Micronaut 5's baseline, for the build and for the application.
+* *Gradle 9.1 or later*, or *Maven 3.9*.
 
 Some features depend on the versions you use. The first two say in the build log when they did nothing:
 

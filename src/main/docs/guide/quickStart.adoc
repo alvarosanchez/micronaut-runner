@@ -1,4 +1,4 @@
-This section takes an existing Micronaut application from a shaded JAR to a Runner JAR. You need Java 25 for the
-build and for the application (<<requirements,Requirements and Status>>).
+This section takes an existing Micronaut 5 application from a shaded JAR to a Runner JAR. Runner needs nothing that a
+Micronaut 5 build does not already have (<<requirements,Requirements and Status>>).
 
 The examples use an application named `my-app`, version `0.1`, whose main class is `com.example.Application`.
