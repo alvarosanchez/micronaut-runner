@@ -1346,8 +1346,7 @@ final class SampleBuild implements SampleSteps {
     }
 
     /**
-     * Runs the repository's own Gradle wrapper on the harness JDK and waits for it. {@link #prepare} and
-     * {@link PackagingComparison} share this, so both nested builds are started, bounded and drained alike.
+     * Runs the repository's own Gradle wrapper on the harness JDK and waits for it.
      *
      * @param projectDirectory the build to run, which is also the working directory; the wrapper is the
      *                         nearest {@code gradlew} above it
@@ -1357,7 +1356,7 @@ final class SampleBuild implements SampleSteps {
      * @throws IOException          if the build cannot start or does not finish in time
      * @throws InterruptedException if the wait is interrupted
      */
-    static GradleResult gradle(Path projectDirectory, List<String> arguments, java.time.Duration timeout)
+    private static GradleResult gradle(Path projectDirectory, List<String> arguments, java.time.Duration timeout)
             throws IOException, InterruptedException {
         List<String> command = new ArrayList<>(arguments.size() + 1);
         command.add(findGradlew(projectDirectory).toString());
@@ -1388,7 +1387,7 @@ final class SampleBuild implements SampleSteps {
      * @param exitCode the wrapper's exit status
      * @param output   its standard output and error, interleaved
      */
-    record GradleResult(int exitCode, String output) {
+    private record GradleResult(int exitCode, String output) {
 
         /**
          * The last lines of the output, for an exception message.
@@ -1455,7 +1454,7 @@ final class SampleBuild implements SampleSteps {
         return message == null ? "no message" : message.replace('\n', ' ').replace('\r', ' ').trim();
     }
 
-    static Path recreate(Path directory) throws IOException {
+    private static Path recreate(Path directory) throws IOException {
         deleteRecursively(directory);
         return Files.createDirectories(directory);
     }

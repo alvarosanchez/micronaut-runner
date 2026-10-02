@@ -85,7 +85,7 @@ Never commit raw benchmark output (JMH JSON, startup or packaging reports). Summ
 
 Quote startup comparisons as paired-difference medians with their 95% confidence intervals from one interleaved run. With fewer than 10 measured samples per variant, label the result descriptive.
 
-The user guide contains no measured values: no milliseconds, MiB, bytes, CI run links or confidence intervals. Its Performance section states a few rounded, relative claims, and it is the only page with numeric percentages; other pages compare in words, such as "a few percent" or "slightly slower". Refresh them only from a quiet run on a maintainer's machine, never from CI, and update the "Claims in the user guide" table of `benchmarks/README.md` in the same pull request. Packaging time is not a goal: never present it as a feature or compare it with Shadow.
+The user guide contains no measured values: no milliseconds, MiB, bytes, CI run links or confidence intervals. Its Performance section states a few rounded, relative claims, and it is the only page with numeric percentages; other pages compare in words, such as "a few percent" or "slightly slower". Refresh them only from a quiet run on a maintainer's machine, never from CI, and update the "Claims in the user guide" table of `benchmarks/README.md` in the same pull request. Packaging time is not a goal. The guide makes one packaging comparison, a single sentence in the Introduction without figures; refresh it like the other claims, and add no figures to it and no other packaging claim.
 
 ## Creating a pull request
 

@@ -18,19 +18,19 @@ A Runner JAR can be deployed in several ways. Choose by what your pipeline can d
 
 |Single JAR with a <<jdkAotCache,JDK AOT cache>>
 |One JAR and a cache file
-|Much faster; about the same as a cached shaded JAR
+|Much faster; about the same as a cached shaded JAR, or slightly faster
 |Higher RSS than a cached shaded JAR, because the archive is mapped; less private memory
 |Your image build can train the application, and the application must stay one file.
 
 |Extracted layout with a JDK AOT cache
 |A directory of JARs and a cache file
-|The same as the single JAR with its cache
+|About the same as the single JAR with its cache
 |The lowest RSS
 |Your image build can train the application, and RSS matters.
 
 |Any of the above, built from <<micronautAot,Micronaut AOT>>
 |As above
-|Faster without a JDK AOT cache; the same with one
+|Faster without a JDK AOT cache; about the same with one
 |As above
 |Your project already uses Micronaut AOT.
 |===

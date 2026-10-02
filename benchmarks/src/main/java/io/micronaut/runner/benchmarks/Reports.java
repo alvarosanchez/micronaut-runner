@@ -1128,8 +1128,7 @@ final class Reports {
         return single.length() > 400 ? single.substring(0, 400) + " …" : single;
     }
 
-    /** A JSON string literal, or {@code null}. {@link PackagingComparison} writes its report with it too. */
-    static String quote(String value) {
+    private static String quote(String value) {
         if (value == null) {
             return "null";
         }

@@ -28,7 +28,7 @@ plugin is on the Gradle Plugin Portal or Maven Central.
 
 Micronaut Runner packages a Micronaut application as one executable JAR that you run with `java -jar`. Compared with
 a Shadow or Shade JAR, it starts noticeably faster without a JDK AOT cache, and uses less of the memory that a
-process does not share with the OS page cache, at the cost of a slower, more thorough build
+process does not share with the OS page cache: packaging does extra work at build time so that every start does less
 (<<performance,Performance>>). Unlike a shaded JAR, it keeps every dependency as a separate JAR inside it.
 
 Gradle Shadow and Maven Shade flatten all dependencies into one namespace, which loses information:
@@ -69,8 +69,9 @@ The index is built when the archive is packaged, so nothing is scanned at startu
 into memory once and extracts nothing. By default, dependencies are stored uncompressed, so classes are defined
 straight from the archive. Packaging also does once what a shaded JAR repeats at every start: it generates the
 classes for lambdas, precomputes Micronaut's service lookups on micronaut-core 5.1, and compiles `logback.xml`
-(<<whatChanges,What Changes for Your Application>>). The archive is larger on disk than a shaded JAR, but smaller
-compressed.
+(<<whatChanges,What Changes for Your Application>>). With the default settings, building a Runner JAR takes less time
+than building a Shadow JAR of the same application, build-time transforms included. The archive is larger on disk
+than a shaded JAR, but smaller compressed.
 
 Two features share the letters AOT. _Micronaut AOT_ generates optimized application code when you build
 (<<micronautAot,Micronaut AOT>>). The _JDK AOT cache_ is a file the JVM writes during a training run of your

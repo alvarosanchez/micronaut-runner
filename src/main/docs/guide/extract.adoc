@@ -8,7 +8,7 @@ java -jar app/my-app-0.1-all.jar
 ----
 
 The extracted layout runs on the JDK's own class loader, without Runner's launcher. With a
-<<jdkAotCache,JDK AOT cache>>, it starts as fast as the single JAR with its cache. Without a cache, it starts more
+<<jdkAotCache,JDK AOT cache>>, it starts about as fast as the single JAR with its cache. Without a cache, it starts more
 slowly than the single JAR: use it uncached only to work around a limitation in
 <<compatibility,Compatibility and Limitations>>.
 
