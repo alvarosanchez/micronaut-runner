@@ -40,7 +40,7 @@ jobs:
           java-version: ${{ matrix.java }}
 
       - name: "🔧 Setup Gradle"
-        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
 
       # A workflow file that does not parse is not reported as a failure of anything: GitHub records a
       # run with no jobs and no name, which reads like a passing build. Parsing them here, from a
@@ -96,7 +96,7 @@ jobs:
           java-version: '25'
 
       - name: "🔧 Setup Gradle"
-        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
 
       # Path separators, drive letters, UNC paths and file locking on memory-mapped archives all behave
       # differently here, which is exactly what the launcher and the packager touch.
