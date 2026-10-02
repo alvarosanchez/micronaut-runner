@@ -47,6 +47,7 @@ import java.lang.classfile.Attribute;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.CodeBuilder;
 import java.lang.classfile.FieldModel;
+import java.lang.classfile.Label;
 import java.lang.classfile.attribute.RuntimeInvisibleAnnotationsAttribute;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
@@ -123,12 +124,16 @@ class PackageMojoTest {
     /** The main class of the fixture application. */
     private static final String MAIN_CLASS = "com.example.App";
 
+    /** The dependency class that carries a local-variable table, by entry name. */
+    private static final String DEBUG_CLASS = "com/example/lib/Debug.class";
+
     @TempDir
     Path temp;
 
     private Path buildDirectory;
     private Path classes;
     private PackageMojo mojo;
+    private MavenSession session;
     private MavenProject project;
     private RecordingLog log;
     private RecordingProjectHelper projectHelper;
@@ -153,8 +158,8 @@ class PackageMojoTest {
         mojo = new PackageMojo();
         mojo.setLog(log);
         set("project", project);
-        set("session", new MavenSession(null, null, new DefaultMavenExecutionRequest(),
-                new DefaultMavenExecutionResult()));
+        session = new MavenSession(null, null, new DefaultMavenExecutionRequest(), new DefaultMavenExecutionResult());
+        set("session", session);
         set("projectHelper", projectHelper);
         set("mainClass", MAIN_CLASS);
         set("outputDirectory", buildDirectory.toFile());
@@ -376,6 +381,29 @@ class PackageMojoTest {
         assertEquals(Map.of("x", "configured", "addOpens", ""),
                 PackageMojo.options(user, projectProperties, configured, List.of("x")),
                 "a <runnerOptions> entry wins over both, and an empty element is the empty value");
+    }
+
+    @Test
+    void dependencyLocalVariableTablesAreKeptUnlessTheBuildAsksForStripping() throws Exception {
+        assumePackagingIsPossible();
+        writeApplicationClass();
+        project.setArtifacts(Set.of(artifact("lib", writeDebugDependency("lib-1.0.jar"))));
+        Path archive = buildDirectory.resolve("demo-1.0.jar");
+
+        assertEquals("false", spec().effectiveOptions().get("stripLocalVariables"));
+        mojo.execute();
+        assertTrue(hasLocalVariableTable(nestedEntry(archive, "MICRONAUT-INF/lib/lib-1.0.jar", DEBUG_CLASS)),
+                "a dependency class keeps its local-variable table by default");
+
+        session.getUserProperties().setProperty("micronaut.runner.stripLocalVariables", "true");
+        assertEquals("true", spec().effectiveOptions().get("stripLocalVariables"), "-D turns stripping on");
+        mojo.execute();
+        assertFalse(hasLocalVariableTable(nestedEntry(archive, "MICRONAUT-INF/lib/lib-1.0.jar", DEBUG_CLASS)),
+                "-Dmicronaut.runner.stripLocalVariables=true strips it");
+
+        set("runnerOptions", Map.of("stripLocalVariables", "false"));
+        assertEquals("false", spec().effectiveOptions().get("stripLocalVariables"),
+                "a <runnerOptions> entry wins over -D");
     }
 
     @Test
@@ -746,6 +774,59 @@ class PackageMojoTest {
             out.closeEntry();
         }
         return file;
+    }
+
+    /**
+     * Writes a dependency jar whose one class carries a local-variable table, as {@code javac -g} writes it: a
+     * static method whose argument is a named local.
+     */
+    private Path writeDebugDependency(String name) throws IOException {
+        byte[] bytes = ClassFile.of().build(ClassDesc.of("com.example.lib.Debug"),
+                type -> type.withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER)
+                        .withSuperclass(ConstantDescs.CD_Object)
+                        .withMethodBody("identity", MethodTypeDesc.of(ConstantDescs.CD_int, ConstantDescs.CD_int),
+                                ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, code -> {
+                                    Label start = code.newBoundLabel();
+                                    code.iload(0);
+                                    Label end = code.newLabel();
+                                    code.labelBinding(end);
+                                    code.localVariable(0, "value", ConstantDescs.CD_int, start, end);
+                                    code.ireturn();
+                                }));
+        Path file = temp.resolve("repository").resolve(name);
+        Files.createDirectories(file.getParent());
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(file))) {
+            out.putNextEntry(new ZipEntry(DEBUG_CLASS));
+            out.write(bytes);
+            out.closeEntry();
+        }
+        return file;
+    }
+
+    private static boolean hasLocalVariableTable(byte[] bytes) {
+        return ClassFile.of().parse(bytes).methods().stream()
+                .anyMatch(method -> method.code().flatMap(code -> code.findAttribute(
+                        java.lang.classfile.Attributes.localVariableTable())).isPresent());
+    }
+
+    /** One entry of a jar nested in a runner jar. */
+    private static byte[] nestedEntry(Path archive, String jar, String name) throws IOException {
+        byte[] nested;
+        try (ZipFile zip = new ZipFile(archive.toFile())) {
+            ZipEntry entry = zip.getEntry(jar);
+            assertNotNull(entry, () -> jar + " is not in " + archive);
+            try (InputStream in = zip.getInputStream(entry)) {
+                nested = in.readAllBytes();
+            }
+        }
+        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(nested))) {
+            for (ZipEntry entry = in.getNextEntry(); entry != null; entry = in.getNextEntry()) {
+                if (entry.getName().equals(name)) {
+                    return in.readAllBytes();
+                }
+            }
+        }
+        throw new AssertionError(name + " is not in " + jar);
     }
 
     private static Artifact artifact(String artifactId, Path file) {

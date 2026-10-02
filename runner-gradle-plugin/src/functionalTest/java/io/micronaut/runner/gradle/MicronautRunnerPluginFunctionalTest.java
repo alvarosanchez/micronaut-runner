@@ -27,6 +27,7 @@ import java.lang.classfile.ClassFile;
 import java.lang.classfile.MethodModel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -360,16 +361,17 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
     }
 
     /**
-     * A project dependency is a module of the same build: its classes are nested as the {@code jar} task wrote
-     * them, local-variable tables included (Gradle compiles with {@code -g}), while a file dependency's classes
-     * are stripped of theirs.
+     * Local-variable stripping is off by default, so every dependency's classes keep their local-variable tables.
+     * With {@code stripLocalVariables} set to {@code true}, a file dependency's classes are stripped of theirs,
+     * while a project dependency, a module of the same build, is still nested as the {@code jar} task wrote it,
+     * local-variable tables included (Gradle compiles with {@code -g}).
      *
      * @param directory a fresh build directory
      * @throws IOException          if the fixture cannot be written or the archive cannot be read
      * @throws InterruptedException if the forked application is interrupted
      */
     @Test
-    void theClassesOfAProjectDependencyKeepTheirLocalVariableTables(@TempDir Path directory)
+    void localVariableTablesAreKeptByDefaultAndAProjectDependencyKeepsThemWhenStrippingIsOn(@TempDir Path directory)
             throws IOException, InterruptedException {
         writeSettings(directory, "include 'app', 'lib'");
         write(directory.resolve("lib/build.gradle"), """
@@ -430,10 +432,29 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
                 }
                 """);
 
-        BuildResult result = build(directory, ":app:micronautRunnerJar");
-
-        assertEquals(TaskOutcome.SUCCESS, outcomeOf(result, ":app:micronautRunnerJar"));
         Path archive = directory.resolve("app/build/libs/app-1.0-all.jar");
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(build(directory, ":app:micronautRunnerJar"),
+                ":app:micronautRunnerJar"));
+        assertProjectDependencyNestedAsBuilt(directory, archive);
+        assertTrue(hasLocalVariableTable(nestedClasses(archive, "MICRONAUT-INF/lib/debug.jar")
+                .get("com/example/debug/Adder.class")), "by default the file dependency's classes keep theirs");
+
+        Files.writeString(directory.resolve("app/build.gradle"),
+                "\nmicronautRunner { options.put('stripLocalVariables', 'true') }\n", StandardOpenOption.APPEND);
+        assertEquals(TaskOutcome.SUCCESS, outcomeOf(build(directory, ":app:micronautRunnerJar"),
+                ":app:micronautRunnerJar"));
+        assertProjectDependencyNestedAsBuilt(directory, archive);
+        Map<String, byte[]> file = nestedClasses(archive, "MICRONAUT-INF/lib/debug.jar");
+        assertEquals(Set.of("com/example/debug/Adder.class"), file.keySet());
+        assertFalse(hasLocalVariableTable(file.get("com/example/debug/Adder.class")),
+                "with stripping on, the file dependency's classes are stripped");
+
+        String output = runJarSuccessfully(archive);
+        assertTrue(output.contains("letters=2"), () -> output);
+        assertTrue(output.contains("sum=5"), () -> output);
+    }
+
+    private static void assertProjectDependencyNestedAsBuilt(Path directory, Path archive) throws IOException {
         Map<String, byte[]> module = nestedClasses(archive, "MICRONAUT-INF/lib/lib.jar");
         Map<String, byte[]> built = classesOf(Files.readAllBytes(directory.resolve("lib/build/libs/lib.jar")));
         assertEquals(built.keySet(), module.keySet());
@@ -442,14 +463,6 @@ class MicronautRunnerPluginFunctionalTest extends AbstractFunctionalTest {
                     () -> entry.getKey() + " of the project dependency was rewritten");
             assertTrue(hasLocalVariableTable(entry.getValue()), () -> entry.getKey() + " lost its locals");
         }
-        Map<String, byte[]> file = nestedClasses(archive, "MICRONAUT-INF/lib/debug.jar");
-        assertEquals(Set.of("com/example/debug/Adder.class"), file.keySet());
-        assertFalse(hasLocalVariableTable(file.get("com/example/debug/Adder.class")),
-                "the file dependency's classes are stripped");
-
-        String output = runJarSuccessfully(archive);
-        assertTrue(output.contains("letters=2"), () -> output);
-        assertTrue(output.contains("sum=5"), () -> output);
     }
 
     private static Map<String, byte[]> nestedClasses(Path archive, String name) throws IOException {

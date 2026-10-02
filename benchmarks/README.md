@@ -134,12 +134,11 @@ In a row name, `maot` is Micronaut AOT and the `-aot` suffix is the JDK AOT cach
 - **Caches:** `runner-stored-aot`, `runner-extracted-aot` and `shadow-aot` against each other. Each cached row shares
   its uncached twin's exact artifact bytes.
 - **Controls:** `runner-stored` − control and `runner-stored-aot` − its `-aot` twin, for each default the control turns
-  off (`-joran`, `-keepdebug`, `-dynamic-services`, `-lambdas`). `runner-extracted-aot` − `runner-extracted-lambdas-aot`
-  runs on the JDK's own loader, which archives lambdas itself, so it checks that desugaring costs the extracted layout
-  nothing.
-- **Opt-in candidates:** `-preload`, `-prefetch` and `-positional` against `runner-stored` (and their `-aot` twins
-  against `runner-stored-aot`); `runner-stored` − `runner-stored-reflection` for the entry stub, whose interval still
-  spans zero at 20 iterations, so run it with 40.
+  off (`-joran`, `-dynamic-services`, `-lambdas`). `runner-extracted-aot` − `runner-extracted-lambdas-aot` runs on the
+  JDK's own loader, which archives lambdas itself, so it checks that desugaring costs the extracted layout nothing.
+- **Opt-in candidates:** `-preload`, `-prefetch`, `-positional` and `-stripdebug` (`stripLocalVariables=true`) against
+  `runner-stored` (and their `-aot` twins against `runner-stored-aot`); `runner-stored` − `runner-stored-reflection`
+  for the entry stub, whose interval still spans zero at 20 iterations, so run it with 40.
 - **Micronaut AOT:** `runner-maot` − `shadow-maot` is like for like, both archives holding the same AOT-optimized
   application; `runner-stored` − `shadow-maot` is Runner's `-all.jar` against Shadow's `-all-optimized.jar`;
   `runner-maot` − `runner-stored` and `shadow-maot` − `shadow` are what Micronaut AOT adds to each packaging, and
@@ -376,9 +375,9 @@ option the variants and every invocation are the four above.
   comparisons are `runner-stored`/`shadow` (the defaults) and the compression-matched `runner-stored`/
   `shadow-stored` (neither archive deflated) and `runner-preserve`/`shadow` (both deflated), each the median of
   per-round differences.
-- `runner-stored`'s time includes the default build-time steps: the class transforms (lambda desugaring and
-  local-variable stripping), Logback precompilation and the static service table. `runner-preserve` nests the
-  dependencies byte for byte and runs no class transform.
+- `runner-stored`'s time includes the default build-time steps: the class transform (lambda desugaring), Logback
+  precompilation and the static service table; local-variable stripping is opt-in and does not run.
+  `runner-preserve` nests the dependencies byte for byte and runs no class transform.
 - 3 warm-up rounds, then 10 measured rounds by default. Each round runs one untimed `classes` build, then every
   row in the `rerun` scenario and then in the `edit` scenario, each scenario in a fresh order shuffled from a seed
   the report records.

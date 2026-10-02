@@ -81,7 +81,7 @@ class VariantSelectionTest {
         assertTrue(all.containsAll(SampleBuild.variantNames()));
         assertEquals(List.of("runner-stored-reflection", "runner-stored-preload", "runner-stored-preload-aot",
                         "runner-stored-ordered", "runner-stored-hybrid", "runner-stored-positional", "runner-stored-positional-aot", "runner-stored-joran",
-                        "runner-stored-joran-aot", "runner-stored-keepdebug", "runner-stored-keepdebug-aot",
+                        "runner-stored-joran-aot", "runner-stored-stripdebug", "runner-stored-stripdebug-aot",
                         "runner-stored-dynamic-services", "runner-stored-dynamic-services-aot",
                         "runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot",
                         "runner-stored-prefetch", "runner-stored-prefetch-aot", "shadow-maot-aot", "runner-maot-aot"),
@@ -160,11 +160,11 @@ class VariantSelectionTest {
 
         packaged.clear();
         steps.calls.clear();
-        assertEquals(List.of("runner-stored-keepdebug-aot"),
-                names(SampleBuild.variants(steps, List.of("runner-stored-keepdebug-aot"), log())));
-        assertEquals(Map.of("runnerJar:runner-stored-keepdebug", 1,
-                "aotCache:runner-stored-keepdebug->runner-stored-keepdebug-aot", 1), steps.calls);
-        assertEquals(List.of(SampleBuild.RunnerJarOptions.DEFAULTS.withStripLocalVariables(false)), packaged);
+        assertEquals(List.of("runner-stored-stripdebug-aot"),
+                names(SampleBuild.variants(steps, List.of("runner-stored-stripdebug-aot"), log())));
+        assertEquals(Map.of("runnerJar:runner-stored-stripdebug", 1,
+                "aotCache:runner-stored-stripdebug->runner-stored-stripdebug-aot", 1), steps.calls);
+        assertEquals(List.of(SampleBuild.RunnerJarOptions.DEFAULTS.withStripLocalVariables(true)), packaged);
     }
 
     @Test

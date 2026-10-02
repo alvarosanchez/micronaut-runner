@@ -88,7 +88,7 @@ class TransformCorpusTest {
         model.watched().ifPresent(watched -> System.out.println(classPathFile.getFileName() + ": "
                 + watched.layer() + " contains " + watched.entry()
                 + ", which reads local-variable tables; a build would not strip this class path"));
-        // The steps a default build runs, in its order: desugaring lambdas, then stripping.
+        // Every step, in the order a build runs them: desugaring lambdas, then stripping (when it is turned on).
         ClassTransformPipeline pipeline = new ClassTransformPipeline(
                 List.of(new LambdaDesugarer(model), new LocalVariableStripper()), model);
         Function<byte[], List<String>> verifier = ClassTransformPipeline.verifierOf(model);

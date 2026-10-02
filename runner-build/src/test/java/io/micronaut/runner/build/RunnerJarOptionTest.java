@@ -72,7 +72,7 @@ class RunnerJarOptionTest {
                 .manifestAttributes(Map.of("Implementation-Vendor", "Example Ltd"))
                 .archiveReads(ArchiveReads.POSITIONAL)
                 .precompileLogback(false)
-                .stripLocalVariables(false)
+                .stripLocalVariables(true)
                 .startupClasses(Path.of("profiles", "startup-classes.log"))
                 .staticServices(false)
                 .desugarLambdas(false)

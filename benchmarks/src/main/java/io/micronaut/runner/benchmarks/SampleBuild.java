@@ -348,15 +348,16 @@ final class SampleBuild implements SampleSteps {
                     (steps, spec, stored) -> steps.joranControl(stored, spec)),
             cached("runner-stored-joran-aot", "The same Joran control Runner jar with a verified JDK AOT cache",
                     EntryMode.STUB, OPT_IN, "runner-stored-joran"),
-            // The default strips local-variable tables; this control keeps them. Drop both rows once the default
-            // has shipped for one release.
-            row("runner-stored-keepdebug", "Runner jar, nested dependencies re-packed uncompressed; plugin-default"
-                    + " entry stub; local-variable tables kept", EntryMode.STUB, OPT_IN, null,
+            // The default keeps local-variable tables; this opt-in row strips those of the dependencies, so that
+            // the transform stays measured while it is an option.
+            row("runner-stored-stripdebug", "Runner jar, nested dependencies re-packed uncompressed; plugin-default"
+                    + " entry stub; stripLocalVariables=true: dependency local-variable tables stripped",
+                    EntryMode.STUB, OPT_IN, null,
                     (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
-                            RunnerJarOptions.DEFAULTS.withStripLocalVariables(false))),
-            cached("runner-stored-keepdebug-aot",
-                    "The same local-variable-table control with a verified JDK AOT cache",
-                    EntryMode.STUB, OPT_IN, "runner-stored-keepdebug"),
+                            RunnerJarOptions.DEFAULTS.withStripLocalVariables(true))),
+            cached("runner-stored-stripdebug-aot",
+                    "The same local-variable-stripping Runner jar with a verified JDK AOT cache",
+                    EntryMode.STUB, OPT_IN, "runner-stored-stripdebug"),
             // Today's jar without the table: whatever else the builder defaults to, it has too.
             row("runner-stored-dynamic-services", "Runner jar, nested dependencies re-packed uncompressed;"
                     + " staticServices false (control)", EntryMode.STUB, OPT_IN, null,
@@ -366,8 +367,8 @@ final class SampleBuild implements SampleSteps {
                     "The same Runner jar without a static service table, with a verified JDK AOT cache",
                     EntryMode.STUB, OPT_IN, "runner-stored-dynamic-services"),
             // The default desugars lambdas; these controls keep every call site an invokedynamic, with everything
-            // else at the defaults, stripping included. The third is the control's extracted layout, which the
-            // JDK's own loader runs: there the JDK archives lambdas itself, so that pair should be neutral.
+            // else at the defaults. The third is the control's extracted layout, which the JDK's own loader runs:
+            // there the JDK archives lambdas itself, so that pair should be neutral.
             row("runner-stored-lambdas", "Runner jar, nested dependencies re-packed uncompressed; plugin-default"
                     + " entry stub; dependency lambdas kept", EntryMode.STUB, OPT_IN, null,
                     (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
@@ -491,10 +492,10 @@ final class SampleBuild implements SampleSteps {
                         "Precompiled Logback vs Joran at startup (Runner-only control)"),
                 new ComparisonSpec("runner-stored-aot", "runner-stored-joran-aot",
                         "Precompiled Logback vs Joran at startup (Runner-only control) + AOT cache"),
-                new ComparisonSpec("runner-stored", "runner-stored-keepdebug",
-                        "Local-variable tables stripped vs kept"),
-                new ComparisonSpec("runner-stored-aot", "runner-stored-keepdebug-aot",
-                        "Local-variable tables stripped vs kept, with the AOT cache"),
+                new ComparisonSpec("runner-stored-stripdebug", "runner-stored",
+                        "Local-variable tables stripped vs kept, the default"),
+                new ComparisonSpec("runner-stored-stripdebug-aot", "runner-stored-aot",
+                        "Local-variable tables stripped vs kept, the default, with the AOT cache"),
                 new ComparisonSpec("runner-stored", "runner-stored-dynamic-services",
                         "Static service table vs Micronaut's scan"),
                 new ComparisonSpec("runner-stored-aot", "runner-stored-dynamic-services-aot",
