@@ -1,0 +1,40 @@
+Before you deploy an archive, check what it holds:
+
+[source,bash]
+----
+java -Dmicronaut.runner.mode=inspect -jar build/libs/my-app-0.1-all.jar
+----
+
+It prints the main class, the build-time changes and every nested JAR. For a small Netty application, trimmed:
+
+[source,subs="attributes+"]
+----
+Archive               build/libs/my-app-0.1-all.jar
+Format version        1
+Packaged by           {version}
+Main class            com.example.Application
+...
+Archive reads         mapped
+Preload classes       none
+...
+Build transforms
+  ...
+#   NAME                                                  COORDINATES                                      ...
+0   MICRONAUT-INF/classes/                                -                                                ...
+1   MICRONAUT-INF/lib/micronaut-serde-jackson-3.1.1.jar   io.micronaut.serde:micronaut-serde-jackson:3.1.1 ...
+...
+----
+
+`Preload classes` shows whether the archive carries a <<startupProfile,startup profile>>, and `Build transforms`
+what the class rewrites changed (<<whatChanges,What Changes for Your Application>>).
+
+If a start is slower than you expect, run it once with `-Dmicronaut.runner.timing=true`:
+
+[source,bash]
+----
+java -Dmicronaut.runner.timing=true -jar build/libs/my-app-0.1-all.jar
+----
+
+The launcher prints to standard error when it opened the archive, read the index, made the class loader ready and
+entered your application. Time spent after `application entered` belongs to the framework and to your application,
+not to the packaging.

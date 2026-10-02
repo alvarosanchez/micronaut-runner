@@ -1,0 +1,14 @@
+Runner needs nothing that a Micronaut 5 build does not already have:
+
+* *Micronaut 5*, built with the Micronaut Gradle plugin or the Micronaut Maven plugin, which package Runner JARs.
+Runner's version comes with them: you add no Runner dependency to your build or to your application.
+* *Java 25 or later*, Micronaut 5's baseline, for the build and for the application.
+* *Gradle 9.1 or later*, or *Maven 3.9 or later*.
+
+Some features depend on the versions you use. The first two say in the build log when they did nothing:
+
+* Logback precompilation needs Logback from 1.5.37 up to, but not including, 1.6.
+* The precomputed service lookups need micronaut-core from 5.1.10 up to, but not including, 5.2, as in the Micronaut
+platform 5.1. With a later micronaut-core, they do nothing.
+* The JDK AOT cache works on JDK 25 and later. On JDK 27 and later, creating a cache needs two extra flags
+(<<aotCreationFlags,JDK 27 and Later>>).

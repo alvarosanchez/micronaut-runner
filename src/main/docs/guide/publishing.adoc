@@ -1,0 +1,37 @@
+In Gradle, the `io.micronaut.runner` plugin exposes the archive as the `micronautRunnerElements` configuration.
+Another project of the build takes it with `project(path: ':app', configuration: 'micronautRunnerElements')`. To
+publish it with `maven-publish`, add it to the publication:
+
+[source.multi-language-sample,gradle-groovy]
+----
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            artifact(tasks.named('micronautRunnerJar').flatMap { it.archiveFile }) {
+                classifier = 'all'
+                builtBy tasks.named('micronautRunnerJar')
+            }
+        }
+    }
+}
+----
+
+[source.multi-language-sample,gradle-kotlin]
+----
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+            val runnerJar = tasks.micronautRunnerJar
+            artifact(runnerJar.flatMap { it.archiveFile }) {
+                classifier = "all"
+                builtBy(runnerJar)
+            }
+        }
+    }
+}
+----
+
+In Maven, the Runner JAR is the project's main artifact, so `mvn deploy` publishes it. With
+`micronaut.runner.classifier`, it is attached and published next to the main artifact.

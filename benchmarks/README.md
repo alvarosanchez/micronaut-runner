@@ -1,12 +1,15 @@
 # Micronaut Runner benchmarks
 
-This module holds the three benchmark suites behind the guide's
-[Benchmarks](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#benchmarks) page: JMH
-micro-benchmarks of the class loader, packaging-time measurements, and an end-to-end startup harness. The guide
-publishes results and says what they mean; this file says how the harness produces them, and every property it
-takes.
+This module holds Micronaut Runner's benchmark suites: JMH micro-benchmarks of the class loader, a profile of
+Runner's own packaging cost, and an end-to-end startup harness. This file says how they produce their results, and
+every property they take.
 
-Nothing a run produces is committed. Reports land in `benchmarks/build/reports/{startup,packaging,packaging-comparison,jmh}`,
+The user guide publishes no results. Its
+[Performance](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#performance) section states only
+rounded, relative claims, refreshed from a quiet run on a maintainer's machine, never from CI figures; see
+[Claims in the user guide](#claims-in-the-user-guide) for where each one comes from.
+
+Nothing a run produces is committed. Reports land in `benchmarks/build/reports/{startup,packaging,jmh}`,
 and CI uploads them as workflow artifacts, which expire after 30 days.
 
 ## Running
@@ -14,16 +17,14 @@ and CI uploads them as workflow artifacts, which expire after 30 days.
 ```bash
 ./gradlew :benchmarks:jmh
 ./gradlew :benchmarks:packagingProfile
-./gradlew :benchmarks:packagingComparison
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20 -Pbenchmarks.optionalRows=true
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=1 -Pbenchmarks.diagnostics=true
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=20 -Pbenchmarks.cpus=1 -Pbenchmarks.variants=shadow,runner-stored
 ```
 
-`benchmarks.yml` runs the benchmark-tool tests, JMH, `packagingProfile`, `startupBenchmark` and
-`packagingComparison` weekly, on demand, and on pull requests labelled `relates-to: benchmarks`, never as a pull
-request gate: shared runners are too noisy to fail a build on. A dispatch can set `iterations`, `cpus`,
+`benchmarks.yml` runs the benchmark-tool tests, JMH, `packagingProfile` and `startupBenchmark` weekly, on demand,
+and on pull requests labelled `relates-to: benchmarks`, never as a pull request gate: shared runners are too noisy to fail a build on. A dispatch can set `iterations`, `cpus`,
 `pageCache` and `optionalRows`, which adds the opt-in rows to the main job only. Weekly and dispatched runs also
 start four `startup-cpu-matrix` legs, which measure the Runner and Shadow comparison rows at one CPU, at two CPUs,
 unlimited, and unlimited with `evict-artifacts`. Each leg runs on its own machine, so compare the legs' paired
@@ -44,11 +45,9 @@ the harness works, never for a claim.
 | `-Pbenchmarks.cpus=N` | `startupBenchmark` | none | Linux, needs `taskset`: every child JVM on `N` CPUs (see below). |
 | `-Pbenchmarks.pageCache=mode` | `startupBenchmark` | `uncontrolled` | `uncontrolled`, `evict-artifacts` or `drop-all` (see below). |
 | `-Pbenchmarks.micronautCore=V` | `startupBenchmark` | the sample's platform | Builds the sample with every `io.micronaut` module aligned to micronaut-core `V`. |
-| `-Pbenchmarks.sample=dir` | `startupBenchmark` | `benchmark-large` | Another sample under `test-suite/samples`. `packagingComparison` ignores it. |
+| `-Pbenchmarks.sample=dir` | `startupBenchmark` | `benchmark-large` | Another sample under `test-suite/samples`. |
 | `-Pbenchmarks.workloads=a,b` | `packagingProfile` | `small,representative,wide` | Synthetic packaging shapes; `no-manifest` is the fourth. |
 | `-Pbenchmarks.packagingIterations=N` | `packagingProfile` | `3` | Independent packaging workers per scenario. |
-| `-Pbenchmarks.packagingComparisonIterations=N` | `packagingComparison` | `10` | Measured rounds after 3 warm-up rounds; 10 is the fewest that give a 95% interval. |
-| `-Pbenchmarks.packagingComparisonStartupClasses=file` | `packagingComparison` | none | Adds `runner-stored-hybrid`: `micronautRunnerJar` with `HYBRID` and this startup class list (relative to the repository root). |
 | `-Pjmh.includes=regex` | `jmh` | everything | Only the matching JMH benchmarks. |
 
 The harness's own options (`--warmup`, `--seed`, `--readiness`, `--timeout`) keep their defaults from Gradle: 3
@@ -58,10 +57,8 @@ Where things land:
 
 - `benchmarks/build/reports/startup/` – `results.json`, `summary.md` and, with diagnostics, `diagnostics/`.
 - `benchmarks/build/reports/packaging/` – `packaging-results.json` and `packaging-summary.md`.
-- `benchmarks/build/reports/packaging-comparison/` – `results.json` and `summary.md`.
 - `benchmarks/build/reports/jmh/results.json`.
 - `benchmarks/build/tmp/startupBenchmark` – the startup task's built rows and trained caches.
-- `benchmarks/build/tmp/packagingComparison` – the packaging comparison's copy of the sample.
 
 ## Which JDK a run uses
 
@@ -287,8 +284,8 @@ forces a retrain. `results.json` records each cache's `cacheSha256` and whether 
 separately from deployment bytes and readiness.
 
 The production recipe, extraction and training included, is the guide's
-[Class Data Sharing and the AOT Cache](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#cdsAndAot)
-page; the harness does not use the plugins' training tasks.
+[JDK AOT Cache](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#jdkAotCache) section; the
+harness does not use the plugins' training tasks.
 
 ### Page cache
 
@@ -338,9 +335,10 @@ The JMH benchmarks cover the class loader's hot path: index lookup hit and miss,
 loading, defining a class from a mapped buffer versus a byte array, resource lookup and streaming, duplicate
 resource enumeration and service discovery. Named synthetic shapes vary JAR and entry count, class size and
 locality, resource size, manifest packages, duplicate names and multi-release entries; the resource benchmarks
-take them through the `workload` parameter (`representative` is the shape the guide publishes). They isolate
+take them through the `workload` parameter (`representative` is the default shape to quote). They isolate
 mechanisms and are not startup results. In particular, allocation avoided by defining from a mapped buffer is not
-elapsed time saved.
+elapsed time saved. Per-JAR operations, such as enumerating every copy of a resource or listing service
+descriptors, behave like a multi-JAR class path rather than like a flat JAR, which returns one merged copy.
 
 Class loading and resource lookup are compared with two JDK baselines built from the same synthetic inputs as
 the Runner archives:
@@ -354,40 +352,17 @@ the Runner archives:
 
 ## Packaging
 
+Packaging time is not a goal of Micronaut Runner: the build does extra work on purpose, so that every start does
+less. `packagingProfile` exists to catch regressions in Runner's own packaging cost, comparing Runner with its previous
+self, and its results are never quoted as a feature. The guide's one statement about packaging time is a single
+sentence without figures, in the Introduction, that a Runner JAR takes less time to build than a Shadow JAR of the
+same application with the default settings (see [Claims in the user guide](#claims-in-the-user-guide)). Add no
+figures to it, and no other packaging claim.
+
 `packagingProfile` builds STORED and PRESERVE Runner archives of synthetic builder profiles in fresh JVMs, for
 deterministic first-build, unchanged-rebuild, application-edit and dependency-edit scenarios. Elapsed time and
 allocation, and process RSS and peak heap, come from separate invocations. Logical input and output bytes are
 reported apart from time and memory and are not kernel I/O counters.
-
-`packagingComparison` packages a real application, a fresh copy of `test-suite/samples/benchmark-large`, in a warm
-Gradle daemon of its own, which is where developers and CI pay for packaging. It compares `micronautRunnerJar`
-with STORED (`runner-stored`) and PRESERVE (`runner-preserve`) compression against `shadowJar` (`shadow`) and the
-sample's STORED control `shadowJarStored` (`shadow-stored`). With
-`-Pbenchmarks.packagingComparisonStartupClasses=<file>` it also times `runner-stored-hybrid`, `micronautRunnerJar`
-with `HYBRID` compression and that startup class list, compared with `runner-stored` and `shadow`; without the
-option the variants and every invocation are the four above.
-
-- `rerun` runs `<task> --rerun`, which re-executes only the packaging task. `micronautRunnerJar` keeps no
-  packaging state between executions, so this is the cold packaging path; there is no separate cold scenario.
-- `edit` makes a bytecode-changing edit to `Application.java` and runs `<task>`, so compilation and the packaging
-  task's other dependencies run as well.
-- Each invocation records the packaging task's action time and the wall time of the whole `gradlew` process. The
-  comparisons are `runner-stored`/`shadow` (the defaults) and the compression-matched `runner-stored`/
-  `shadow-stored` (neither archive deflated) and `runner-preserve`/`shadow` (both deflated), each the median of
-  per-round differences.
-- `runner-stored`'s time includes the default build-time steps: the class transform (lambda desugaring), Logback
-  precompilation and the static service table; local-variable stripping is opt-in and does not run.
-  `runner-preserve` nests the dependencies byte for byte and runs no class transform.
-- 3 warm-up rounds, then 10 measured rounds by default. Each round runs one untimed `classes` build, then every
-  row in the `rerun` scenario and then in the `edit` scenario, each scenario in a fresh order shuffled from a seed
-  the report records.
-- Its nested builds run with `--no-build-cache --no-configuration-cache` in a daemon that its own JVM options keep
-  apart from every other daemon and that stops itself 60 seconds after the task ends. The harness never runs
-  `--stop`.
-
-Maven Shade is not compared. `test-suite/samples/maven-basic` configures no `maven-shade-plugin`, and in that
-small sample Maven's own startup would dominate the timings. The Maven plugin packages with the same
-`runner-build` code path as the Gradle task, which the Runner rows here and `packagingProfile` already cover.
 
 ## Attributing a difference
 
@@ -395,5 +370,63 @@ A difference between two rows can be attributed to one mechanism (stored depende
 mapped-buffer definition, a build-time transform) only through a matched ablation that changes only that
 mechanism, such as the control rows. Hash-collision, resource-resolution and merged-metadata fixtures validate
 behaviour; they cannot prove a performance cause. The control rows' effects overlap, so they are never added up.
-A published number names its run, its JDK build, its machine, the sample's Micronaut and Netty versions, its
-page-cache and CPU conditions, and which of readiness, the startup line or the framework's own figure it is.
+A number quoted in a pull request or in this file names its run, its JDK build, its machine, the sample's Micronaut
+and Netty versions, its page-cache and CPU conditions, and which of readiness, the startup line or the framework's own
+figure it is.
+
+## Claims in the user guide
+
+The guide's Performance section makes four claims, rounded to a plain fraction and phrased as less or more time. Other
+pages compare options in words only, such as "slightly slower" or "about the same", and the Introduction says once,
+without figures, that with the default settings a Runner JAR takes less time to build than a Shadow JAR of the same
+application. A claim stays in the guide only while every session that measured it agrees with its wording. Each claim
+comes from these comparisons (the startup harness's paired rows, or a manual comparison run with the same paired,
+interleaved method):
+
+| Claim | Where | Comparison | Last measured |
+|---|---|---|---|
+| Without a cache, about a quarter less time than Shadow, and clearly less memory | Performance, Introduction, Choosing a Deployment, README | `runner-stored` − `shadow`: time and memory | JDK 25: −26…−28% time, RSS −19…−20%, private −40…−41%. JDK 27 (stripping on): −25…−27% time, RSS −32%, private −48…−49% |
+| Nearly three times as large on disk, about a fifth smaller compressed | Performance, Introduction | `runner-stored` / `shadow` deployment size | 2.80× raw, 0.78× gzip |
+| With caches on both sides, about the same time as Shadow or slightly less, somewhat less private memory, higher RSS | Performance, Choosing a Deployment | `runner-stored-aot` − `shadow-aot` | JDK 25: −4…−8% time (two of four n.s.), private −7…−8%, RSS +12…+13%. JDK 27 (stripping on): −1…−3% (n.s.), private −13…−14%, RSS +6…+7% |
+| A JDK AOT cache makes the single JAR start much faster | Choosing a Deployment | `runner-stored-aot` − `runner-stored` | JDK 25: −39…−45%. JDK 27 (stripping on): −42…−43% |
+| A startup profile takes nearly a further quarter off a start without a cache | Performance, Choosing a Deployment | `runner-stored-preload` − `runner-stored` | −23% (JDK 25) |
+| With a cache, a startup profile adds little; it uses slightly more memory during startup | Startup Profile, Choosing a Deployment | `runner-stored-preload-aot` − `runner-stored-aot`; `runner-stored-preload` − `runner-stored`: private memory | −5…−8% (one of three n.s.); private +3…+4% (JDK 25) |
+| Extracted layout: about the same with its cache, lower RSS; slower without one | Choosing a Deployment, Extracting to a Directory | `runner-extracted-aot` − `runner-stored-aot`, `runner-extracted` − `runner-stored` | −5…+6% time, RSS −13…−17%; uncached +9…+26% |
+| Extracted `STORED` and `PRESERVE` layouts start the same with their cache; `STORED` starts faster without it | What a Cache Depends On | manual: `PRESERVE` layout − `STORED` layout, with and without their caches | +1% (n.s.); uncached +16% (one JDK 25 session, the `STORED` side with stripping) |
+| Micronaut AOT: `-all-optimized.jar` fastest uncached, `-all.jar` ahead of the optimized Shadow JAR, about the same cached | Micronaut AOT, Choosing a Deployment | `runner-maot` − `runner-stored`, `runner-stored` − `shadow-maot`, `runner-maot-aot` − `runner-stored-aot` | −5…−7%; −18…−21% (JDK 25; −18…−19% on JDK 27 with stripping); −1…+1% (n.s. in all six sessions; paired from `results.json`, because the harness declares no such comparison) |
+| `PRESERVE` slower than `STORED` but faster than Shadow; slightly larger than Shadow on disk, about the same gzipped | Compression Modes | `runner-preserve` − `runner-stored`, `runner-preserve` − `shadow` | +13…+17% (JDK 25; +15…+16% on JDK 27 with stripping); −14…−17%; 1.20× raw, 1.04× gzip |
+| `HYBRID` starts like `STORED`, smaller on disk, larger compressed | Compression Modes | `runner-stored-hybrid` − `runner-stored` | −1…+3% (n.s.); 0.74× raw, 1.35× gzip (stripping on) |
+| `POSITIONAL`: lower RSS, slightly slower, same private memory | Mapped or Positional Reads | `runner-stored-positional` − `runner-stored` | +1…+3% time; RSS −13…−16% |
+| Opt-in local-variable stripping: somewhat smaller, slightly faster without a cache, no difference with one | Opt-in: Dependency Local-Variable Names | `runner-stored-stripdebug` − `runner-stored`, and their `-aot` twins | 0.87× raw; −3…−4% uncached; −1…+2% cached (n.s.) |
+| Bean definition prefetch: a few percent on many cores | Bean Definition Prefetch | `runner-stored-prefetch` − `runner-stored`, and its `-aot` twin | −2…−6% (12 cores) |
+| Dynamic CDS starts more slowly than the AOT cache | The JDK AOT Cache | manual: `-XX:ArchiveClassesAtExit` and `-XX:+AutoCreateSharedArchive` against the AOT cache | AOT −11…−12% |
+| With the default settings, building a Runner JAR takes less time than building a Shadow JAR | Introduction | manual: `packagingComparison`, `runner-stored` − `shadow`, `--rerun` and edit-then-build; plus an up-to-date check | packaging task −59…−61%, whole build −30…−35%; no difference when up to date |
+
+They were last measured on 2026-10-02 at commit `71e87dd`, on an Apple M4 Pro with 12 CPUs (macOS 26.6.2), with
+Homebrew OpenJDK 25.0.4.1 (four startup batches) and 27 (two), the sample on micronaut-core 5.1.15. That commit
+still stripped dependency local-variable tables by default. The JDK 25 figures for the default against Shadow come
+from its `runner-stored-keepdebug` rows, which are byte for byte today's default; the JDK 27 figures marked
+"stripping on" do not. That commit's `runner-stored` rows are today's `runner-stored-stripdebug`, which gives the
+opt-in stripping row. Comparisons within Runner (the startup profile, the extracted layout, `-all-optimized.jar`
+against `-all.jar`, `HYBRID`, `POSITIONAL` and the prefetch) were measured with stripping on for both rows, so they
+are not yet measured on today's default. The packaging claim comes from three manual sessions of the packaging
+comparison, on JDK 25.0.4.1 with a warm Gradle daemon, with stripping on: today's default skips that step, so it does
+less work than was measured. The claim names only Shadow, because Maven Shade was not measured. The advantage comes
+from not compressing entries: against a Shadow JAR whose entries are stored uncompressed, the two take about the same
+time.
+
+The `packagingComparison` task has since been removed from this module. To refresh the packaging claim, run
+`./gradlew :benchmarks:packagingComparison` from `2035468`, the base of #245, which still has the task and today's
+stripping default; to measure a later Runner, restore the task from there. To refresh the startup claims, run on a
+quiet machine:
+
+```bash
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=40 -Pbenchmarks.optionalRows=true
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=40 -Pbenchmarks.optionalRows=true --init-script jdk27.gradle
+./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=30 -Pbenchmarks.micronautCore=5.2.12
+```
+
+The second run measures the newest JDK through the init script of [Which JDK a run uses](#which-jdk-a-run-uses). The
+third is a cross-check on a newer micronaut-core, where the precomputed service lookups do nothing; no claim rests on
+it alone. The manual comparisons follow the same paired, interleaved method on the artifacts the harness builds. Update the guide's
+wording only when a rounded claim changes, and update this table in the same pull request.

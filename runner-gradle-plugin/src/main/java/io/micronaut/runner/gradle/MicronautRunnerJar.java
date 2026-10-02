@@ -282,7 +282,8 @@ public abstract class MicronautRunnerJar extends DefaultTask {
     /**
      * How the entries of each dependency are stored: {@code STORED} re-packs them uncompressed so classes
      * are defined straight from the memory-mapped archive, {@code PRESERVE} copies each dependency byte
-     * for byte. The plugin sets the extension's value as the convention.
+     * for byte, and {@code HYBRID} stores the startup classes uncompressed and keeps the others compressed. The
+     * plugin sets the extension's value as the convention.
      *
      * @return the compression mode
      */

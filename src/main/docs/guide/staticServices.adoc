@@ -1,0 +1,20 @@
+At startup, Micronaut scans `META-INF/services/` and `META-INF/micronaut/` of every JAR to find its bean
+definitions, type converters and other services. A Runner JAR's class path is fixed when it is packaged, so Runner
+precomputes the result of that scan, in generated classes under `io.micronaut.runner.generated`, and Micronaut reads
+them instead of scanning.
+
+Runner does this for micronaut-core from 5.1.10 up to, but not including, 5.2, as in the Micronaut platform 5.1. With
+any other version, including micronaut-core 5.2 and later, it does nothing, and the build log says so.
+
+What changes:
+
+* A service provider added after packaging is not seen. When an agent or tool adds JARs to the class path, start
+with `-Dmicronaut.runner.parent=system`, which also turns the precomputed lookups off (<<javaAgents,Java agents>>).
+To let Micronaut scan in any other case, start with `-Dmicronaut.runner.static-services=false`.
+* `java.util.ServiceLoader` and `ClassLoader.getResources` are unchanged.
+
+To check the precomputed lookups against Micronaut's own scan, start once with
+`-Dmicronaut.runner.static-services.verify=true`. A match prints a `static services verified` line to standard error.
+A mismatch stops the start with a message that names the differences.
+
+To turn it off, set the `staticServices` option to `false` (<<whatChanges,What Changes for Your Application>>).

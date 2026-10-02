@@ -61,8 +61,8 @@ public abstract class MicronautRunnerExtension {
     public abstract Property<Boolean> getEnabled();
 
     /**
-     * How the entries of each dependency are stored: {@code STORED} or {@code PRESERVE}. The convention is
-     * {@link RunnerJarOption#COMPRESSION}'s default.
+     * How the entries of each dependency are stored: {@code STORED}, {@code PRESERVE} or {@code HYBRID}. The
+     * convention is {@link RunnerJarOption#COMPRESSION}'s default.
      *
      * @return the compression mode
      */

@@ -1,22 +1,43 @@
 introduction:
   title: Introduction
+  requirements: Requirements
+releaseHistory: Release History
 quickStart:
   title: Quick Start
-format:
-  title: The Runner JAR Format
-buildTransforms:
-  title: Build-Time Transformations
+  quickStartGradle: Gradle
+  quickStartMaven: Maven
+  quickStartCheck: Checking the Archive
+whatChanges:
+  title: What Changes for Your Application
+  precompiledLogback: Precompiled Logback Configuration
+  desugaredLambdas: Lambdas Generated at Build Time
+  staticServices: Precomputed Service Lookups
+deployment:
+  title: Choosing a Deployment
+performance: Performance
+startupProfile: Startup Profile
+jdkAotCache:
+  title: The JDK AOT Cache
+  jdkAotCacheByHand: Training a Cache
+  jdkAotCacheSingleJar: The Cache on the Single JAR
+  jdkAotCacheRules: What a Cache Depends On
+  jdkAotCacheVerify: Verifying a Cache
+micronautAot: Micronaut AOT
+configuration:
+  title: Options Reference
+  configurationOptions: Packaging Options
+  compression: Compression Modes
+  archiveReads: Mapped or Positional Reads
+  localVariableTables: "Opt-in: Dependency Local-Variable Names"
+  configurationArchive: Main Class, Archive Name and Manifest
+  publishing: Publishing the Archive
+  definitionPrefetch: "Experimental: Bean Definition Prefetch"
+  runtimeProperties: Run-Time System Properties
 runtime:
   title: Running a Runner JAR
-compatibility:
-  title: Compatibility and Limitations
-cdsAndAot:
-  title: Class Data Sharing and the AOT Cache
-micronautAot:
-  title: Micronaut AOT
-benchmarks:
-  title: Benchmarks
-troubleshooting:
-  title: Troubleshooting
+  exitCodes: Exit Codes
+  archiveLifetime: Archive Lifetime
+  extract: Extracting to a Directory
+compatibility: Compatibility and Limitations
+troubleshooting: Troubleshooting
 repository: Repository
-releaseHistory: Release History

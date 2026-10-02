@@ -1,91 +1,96 @@
-For ordinary resources, the goal is that an application behaves identically whether it runs from a runner
-JAR or from an ordinary classpath. The class loader is tested differentially against
-`java.net.URLClassLoader` over the same set of JARs, comparing resource resolution, resource ordering, class
-bytes, package attributes and code sources. The deliberate `META-INF/micronaut/` metadata-tree exception and the
-known limitations below bound that compatibility contract; they are not ordinary-classpath behavior.
+An application behaves in a Runner JAR as it does on an ordinary class path, with the exceptions on this page.
 
-== What behaves exactly as on a classpath
+== What behaves as on a class path
 
-* `getResource` returns the first match in classpath order; `getResources` returns one URL per contributing
-JAR, in classpath order, with the first element equal to what `getResource` returned.
-* Duplicate resources in different dependencies stay distinct, including two entries of one dependency
-that share a name, which stay two records.
-* A directory resolves whether or not the name ends with a slash, as `ZipFile.getEntry` resolves one.
-* A manifest attribute that is present but empty is reported as `""` on the `Package`, not as absent.
-* Multi-release JARs resolve per JAR against the running JDK's feature version, honouring
-`jdk.util.jar.enableMultiRelease` and `jdk.util.jar.version`. Paths under `META-INF/` are never versioned.
-* Each dependency keeps its own manifest, so `Package.getImplementationVersion()` and the other
-specification and implementation attributes are correct per package, including per-package `Name:`
-sections that override the main attributes.
-* Sealed packages are enforced: loading a class into an already sealed package from a different JAR, or
-sealing a package that is already open, raises `SecurityException`.
-* Every class has a `ProtectionDomain` whose `CodeSource` location identifies the JAR it came from, except in an
-AOT-cache training run with `micronaut.runner.aot.training=true`.
-* Resources resolve through ordinary `jar:file:` URLs, so `URL.openStream()`, `URLConnection` metadata and
-`JarURLConnection.getJarFile()` all work, which is what libraries that scan the classpath rely on.
+* `getResource` returns the first match in class path order, and `getResources` one URL per JAR that has the
+resource, in the same order.
+* Duplicate resources in different dependencies stay distinct.
+* Each dependency keeps its manifest, so `Package.getImplementationVersion()` and the other package attributes are
+correct per JAR, and sealed packages are enforced.
+* Multi-release JARs resolve per JAR against the running JDK.
+* Resources have ordinary `jar:file:` URLs, so `URL.openStream()` and `JarURLConnection` work, as libraries that scan
+the class path expect.
+* Every class's `CodeSource` names the JAR it came from.
 
-== Deliberate Micronaut metadata exception
+== Micronaut's metadata is merged
 
-Micronaut Runner merges every entry below `META-INF/micronaut/` from the application and its dependencies into one
-de-duplicated tree at the outer archive root. A lookup anywhere under that prefix uses only the merged tree, and
-`getResources("META-INF/micronaut/")` returns one merged URL rather than one URL per contributing JAR. When contributors
-provide the same file name, the first content in classpath order is retained and a warning reports differing later
-content. This is intentional build-time aggregation for Micronaut bean discovery, not ordinary resource enumeration.
-Classic `+META-INF/services/**+` resources are not merged and keep the classpath behavior described above. Micronaut's own
-service lookups are answered from a table of those names computed when the application is packaged
-(<<staticServices,Static service table>>); `-Dmicronaut.runner.static-services=false` switches it off.
-
-== Archive path URLs
-
-The outer archive's `file:` URL has one canonical representation. File-system separators are `/` over the
-complete URL path, including components after Unicode text. Unicode is encoded as UTF-8 bytes, and spaces,
-`%`, `#` and `?` are percent-encoded. A Windows drive path therefore starts with `file:/C:/`; a UNC shape
-starts with `file://server/share/`. On POSIX, a backslash is data rather than a separator and is encoded as
-`%5C`.
+Micronaut finds its beans by listing the `META-INF/micronaut/` directory of each JAR on the class path, which for
+JARs nested in another JAR would mean opening every one of them at startup. So Runner merges that directory from your
+application and every dependency into one, at the root of the archive, and Micronaut reads it in one pass.
+`getResources("META-INF/micronaut/")` therefore returns one URL, not one per JAR. When two JARs ship the same file
+with different content, the first in class path order wins, and the build warns. `META-INF/services/` files are not
+merged.
 
 == Known limitations
 
-Nested `JarFile` reporting:: `JarFile.isMultiRelease()` and `JarFile.getVersion()` are `final` in the JDK
-and report the archive passed to the constructor, which is the outer one. A `JarFile` obtained for a
-nested dependency therefore reports the outer archive's state from those two methods. Entry _lookup_ and
-`versionedStream()` still apply the nested JAR's own multi-release policy, so both resolution and effective
-enumeration are correct; only these two reporting methods cannot be corrected.
+Lookups through the system class loader (single JAR):: Micronaut is not affected: it loads classes and services
+through Runner's class loader, which is also the context class loader of the main thread and of every thread your
+application starts. Neither is a library that uses its own classes' loader, or the context class loader outside the
+common `ForkJoinPool` (next entry). In the single
+JAR, `ClassLoader.getSystemClassLoader()` sees only the Runner JAR itself, so a library that loads a dependency's
+class through it does not find the class. The same holds for the JDK's own lookups through that loader, such as
+security providers listed in the `java.security` file, file system providers for `Path.of(URI)`, and
+`java.util.logging` handlers named in `logging.properties`. Register a security provider in code with
+`Security.addProvider` instead, or deploy an <<extract,extracted layout>>, whose class path holds every dependency.
+The common `ForkJoinPool` (single JAR):: Micronaut is not affected. The threads of the JDK's common `ForkJoinPool`
+have the system class loader as their context class loader, not Runner's. In the single JAR, a library that loads a
+class or service through the context class loader inside a parallel stream, or inside a `CompletableFuture` task
+started without an executor, therefore does not find your dependencies' classes. Give the task an executor of your
+own, such as one of Micronaut's `TaskExecutors`, or deploy an <<extract,extracted layout>>.
+Libraries that read `java.class.path`:: In the single JAR, the property names only the Runner JAR, in which your
+dependencies are nested JARs, so a library that finds classes by scanning the files it names does not find theirs. In
+an <<extract,extracted layout>>, it names only the application JAR, as for any JAR started with `java -jar`, and that
+JAR's manifest lists the dependencies in its `Class-Path`. Micronaut does not use the property.
+Signed dependencies:: Runner does not verify the signatures of the JARs nested in the single JAR, and their classes
+have no code signers. That matters only to code that requires verified signatures. The common case is a signed JCE
+provider, such as Bouncy Castle, on Oracle JDK or Oracle GraalVM, which enforce JCE provider signing. Other OpenJDK
+builds do not check it, so there the provider works from the single JAR. Where signatures are checked, such code
+works only in an <<extract,extracted layout>> of a Runner JAR packaged with `PRESERVE`
+(<<compression,Compression Modes>>), which keeps the signed JARs byte for byte; the JDK's own class loader then
+verifies them. `STORED` and `HYBRID` remove the signature files when they package, so their extracted layouts hold no
+signed JARs. The build warns about every signed dependency.
+The module path:: Your application and its dependencies run in one unnamed module, as on a class path, so a
+dependency's `module-info.class` is ignored, as it is there. Classes of modules added with `--module-path` and
+`--add-modules` are visible to your application. In the single JAR, the services those modules provide are not found
+unless you start with `-Dmicronaut.runner.parent=system`. In an <<extract,extracted layout>>, they are found.
+A dependency's `Class-Path` attribute:: Ignored, with a warning when the archive is packaged, because the files it
+names are not in the archive. It applies again in an extracted layout.
+Native libraries:: Libraries that ship native code, such as Netty's native transports, unpack it to a temporary
+directory themselves, as from any JAR. That directory must be writable.
+Relocation:: Runner never renames packages. A build that relies on Shadow relocation to separate two versions of a
+library needs another solution.
 
-Classes in `io.micronaut.runner`:: The launcher's own classes are loaded from the launcher, so an
-application or dependency class whose binary name is one of theirs - `io.micronaut.runner.Index`, say -
-resolves to the launcher's copy. Any other class under that package prefix is loaded from the archive like
-any other application class.
+The launcher uses only the `java.base` module, so a `jlink` runtime needs only the modules your application needs.
 
-The system class loader:: Only the thread context class loader is the runner class loader.
-`ClassLoader.getSystemClassLoader()` still sees the real `java.class.path`, which contains only the runner
-JAR itself. Code that resolves classes through the system class loader, or that parses `java.class.path`
-to discover the application's dependencies, will not find them. Micronaut resolves its application class
-loader from the thread context class loader, so the framework is unaffected.
+[[javaAgents]]
+== Java agents
 
-Signatures are not verified:: The default re-packing mode removes nested signature files, and `HYBRID`, which
-re-packs too, removes them the same way. `PRESERVE` keeps
-the nested JAR bytes, including signature files, but the runner still does not verify them. Application and
-dependency `CodeSource` objects have a null `CodeSigner[]`. External authentication of the outer artifact
-does not change that, so code that requires signed-JAR semantics, such as a signed JCE provider, is not
-supported. See <<authenticating>> for deployment-artifact authentication.
+An agent started with `-javaagent`, such as a monitoring or tracing agent, sees every class Runner defines and can
+transform it, as with any class loader. The agent itself is loaded by the system class loader, which your
+application does not see by default. An agent that puts the classes it shares with your application on the boot
+class path needs nothing more.
 
-The Java Platform Module System:: Everything runs in the unnamed module of the runner class loader. A
-dependency's `module-info.class` is carried but is inert, and modules added with `--module-path` are not
-visible to the application.
+Start with `-Dmicronaut.runner.parent=system` when your application must see the agent's classes from the class
+path, or when the agent adds JARs to the class path at run time. The application's class loader then delegates to the
+system class loader, and Runner turns off the <<staticServices,precomputed service lookups>>, so that Micronaut also
+finds services on the real class path.
 
-Dependency `Class-Path` manifest attributes:: Ignored, with a warning at packaging time. They point at
-sibling files that do not exist inside an archive. They become active again after `extract`.
+An agent attached to a running JVM, rather than started with `-javaagent`, sees the classes of a
+<<startupProfile,startup profile>> as already loaded.
 
-Native libraries:: Libraries that ship native code, such as Netty's transports, unpack it to a temporary
-directory themselves, exactly as they do from any JAR. Micronaut Runner does not extract anything, but it does
-not prevent a library from doing so.
+Runner's tests do not cover a particular monitoring agent, such as the OpenTelemetry, Datadog or New Relic Java
+agent. If one misbehaves in a Runner JAR, please https://github.com/{githubSlug}/issues[report it].
 
 [[authenticating]]
 == Authenticating a deployment artifact
 
-Do not run `jarsigner`, edit the manifest, re-zip or append to the runner JAR after packaging: the launcher
-rejects the rewritten file, whose length and entry offsets no longer match its index. To authenticate the JAR,
-sign the finished file externally, for example with a detached signature, and verify it against a pinned key
-before launch: `gpg --verify app.jar.asc app.jar && exec java -jar app.jar`. The runner still does not verify
-nested JAR signatures (see _Signatures are not verified_ above), and `-Dmicronaut.runner.verify=true` CRC
-checks detect corruption, not authorship. See <<archiveLifetime,archive lifetime>>.
+Do not run `jarsigner` on a Runner JAR, or change it in any other way after packaging
+(<<archiveLifetime,Archive Lifetime>>). To prove where an archive comes from, sign the finished file externally and
+verify it before you start it, for example:
+
+[source,bash]
+----
+gpg --verify my-app-0.1-all.jar.asc my-app-0.1-all.jar && exec java -jar my-app-0.1-all.jar
+----
+
+`-Dmicronaut.runner.verify=true` detects a corrupted archive, not who built it.

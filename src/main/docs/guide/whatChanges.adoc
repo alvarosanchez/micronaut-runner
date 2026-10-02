@@ -1,0 +1,80 @@
+When the build packages a Runner JAR, some work moves from every start to the build. Each step is on by default where
+your versions support it, and can be turned off. The build log says what each step did, and why when it did nothing.
+
+[cols="3,2,4,3",options="header"]
+|===
+|Step |Default |What you may notice |Option
+
+|<<precompiledLogback,Precompiled Logback configuration>>, from Micronaut AOT
+|On
+|A `logger.config` that only Micronaut sees, such as one in a mounted `application.yml`, is not applied;
+`-Dlogger.config` and `LOGGER_CONFIG` still are.
+|`precompileLogback`
+
+|<<desugaredLambdas,Lambdas generated at build time>>
+|On, except with `PRESERVE`
+|One extra frame per lambda call in stack traces.
+|`desugarLambdas`
+
+|<<staticServices,Precomputed service lookups>>
+|Only with micronaut-core 5.1.10 up to 5.2 (Micronaut platform 5.1). With micronaut-core 5.2 or later it does
+nothing, and the build log says so.
+|A service provider added after packaging is not seen.
+|`staticServices`
+|===
+
+Runner verifies every class it rewrites. When a rewrite fails, it keeps the original class and says so in the build
+log. It never rewrites the classes of signed JARs. `inspect` lists what the class rewrites changed
+(<<quickStartCheck,Checking the Archive>>); the build log reports every step.
+
+One more class rewrite is off unless you turn it on: dropping the local-variable names of dependency classes
+(<<localVariableTables,Opt-in: Dependency Local-Variable Names>>).
+
+To turn steps off, set their options to `false`. To rule these steps out while you track down a problem, turn off all
+three: in Gradle, in `micronaut { runner { } }`; in Maven, in the `<configuration>` of `micronaut-maven-plugin`.
+
+[source.multi-language-sample,gradle-groovy]
+----
+micronaut {
+    runner {
+        options.put('precompileLogback', 'false')
+        options.put('desugarLambdas', 'false')
+        options.put('staticServices', 'false')
+    }
+}
+----
+
+[source.multi-language-sample,gradle-kotlin]
+----
+micronaut {
+    runner {
+        options.put("precompileLogback", "false")
+        options.put("desugarLambdas", "false")
+        options.put("staticServices", "false")
+    }
+}
+----
+
+[source.multi-language-sample,maven]
+----
+<configuration>
+    <runnerOptions>
+        <precompileLogback>false</precompileLogback>
+        <desugarLambdas>false</desugarLambdas>
+        <staticServices>false</staticServices>
+    </runnerOptions>
+</configuration>
+----
+
+Maven also takes the property `micronaut.runner.<option>`, such as `-Dmicronaut.runner.desugarLambdas=false` on the
+command line. `PRESERVE` compression turns off only the class rewrites (<<compression,Compression Modes>>).
+
+Other differences from a shaded JAR do not come from these steps:
+
+* In the single JAR, a library that looks up your dependencies' classes through the system class loader does not find
+them; in either layout, neither does one that scans only the files `java.class.path` names. Micronaut does neither
+(<<compatibility,Compatibility and Limitations>>).
+* Signed dependencies are not verified in the single JAR, which matters to a signed JCE provider on Oracle JDK or
+Oracle GraalVM (<<compatibility,Compatibility and Limitations>>).
+* A dependency's own `Class-Path` manifest attribute is ignored (<<compatibility,Compatibility and Limitations>>).
+* A deployed Runner JAR must never be modified, signed or re-zipped (<<archiveLifetime,Archive Lifetime>>).

@@ -62,6 +62,35 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      # The user guide states rounded, relative performance claims only (CONTRIBUTING.md, "Benchmarks").
+      # Measured values, harness row names and CI run links belong in pull requests and benchmarks/README.md.
+      # Whole-number MB stays allowed, for the JVM's own ergonomics threshold; percentages appear on the
+      # Performance page only.
+      - name: "📏 Check that the guide carries no measurements"
+        if: matrix.java == '25'
+        run: |
+          if grep -rnE 'actions/runs/|95% CI|[0-9]+\.[0-9]+ ?(ms|s|MiB|MB|KiB|µs)\b|[0-9]+ ?(ms|MiB|KiB|µs)\b|[0-9]{1,3}(,[0-9]{3})+ ?(B|bytes)\b|\b(runner|shadow)-(stored|preserve|extracted|maot|aot)\b|vCPU|benchmark-large|RssAnon|phys_footprint' src/main/docs/guide; then
+            echo "::error::The user guide contains measured values or benchmark details; see CONTRIBUTING.md"
+            exit 1
+          fi
+          if grep -rnE '[0-9]+(\.[0-9]+)? ?%' src/main/docs/guide --exclude=performance.adoc; then
+            echo "::error::Percentages belong on the guide's Performance page only; see CONTRIBUTING.md"
+            exit 1
+          fi
+
+      # Each guide page is rendered on its own, so a cross-reference without link text (<<id>>) is
+      # published as the literal text "[id]" (CONTRIBUTING.md, "Building Documentation").
+      - name: "🔗 Check that every guide cross-reference has link text"
+        if: matrix.java == '25'
+        run: |
+          ./gradlew publishGuide --no-daemon
+          guide=build/working/02-docs-raw/all/guide/index.html
+          test -s "$guide" || { echo "::error::publishGuide did not write $guide"; exit 1; }
+          if grep -noE '>\[[A-Za-z]+\]</a>' "$guide"; then
+            echo "::error::A guide cross-reference has no link text; write <<id,Text>>"
+            exit 1
+          fi
+
       # Building buildSrc does not run its tests, and check does not either: the build-logic tests run
       # here only, in the same Gradle invocation, on one JDK.
       - name: "🛠 Build and test"

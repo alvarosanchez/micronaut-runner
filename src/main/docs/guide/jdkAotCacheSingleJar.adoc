@@ -1,0 +1,18 @@
+To keep the deployment one application file, train the cache on the Runner JAR itself. Run the
+<<trainingSnippet,training script>> with `JAR` at the path production starts, and with the training property set for
+that run only:
+
+[source,bash]
+----
+JDK_JAVA_OPTIONS='-Dmicronaut.runner.aot.training=true' bash train.sh
+java -XX:+UseG1GC -XX:AOTCache=app.aot -jar my-app-0.1-all.jar
+----
+
+WARNING: Set `micronaut.runner.aot.training` only on the training run: in the Dockerfile, put it in front of
+`bash train.sh` in the `RUN` step, never in `ENV`. It makes classes report the archive's `file:` URL as their code
+source, which production must not see. On JDK 27 and later, a cache trained without it leaves most of your
+application's classes out, and the start takes much longer.
+
+On JDK 27 and later, add the <<aotCreationFlags,creation flags>> in front of the same command. If you use a
+<<startupProfile,startup profile>>, commit it and rebuild the archive before you train, so the cache also holds the
+classes the profile preloads.

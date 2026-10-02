@@ -1,0 +1,15 @@
+The `extract` mode writes the archive out as a directory: each dependency as the JAR file it holds, under `lib/`, and
+your application as a JAR whose manifest names the main class and lists those dependencies in its `Class-Path`.
+
+[source,bash]
+----
+java -Dmicronaut.runner.mode=extract -jar my-app-0.1-all.jar --destination app
+java -jar app/my-app-0.1-all.jar
+----
+
+The extracted layout runs on the JDK's own class loader, without Runner's launcher. With a
+<<jdkAotCache,JDK AOT cache>>, it starts about as fast as the single JAR with its cache. Without a cache, it starts more
+slowly than the single JAR: use it uncached only to work around a limitation in
+<<compatibility,Compatibility and Limitations>>.
+
+An existing, non-empty destination is refused; `--force` replaces it.

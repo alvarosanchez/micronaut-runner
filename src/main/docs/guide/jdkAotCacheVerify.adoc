@@ -1,0 +1,23 @@
+A strict probe checks a cache against the JDK and the class path without starting your application. Run it where
+the application finally lives, such as in the image's `RUN` step, with the flags production uses, and repeat it: some
+failures happen only on some starts.
+
+[source,bash]
+----
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  java -XX:+UseG1GC -XX:AOTMode=on -XX:AOTCache=app.aot -cp app/my-app-0.1-all.jar -version 2>/dev/null || exit 1
+done
+----
+
+A passing probe prints nothing. A failing one exits with 1 and prints the reason as an `[error][aot]` line on
+standard output, not standard error. For the single JAR, probe `my-app-0.1-all.jar` itself.
+
+Then start the application once with class loading logged, and check that your classes come from the cache:
+
+[source,bash]
+----
+java -XX:+UseG1GC -XX:AOTMode=on -XX:AOTCache=app.aot -Xlog:class+load -jar app/my-app-0.1-all.jar
+----
+
+A class from the cache is logged as, for example, `com.example.Application source: shared objects file`. When the
+JVM rejects a cache, `-Xlog:class+path=info` shows how it compared the class path with the one the cache recorded.

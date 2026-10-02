@@ -1,0 +1,3 @@
+This section is the reference for Runner's options: the packaging options, with their defaults and when to change
+them, and the system properties that the launcher reads when the application starts
+(<<runtimeProperties,Run-Time System Properties>>).

@@ -8,26 +8,41 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=micronaut-projects_micronaut-runner&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=micronaut-projects_micronaut-runner)
 [![Revved up by Develocity](https://img.shields.io/badge/Revved%20up%20by-Develocity-06A0CE?logo=Gradle&labelColor=02303A)](https://ge.micronaut.io/scans)
 
-Fast-starting single-jar packaging for Micronaut applications.
+Fast-starting, lean single-JAR packaging for Micronaut applications.
 
-On a 49-dependency Micronaut Netty service on JDK 25, a Runner JAR built with the plugins' defaults answers its first
-request 33.2% sooner than the same application shaded with Gradle Shadow (median of 20 interleaved runs in CI, no JDK
-cache). See [Benchmarks](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#benchmarks) for the
-conditions and for where it does not win.
+`micronaut-runner` packages an application and its dependencies into one executable JAR that you run with
+`java -jar`, without flattening the dependencies the way Gradle Shadow and Maven Shade do. Every dependency stays a
+separate JAR inside the archive, so `META-INF/services` files, multi-release classes, per-JAR manifests and duplicate
+resources behave as on an ordinary class path. Only Micronaut's `META-INF/micronaut/` bean metadata is merged, on
+purpose, so that Micronaut reads it in one pass.
 
-`micronaut-runner` packages an application and all of its dependencies into one executable JAR that you
-run with `java -jar app.jar`, **without** flattening the dependencies into a single namespace the way
-Gradle Shadow and Maven Shade do. Dependencies remain separately addressable nested JARs, so ordinary
-resources such as `META-INF/services` entries, multi-release classes, per-JAR manifests and duplicate
-resources retain classpath lookup and ordering semantics. One namespace is intentionally different:
-`META-INF/micronaut/**` metadata is deliberately merged and de-duplicated at the archive root so Micronaut
-can discover it in one listing.
+Without a JDK AOT cache, a Runner JAR typically reaches its first response in about a quarter less time than the same
+application packaged with Shadow, and uses less memory
+([Performance](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#performance)).
 
-The archive carries a binary index built at packaging time that maps every entry to its absolute byte
-offset in the outer file. At startup the launcher memory-maps the archive once; lookup starts at a hashed
-slot and follows a build-time-bounded linear-probe sequence. Same-name records retain classpath order, and
-each nested JAR's multi-release policy selects the applicable record. No nested central directory is parsed
-and nothing is extracted to disk.
+## Quick start
+
+Micronaut Runner packages Micronaut 5 applications, and needs nothing beyond Micronaut 5's own requirements, such as
+Java 25. The Micronaut build plugins build Runner JARs: with Gradle, apply `io.micronaut.runner` next to
+`io.micronaut.application`; with Maven, set the packaging to `runner`. Micronaut Launch offers it as the `runner`
+feature, in place of Shadow. The [Quick Start](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#quickStart)
+has the details.
+
+That support is in progress in Micronaut Launch (micronaut-projects/micronaut-starter#3134), the Micronaut Gradle
+plugin (micronaut-projects/micronaut-gradle-plugin#1378) and the Micronaut Maven plugin
+(micronaut-projects/micronaut-maven-plugin#1720). Until it ships, build Runner JARs with Runner's own interim plugins,
+as [docs/interim-plugins.md](docs/interim-plugins.md) describes. With Gradle:
+
+```groovy
+plugins {
+    id 'io.micronaut.runner.standalone' version '<version>'
+}
+```
+
+```bash
+./gradlew assemble
+java -jar build/libs/<app>-<version>-all.jar
+```
 
 ## Documentation
 

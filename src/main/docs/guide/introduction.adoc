@@ -1,22 +1,54 @@
-A Micronaut application is usually shipped as a single executable JAR, and until now that has meant a
-_shaded_ JAR: Gradle Shadow or Maven Shade copy the contents of every dependency into one archive and
-flatten them into a single namespace.
+[WARNING]
+====
+This guide describes Runner as Micronaut Launch and the Micronaut Gradle and Maven plugins will provide it. Not
+shipped yet:
 
-Flattening is lossy. Two dependencies that both ship `META-INF/services/java.sql.Driver` collide, so the
-build needs a transformer to merge them. Micronaut 4 and later publish their bean metadata as a directory
-tree under `META-INF/micronaut/`, which collides the same way. Signature files have to be stripped or the
-result fails verification. `module-info.class` files collide. `META-INF/versions/` trees from several
-multi-release JARs are merged into one that belongs to no particular library. Each dependency's own
-manifest, and with it `Implementation-Version` and package sealing, is discarded. Every one of these is a
-silent failure mode: the build succeeds and the application misbehaves at run time.
+* The `runner` feature of Micronaut Launch
+(https://github.com/micronaut-projects/micronaut-starter/issues/3134[micronaut-starter#3134]), the `io.micronaut.runner`
+plugin of the Micronaut Gradle plugin
+(https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1378[micronaut-gradle-plugin#1378]) and the
+`runner` packaging of the Micronaut Maven plugin
+(https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1720[micronaut-maven-plugin#1720]). Meanwhile,
+build Runner JARs with Runner's own interim plugins, as
+https://github.com/{githubSlug}/blob/master/docs/interim-plugins.md[the interim plugins page] describes.
+* Logback precompilation from Micronaut AOT
+(https://github.com/micronaut-projects/micronaut-aot/pull/517[micronaut-aot#517]), applied by the Micronaut plugins
+(https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1380[micronaut-gradle-plugin#1380],
+https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1722[micronaut-maven-plugin#1722]). Meanwhile, a
+Runner JAR precompiles `logback.xml` with Runner's own copy of the same engine, and its run-time switch is
+`-Dmicronaut.runner.logback.precompiled=false`.
+* A JDK AOT cache trained by `./gradlew dockerBuild` and `mvn package -Dpackaging=docker`
+(https://github.com/micronaut-projects/micronaut-gradle-plugin/pull/1381[micronaut-gradle-plugin#1381],
+https://github.com/micronaut-projects/micronaut-maven-plugin/pull/1723[micronaut-maven-plugin#1723]). Meanwhile, train
+one by hand, in an image that holds the Runner JAR (<<jdkAotCacheByHand,Training a Cache>>).
 
-Micronaut Runner takes a different approach. The archive it produces is still a single file you run with
-`java -jar`, but every dependency inside it remains an intact JAR:
+The interim plugins page lists every difference from this guide. Runner itself is not released yet, so neither interim
+plugin is on the Gradle Plugin Portal or Maven Central.
+====
 
-.The shape of a runner JAR
+Micronaut Runner packages a Micronaut application as one executable JAR that you run with `java -jar`. Compared with
+a Shadow or Shade JAR, it starts noticeably faster without a JDK AOT cache, and uses less of the memory that a
+process does not share with the OS page cache: packaging does extra work at build time so that every start does less
+(<<performance,Performance>>). Unlike a shaded JAR, it keeps every dependency as a separate JAR inside it.
+
+Gradle Shadow and Maven Shade flatten all dependencies into one namespace, which loses information:
+
+* `META-INF/services` files from different dependencies collide and need merging.
+* The Micronaut bean metadata under `META-INF/micronaut/` collides the same way.
+* Signature files must be stripped, or the result fails verification.
+* Each dependency's manifest, with its `Implementation-Version` and package sealing, is discarded.
+* `META-INF/versions/` trees of several multi-release JARs are merged into one.
+
+A Runner JAR keeps the boundaries, so duplicate resources, per-JAR manifests, sealed packages and multi-release JARs
+behave as they do on an ordinary class path.
+
+The Micronaut Gradle and Maven plugins build Runner JARs, and Micronaut Launch offers Runner as an alternative to
+Shadow and Shade (<<quickStart,Quick Start>>).
+
+.The shape of a Runner JAR
 [source]
 ----
-app.jar
+my-app-0.1-all.jar
 ├── META-INF/MANIFEST.MF          <1>
 ├── MICRONAUT-INF/index.bin       <2>
 ├── io/micronaut/runner/*.class   <3>
@@ -25,34 +57,37 @@ app.jar
 └── MICRONAUT-INF/lib/*.jar       <6>
 ----
 <1> `Main-Class` points at the launcher
-<2> the index: every entry of every nested JAR, with its byte offset in this file
-<3> the launcher and its class loader, a handful of classes with no dependencies
-<4> the merged Micronaut bean metadata, so the framework finds it in one pass
-<5> the application's own classes and resources
-<6> the dependencies, each one a complete, untouched JAR
+<2> an index of every entry, built when the archive is packaged
+<3> the launcher, a few small classes that start your application
+<4> the Micronaut bean metadata of every JAR, merged so that Micronaut reads it in one pass
+<5> your application's own classes and resources
+<6> the dependencies, each one a separate JAR
 
-Because the boundaries survive, so do the semantics. Duplicate resources stay distinct and are returned in
-classpath order, each JAR keeps its own manifest and package metadata, sealed packages are still enforced,
-and multi-release JARs still resolve per JAR against the running JDK.
+== How it starts faster
 
-[[whyItIsFast]]
-== Why it is fast
+The index is built when the archive is packaged, so nothing is scanned at startup. The launcher maps the archive
+into memory once and extracts nothing. By default, dependencies are stored uncompressed, so classes are defined
+straight from the archive. Packaging also does once what a shaded JAR repeats at every start: it generates the
+classes for lambdas, precomputes Micronaut's service lookups on micronaut-core 5.1, and compiles `logback.xml`
+(<<whatChanges,What Changes for Your Application>>). With the default settings, building a Runner JAR takes less time
+than building a Shadow JAR of the same application, build-time transforms included. The archive is larger on disk
+than a shaded JAR, but smaller compressed.
 
-Reading nested JARs is normally *slower* than an ordinary classpath, which is why the usual advice for
-this style of archive is to unpack it before running in production. Micronaut Runner avoids that cost by
-moving all of the work to build time.
+Two features share the letters AOT. _Micronaut AOT_ generates optimized application code when you build
+(<<micronautAot,Micronaut AOT>>). The _JDK AOT cache_ is a file the JVM writes during a training run of your
+application, and reads at every later start (<<jdkAotCache,The JDK AOT Cache>>). Runner works with both.
 
-When the archive is packaged, every entry of every nested JAR is recorded in `MICRONAUT-INF/index.bin`
-together with its absolute byte offset in the outer file. At startup the launcher memory-maps the archive
-once and reads that index directly out of the mapping. Looking up a class starts at its hash slot and uses
-linear probing up to the longest probe sequence recorded by the builder, followed by a byte comparison.
-Same-name records are then resolved in classpath order and per JAR against the effective multi-release
-version. No central directory is parsed, no nested archive is opened, nothing is extracted to disk, and no
-temporary files are written. Dependencies are stored uncompressed by default, so a class is defined straight
-from the mapped bytes with no intermediate array and no decompression. That makes the default archive larger than
-a shaded JAR on disk but smaller gzipped, 2.44 and 0.67 times Shadow's in the <<benchmarkResults,benchmark>>;
-`PRESERVE`, which copies each dependency byte for byte, is the size-first option.
+== When Runner is not the right fit
 
-The launcher itself is written to keep off the JVM's slow paths: no lambdas, no string concatenation
-through `invokedynamic`, no reflection on the entry path, and no `java.util.logging`. It is a handful of
-classes, and it hands control to your `main` method through an interface call.
+* You build a GraalVM native image. Runner packages JVM applications only.
+* You deploy a serverless function, such as on AWS Lambda, Google Cloud Functions, Azure Functions or Oracle
+Functions. The function host loads your handler itself and never runs the archive's main class.
+* Your build relies on Shadow relocation to rename packages. Runner never relocates.
+* You deploy only the container image that `./gradlew dockerBuild` or `mvn package -Dpackaging=docker` builds. That
+image is built in layers from your classes and dependency JARs, not from the Runner JAR, so Runner changes nothing in
+it.
+
+A few third-party libraries behave differently in a Runner JAR. <<compatibility,Compatibility and Limitations>> lists
+them, with the workaround when there is one.
+
+Start with <<quickStart,Quick Start>>, then read <<whatChanges,What Changes for Your Application>>.

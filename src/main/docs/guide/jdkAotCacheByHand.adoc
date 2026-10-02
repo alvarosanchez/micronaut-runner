@@ -1,0 +1,84 @@
+Training needs a Java runtime, `bash` and `curl`. Extract the Runner JAR (<<extract,Extracting to a Directory>>), then
+run this script with `JAR` set to the path production starts, and `PATHS` to the paths your application serves in
+production:
+
+[source,bash]
+----
+java -Dmicronaut.runner.mode=extract -jar build/libs/my-app-0.1-all.jar --destination app
+JAR=app/my-app-0.1-all.jar PATHS='/hello /orders' bash train.sh
+java -XX:+UseG1GC -XX:AOTCache=app.aot -jar app/my-app-0.1-all.jar
+----
+
+[[trainingSnippet]]
+.train.sh
+[source,bash]
+----
+set -eu
+JAR=${JAR:-my-app-0.1-all.jar}           # the exact path production starts
+JAVA_FLAGS=${JAVA_FLAGS:--XX:+UseG1GC}   # the same GC and heap flags as production
+PATHS=${PATHS:-/hello}                   # the paths production serves, space-separated
+CACHE=app.aot
+URL=http://localhost:8080                # the application's base URL
+
+java $JAVA_FLAGS -XX:AOTCacheOutput="$CACHE" -jar "$JAR" &
+pid=$!
+trap 'kill -KILL "$pid" 2>/dev/null || true' EXIT   # never leave the JVM behind on failure
+i=0
+until curl -s -o /dev/null "$URL/"; do              # readiness: the port answers HTTP, whatever the status
+  i=$((i + 1))
+  [ "$i" -le 300 ] && kill -0 "$pid" 2>/dev/null || exit 1
+  sleep 0.2
+done
+for p in $PATHS; do curl -fs -o /dev/null "$URL$p"; done   # workload: an error status fails training
+kill -TERM "$pid"                                    # an orderly shutdown writes the cache
+wait "$pid" || [ $? -eq 143 ]                        # 143 is the exit status after SIGTERM
+test -s "$CACHE"
+----
+
+Set `JAVA_FLAGS` to the garbage collector and heap flags production uses, and start production with the same flags
+(<<jdkAotCacheRules,What a Cache Depends On>>). The image build often runs on a larger machine than the production
+container, where the JVM may pick another collector and reject the cache.
+
+Only an orderly shutdown writes the cache. On a platform without `SIGTERM`, use `jcmd "$pid" AOT.end_recording`
+instead of the `kill -TERM` and `wait` lines; it needs a JDK image, not a JRE, of JDK 25.0.4 or later.
+
+=== In a container image
+
+Train in the final image, after the last `COPY` of the application, so the cache fits the image's JDK and files
+exactly. Install `curl` for training only, and pin the base image by digest in production, because the cache belongs
+to that JDK build:
+
+[source,dockerfile]
+----
+FROM eclipse-temurin:25-jre
+RUN useradd --system --no-create-home app
+WORKDIR /app
+COPY app/ ./
+COPY train.sh ./
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+ && bash train.sh \
+ && for i in 1 2 3 4 5 6 7 8 9 10; do java -XX:+UseG1GC -XX:AOTMode=on -XX:AOTCache=app.aot -cp my-app-0.1-all.jar -version 2>/dev/null || exit 1; done \
+ && rm train.sh && apt-get purge -y --auto-remove curl && rm -rf /var/lib/apt/lists/*
+USER app
+ENTRYPOINT ["java", "-XX:+UseG1GC", "-XX:AOTCache=app.aot", "-jar", "my-app-0.1-all.jar"]
+----
+
+Set `PATHS`, and `JAR` when it differs, in front of `bash train.sh`. The loop checks the cache ten times
+(<<jdkAotCacheVerify,Verifying a Cache>>). A failed training run or check fails the image build. The application JAR
+of the layout has the Runner JAR's file name, so with Maven it is `my-app-0.1.jar`: set `JAR` to it, and use it in the
+probe and the `ENTRYPOINT`.
+
+[[aotCreationFlags]]
+=== JDK 27 and later
+
+On JDK 27 and later, creating a cache needs two more flags; without them, strict launches fail now and then with
+`incompatible CompressedOops::base()`. The JVM reads `JDK_AOT_VM_OPTIONS` only when it creates a cache, so put it in
+front of the script, in the Dockerfile's `RUN` step too:
+
+[source,bash]
+----
+java -XX:+UnlockDiagnosticVMOptions -XX:+PrintFlagsFinal -version | grep AOTCompatibleOopCompression
+JDK_AOT_VM_OPTIONS='-XX:+UnlockDiagnosticVMOptions -XX:+AOTCompatibleOopCompression' bash train.sh
+----
+
+Set it only where the first command finds the flag. A JDK without it writes no cache, and the script fails.

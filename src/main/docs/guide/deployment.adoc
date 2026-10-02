@@ -1,0 +1,61 @@
+A Runner JAR can be deployed in several ways. Choose by what your pipeline can do and what you need to keep small.
+
+[cols="3,3,3,3,4",options="header"]
+|===
+|Deployment |What you ship |Start time |Memory |Choose it when
+
+|Single JAR
+|One JAR
+|Faster than a shaded JAR
+|Less than a shaded JAR
+|You want the default. Nothing else is needed.
+
+|Single JAR with a committed <<startupProfile,startup profile>>
+|One JAR
+|Faster again
+|Slightly more during startup
+|You deploy without a JDK AOT cache, on at least 2 CPUs.
+
+|Single JAR with a <<jdkAotCache,JDK AOT cache>>
+|One JAR and a cache file
+|Much faster; about the same as a cached shaded JAR, or slightly faster
+|Higher RSS than a cached shaded JAR, because the archive is mapped; less private memory
+|Your image build can train the application, and the application must stay one file.
+
+|Extracted layout with a JDK AOT cache
+|A directory of JARs and a cache file
+|About the same as the single JAR with its cache
+|The lowest RSS
+|Your image build can train the application, and RSS matters.
+
+|Any of the above, built from <<micronautAot,Micronaut AOT>>
+|As above
+|Faster without a JDK AOT cache; about the same with one
+|As above
+|Your project already uses Micronaut AOT.
+|===
+
+Some rules apply to every deployment:
+
+* Without a JDK AOT cache, the extracted layout starts more slowly than the single JAR. Use it uncached only to work
+around a limitation in <<compatibility,Compatibility and Limitations>>.
+* A JDK AOT cache works only with the exact JDK build, operating system and architecture that created it. Train it
+where the application runs, usually in the image build (<<jdkAotCacheRules,What a Cache Depends On>>).
+* For a GraalVM native image, Runner does not apply.
+
+A container image that the Micronaut plugins build, with `./gradlew dockerBuild` or `mvn package -Dpackaging=docker`,
+is none of these: it keeps your application and its dependencies in separate layers and does not hold the Runner JAR
+(<<quickStartGradle,Quick Start for Gradle>>, <<quickStartMaven,Quick Start for Maven>>). To ship a Runner JAR in an
+image, copy it onto a Java 25 or later runtime image:
+
+[source,dockerfile]
+----
+FROM eclipse-temurin:25-jre
+RUN useradd --system --no-create-home app
+WORKDIR /app
+COPY build/libs/my-app-0.1-all.jar ./
+USER app
+ENTRYPOINT ["java", "-jar", "my-app-0.1-all.jar"]
+----
+
+With Maven, copy `target/my-app-0.1.jar`. To add a JDK AOT cache, see <<jdkAotCacheByHand,Training a Cache>>.

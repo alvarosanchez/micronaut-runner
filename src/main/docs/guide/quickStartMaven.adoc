@@ -1,0 +1,42 @@
+Set the project's packaging to `runner`. In a project whose parent is `micronaut-parent`, as Micronaut Launch
+generates it, the packaging is the `packaging` property:
+
+[source,xml]
+----
+<properties>
+    <packaging>runner</packaging>
+</properties>
+----
+
+Nothing else is needed: `micronaut-parent` already declares the Micronaut Maven plugin, which builds the Runner JAR
+in `runner` packaging. The `runner` packaging never runs Maven Shade. A project without `micronaut-parent` declares
+`micronaut-maven-plugin` with `<extensions>true</extensions>` and sets `<packaging>runner</packaging>`.
+
+Build and run:
+
+[source,bash]
+----
+mvn package
+java -jar target/my-app-0.1.jar
+----
+
+The Runner JAR replaces the project's main artifact, as Shade does, and the JAR that `maven-jar-plugin` built is
+kept as `target/original-my-app-0.1.jar`. To attach the Runner JAR as an extra artifact instead, set the property
+`micronaut.runner.classifier` (<<configurationArchive,Main Class, Archive Name and Manifest>>). The main class comes
+from the `exec.mainClass` property, which Micronaut Launch already sets. If the project uses Micronaut AOT and has no
+`aot-runner.properties`, copy `aot-jar.properties` to that name. Without it, Micronaut AOT runs with its defaults and
+says nothing (<<micronautAot,Micronaut AOT>>).
+
+Runner's other goals take the Micronaut Maven plugin's prefix, `mn`, such as
+`mvn package mn:runner-startup-profile` (<<startupProfile,Startup Profile>>).
+
+Everything else stays the same: `mvn mn:run` and the tests do not use the Runner JAR.
+
+To build a container image, run `mvn package -Dpackaging=docker`, as without Runner: the packaging given on the command
+line replaces `runner` for that build. The image does not hold the Runner JAR: the Micronaut Maven plugin builds it
+from your application's classes and the dependency JARs, in separate layers, so that a change to your code rebuilds
+only your application's layers. With or without Runner, the image build can train a <<jdkAotCache,JDK AOT cache>>
+for a faster start: `-Dmicronaut.docker.jdkAotCache=true`; the Micronaut Maven plugin's documentation describes the
+option.
+
+To go back to Shade, set the packaging to `jar` again.

@@ -1,0 +1,156 @@
+In Gradle, set the options in `micronaut { runner { } }`. In Maven, a name such as `micronaut.runner.compression` is a
+property, set in `<properties>` or with `-D` on the command line, and a name in angle brackets is a parameter in the
+`<configuration>` of `micronaut-maven-plugin`:
+
+[source.multi-language-sample,gradle-groovy]
+----
+micronaut {
+    runner {
+        compression = 'PRESERVE'
+        addOpens.add('java.base/java.lang')
+        manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
+        options.put('archiveReads', 'POSITIONAL')
+    }
+}
+----
+
+[source.multi-language-sample,gradle-kotlin]
+----
+micronaut {
+    runner {
+        compression = "PRESERVE"
+        addOpens.add("java.base/java.lang")
+        manifestAttributes.put("Implementation-Vendor", "Example Ltd")
+        options.put("archiveReads", "POSITIONAL")
+    }
+}
+----
+
+[source.multi-language-sample,maven]
+----
+<properties>
+    <micronaut.runner.compression>PRESERVE</micronaut.runner.compression>
+</properties>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>io.micronaut.maven</groupId>
+            <artifactId>micronaut-maven-plugin</artifactId>
+            <configuration>
+                <addOpens>
+                    <addOpen>java.base/java.lang</addOpen>
+                </addOpens>
+                <manifestEntries>
+                    <Implementation-Vendor>Example Ltd</Implementation-Vendor>
+                </manifestEntries>
+                <runnerOptions>
+                    <archiveReads>POSITIONAL</archiveReads>
+                </runnerOptions>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+----
+
+[cols="2,2,4,4,6",options="header"]
+|===
+|Option |Default |Gradle |Maven |What it does, and when to change it
+
+|`compression`
+|`STORED`
+|`compression = 'PRESERVE'`
+|`micronaut.runner.compression`
+|How dependencies are stored: `STORED`, `PRESERVE` or `HYBRID` (<<compression,Compression Modes>>).
+
+|`startupClasses`
+|the committed profile
+|`startupClasses = file('classes.txt')`
+|`micronaut.runner.startupClasses`
+|The <<startupProfile,startup profile>> to embed. Change it to embed another list.
+
+|`entryStub`
+|`true`
+|`entryStub = false`
+|`micronaut.runner.entryStub`
+|Generates a class that calls your `main` method directly. With `false`, the launcher calls `main` reflectively, and
+the bean definition prefetch cannot run. Leave it on.
+
+|`multiRelease`
+|`false`
+|`multiRelease = true`
+|`micronaut.runner.multiRelease`
+|Set it when your own classes form a multi-release JAR.
+
+|`enableNativeAccess`
+|`false`
+|`enableNativeAccess = true`
+|`micronaut.runner.enableNativeAccess`
+|Writes `Enable-Native-Access: ALL-UNNAMED` to the archive's manifest. Set it when the JVM warns that a restricted
+method was called.
+
+|`addOpens`
+|empty
+|`addOpens.add('java.base/java.lang')`
+|`<addOpens>`, one `<addOpen>` per package
+|Packages to open, instead of `--add-opens` flags.
+
+|`addExports`
+|empty
+|`addExports.add('java.base/sun.nio.ch')`
+|`<addExports>`, one `<addExport>` per package
+|Packages to export, instead of `--add-exports` flags.
+
+|`manifestAttributes`
+|empty
+|`manifestAttributes.put('Implementation-Vendor', 'Example Ltd')`
+|`<manifestEntries>`
+|Extra attributes of the archive's manifest (<<configurationArchive,Main Class, Archive Name and Manifest>>).
+
+|`archiveReads`
+|`MAPPED`
+|`options.put('archiveReads', 'POSITIONAL')`
+|`micronaut.runner.archiveReads`, or `<archiveReads>` in `<runnerOptions>`
+|`MAPPED` or `POSITIONAL` (<<archiveReads,Mapped or Positional Reads>>). Change it when RSS matters more than start
+time.
+
+|`precompileLogback`
+|`true`
+|`options.put('precompileLogback', 'false')`
+|`micronaut.runner.precompileLogback`, or `<precompileLogback>` in `<runnerOptions>`
+|Compiles `logback.xml` at build time (<<precompiledLogback,Precompiled Logback Configuration>>).
+
+|`desugarLambdas`
+|`true`
+|`options.put('desugarLambdas', 'false')`
+|`micronaut.runner.desugarLambdas`, or `<desugarLambdas>` in `<runnerOptions>`
+|Generates the classes of lambdas at build time (<<desugaredLambdas,Lambdas Generated at Build Time>>).
+
+|`stripLocalVariables`
+|`false`
+|`options.put('stripLocalVariables', 'true')`
+|`micronaut.runner.stripLocalVariables`, or `<stripLocalVariables>` in `<runnerOptions>`
+|Drops the local-variable names of dependency classes; opt-in
+(<<localVariableTables,Dependency Local-Variable Names>>).
+
+|`staticServices`
+|`true`
+|`options.put('staticServices', 'false')`
+|`micronaut.runner.staticServices`, or `<staticServices>` in `<runnerOptions>`
+|Precomputes Micronaut's service lookups (<<staticServices,Precomputed Service Lookups>>).
+
+|`definitionPrefetch`
+|`false`
+|`options.put('definitionPrefetch', 'true')`
+|`micronaut.runner.definitionPrefetch`, or `<definitionPrefetch>` in `<runnerOptions>`
+|Loads Micronaut's bean definitions early, on a background thread; experimental
+(<<definitionPrefetch,Bean Definition Prefetch>>).
+|===
+
+Write `true` and `false` in lower case.
+
+`addOpens` and `addExports` take `module/package` pairs, as the JAR manifest writes them, such as
+`java.base/sun.nio.ch`, without `=ALL-UNNAMED`.
+
+Some options have a run-time switch that overrides the packaged setting for one start
+(<<runtimeProperties,Run-Time System Properties>>).

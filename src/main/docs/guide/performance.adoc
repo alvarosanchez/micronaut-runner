@@ -1,0 +1,16 @@
+Runner moves work from every start to the build. Measured with a Micronaut Netty service of about 50 dependencies,
+on micronaut-core 5.1, with JDK 25 and 27, on a multi-core developer machine, from launch to the first HTTP response:
+
+* Without a JDK AOT cache, a Runner JAR reaches its first response in about a quarter less time than a Shadow JAR of
+the same application, and uses clearly less memory.
+* The archive is larger on disk, nearly three times the size of a shaded JAR, but about a fifth smaller
+compressed, as image layers and downloads carry it.
+* With a JDK AOT cache on both sides, the Runner JAR starts in about the same time or slightly less, and uses
+somewhat less private memory: the memory a process does not share with the OS page cache.
+* Without a cache, a <<startupProfile,startup profile>> takes nearly a further quarter off the start time.
+
+Your results depend on your application, your CPUs and JDK, and the OS page cache. To measure your own application,
+build both JARs (<<quickStartGradle,Quick Start for Gradle>>), start each several times as a fresh JVM, alternating
+between them, and time each start to its first response. `-Dmicronaut.runner.timing=true` tells launcher time from
+framework time. The https://github.com/{githubSlug}/blob/master/benchmarks/README.md[benchmark harness] describes
+the method in full.

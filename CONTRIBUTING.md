@@ -46,6 +46,18 @@ The documentation sources are located at `src/main/docs/guide`.
 
 To build the documentation, run `./gradlew publishGuide` (or `./gradlew pG`), then open `build/docs/index.html`
 
+Each page of the guide is rendered on its own, so a cross-reference without link text, such as `<<performance>>`,
+shows as the literal text `[performance]`. Always give it text: `<<performance,Performance>>`. CI fails when the
+built guide contains such a link.
+
+The guide is for application developers. Behaviour that they cannot act on, such as class loader conformance tests
+or the entry stub's conditions, belongs in `docs/format.md` or the Javadoc.
+
+The guide describes Runner as the Micronaut Gradle and Maven plugins and Micronaut Launch provide it. The one WARNING
+at the top of the Introduction lists what has not shipped yet and what to use meanwhile; it is the only interim text
+in the guide, and it goes once that support ships. Its sentence on Runner's own release goes in the release pull
+request. Anything specific to Runner's own interim plugins goes in `docs/interim-plugins.md`.
+
 To also build the Javadocs, run `./gradlew docs`.
 
 ## Working on the code base
@@ -72,6 +84,8 @@ repositories {
 Never commit raw benchmark output (JMH JSON, startup or packaging reports). Summarise the results in the pull request description; the `benchmark-results` artifact of the Benchmarks workflow holds the raw files (run it with `workflow_dispatch`, or label the pull request `relates-to: benchmarks`).
 
 Quote startup comparisons as paired-difference medians with their 95% confidence intervals from one interleaved run. With fewer than 10 measured samples per variant, label the result descriptive.
+
+The user guide contains no measured values: no milliseconds, MiB, bytes, CI run links or confidence intervals. Its Performance section states a few rounded, relative claims, and it is the only page with numeric percentages; other pages compare in words, such as "a few percent" or "slightly slower". Refresh them only from a quiet run on a maintainer's machine, never from CI, and update the "Claims in the user guide" table of `benchmarks/README.md` in the same pull request. Packaging time is not a goal. The guide makes one packaging comparison, a single sentence in the Introduction without figures; refresh it like the other claims, and add no figures to it and no other packaging claim.
 
 ## Creating a pull request
 

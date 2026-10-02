@@ -1,0 +1,20 @@
+A JVM uses a cache only when it starts like the training run did:
+
+* *The same JDK build, operating system and CPU architecture.* Train where the application runs, usually in the
+image build, and pin the base image by digest.
+* *The same garbage collector and heap flags.* Set any collector or heap-size flag that production uses, such as
+`-Xmx`, for training too.
+* *A pinned collector in small containers.* With fewer than 2 CPUs or less than about 1792 MB of memory, the JVM
+picks SerialGC instead of G1. If training runs on a larger machine, pin the collector, for example with
+`-XX:+UseG1GC`, for training and production alike.
+* *The same files, with the same modification times.* `cp -p`, `tar` and Docker `COPY` keep them. Tools that rewrite
+them, such as jib with its default file time, or buildpacks, make the JVM reject the cache with
+`timestamp has changed`.
+* *Room in the image.* The cache is the largest file of a cached deployment.
+
+For the extracted layout, package with `STORED`, the default, or `PRESERVE` (<<compression,Compression Modes>>): both
+start the same with their cache. `STORED` gives a smaller compressed image layer and a faster start if the cache is
+ever rejected; `PRESERVE` gives a smaller layout on disk.
+
+The extracted layout keeps the precompiled Logback configuration and the precomputed service lookups. It has no
+launcher, so a startup profile and the bean definition prefetch do nothing there.

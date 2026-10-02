@@ -1,0 +1,97 @@
+A startup profile is the list of classes a run of your application loaded, in order. When a Runner JAR carries one,
+the launcher loads those classes on a background thread while your application starts, so the main thread usually
+finds them ready. The profile also puts each JAR's startup classes first in the archive, which helps a start whose
+files are not yet in the OS page cache, such as the first start of a new container.
+
+Record a profile when you deploy without a JDK AOT cache, on at least 2 CPUs. With a cache, it adds little. `HYBRID`
+compression needs one (<<compression,Compression Modes>>).
+
+== Recording a profile
+
+[source,bash]
+----
+./gradlew recordStartupProfile
+mvn package mn:runner-startup-profile
+----
+
+Recording starts the Runner JAR on a free port with the project's toolchain JDK, sends the training workload below,
+and stops it. It writes `src/main/micronaut-runner/startup-classes.txt`. Commit that file: the next builds embed it,
+and `inspect` shows the number of `Preload classes`. Recording never runs as part of `build` or `package`.
+
+[[trainingSettings]]
+== Training settings
+
+The workload decides part of the list, so point it at the paths your application serves in production. Without one,
+recording sends a single `GET /` and the build warns.
+
+In Gradle, the settings go in `micronaut { runner { training { } } }`. In Maven, each setting is the property
+`micronaut.runner.training.<name>`, in `<properties>` or on the command line; lists are comma-separated, and timeouts
+are in seconds.
+
+[source.multi-language-sample,gradle-groovy]
+----
+micronaut {
+    runner {
+        training {
+            readinessPath = '/health'
+            workloadPaths = ['/hello', '/orders']
+        }
+    }
+}
+----
+
+[source.multi-language-sample,gradle-kotlin]
+----
+micronaut {
+    runner {
+        training {
+            readinessPath = "/health"
+            workloadPaths = listOf("/hello", "/orders")
+        }
+    }
+}
+----
+
+[source.multi-language-sample,maven]
+----
+<properties>
+    <micronaut.runner.training.readinessPath>/health</micronaut.runner.training.readinessPath>
+    <micronaut.runner.training.workloadPaths>/hello,/orders</micronaut.runner.training.workloadPaths>
+</properties>
+----
+
+[cols="2,2,5",options="header"]
+|===
+|Setting |Default |What it does
+
+|`readinessPath` |none |Once the port accepts connections, `GET` this path until it answers with a 2xx status.
+|`workloadPaths` |none |`GET` each path in order; each must answer with a 2xx status.
+|`workloadRepeat` |`1` |How many times the paths are requested.
+|`workloadCommand` |none |A command run after the paths, with the application's URL in `MICRONAUT_RUNNER_TRAINING_URL`. It must exit with 0.
+|`runToExit` |`false` |For an application that exits by itself, such as a command-line tool, with no readiness path, workload or stop. It must exit with 0.
+|`stopPath` |none |`POST` this path to stop the application, instead of ending the process. For example, Micronaut's `/stop` endpoint, with `ENDPOINTS_STOP_ENABLED=true` and `ENDPOINTS_STOP_SENSITIVE=false` in `environment`.
+|`jvmArgs` |none |JVM arguments of the recording.
+|`environment` |none |Environment variables of the recording; in Maven, `NAME=value` entries.
+|`portVariable` |`MICRONAUT_SERVER_PORT` |The environment variable that receives the port.
+|`readinessTimeout`, `workloadTimeout`, `stopTimeout` |60, 60 and 30 seconds |How long to wait for readiness, the workload and the stop. In Gradle, a `java.time.Duration`; in Maven, seconds.
+|===
+
+Recording ignores `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_AOT_VM_OPTIONS` from the
+build's environment. Pass JVM flags with `jvmArgs`.
+
+An application that needs a database or a message broker to start gets its connection settings through
+`environment` or `jvmArgs`, and can be exercised by a `workloadCommand`.
+
+== Keeping it current
+
+Record the profile again after you upgrade Micronaut, another dependency or the JDK, or change the packaging options.
+When many listed classes are gone from the archive, the build warns that the profile looks stale. A stale profile is
+safe: the launcher only loads the listed classes, never initializes them, and skips those it cannot find.
+
+Preloading does not run in the extracted layout, with `-Dmicronaut.runner.preload=false`, or when the JVM sees fewer
+than 2 processors, which in a container means a CPU limit of 1. For agents, see <<javaAgents,Java agents>>.
+
+To embed another list, such as a class-load log, set the `startupClasses` option
+(<<configurationOptions,Packaging Options>>). The list can also be a file with one binary class name per line; blank
+lines and lines starting with `#` are ignored, and `jrt:<name>` marks a JDK class. To build without the profile,
+delete the file.
