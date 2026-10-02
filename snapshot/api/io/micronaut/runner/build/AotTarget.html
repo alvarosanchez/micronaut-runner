@@ -100,7 +100,8 @@ loadScripts(document, 'script');</script>
 </span><span class="modifiers">public enum </span><span class="element-name type-name-label">AotTarget</span>
 <span class="extends-implements">extends <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Enum.html" title="class or interface in java.lang" class="external-link">Enum</a>&lt;<a href="AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a>&gt;</span></div>
 <div class="block">What a JDK AOT cache is trained for: the extracted layout, which every JDK caches in full, or a copy of the
-single Runner JAR, whose nested classes JDK 27 and later do not cache.
+single Runner JAR, recorded with <code>micronaut.runner.aot.training</code> so that JDK 27 and later cache its
+classes.
 
 <p>Internal to Runner's interim build plugins, which read their <code>target</code> setting with <a href="#parse(java.lang.String)"><code>parse(String)</code></a>: it
 may change in any release.</p></div>
@@ -135,7 +136,8 @@ may change in any release.</p></div>
 </div>
 <div class="col-first odd-row-color"><code><a href="#SINGLE_JAR" class="member-name-link">SINGLE_JAR</a></code></div>
 <div class="col-last odd-row-color">
-<div class="block">A copy of the Runner JAR, its modification time kept: the single-file option on JDK 25 and 26.</div>
+<div class="block">A copy of the Runner JAR, its modification time kept, recorded with <code>micronaut.runner.aot.training</code> so
+that JDK 27 and later cache its classes: the single-file option.</div>
 </div>
 </div>
 </section>
@@ -226,7 +228,8 @@ the order they are declared.</div>
 <h3>SINGLE_JAR</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a></span>&nbsp;<span class="element-name">SINGLE_JAR</span></div>
-<div class="block">A copy of the Runner JAR, its modification time kept: the single-file option on JDK 25 and 26.</div>
+<div class="block">A copy of the Runner JAR, its modification time kept, recorded with <code>micronaut.runner.aot.training</code> so
+that JDK 27 and later cache its classes: the single-file option.</div>
 </div>
 </section>
 </li>

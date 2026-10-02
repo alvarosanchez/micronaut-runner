@@ -93,7 +93,8 @@ JAR whose manifest <code>Class-Path</code> lists <code>lib/*.jar</code> in class
 <div class="col-first even-row-color all-classes-table all-classes-table-tab3"><a href="io/micronaut/runner/build/AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a></div>
 <div class="col-last even-row-color all-classes-table all-classes-table-tab3">
 <div class="block">What a JDK AOT cache is trained for: the extracted layout, which every JDK caches in full, or a copy of the
-single Runner JAR, whose nested classes JDK 27 and later do not cache.</div>
+single Runner JAR, recorded with <code>micronaut.runner.aot.training</code> so that JDK 27 and later cache its
+classes.</div>
 </div>
 <div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/ApplicationManifest.html" title="class in io.micronaut.runner.build">ApplicationManifest</a></div>
 <div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
@@ -204,92 +205,88 @@ remains an intact nested jar.</div>
 <div class="block">Packages a Micronaut application as a runner jar: one executable archive in which every dependency
 remains an intact nested jar.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/benchmarks/PackagingComparison.html" title="class in io.micronaut.runner.benchmarks">PackagingComparison</a></div>
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/benchmarks/PackagingProfile.html" title="class in io.micronaut.runner.benchmarks">PackagingProfile</a></div>
 <div class="col-last even-row-color all-classes-table all-classes-table-tab2">
-<div class="block">Times Runner and Shadow packaging of a copy of benchmark-large in one warm, dedicated Gradle daemon.</div>
-</div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/benchmarks/PackagingProfile.html" title="class in io.micronaut.runner.benchmarks">PackagingProfile</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Profiles clean and edit-cycle packaging over deterministic input shapes.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/benchmarks/PackagingProfile.Worker.html" title="class in io.micronaut.runner.benchmarks">PackagingProfile.Worker</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/benchmarks/PackagingProfile.Worker.html" title="class in io.micronaut.runner.benchmarks">PackagingProfile.Worker</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Fresh-JVM worker so every attempt has independent allocation and peak-heap state.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/RecordStartupProfile.html" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/RecordStartupProfile.html" title="class in io.micronaut.runner.gradle">RecordStartupProfile</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Records the startup profile of the application: launches the runner jar, waits until it is ready, sends
 it the training workload and writes the classes it loaded to a file that is meant to be committed.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/maven/RecordStartupProfileMojo.html" title="class in io.micronaut.runner.maven">RecordStartupProfileMojo</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/maven/RecordStartupProfileMojo.html" title="class in io.micronaut.runner.maven">RecordStartupProfileMojo</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Records the startup profile of the application: launches the runner jar that <code>mn-runner:package</code>
 wrote, waits until it is ready, sends it the training workload and writes the classes it loaded to
 <a href="io/micronaut/runner/build/StartupProfileRecorder.html#PROFILE_LOCATION">"src/main/micronaut-runner/startup-classes.txt"</a>.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/RunnerClassLoader.html" title="class in io.micronaut.runner">RunnerClassLoader</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/RunnerClassLoader.html" title="class in io.micronaut.runner">RunnerClassLoader</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">The class loader that serves an application straight out of its runner jar.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/RunnerJarBuilder.html" title="class in io.micronaut.runner.build">RunnerJarBuilder</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/RunnerJarBuilder.html" title="class in io.micronaut.runner.build">RunnerJarBuilder</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Turns an application's own output and its resolved dependencies into a runner jar.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab3"><a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab3">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab3"><a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab3">
 <div class="block">Every packaging option of a runner jar, in one table: its name, the type of its value, its default,
 how the build plugins expose it and the Runner release that added it.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab3"><a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html" title="enum class in io.micronaut.runner.build">RunnerJarOption.Exposure</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab3">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab3"><a href="io/micronaut/runner/build/RunnerJarOption.Exposure.html" title="enum class in io.micronaut.runner.build">RunnerJarOption.Exposure</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab3">
 <div class="block">How the build plugins expose an option.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/RunnerJarReader.html" title="class in io.micronaut.runner.build">RunnerJarReader</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Recognises a runner jar.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">What <a href="io/micronaut/runner/build/RunnerJarBuilder.html#build(io.micronaut.runner.build.RunnerJarSpec,io.micronaut.runner.build.BuildLogger)"><code>RunnerJarBuilder.build(RunnerJarSpec, BuildLogger)</code></a> produced.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/RunnerJarSpec.html" title="class in io.micronaut.runner.build">RunnerJarSpec</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Everything <a href="io/micronaut/runner/build/RunnerJarBuilder.html" title="class in io.micronaut.runner.build"><code>RunnerJarBuilder</code></a> needs to know to produce a runner jar.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/RunnerJarSpec.Builder.html" title="class in io.micronaut.runner.build">RunnerJarSpec.Builder</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Describes a runner jar step by step.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/benchmarks/StartupBenchmark.html" title="class in io.micronaut.runner.benchmarks">StartupBenchmark</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/benchmarks/StartupBenchmark.html" title="class in io.micronaut.runner.benchmarks">StartupBenchmark</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">The end-to-end startup benchmark: builds the sample application in every packaging the runner competes
 with, starts each of them many times, and reports how long each takes to answer its first request.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/StartupProfileRecorder.html" title="class in io.micronaut.runner.build">StartupProfileRecorder</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/StartupProfileRecorder.html" title="class in io.micronaut.runner.build">StartupProfileRecorder</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Records the startup profile of an application: the classes a run of its runner jar loaded, in load order,
 written to a file that is meant to be committed and that the packager embeds for the launcher to preload.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">How a training run exercises the application: how the run knows it is ready, what it asks of it, and how it
 stops it.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/build/training/TrainingSettings.Builder.html" title="class in io.micronaut.runner.build.training">TrainingSettings.Builder</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Collects training settings, starting from the <a href="io/micronaut/runner/build/training/TrainingSettings.html#defaults()">defaults</a>.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/TrainingSpec.html" title="class in io.micronaut.runner.gradle">TrainingSpec</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
 <div class="block">How a training run exercises the application: how the build knows it is ready, what it asks of it and how
 it stops it.</div>
 </div>
-<div class="col-first even-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></div>
-<div class="col-last even-row-color all-classes-table all-classes-table-tab2">
+<div class="col-first odd-row-color all-classes-table all-classes-table-tab2"><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision</a></div>
+<div class="col-last odd-row-color all-classes-table all-classes-table-tab2">
 <div class="block">Rejects a Shadow archive that shares a runner archive's output before either producer executes.</div>
 </div>
-<div class="col-first odd-row-color all-classes-table all-classes-table-tab4"><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.ArchivePair.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision.ArchivePair</a></div>
-<div class="col-last odd-row-color all-classes-table all-classes-table-tab4">
+<div class="col-first even-row-color all-classes-table all-classes-table-tab4"><a href="io/micronaut/runner/gradle/ValidateShadowArchiveCollision.ArchivePair.html" title="class in io.micronaut.runner.gradle">ValidateShadowArchiveCollision.ArchivePair</a></div>
+<div class="col-last even-row-color all-classes-table all-classes-table-tab4">
 <div class="block">A Runner task and the Shadow task that writes the same archive name by default.</div>
 </div>
 </div>

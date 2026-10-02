@@ -164,7 +164,8 @@ into a failed launch instead of a slow one.</div>
 <div class="col-second even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getTarget()" class="member-name-link">getTarget</a>()</code></div>
 <div class="col-last even-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3">
 <div class="block">What the cache is trained for: <code>layout</code>, the extracted layout that every JDK caches in full, or
-<code>singleJar</code>, a copy of the Runner JAR, whose nested classes JDK 27 and later do not cache.</div>
+<code>singleJar</code>, a copy of the Runner JAR, recorded with <code>micronaut.runner.aot.training</code> so that JDK 27
+and later cache its classes.</div>
 </div>
 <div class="col-first odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code>abstract org.gradle.api.provider.Property<wbr>&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Integer.html" title="class or interface in java.lang" class="external-link">Integer</a>&gt;</code></div>
 <div class="col-second odd-row-color method-summary-table method-summary-table-tab2 method-summary-table-tab3"><code><a href="#getVerifyProbes()" class="member-name-link">getVerifyProbes</a>()</code></div>
@@ -228,8 +229,8 @@ asked for.</div>
 @Optional
 </span><span class="modifiers">public abstract</span>&nbsp;<span class="return-type">org.gradle.api.provider.Property&lt;<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html" title="class or interface in java.lang" class="external-link">String</a>&gt;</span>&nbsp;<span class="element-name">getTarget</span>()</div>
 <div class="block">What the cache is trained for: <code>layout</code>, the extracted layout that every JDK caches in full, or
-<code>singleJar</code>, a copy of the Runner JAR, whose nested classes JDK 27 and later do not cache. Defaults to
-<code>layout</code>.</div>
+<code>singleJar</code>, a copy of the Runner JAR, recorded with <code>micronaut.runner.aot.training</code> so that JDK 27
+and later cache its classes. Defaults to <code>layout</code>.</div>
 <dl class="notes">
 <dt>Returns:</dt>
 <dd>the target</dd>

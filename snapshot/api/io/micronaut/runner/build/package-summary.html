@@ -133,7 +133,8 @@ JAR whose manifest <code>Class-Path</code> lists <code>lib/*.jar</code> in class
 <div class="col-first even-row-color class-summary class-summary-tab3"><a href="AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a></div>
 <div class="col-last even-row-color class-summary class-summary-tab3">
 <div class="block">What a JDK AOT cache is trained for: the extracted layout, which every JDK caches in full, or a copy of the
-single Runner JAR, whose nested classes JDK 27 and later do not cache.</div>
+single Runner JAR, recorded with <code>micronaut.runner.aot.training</code> so that JDK 27 and later cache its
+classes.</div>
 </div>
 <div class="col-first odd-row-color class-summary class-summary-tab2"><a href="ApplicationManifest.html" title="class in io.micronaut.runner.build">ApplicationManifest</a></div>
 <div class="col-last odd-row-color class-summary class-summary-tab2">

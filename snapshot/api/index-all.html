@@ -126,7 +126,8 @@ JAR whose manifest <code>Class-Path</code> lists <code>lib/*.jar</code> in class
 <dt><a href="io/micronaut/runner/build/AotTarget.html" class="type-name-link" title="enum class in io.micronaut.runner.build">AotTarget</a> - Enum Class in <a href="io/micronaut/runner/build/package-summary.html">io.micronaut.runner.build</a></dt>
 <dd>
 <div class="block">What a JDK AOT cache is trained for: the extracted layout, which every JDK caches in full, or a copy of the
-single Runner JAR, whose nested classes JDK 27 and later do not cache.</div>
+single Runner JAR, recorded with <code>micronaut.runner.aot.training</code> so that JDK 27 and later cache its
+classes.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#APPLICATION_JAR_ID" class="member-name-link">APPLICATION_JAR_ID</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
@@ -729,13 +730,13 @@ manifest that the <code>jar</code> task's configuration cannot describe.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getCompression()" class="member-name-link">getCompression()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
 <dd>
-<div class="block">How the entries of each dependency are stored: <code>STORED</code> or <code>PRESERVE</code>.</div>
+<div class="block">How the entries of each dependency are stored: <code>STORED</code>, <code>PRESERVE</code> or <code>HYBRID</code>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getCompression()" class="member-name-link">getCompression()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
 <div class="block">How the entries of each dependency are stored: <code>STORED</code> re-packs them uncompressed so classes
 are defined straight from the memory-mapped archive, <code>PRESERVE</code> copies each dependency byte
-for byte.</div>
+for byte, and <code>HYBRID</code> stores the startup classes uncompressed and keeps the others compressed.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html#getCoordinates()" class="member-name-link">getCoordinates()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar.DependencyInput</a></dt>
 <dd>
@@ -941,7 +942,8 @@ into a failed launch instead of a slow one.</div>
 <dt><a href="io/micronaut/runner/gradle/JdkAotCacheSpec.html#getTarget()" class="member-name-link">getTarget()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/JdkAotCacheSpec.html" title="class in io.micronaut.runner.gradle">JdkAotCacheSpec</a></dt>
 <dd>
 <div class="block">What the cache is trained for: <code>layout</code>, the extracted layout that every JDK caches in full, or
-<code>singleJar</code>, a copy of the Runner JAR, whose nested classes JDK 27 and later do not cache.</div>
+<code>singleJar</code>, a copy of the Runner JAR, recorded with <code>micronaut.runner.aot.training</code> so that JDK 27
+and later cache its classes.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html#getTraining()" class="member-name-link">getTraining()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerExtension.html" title="class in io.micronaut.runner.gradle">MicronautRunnerExtension</a></dt>
 <dd>
@@ -1385,11 +1387,6 @@ AOT cache elsewhere, such as in a container image.</div>
 <dd>
 <div class="block">Entry point.</div>
 </dd>
-<dt><a href="io/micronaut/runner/benchmarks/PackagingComparison.html#main(java.lang.String%5B%5D)" class="member-name-link">main(String[])</a> - Static method in class io.micronaut.runner.benchmarks.<a href="io/micronaut/runner/benchmarks/PackagingComparison.html" title="class in io.micronaut.runner.benchmarks">PackagingComparison</a></dt>
-<dd>
-<div class="block">Entry point of the <code>packagingComparison</code> task: <code>--sample --repo --version --out --work</code>, and
-optionally <code>--iterations --seed --startup-classes</code>.</div>
-</dd>
 <dt><a href="io/micronaut/runner/benchmarks/PackagingProfile.html#main(java.lang.String%5B%5D)" class="member-name-link">main(String[])</a> - Static method in class io.micronaut.runner.benchmarks.<a href="io/micronaut/runner/benchmarks/PackagingProfile.html" title="class in io.micronaut.runner.benchmarks">PackagingProfile</a></dt>
 <dd>
 <div class="block">CLI entry point used by the Gradle <code>packagingProfile</code> task.</div>
@@ -1653,10 +1650,6 @@ remains an intact nested jar.</div>
 <dd>
 <div class="block">The package name a package override record applies to, in dotted form.</div>
 </dd>
-<dt><a href="io/micronaut/runner/benchmarks/PackagingComparison.html" class="type-name-link" title="class in io.micronaut.runner.benchmarks">PackagingComparison</a> - Class in <a href="io/micronaut/runner/benchmarks/package-summary.html">io.micronaut.runner.benchmarks</a></dt>
-<dd>
-<div class="block">Times Runner and Shadow packaging of a copy of benchmark-large in one warm, dedicated Gradle daemon.</div>
-</dd>
 <dt><a href="io/micronaut/runner/benchmarks/PackagingProfile.html" class="type-name-link" title="class in io.micronaut.runner.benchmarks">PackagingProfile</a> - Class in <a href="io/micronaut/runner/benchmarks/package-summary.html">io.micronaut.runner.benchmarks</a></dt>
 <dd>
 <div class="block">Profiles clean and edit-cycle packaging over deterministic input shapes.</div>
@@ -1908,7 +1901,8 @@ how the build plugins expose it and the Runner release that added it.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/AotTarget.html#SINGLE_JAR" class="member-name-link">SINGLE_JAR</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotTarget.html" title="enum class in io.micronaut.runner.build">AotTarget</a></dt>
 <dd>
-<div class="block">A copy of the Runner JAR, its modification time kept: the single-file option on JDK 25 and 26.</div>
+<div class="block">A copy of the Runner JAR, its modification time kept, recorded with <code>micronaut.runner.aot.training</code> so
+that JDK 27 and later cache its classes: the single-file option.</div>
 </dd>
 <dt><a href="io/micronaut/runner/ArchiveSource.html#slice(long,int)" class="member-name-link">slice(long, int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/ArchiveSource.html" title="class in io.micronaut.runner">ArchiveSource</a></dt>
 <dd>
