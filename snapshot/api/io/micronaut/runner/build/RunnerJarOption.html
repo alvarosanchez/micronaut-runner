@@ -448,10 +448,12 @@ run time.</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">STRIP_LOCAL_VARIABLES</span></div>
 <div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed, which makes them
-smaller to read and define. On by default; it has no effect with <a href="Compression.html#PRESERVE"><code>Compression.PRESERVE</code></a> and never
-touches the application's own classes or a project module. Line numbers, parameter names and every
-annotation reflection sees are kept, and stripping is turned off for the build, with a warning, when a
-library that reads local-variable tables at run time is on the class path.</div>
+smaller to read and define. Off unless a build asks for it, because debuggers and helpful
+<code>NullPointerException</code> messages then lose the local-variable names of dependency code. It has no
+effect with <a href="Compression.html#PRESERVE"><code>Compression.PRESERVE</code></a> and never touches the application's own classes or a project
+module. Line numbers, parameter names and every annotation reflection sees are kept, and stripping is turned
+off for the build, with a warning, when a library that reads local-variable tables at run time is on the
+class path.</div>
 </div>
 </section>
 </li>
