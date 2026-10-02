@@ -1,0 +1,17 @@
+For each lambda and method reference, the JDK normally creates a class the first time the code runs, at every start.
+Runner generates those classes when it packages the application instead, in your classes and in the dependencies, so
+that startup does not create them and a <<jdkAotCache,JDK AOT cache>> can store them like any other class.
+
+What you may notice:
+
+* Each call of a lambda adds one frame to stack traces, `<Host>$$Lambda$R<n>.<method>`, between the caller and the
+lambda's body. The generated class keeps `$$Lambda` in its name.
+* The generated class is an ordinary class, not a hidden one: `Class.isHidden()` is `false`, and `Class.forName`
+finds it.
+* The rewritten classes have new bytes, so software composition analysis tools may report them as modified.
+* The archive is byte-for-byte reproducible only when it is built with the same JDK build.
+
+A few kinds of lambda are left to the JDK, such as serializable lambdas and those in signed JARs; `inspect` reports
+how many were left and why (<<quickStartCheck>>).
+
+To turn it off, set the `desugarLambdas` option to `false` (<<whatChanges>>).

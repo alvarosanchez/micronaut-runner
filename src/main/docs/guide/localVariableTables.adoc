@@ -1,0 +1,21 @@
+Runner drops the tables that name local variables from the classes of your dependencies, which makes most of them
+smaller to read and define. Line numbers, source file names, reflective parameter names, generic signatures and
+annotations are kept. Your own classes, and the modules of your own build, keep everything.
+
+What you may notice, in dependency code only:
+
+* A helpful `NullPointerException` message names a local variable by position, `because "<local1>" is null`. The line
+number is still there.
+* A debugger shows no local-variable names.
+* `getDeclaredMethods()` may return a class's methods in another order. That order is unspecified, but code that
+relies on it can notice, such as a JSON mapper that orders a dependency's properties by method.
+* Software composition analysis tools may report the rewritten classes as modified.
+* The archive is byte-for-byte reproducible only when it is built with the same JDK build.
+
+Paranamer's `BytecodeReadingParanamer`, AspectJ's weaver and Spring's `LocalVariableTableParameterNameDiscoverer`
+(before Spring 6.1) read these tables at run time. When one of them is on the class path, Runner keeps every table
+and warns in the build log.
+
+TIP: To step through dependency code in a debugger, use `./gradlew run`, which does not use the Runner JAR.
+
+To turn it off, set the `stripLocalVariables` option to `false` (<<whatChanges>>).

@@ -1,0 +1,10 @@
+By default (`MAPPED`), the launcher maps the whole archive into memory and defines classes straight from the
+mapping. Every page of the archive it reads then counts in the process's RSS, as reported by `ps` or `top`, although
+these pages belong to the file and the OS can drop them at any time.
+
+With `POSITIONAL`, the launcher maps only the index and reads each class with an ordinary file read. RSS is lower,
+the start slightly slower, and private memory the same (<<performance>>).
+
+Set `archiveReads` to `POSITIONAL` when you watch RSS, for example because a container's memory alarm uses it. In a
+container, the memory the container is charged for barely changes: the OS page cache holds the archive's pages either
+way. To try it on one start, use `-Dmicronaut.runner.mmap=index` (<<runtimeProperties>>).

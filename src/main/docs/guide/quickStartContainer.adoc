@@ -1,0 +1,18 @@
+A Runner JAR needs nothing but a Java 25 runtime, so a container image is one file on a JRE base image:
+
+[source,dockerfile]
+----
+FROM eclipse-temurin:25-jre
+RUN useradd --system --no-create-home app
+WORKDIR /app
+COPY build/libs/my-app-0.1-all.jar app.jar
+USER app
+ENTRYPOINT ["java", "-jar", "app.jar"]
+----
+
+With Maven, copy `target/my-app-0.1.jar` instead; `target/original-my-app-0.1.jar` is not the Runner JAR.
+
+For a faster start:
+
+* without a training step in the image build, commit a <<startupProfile,startup profile>>;
+* with a training step, add a <<jdkAotCache,JDK AOT cache>> to the image.

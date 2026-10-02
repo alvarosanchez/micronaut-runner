@@ -1,0 +1,100 @@
+The plugins extract the Runner JAR, train a cache with the <<trainingSettings,training settings>>, verify it, and
+write a launch argument file next to it:
+
+[source.multi-language-sample,groovy]
+----
+micronaut {
+    runner {
+        training {
+            readinessPath = '/health'
+            workloadPaths = ['/hello']
+        }
+        jdkAotCache {
+            enabled = true                   // assemble also builds the cache; off by default
+            target = 'layout'                // or 'singleJar'
+            jvmArgs = ['-XX:+UseG1GC']       // flags the cache depends on, used in training and in app.jvmopts
+        }
+    }
+}
+----
+
+[source.multi-language-sample,kotlin]
+----
+micronaut {
+    runner {
+        training {
+            readinessPath = "/health"
+            workloadPaths = listOf("/hello")
+        }
+        jdkAotCache {
+            enabled = true                   // assemble also builds the cache; off by default
+            target = "layout"                // or "singleJar"
+            jvmArgs = listOf("-XX:+UseG1GC") // flags the cache depends on, used in training and in app.jvmopts
+        }
+    }
+}
+----
+
+[source,bash]
+----
+./gradlew micronautRunnerJdkAotCache
+----
+
+In Maven, list the `jdk-aot-cache` goal after `package`, because Maven runs a phase's goals in the order they are
+declared. Each setting is a parameter with the `jdkAotCache` or `training` prefix, or the property
+`micronaut.runner.jdkAotCache.<name>` or `micronaut.runner.training.<name>`:
+
+[source,xml,subs="attributes+"]
+----
+<plugin>
+    <groupId>io.micronaut.runner</groupId>
+    <artifactId>micronaut-runner-maven-plugin</artifactId>
+    <version>{version}</version>
+    <executions>
+        <execution>
+            <goals>
+                <goal>package</goal>
+                <goal>jdk-aot-cache</goal>
+            </goals>
+        </execution>
+    </executions>
+    <configuration>
+        <jdkAotCacheEnabled>true</jdkAotCacheEnabled>
+        <trainingReadinessPath>/health</trainingReadinessPath>
+        <trainingWorkloadPaths>
+            <trainingWorkloadPath>/hello</trainingWorkloadPath>
+        </trainingWorkloadPaths>
+    </configuration>
+</plugin>
+----
+
+The cache fits only the JDK build that trained it: the Gradle toolchain or Maven toolchain JDK, else the JDK that runs
+the build. Use this output only when that is the exact JDK build of your image; otherwise train in the image
+(<<jdkAotCacheByHand>>). `micronautRunnerLayout` and `mn-runner:layout` write only the extracted layout, to
+`build/micronaut-runner/layout/` (Maven: `target/micronaut-runner/layout/`), for a cache you train elsewhere.
+
+The result is in `build/micronaut-runner/jdk-aot-cache/` (Maven: `target/micronaut-runner/jdk-aot-cache/`): the
+application, the cache `app.aot` and the argument file `app.jvmopts`. The argument file names the cache by a relative
+path, so start the application from that directory, and do not let a Kubernetes `workingDir` change it. In an image
+with that JDK build (with Maven, the JAR is `my-app-0.1.jar`):
+
+[source,dockerfile]
+----
+WORKDIR /app
+COPY build/micronaut-runner/jdk-aot-cache/ ./
+ENTRYPOINT ["java", "@app.jvmopts", "-jar", "my-app-0.1-all.jar"]
+----
+
+Before it keeps a cache, the build checks that:
+
+. the JDK that verifies it is the build, operating system and architecture that created it;
+. `verifyProbes` strict launches (10 by default) accept the cache;
+. a strict launch of the application reaches readiness and serves the workload, and, for the layout, takes at least
+`minCoverage` of its classes (0.95 by default) from the cache.
+
+`aot-report.json` records the result. A failed check deletes the cache and keeps the logs.
+
+By default, a JVM that cannot use its cache logs an `[error][aot]` line and starts without it, more slowly. With
+`strict = true` (Maven: `jdkAotCacheStrict`), `app.jvmopts` also carries `-XX:AOTMode=on`, and the JVM exits instead.
+Choose between a slow start and a failed one, and alert on `[error][aot]` in the application's output when you keep
+the default.

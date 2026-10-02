@@ -1,0 +1,14 @@
+The `definitionPrefetch` option, off by default, starts loading Micronaut's bean definitions on a background thread
+before your `main` method runs. It shortens a start by a few percent on machines with many cores, and does nothing
+measurable on small ones (<<performance>>). It runs only from the single JAR, with the entry stub, when the JVM sees
+at least four processors.
+
+Do not use it when:
+
+* `main` sets, in code, `java.util.concurrent.ForkJoinPool.common.*` properties or state that static initializers of
+your beans read: both are used before `main` runs;
+* the application creates its context without a builder, such as with `BeanContext.run()`;
+* the application replaces the context builder's `BeanDefinitionsProvider`.
+
+To start once without it, pass `-Dmicronaut.runner.prefetch=false`. `-Dmicronaut.runner.prefetch.trace=true` prints
+whether the application context used the prefetched definitions.

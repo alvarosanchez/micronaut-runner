@@ -1,0 +1,17 @@
+Dynamic class data sharing (CDS), the JDK's older class cache, also works with a Runner JAR. It can do without a
+training step and its file is smaller, but the application starts more slowly than with the AOT cache
+(<<performance>>).
+
+*Without a training step.* The JVM writes the archive at the first orderly exit, and uses it from then on:
+
+[source,bash]
+----
+java -XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=/writable/path/app.jsa -jar my-app-0.1-all.jar
+----
+
+The path must be writable and survive restarts, or the JVM silently runs without the archive. The first start, and
+the first after a JDK or JAR change, pays for writing it. Concurrent instances must not share one path.
+
+*With the training script.* In <<trainingSnippet,`train.sh`>>, set `CACHE=app.jsa` and replace
+`-XX:AOTCacheOutput="$CACHE"` with `-XX:ArchiveClassesAtExit="$CACHE"`. Start with
+`-XX:SharedArchiveFile=app.jsa`, and add `-Xshare:on` to refuse to start without it.

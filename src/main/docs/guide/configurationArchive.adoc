@@ -1,0 +1,35 @@
+In Gradle, the main class and the archive's name are properties of the task only:
+
+[source.multi-language-sample,groovy]
+----
+micronautRunnerJar {
+    mainClass = 'com.example.Application'   // defaults to application.mainClass
+    archiveClassifier = 'executable'        // defaults to all
+}
+----
+
+[source.multi-language-sample,kotlin]
+----
+tasks.named<io.micronaut.runner.gradle.MicronautRunnerJar>("micronautRunnerJar") {
+    mainClass = "com.example.Application"   // defaults to application.mainClass
+    archiveClassifier = "executable"        // defaults to all
+}
+----
+
+The task writes `<archiveBaseName>-<archiveVersion>-<archiveClassifier>.jar` to `destinationDirectory`, which default
+to the project's archive name, its version, `all` and the project's `build/libs` directory. Do not choose the
+classifier `runner`: the Micronaut Gradle plugin already writes a `-runner.jar` for its Docker tasks.
+
+The archive's manifest takes the application's `+Implementation-*+`, `+Specification-*+` and `Sealed` attributes from
+the `jar` task's manifest configuration. If the `jar` task adds attributes in `doFirst` or `doLast`, or merges a file
+that another task generates, set `applicationJar = tasks.named('jar').flatMap { it.archiveFile }` on
+`micronautRunnerJar`.
+
+`manifestAttributes` may override those attributes, but not `Manifest-Version`, `Main-Class` or the
+`+Micronaut-Runner-*+` attributes, which Runner writes itself.
+
+Every dependency must be a JAR file. A dependency that is a directory, such as another project's classes folder,
+fails the build; any other file, such as a POM, is skipped with a warning.
+
+In Maven, the main class is the `mainClass` parameter, which defaults to `exec.mainClass`, and the archive is
+named after the project's `finalName` and the optional `classifier` (<<quickStartMaven>>).

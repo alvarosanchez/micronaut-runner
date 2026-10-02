@@ -1,0 +1,8 @@
+The JDK AOT cache is a file that the JVM writes during a training run of your application. It holds the classes
+that run loaded and linked, and every later start reads them from the file instead of loading them again. A cache
+fits only the JDK build, operating system, CPU architecture, garbage collector and heap flags, and class path it was
+trained with, down to the files' modification times. It works with the single Runner JAR and with the extracted
+layout (<<deployment>>).
+
+The plugins' tasks and goals that build a cache are experimental: they exist only in Runner's interim plugins
+(<<requirements>>) and may change. Training by hand needs only the JDK.

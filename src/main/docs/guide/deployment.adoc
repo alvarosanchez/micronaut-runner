@@ -1,0 +1,44 @@
+A Runner JAR can be deployed in several ways. Choose by what your pipeline can do and what you need to keep small;
+<<performance>> has the figures behind the comparison.
+
+[cols="3,3,3,3,4",options="header"]
+|===
+|Deployment |What you ship |Start time |Memory |Choose it when
+
+|Single JAR
+|One JAR
+|Faster than a shaded JAR
+|Less than a shaded JAR
+|You want the default. Nothing else is needed.
+
+|Single JAR with a committed <<startupProfile,startup profile>>
+|One JAR
+|Faster again
+|Slightly more during startup
+|You deploy without a JDK AOT cache, on at least 2 CPUs.
+
+|Single JAR with a <<jdkAotCache,JDK AOT cache>>
+|One JAR, a cache file and an argument file
+|Much faster; about the same as a cached shaded JAR
+|Higher RSS, because the archive is mapped
+|Your image build can train the application, and the application must stay one file.
+
+|Extracted layout with a JDK AOT cache
+|A directory of JARs, a cache file and an argument file
+|The same as the single JAR with its cache
+|The lowest RSS
+|Your image build can train the application, and RSS matters.
+
+|Any of the above, built from <<micronautAot,Micronaut AOT>>
+|As above
+|Faster without a JDK AOT cache; the same with one
+|As above
+|Your project already uses Micronaut AOT.
+|===
+
+Some rules apply to every deployment:
+
+* Never deploy the extracted layout without its cache: uncached, it starts more slowly than the single JAR.
+* A JDK AOT cache works only with the exact JDK build, operating system and architecture that created it. Train it
+where the application runs, usually in the image build (<<jdkAotCacheRules>>).
+* For a GraalVM native image, Runner does not apply.

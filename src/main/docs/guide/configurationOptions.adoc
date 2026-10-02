@@ -1,0 +1,78 @@
+In Gradle, set packaging options in `micronaut { runner { } }`, or in `micronautRunner { }` in a build without a
+Micronaut plugin. Each option is also a property of the `micronautRunnerJar` task, and a setting on the task wins
+for that task. `enabled = false` skips every Runner task.
+
+[source.multi-language-sample,groovy]
+----
+micronaut {
+    runner {
+        compression = 'PRESERVE'
+        addOpens.add('java.base/java.lang')
+        manifestAttributes.put('Implementation-Vendor', 'Example Ltd')
+        options.put('archiveReads', 'POSITIONAL')
+    }
+}
+----
+
+[source.multi-language-sample,kotlin]
+----
+micronaut {
+    runner {
+        compression = "PRESERVE"
+        addOpens.add("java.base/java.lang")
+        manifestAttributes.put("Implementation-Vendor", "Example Ltd")
+        options.put("archiveReads", "POSITIONAL")
+    }
+}
+----
+
+In Maven, the first eight options below are parameters of the `package` goal; `manifestAttributes` is
+`<manifestEntries>`. The others are set by name, in `<runnerOptions>` or on the command line as
+`-Dmicronaut.runner.<name>`, which also sets the single-valued parameters. A `<runnerOptions>` entry wins over both:
+
+[source,xml]
+----
+<configuration>
+    <compression>PRESERVE</compression>
+    <addOpens>
+        <addOpen>java.base/java.lang</addOpen>
+    </addOpens>
+    <manifestEntries>
+        <Implementation-Vendor>Example Ltd</Implementation-Vendor>
+    </manifestEntries>
+    <runnerOptions>
+        <archiveReads>POSITIONAL</archiveReads>
+    </runnerOptions>
+</configuration>
+----
+
+[cols="3,2,6",options="header"]
+|===
+|Option |Default |What it does, and when to change it
+
+|`compression` |`STORED` |How dependencies are stored: `STORED`, `PRESERVE` or `HYBRID` (<<compression>>).
+|`startupClasses` |the committed profile |The <<startupProfile,startup profile>> to embed. Change it to embed another list.
+|`entryStub` |`true` |Enters `main` through a generated class instead of reflection. When the main class does not
+allow it, Runner uses reflection and the build log says why.
+|`multiRelease` |`false` |Set it when your own classes form a multi-release JAR.
+|`enableNativeAccess` |`false` |Writes `Enable-Native-Access: ALL-UNNAMED`, instead of a `--enable-native-access` flag.
+|`addOpens` |empty |Packages to open, instead of `--add-opens` flags.
+|`addExports` |empty |Packages to export, instead of `--add-exports` flags.
+|`manifestAttributes` |empty |Extra attributes of the archive's manifest.
+|`archiveReads` |`MAPPED` |`MAPPED` or `POSITIONAL` (<<archiveReads>>). Change it when RSS matters more than start time.
+|`precompileLogback` |`true` |<<precompiledLogback>>.
+|`desugarLambdas` |`true` |<<desugaredLambdas>>.
+|`stripLocalVariables` |`true` |<<localVariableTables>>.
+|`staticServices` |`true` |<<staticServices>>.
+|`definitionPrefetch` |`false` |<<definitionPrefetch>>.
+|===
+
+In Gradle, the first eight options are properties, as `compression` is above. The others are set by name, with
+`options.put('<name>', '<value>')`. Values are not case-sensitive: `true` or `false` for a switch, and a
+comma-separated list for `addOpens` and `addExports`. An unknown name fails the build. `startupClasses` names a file,
+so it is set only through its property or parameter, never by name.
+
+`addOpens` and `addExports` take `module/package` pairs, as the JAR manifest writes them, such as
+`java.base/sun.nio.ch`, without `=ALL-UNNAMED`.
+
+Some options have a run-time switch that overrides the packaged setting for one start (<<runtimeProperties>>).

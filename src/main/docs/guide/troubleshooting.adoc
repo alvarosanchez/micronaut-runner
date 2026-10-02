@@ -1,58 +1,89 @@
-== "runner jar was modified after packaging"
+Each entry names a symptom, its cause and the fix. If your problem is not here, or a library misbehaves only in a
+Runner JAR, please https://github.com/{githubSlug}/issues[report it].
 
-The archive's length or a nested JAR's header position no longer matches its index: something appended
-to, re-zipped or signed the file after it was built. Rebuild it and do not rewrite it in place; see
-<<archiveLifetime,archive lifetime>>. To authenticate a deployment, sign the finished file externally and
-verify it before launch, as described in <<authenticating,authenticating a deployment artifact>>.
+== The build fails
 
-== A resource is not found, or the wrong one is found
+`The shadow plugin is configured to write ... which is also the micronautRunnerJar output`:: Shadow and Runner write
+the same `-all.jar`. Remove the Shadow plugin, or give its JARs another classifier (<<quickStartGradle>>).
+`The io.micronaut.runner plugin from micronaut-gradle-plugin builds the Runner JAR in this build`:: Both the interim
+and the Micronaut Gradle plugin's Runner plugin are applied. Remove `io.micronaut.runner.standalone`, and move any
+`micronautRunner { }` settings into `micronaut { runner { } }`.
+`micronaut-maven-plugin builds the Runner JAR in runner packaging; remove this plugin's execution`:: The project
+uses the Micronaut Maven plugin's `runner` packaging. Remove the `micronaut-runner-maven-plugin` execution.
+The plugin cannot be resolved or loaded:: Gradle reports that it needs JVM runtime version 25, or Maven reports class
+file version 69.0. The build runs on an older JVM: run Gradle or Maven itself on Java 25 (<<requirements>>).
+`The dependency ... is a directory, and Micronaut Runner nests only JAR files`:: A dependency is a classes
+directory. Package it as a JAR first; in a Maven reactor, run the build through the `package` phase.
+`Unknown Micronaut Runner option '...'`:: A misspelled option, or one that a newer version of Runner added. The
+message lists the options this version knows.
+`original-my-app-0.1.jar` is a shaded JAR:: Maven Shade ran before Runner. Turn off its `default-shade` execution
+(<<quickStartMaven>>).
 
-Resources resolve in classpath order: the application first, then dependencies in resolution order. Check
-what the archive actually contains:
+== The build warns
 
-[source,bash]
-----
-java -Dmicronaut.runner.mode=list -jar my-app-0.1-all.jar META-INF/services
-----
+`No Logback configuration was precompiled because ...`:: Only a notice: Logback reads `logback.xml` at startup, as
+without Runner. The reason says what kept it from being compiled (<<precompiledLogback>>).
+`The startup profile looks stale; re-record it ...`:: The application changed since the profile was recorded. Record it
+again and commit it (<<startupProfile>>).
+`No local-variable table was stripped, because ... reads local-variable tables at run time`:: A library such as
+Paranamer, AspectJ or an old Spring needs the tables, so Runner keeps them. To silence the warning, set
+`stripLocalVariables` to `false`.
 
-If a library finds nothing at all, check whether it discovers resources through
-`ClassLoader.getSystemClassLoader()` or by parsing `java.class.path` rather than through the thread
-context class loader. Neither sees the application's dependencies; see the compatibility chapter.
+== The application behaves differently
 
-== No beans are found, or the application context is empty
+The logging configuration in a mounted `application.yml`, `micronaut.config.files` or `--logger.config` is ignored::
+Logback was precompiled. Set the location with `-Dlogger.config` or `LOGGER_CONFIG`, or package with
+`precompileLogback=false` (<<precompiledLogback>>).
+A `NullPointerException` says `"<local1>" is null`, or a debugger shows no local variables:: Dependency
+local-variable names were dropped (<<localVariableTables>>).
+Stack traces have extra `$$Lambda$R` frames:: Lambdas were generated at build time (<<desugaredLambdas>>).
+The order of a dependency class's methods or JSON properties changed:: Dependency classes were rewritten. Package
+with `stripLocalVariables=false`.
+A service provider added after packaging is not found:: Start with `-Dmicronaut.runner.static-services=false`
+(<<staticServices>>).
+`static-services.verify` reports a mismatch:: Start with `-Dmicronaut.runner.static-services=false`, package with
+`staticServices=false`, and please report it.
+An agent or tool cannot see the application's classes:: Start with `-Dmicronaut.runner.parent=system`.
+A library finds no classes or resources through the system class loader or `java.class.path`:: A known limitation
+(<<compatibility>>). It works in an <<extract,extracted layout>>.
+A signed JCE provider fails to authenticate:: Nested signatures are not verified. Deploy an extracted layout packaged
+with `PRESERVE` (<<compatibility>>).
+`InaccessibleObjectException`, or warnings about `--add-opens`:: Add the packages to the `addOpens` or `addExports`
+option (<<configurationOptions>>).
+`SecurityException: sealing violation`:: Two dependencies contribute classes to one sealed package. A shaded JAR hid
+that conflict; exclude one of the duplicate dependencies.
+A resource is not found, or the wrong one is found:: Resources resolve in class path order: your application first,
+then the dependencies. List what the archive holds with `java -Dmicronaut.runner.mode=list -jar my-app-0.1-all.jar
+META-INF/services`.
+No beans are found:: List the merged metadata with `java -Dmicronaut.runner.mode=list -jar my-app-0.1-all.jar
+META-INF/micronaut`. If it is empty, annotation processing did not run when the application was compiled.
+A library fails to parse a resource URL:: A nested resource has a URL such as
+`jar:file:/app/my-app-0.1-all.jar!/MICRONAUT-INF/lib/dep.jar!/name`, with two `!/`. Please report the library.
 
-Micronaut discovers beans by listing `META-INF/micronaut/`. Confirm the merged directory is present and
-populated:
+== The JDK AOT cache is not used
 
-[source,bash]
-----
-java -Dmicronaut.runner.mode=list -jar my-app-0.1-all.jar META-INF/micronaut
-----
+The application logs `[error][aot]` and starts slowly, or exits with 1 under `-XX:AOTMode=on`:: The cache does not fit
+this start. `timestamp has changed` means a JAR's modification time changed; `incompatible CompressedOops::base()`
+means the cache was created on JDK 27 or later without the <<aotCreationFlags,creation flags>>; other messages name a
+different JDK build, garbage collector or heap size. Train again where the application runs (<<jdkAotCacheRules>>).
 
-If it is empty, the dependencies were not processed by annotation processing at build time, which is a
-build configuration problem rather than a packaging one.
+== The application does not start, or starts slowly
 
-== Startup is slower than expected
+The launcher exits with 2:: It printed the reason. `This runner jar was modified after it was packaged and must be
+rebuilt` means the file was changed after packaging (<<archiveLifetime>>); `Unsupported runner jar format version`
+means the archive is newer than its launcher. Rebuild it.
+`Error: Invalid or corrupt jarfile`:: The JDK cannot read the file, which was truncated or appended to. Rebuild it.
+Class loading fails in a running application:: The JAR was replaced under the running JVM. Restart it, and publish
+new versions under new paths (<<archiveLifetime>>).
+The start is slower than expected:: Start with `-Dmicronaut.runner.timing=true`. Time spent after `application
+entered` belongs to the framework and the application.
+`-Dmicronaut.runner.timing=true` shows no `preload finished` line:: Preloading did not run: the archive carries no
+startup profile, or the JVM sees only one CPU. Give the container at least 2 CPUs (<<startupProfile>>).
+RSS is higher than expected:: The mapped archive counts in RSS. Compare private memory instead, or use `POSITIONAL`
+reads (<<archiveReads>>).
 
-Separate the launcher from the framework before tuning anything:
+== Narrowing a problem down
 
-[source,bash]
-----
-java -Dmicronaut.runner.timing=true -jar my-app-0.1-all.jar
-----
-
-That prints when the archive was opened, when the index was read, when the class loader was ready and when
-your application was entered. If the time is spent after "application entered", it is the framework or the
-application, not the packaging.
-
-== A library fails with an unexpected URL
-
-Resources are exposed through ordinary `jar:file:` URLs. A resource inside a dependency uses the nested
-form `jar:file:/path/app.jar!/MICRONAUT-INF/lib/dep.jar!/name`. Libraries that split such a URL at the
-first `!/` rather than the last may misread it. Report it: in most cases it can be handled on our side.
-
-== An exception mentions `SecurityException: sealing violation`
-
-A dependency declares a sealed package and another JAR contributes a class to the same package. That is a
-genuine conflict which a shaded JAR would have hidden. Resolve the duplicate dependency, or relocate one
-of them.
+To tell Runner's build-time steps from the packaging itself, package once with `precompileLogback`,
+`desugarLambdas`, `stripLocalVariables` and `staticServices` all set to `false`. If the problem remains, compare with
+`./gradlew run`, which uses no Runner JAR.

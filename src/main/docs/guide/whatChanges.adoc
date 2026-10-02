@@ -1,0 +1,84 @@
+Runner does some work once, when it packages the application, instead of at every start. Each step is on by default
+and can be turned off. The build log says what each step did, and why when it did nothing; in Gradle, run with
+`--info` to see these lines.
+
+[cols="3,2,4,3",options="header"]
+|===
+|Step |Default |What you may notice |Option
+
+|<<precompiledLogback,Precompiled Logback configuration>>
+|On
+|A `logger.config` set outside the archive is not applied.
+|`precompileLogback`
+
+|<<desugaredLambdas,Lambdas generated at build time>>
+|On, except with `PRESERVE`
+|One extra frame per lambda call in stack traces.
+|`desugarLambdas`
+
+|<<localVariableTables,Dependency local-variable names dropped>>
+|On, except with `PRESERVE`
+|No local-variable names in exception messages and debuggers, in dependency code.
+|`stripLocalVariables`
+
+|<<staticServices,Precomputed service lookups>>
+|On, for micronaut-core 5.1.10 up to 5.2
+|A service provider added after packaging is not seen.
+|`staticServices`
+|===
+
+Packaging does this work on purpose: the build takes longer, so that every start does less.
+
+Runner verifies every class it rewrites. When a rewrite fails, it keeps the original class and says so in the build
+log. It never rewrites the classes of signed JARs, and your own classes keep their local-variable names. `inspect`
+lists what each step changed (<<quickStartCheck>>).
+
+To turn steps off, set their options to `false`. To rule Runner's build-time steps out while you track down a
+problem, turn off all four:
+
+[source.multi-language-sample,groovy]
+----
+micronaut {
+    runner {
+        options.put('precompileLogback', 'false')
+        options.put('desugarLambdas', 'false')
+        options.put('stripLocalVariables', 'false')
+        options.put('staticServices', 'false')
+    }
+}
+----
+
+[source.multi-language-sample,kotlin]
+----
+micronaut {
+    runner {
+        options.put("precompileLogback", "false")
+        options.put("desugarLambdas", "false")
+        options.put("stripLocalVariables", "false")
+        options.put("staticServices", "false")
+    }
+}
+----
+
+[source,xml]
+----
+<configuration>
+    <runnerOptions>
+        <precompileLogback>false</precompileLogback>
+        <desugarLambdas>false</desugarLambdas>
+        <stripLocalVariables>false</stripLocalVariables>
+        <staticServices>false</staticServices>
+    </runnerOptions>
+</configuration>
+----
+
+In Maven, `-Dmicronaut.runner.<option>=false` works as well. `PRESERVE` compression turns off only the two class
+rewrites (<<compression>>).
+
+Other differences from a shaded JAR do not come from these steps:
+
+* Code that loads classes through the system class loader, or reads `java.class.path`, does not find the
+dependencies (<<compatibility>>).
+* Nested JAR signatures are not verified, and the module path is not supported (<<compatibility>>).
+* A dependency's own `Class-Path` manifest attribute is ignored (<<compatibility>>).
+* A deployed Runner JAR must never be modified, signed or re-zipped (<<archiveLifetime>>).

@@ -1,0 +1,33 @@
+Runner compiles your `logback.xml` into a Java class when it packages the application. At startup, Logback runs that
+class instead of reading the XML with Joran, Logback's XML configurator. `logback.xml` stays in the archive.
+
+Runner compiles a file only when all of it is within this subset; any other file is read by Joran at startup, as
+without Runner:
+
+* `<configuration>` without `debug`, `scan` or `packagingData` turned on;
+* appenders of Logback's own classes, such as `ConsoleAppender` and `FileAppender`, with simple properties and at most
+one `PatternLayoutEncoder` using Logback's built-in conversion words;
+* `<logger>` and `<root>` elements that refer to those appenders;
+* no variables, `<property>`, `<include>`, `<if>`, filters, rolling policies or custom appenders.
+
+It also leaves the file to Joran when Logback is not between 1.5.37 and 1.6 (exclusive), when the application has a
+`logback-test.xml` or `logback.groovy`, when a Logback `Configurator` is already registered (yours, or Micronaut
+AOT's), and when an `+application*+` or `+bootstrap*+` file of the application may set `logger.config`. The build log
+says which happened:
+
+[source]
+----
+Precompiled logback.xml (application layer) into io.micronaut.runner.generated.logback.LogbackConfigurator: ...
+No Logback configuration was precompiled because <reason>; Logback will configure itself with Joran at startup
+----
+
+At run time, Joran takes over when you set `-Dlogback.configurationFile`, `-Dlogback.debug` or
+`-Dlogback.statusListenerClass`, or start with `-Dmicronaut.runner.logback.precompiled=false`. A location given by
+`-Dlogger.config` or the `LOGGER_CONFIG` environment variable is applied as without Runner.
+
+WARNING: A `logger.config` set outside the archive is not applied. That includes an `application.yml` in the working
+directory or mounted from a Kubernetes ConfigMap, `micronaut.config.files`, a `--logger.config` argument, and
+configuration imported with `micronaut.config.import`. Set the location with `-Dlogger.config` or `LOGGER_CONFIG`
+instead, or package with `precompileLogback` set to `false`.
+
+To turn it off, set the `precompileLogback` option to `false` (<<whatChanges>>).

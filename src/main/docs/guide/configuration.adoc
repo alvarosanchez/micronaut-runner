@@ -1,0 +1,2 @@
+This section lists every packaging option, with its default and when to change it. Options that the launcher reads
+when the application starts are in <<runtimeProperties>>.

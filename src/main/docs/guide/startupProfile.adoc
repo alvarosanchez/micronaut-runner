@@ -1,0 +1,84 @@
+A startup profile is the list of classes a run of your application loaded, in order. When a Runner JAR carries one,
+the launcher loads those classes on a background thread while your application starts, so the main thread usually
+finds them ready. The profile also puts each JAR's startup classes first in the archive, which helps a start whose
+files are not yet in the OS page cache, such as the first start of a new container.
+
+Record a profile when you deploy without a JDK AOT cache, on at least 2 CPUs. With a cache, it adds little
+(<<performance>>). `HYBRID` compression needs one (<<compression>>).
+
+== Recording a profile
+
+[source,bash]
+----
+./gradlew recordStartupProfile
+mvn package mn-runner:record-startup-profile
+----
+
+Recording starts the Runner JAR on a free port with the project's toolchain JDK, sends the training workload below,
+and stops it. It writes `src/main/micronaut-runner/startup-classes.txt`. Commit that file: the next builds embed it,
+and `inspect` shows the number of `Preload classes`. Recording never runs as part of `build` or `package`.
+
+[[trainingSettings]]
+== Training settings
+
+The workload decides part of the list, so point it at the paths your application serves in production. Without one,
+recording sends a single `GET /` and the build warns. The same settings drive the <<jdkAotCache,JDK AOT cache>>.
+
+[source.multi-language-sample,groovy]
+----
+micronaut {
+    runner {
+        training {
+            readinessPath = '/health'
+            workloadPaths = ['/hello', '/orders']
+        }
+    }
+}
+----
+
+[source.multi-language-sample,kotlin]
+----
+micronaut {
+    runner {
+        training {
+            readinessPath = "/health"
+            workloadPaths = listOf("/hello", "/orders")
+        }
+    }
+}
+----
+
+In Maven, each setting is the property `micronaut.runner.training.<name>`, on the command line or in `<properties>`,
+with lists comma-separated and timeouts in seconds.
+
+[cols="2,2,5",options="header"]
+|===
+|Setting |Default |What it does
+
+|`readinessPath` |none |Once the port accepts connections, `GET` this path until it answers with a 2xx status.
+|`workloadPaths` |none |`GET` each path in order; each must answer with a 2xx status.
+|`workloadRepeat` |`1` |How many times the paths are requested.
+|`workloadCommand` |none |A command run after the paths, with the application's URL in `MICRONAUT_RUNNER_TRAINING_URL`. It must exit with 0.
+|`runToExit` |`false` |For an application that exits by itself, such as a command-line tool, with no readiness path, workload or stop. It must exit with 0.
+|`stopPath` |none |`POST` this path to stop the application, instead of ending the process.
+|`jvmArgs` |none |JVM arguments of the recording. The JDK AOT cache takes `jdkAotCache.jvmArgs` instead.
+|`environment` |none |Environment variables of the recording; in Maven, `NAME=value` entries.
+|`portVariable` |`MICRONAUT_SERVER_PORT` |The environment variable that receives the port.
+|`readinessTimeout`, `workloadTimeout`, `stopTimeout` |60, 60 and 30 seconds |In Gradle, a `java.time.Duration`.
+|===
+
+An application that needs a database or a message broker to start gets its connection settings through
+`environment` or `jvmArgs`, and can be exercised by a `workloadCommand`.
+
+== Keeping it current
+
+Record the profile again after you upgrade Micronaut, another dependency or the JDK, or change the packaging options.
+When many listed classes are gone from the archive, the build warns that the profile looks stale. A stale profile is
+safe: the launcher only loads the listed classes, never initializes them, and skips those it cannot find.
+
+Preloading does not run in the extracted layout, with `-Dmicronaut.runner.preload=false`, or when the JVM sees fewer
+than 2 processors, which in a container means a CPU limit of 1. An agent attached to a running JVM sees the
+preloaded classes as already loaded; one started with `-javaagent` is not affected.
+
+To embed another list, such as a class-load log, set the `startupClasses` option (<<configurationOptions>>). To build
+without the profile, delete the file.

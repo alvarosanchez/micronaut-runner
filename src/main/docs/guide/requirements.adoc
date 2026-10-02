@@ -1,0 +1,20 @@
+* *Java 25 or later*, in two places: the JVM that runs Gradle or Maven, and the JVM that runs the application. A
+compilation toolchain does not change the JVM that runs the build, so check `./gradlew --version` or `mvn -version`
+as well as `java -version`.
+* *Gradle 9.1 or later*, or *Maven 3.9*.
+* *Micronaut 5*. The plugins are tested with Micronaut Platform 5.1, on micronaut-core 5.1 and 5.2.
+
+Some features depend on the versions you use. The first two say in the build log when they did nothing:
+
+* Logback precompilation needs Logback from 1.5.37 up to, but not including, 1.6.
+* The precomputed service lookups need micronaut-core from 5.1.10 up to, but not including, 5.2.
+* The JDK AOT cache works on JDK 25 and later. JDK 27 and later need one extra setting when the cache is created
+(<<aotCreationFlags>>).
+
+=== Status
+
+The Gradle plugin `io.micronaut.runner.standalone`, published to the Gradle Plugin Portal, and the Maven plugin
+`io.micronaut.runner:micronaut-runner-maven-plugin`, published to Maven Central, are interim. The `io.micronaut.runner`
+plugin of the Micronaut Gradle plugin and the `runner` packaging of the Micronaut Maven plugin take over from them,
+with the same task names and the same `micronaut { runner { } }` block. A build that applies both fails with a
+message that names the one to remove.

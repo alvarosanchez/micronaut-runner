@@ -1,0 +1,9 @@
+[cols="1,6",options="header"]
+|===
+|Code |Meaning
+
+|`0` |The application ended normally.
+|`1` |The application threw an exception, which the JVM printed.
+|`2` |The launcher could not start: the archive could not be found, it was modified after it was packaged, or its
+format is newer than the launcher. The reason is printed to standard error, without a stack trace.
+|===
