@@ -56,11 +56,16 @@ A library finds no class through the system class loader, or a provider listed i
 In the single JAR, the system class loader does not see your dependencies
 (<<compatibility,Compatibility and Limitations>>). Deploy an <<extract,extracted layout>>, or register the provider in
 code with `Security.addProvider`.
+A library finds no class or service only inside a parallel stream or a `CompletableFuture` task:: In the single JAR,
+the threads of the common `ForkJoinPool` have the system class loader as their context class loader
+(<<compatibility,Compatibility and Limitations>>). Pass an executor of your own, or deploy an
+<<extract,extracted layout>>.
 A library finds no dependencies through `java.class.path`:: A known limitation
 (<<compatibility,Compatibility and Limitations>>). The library needs to use the context class loader instead.
-`JCE cannot authenticate the provider ...`:: The JDK enforces JCE provider signing, as Oracle JDK does, and the
-provider's signature is not verified in the single JAR. Package with `PRESERVE` and deploy an
-<<extract,extracted layout>> (<<compatibility,Compatibility and Limitations>>).
+`JCE cannot authenticate the provider ...`:: The JDK enforces JCE provider signing, as Oracle JDK and Oracle GraalVM
+do. The provider's signature is verified only in an extracted layout of an archive packaged with `PRESERVE`: not in
+the single JAR, and not in the extracted layout of a `STORED` or `HYBRID` archive. Package with `PRESERVE` and deploy
+an <<extract,extracted layout>> (<<compatibility,Compatibility and Limitations>>).
 `InaccessibleObjectException`, or warnings about `--add-opens`:: Add the packages to the `addOpens` or `addExports`
 option (<<configurationOptions,Packaging Options>>).
 `SecurityException: sealing violation`:: Two dependencies contribute classes to one sealed package. A shaded JAR hid

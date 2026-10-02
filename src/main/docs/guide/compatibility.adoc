@@ -23,29 +23,36 @@ merged.
 
 == Known limitations
 
-Libraries that use the system class loader:: Runner's class loader loads your application and its dependencies, and
-is also the thread context class loader. Micronaut loads classes and services through it, so Micronaut is not
-affected, and neither is a library that uses the context class loader or its own classes' loader. In the single JAR,
+Libraries that use the system class loader:: Runner's class loader loads your application and its dependencies. It is
+the context class loader of the main thread and of every thread your application starts. The threads of the JDK's
+common `ForkJoinPool` are an exception: they have the system class loader as their context class loader. Micronaut
+loads classes and services through Runner's loader, so Micronaut is not affected. Neither is a library that uses its
+own classes' loader, or that uses the context class loader outside the common pool. In the single JAR,
 `ClassLoader.getSystemClassLoader()` sees only the Runner JAR itself, so a library that loads a dependency's class
 through it does not find the class. The same holds for the JDK's own lookups through that loader, such as security
 providers listed in the `java.security` file, file system providers for `Path.of(URI)`, and `java.util.logging`
 handlers named in `logging.properties`. All of them work in an <<extract,extracted layout>>, whose class path holds
 every dependency. In the single JAR, a security provider can instead be registered in code, with
-`Security.addProvider`.
+`Security.addProvider`. In the single JAR, a library that loads a class or service through the context class loader
+inside a parallel stream, or inside a `CompletableFuture` task started without an executor, does not find your
+dependencies' classes. Give the task an executor of your own, such as one of Micronaut's `TaskExecutors`, or deploy an
+<<extract,extracted layout>>.
 Libraries that read `java.class.path`:: In the single JAR, the property names only the Runner JAR, in which your
 dependencies are nested JARs, so a library that finds classes by scanning the files it names does not find theirs. In
 an <<extract,extracted layout>>, it names only the application JAR, as for any JAR started with `java -jar`, and that
 JAR's manifest lists the dependencies in its `Class-Path`. Micronaut does not use the property.
 Signed dependencies:: Runner does not verify the signatures of the JARs nested in the single JAR, and their classes
 have no code signers. That matters only to code that requires verified signatures. The common case is a signed JCE
-provider, such as Bouncy Castle, on Oracle JDK, which enforces JCE provider signing; OpenJDK builds do not check it,
-so there the provider works from the single JAR. Where signatures are checked, such code works only in an
-<<extract,extracted layout>> of a Runner JAR packaged with `PRESERVE` (<<compression,Compression Modes>>), which keeps
-the signed JARs byte for byte; the JDK's own class loader then verifies them. `STORED` and `HYBRID` remove the
-signature files when they package, so their extracted layouts hold no signed JARs. The build warns about every signed
-dependency.
-The module path:: Everything runs in one unnamed module, as on a class path. A dependency's `module-info.class` is
-ignored, and modules added with `--module-path` are not visible to your application.
+provider, such as Bouncy Castle, on Oracle JDK or Oracle GraalVM, which enforce JCE provider signing. Other OpenJDK
+builds do not check it, so there the provider works from the single JAR. Where signatures are checked, such code
+works only in an <<extract,extracted layout>> of a Runner JAR packaged with `PRESERVE`
+(<<compression,Compression Modes>>), which keeps the signed JARs byte for byte; the JDK's own class loader then
+verifies them. `STORED` and `HYBRID` remove the signature files when they package, so their extracted layouts hold no
+signed JARs. The build warns about every signed dependency.
+The module path:: Your application and its dependencies run in one unnamed module, as on a class path, so a
+dependency's `module-info.class` is ignored, as it is there. Classes of modules added with `--module-path` and
+`--add-modules` are visible to your application. In the single JAR, the services those modules provide are not found
+unless you start with `-Dmicronaut.runner.parent=system`. In an <<extract,extracted layout>>, they are found.
 A dependency's `Class-Path` attribute:: Ignored, with a warning when the archive is packaged, because the files it
 names are not in the archive. It applies again in an extracted layout.
 Native libraries:: Libraries that ship native code, such as Netty's native transports, unpack it to a temporary

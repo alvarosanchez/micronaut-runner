@@ -78,10 +78,10 @@ rewrites (<<compression,Compression Modes>>).
 
 Other differences from a shaded JAR do not come from these steps:
 
-* In the single JAR, a library that looks for classes through the system class loader or `java.class.path`, rather
-than the context class loader, does not find your dependencies' classes. Micronaut is not affected
+* A library does not find your dependencies' classes if it looks for them through the system class loader, in the
+single JAR, or by scanning only the files that `java.class.path` names, in either layout. Micronaut does neither
 (<<compatibility,Compatibility and Limitations>>).
-* Signed dependencies are not verified in the single JAR, which matters to a signed JCE provider on Oracle JDK, and the
-module path is not supported (<<compatibility,Compatibility and Limitations>>).
+* Signed dependencies are not verified in the single JAR, which matters to a signed JCE provider on Oracle JDK or
+Oracle GraalVM (<<compatibility,Compatibility and Limitations>>).
 * A dependency's own `Class-Path` manifest attribute is ignored (<<compatibility,Compatibility and Limitations>>).
 * A deployed Runner JAR must never be modified, signed or re-zipped (<<archiveLifetime,Archive Lifetime>>).
