@@ -16,11 +16,6 @@ and can be turned off. The build log says what each step did, and why when it di
 |One extra frame per lambda call in stack traces.
 |`desugarLambdas`
 
-|<<localVariableTables,Dependency local-variable names dropped>>
-|On, except with `PRESERVE`
-|No local-variable names in exception messages and debuggers, in dependency code.
-|`stripLocalVariables`
-
 |<<staticServices,Precomputed service lookups>>
 |On, for micronaut-core 5.1.10 up to 5.2
 |A service provider added after packaging is not seen.
@@ -28,12 +23,14 @@ and can be turned off. The build log says what each step did, and why when it di
 |===
 
 Runner verifies every class it rewrites. When a rewrite fails, it keeps the original class and says so in the build
-log. It never rewrites the classes of signed JARs, and your own classes keep their local-variable names. `inspect`
-lists what the two class rewrites changed (<<quickStartCheck,Checking the Archive>>); the build log reports all four
-steps.
+log. It never rewrites the classes of signed JARs. `inspect` lists what the class rewrites changed
+(<<quickStartCheck,Checking the Archive>>); the build log reports every step.
+
+One more class rewrite is off unless you turn it on: dropping the local-variable names of dependency classes
+(<<localVariableTables,Opt-in: Dependency Local-Variable Names>>).
 
 To turn steps off, set their options to `false`. To rule Runner's build-time steps out while you track down a
-problem, turn off all four:
+problem, turn off all three:
 
 [source.multi-language-sample,groovy]
 ----
@@ -41,7 +38,6 @@ micronaut {
     runner {
         options.put('precompileLogback', 'false')
         options.put('desugarLambdas', 'false')
-        options.put('stripLocalVariables', 'false')
         options.put('staticServices', 'false')
     }
 }
@@ -53,7 +49,6 @@ micronaut {
     runner {
         options.put("precompileLogback", "false")
         options.put("desugarLambdas", "false")
-        options.put("stripLocalVariables", "false")
         options.put("staticServices", "false")
     }
 }
@@ -67,7 +62,6 @@ In Maven, in the plugin's `<configuration>`:
     <runnerOptions>
         <precompileLogback>false</precompileLogback>
         <desugarLambdas>false</desugarLambdas>
-        <stripLocalVariables>false</stripLocalVariables>
         <staticServices>false</staticServices>
     </runnerOptions>
 </configuration>

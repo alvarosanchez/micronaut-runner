@@ -80,7 +80,7 @@ Options set by name:
 |`archiveReads` |`MAPPED` |`MAPPED` or `POSITIONAL` (<<archiveReads,Mapped or Positional Reads>>). Change it when RSS matters more than start time.
 |`precompileLogback` |`true` |Compiles `logback.xml` at build time (<<precompiledLogback,Precompiled Logback Configuration>>).
 |`desugarLambdas` |`true` |Generates the classes of lambdas at build time (<<desugaredLambdas,Lambdas Generated at Build Time>>).
-|`stripLocalVariables` |`true` |Drops the local-variable names of dependency classes (<<localVariableTables,Dependency Local-Variable Names>>).
+|`stripLocalVariables` |`false` |Drops the local-variable names of dependency classes; opt-in (<<localVariableTables,Dependency Local-Variable Names>>).
 |`staticServices` |`true` |Precomputes Micronaut's service lookups (<<staticServices,Precomputed Service Lookups>>).
 |`definitionPrefetch` |`false` |Loads Micronaut's bean definitions early, on a background thread; experimental (<<definitionPrefetch,Bean Definition Prefetch>>).
 |===
@@ -92,4 +92,4 @@ fails the build. `startupClasses` names a file, so it is set only through its pr
 `java.base/sun.nio.ch`, without `=ALL-UNNAMED`.
 
 Some options have a run-time switch that overrides the packaged setting for one start
-(<<runtimeProperties,System Properties>>).
+(<<runtimeProperties,Run-Time System Properties>>).

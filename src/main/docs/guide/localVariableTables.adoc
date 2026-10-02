@@ -1,8 +1,10 @@
-Runner drops the tables that name local variables from the classes of your dependencies, which makes most of them
-smaller to read and define. Line numbers, source file names, reflective parameter names, generic signatures and
-annotations are kept. Your own classes, and the modules of your own build, keep everything.
+The `stripLocalVariables` option, off by default, drops the tables that name local variables from the classes of
+your dependencies when Runner packages the application. Line numbers, source file names, reflective parameter names,
+generic signatures and annotations are kept. Your own classes, and the modules of your own build, keep everything.
+With `PRESERVE` compression, the option does nothing (<<compression,Compression Modes>>).
 
-What you may notice, in dependency code only:
+The trade-off: the archive gets somewhat smaller, and a start without a <<jdkAotCache,JDK AOT cache>> slightly
+faster; with a cache, it makes no difference you would notice. In exchange, dependency code is harder to debug:
 
 * A helpful `NullPointerException` message names a local variable by position, `because "<local1>" is null`. The line
 number is still there.
@@ -16,6 +18,28 @@ Paranamer's `BytecodeReadingParanamer`, AspectJ's weaver and Spring's `LocalVari
 (before Spring 6.1) read these tables at run time. When one of them is on the class path, Runner keeps every table
 and warns in the build log.
 
-TIP: To step through dependency code in a debugger, use `./gradlew run`, which does not use the Runner JAR.
+To turn it on:
 
-To turn it off, set the `stripLocalVariables` option to `false` (<<whatChanges,What Changes for Your Application>>).
+[source.multi-language-sample,groovy]
+----
+micronaut {
+    runner {
+        options.put('stripLocalVariables', 'true')
+    }
+}
+----
+
+[source.multi-language-sample,kotlin]
+----
+micronaut {
+    runner {
+        options.put("stripLocalVariables", "true")
+    }
+}
+----
+
+In Maven, set the property `micronaut.runner.stripLocalVariables` to `true`, or add
+`<stripLocalVariables>true</stripLocalVariables>` to `<runnerOptions>` (<<configurationOptions,Packaging Options>>).
+
+TIP: To step through dependency code in a debugger, use `./gradlew run` or `mvn mn:run`, which do not use the Runner
+JAR.

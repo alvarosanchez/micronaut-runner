@@ -12,7 +12,6 @@ whatChanges:
   title: What Changes for Your Application
   precompiledLogback: Precompiled Logback Configuration
   desugaredLambdas: Lambdas Generated at Build Time
-  localVariableTables: Dependency Local-Variable Names
   staticServices: Precomputed Service Lookups
 deployment:
   title: Choosing a Deployment
@@ -31,12 +30,13 @@ configuration:
   configurationOptions: Packaging Options
   compression: Compression Modes
   archiveReads: Mapped or Positional Reads
+  localVariableTables: "Opt-in: Dependency Local-Variable Names"
   configurationArchive: Main Class, Archive Name and Manifest
   publishing: Publishing the Archive
   definitionPrefetch: "Experimental: Bean Definition Prefetch"
+  runtimeProperties: Run-Time System Properties
 runtime:
   title: Running a Runner JAR
-  runtimeProperties: System Properties
   exitCodes: Exit Codes
   archiveLifetime: Archive Lifetime
   extract: Extracting to a Directory

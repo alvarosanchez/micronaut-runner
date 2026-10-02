@@ -28,9 +28,9 @@ without Runner. The reason says what kept it from being compiled
 (<<precompiledLogback,Precompiled Logback Configuration>>).
 `The startup profile looks stale; re-record it ...`:: The application changed since the profile was recorded. Record it
 again and commit it (<<startupProfile,Startup Profile>>).
-`No local-variable table was stripped, because ... reads local-variable tables at run time`:: A library such as
-Paranamer, AspectJ or an old Spring needs the tables, so Runner keeps them. To silence the warning, set
-`stripLocalVariables` to `false`.
+`No local-variable table was stripped, because ... reads local-variable tables at run time`:: You turned on
+`stripLocalVariables`, but a library such as Paranamer, AspectJ or an old Spring needs the tables, so Runner keeps
+them. To silence the warning, turn the option off again.
 
 == The application behaves differently
 
@@ -39,12 +39,13 @@ Logback was precompiled, and the packaged `logback.xml` applies instead; `logger
 the location with `-Dlogger.config` or `LOGGER_CONFIG`, or package with `precompileLogback=false`.
 `-Dmicronaut.runner.logback.precompiled=false` does not help here
 (<<precompiledLogback,Precompiled Logback Configuration>>).
-A `NullPointerException` says `"<local1>" is null`, or a debugger shows no local variables:: Dependency
-local-variable names were dropped (<<localVariableTables,Dependency Local-Variable Names>>).
+A `NullPointerException` says `"<local1>" is null`, or a debugger shows no local variables:: The archive was
+packaged with `stripLocalVariables`, which drops dependency local-variable names
+(<<localVariableTables,Dependency Local-Variable Names>>).
 Stack traces have extra `pass:c[$$Lambda$R]` frames:: Lambdas were generated at build time
 (<<desugaredLambdas,Lambdas Generated at Build Time>>).
-The order of a dependency class's methods or JSON properties changed:: Dependency classes were rewritten. Package
-with `stripLocalVariables=false`.
+The order of a dependency class's methods or JSON properties changed:: The archive was packaged with
+`stripLocalVariables`, which rewrites dependency classes. Package without it.
 A service provider added after packaging is not found:: If an agent or tool adds it to the class path, start with
 `-Dmicronaut.runner.parent=system` (<<javaAgents,Java agents>>); otherwise, start with
 `-Dmicronaut.runner.static-services=false` (<<staticServices,Precomputed Service Lookups>>).
@@ -104,6 +105,6 @@ OS page cache instead, or use `POSITIONAL` reads (<<archiveReads,Mapped or Posit
 
 == Narrowing a problem down
 
-To tell Runner's build-time steps from the packaging itself, package once with `precompileLogback`,
-`desugarLambdas`, `stripLocalVariables` and `staticServices` all set to `false`. If the problem remains, compare with
-`./gradlew run`, which uses no Runner JAR.
+To tell the build-time steps from the packaging itself, package once with `precompileLogback`, `desugarLambdas` and
+`staticServices` set to `false`, and without `stripLocalVariables` if you turned it on. If the problem remains,
+compare with `./gradlew run` or `mvn mn:run`, which use no Runner JAR.
