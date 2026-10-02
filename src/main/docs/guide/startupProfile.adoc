@@ -11,7 +11,7 @@ compression needs one (<<compression,Compression Modes>>).
 [source,bash]
 ----
 ./gradlew recordStartupProfile
-mvn package mn-runner:record-startup-profile
+mvn package mn:runner-startup-profile
 ----
 
 Recording starts the Runner JAR on a free port with the project's toolchain JDK, sends the training workload below,
@@ -22,7 +22,7 @@ and `inspect` shows the number of `Preload classes`. Recording never runs as par
 == Training settings
 
 The workload decides part of the list, so point it at the paths your application serves in production. Without one,
-recording sends a single `GET /` and the build warns. The same settings drive the <<jdkAotCache,JDK AOT cache>>.
+recording sends a single `GET /` and the build warns.
 
 [source.multi-language-sample,groovy]
 ----
@@ -48,19 +48,15 @@ micronaut {
 }
 ----
 
-In Maven, each setting is a parameter with the `training` prefix, such as `trainingReadinessPath` and
-`trainingWorkloadPaths`, or the property `micronaut.runner.training.<name>`. In properties, lists are
-comma-separated; timeouts are in seconds. In the `<configuration>` of `micronaut-runner-maven-plugin`:
+In Maven, each setting is the property `micronaut.runner.training.<name>`, in `<properties>` or on the command line.
+Lists are comma-separated, and timeouts are in seconds:
 
 [source,xml]
 ----
-<configuration>
-    <trainingReadinessPath>/health</trainingReadinessPath>
-    <trainingWorkloadPaths>
-        <trainingWorkloadPath>/hello</trainingWorkloadPath>
-        <trainingWorkloadPath>/orders</trainingWorkloadPath>
-    </trainingWorkloadPaths>
-</configuration>
+<properties>
+    <micronaut.runner.training.readinessPath>/health</micronaut.runner.training.readinessPath>
+    <micronaut.runner.training.workloadPaths>/hello,/orders</micronaut.runner.training.workloadPaths>
+</properties>
 ----
 
 [cols="2,2,5",options="header"]
@@ -72,15 +68,15 @@ comma-separated; timeouts are in seconds. In the `<configuration>` of `micronaut
 |`workloadRepeat` |`1` |How many times the paths are requested.
 |`workloadCommand` |none |A command run after the paths, with the application's URL in `MICRONAUT_RUNNER_TRAINING_URL`. It must exit with 0.
 |`runToExit` |`false` |For an application that exits by itself, such as a command-line tool, with no readiness path, workload or stop. It must exit with 0.
-|`stopPath` |none |`POST` this path to stop the application, instead of ending the process. For example, Micronaut's `/stop` endpoint, with `ENDPOINTS_STOP_ENABLED=true` and `ENDPOINTS_STOP_SENSITIVE=false` in `environment`. On Windows, the plugins need it to build a JDK AOT cache with JDK 25.0.3 or earlier.
-|`jvmArgs` |none |JVM arguments of the recording. The JDK AOT cache takes `jdkAotCache.jvmArgs` instead.
+|`stopPath` |none |`POST` this path to stop the application, instead of ending the process. For example, Micronaut's `/stop` endpoint, with `ENDPOINTS_STOP_ENABLED=true` and `ENDPOINTS_STOP_SENSITIVE=false` in `environment`.
+|`jvmArgs` |none |JVM arguments of the recording.
 |`environment` |none |Environment variables of the recording; in Maven, `NAME=value` entries.
 |`portVariable` |`MICRONAUT_SERVER_PORT` |The environment variable that receives the port.
 |`readinessTimeout`, `workloadTimeout`, `stopTimeout` |60, 60 and 30 seconds |In Gradle, a `java.time.Duration`.
 |===
 
-Training launches ignore `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_AOT_VM_OPTIONS` from the
-build's environment. Pass JVM flags with `jvmArgs`, or `jdkAotCache.jvmArgs` for the cache.
+Recording ignores `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`, `_JAVA_OPTIONS` and `JDK_AOT_VM_OPTIONS` from the
+build's environment. Pass JVM flags with `jvmArgs`.
 
 An application that needs a database or a message broker to start gets its connection settings through
 `environment` or `jvmArgs`, and can be exercised by a `workloadCommand`.

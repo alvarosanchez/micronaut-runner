@@ -1,3 +1,19 @@
+WARNING: Runner support in Micronaut Launch
+(https://github.com/micronaut-projects/micronaut-starter/issues/3134[micronaut-starter#3134]) and in the Micronaut
+Gradle and Maven plugins
+(https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1378[micronaut-gradle-plugin#1378],
+https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1720[micronaut-maven-plugin#1720]) is in progress.
+So are Logback precompilation in Micronaut AOT
+(https://github.com/micronaut-projects/micronaut-aot/pull/517[micronaut-aot#517]), which those plugins apply
+(https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1380[micronaut-gradle-plugin#1380],
+https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1722[micronaut-maven-plugin#1722]), and the JDK
+AOT cache in their Docker images
+(https://github.com/micronaut-projects/micronaut-gradle-plugin/pull/1381[micronaut-gradle-plugin#1381],
+https://github.com/micronaut-projects/micronaut-maven-plugin/pull/1723[micronaut-maven-plugin#1723]). This guide
+describes Runner once they have shipped. Until then, build Runner JARs with Runner's own interim Gradle and Maven
+plugins: https://github.com/{githubSlug}/blob/master/docs/interim-plugins.md[Runner's interim plugins] explains how,
+and how they differ from this guide.
+
 Micronaut Runner packages a Micronaut application as one executable JAR that you run with `java -jar`. Compared with
 a Shadow or Shade JAR, it starts noticeably faster and uses less memory, at the cost of a slower, more thorough build
 (<<performance,Performance>>). Unlike a shaded JAR, it keeps every dependency as a separate JAR inside it.
@@ -12,6 +28,9 @@ Gradle Shadow and Maven Shade flatten all dependencies into one namespace, which
 
 A Runner JAR keeps the boundaries, so duplicate resources, per-JAR manifests, sealed packages and multi-release JARs
 behave as they do on an ordinary class path.
+
+The Micronaut Gradle and Maven plugins build Runner JARs, and Micronaut Launch offers Runner as an alternative to
+Shadow and Shade (<<quickStart,Quick Start>>).
 
 .The shape of a Runner JAR
 [source]
@@ -35,8 +54,8 @@ my-app-0.1-all.jar
 
 The index is built when the archive is packaged, so nothing is scanned at startup. The launcher maps the archive
 into memory once and extracts nothing. By default, dependencies are stored uncompressed, so classes are defined
-straight from the archive. Packaging also does once what a shaded JAR repeats at every start: it compiles
-`logback.xml`, generates the classes for lambdas, and precomputes Micronaut's service lookups
+straight from the archive. Packaging also does once what a shaded JAR repeats at every start: it generates the
+classes for lambdas, precomputes Micronaut's service lookups and compiles `logback.xml`
 (<<whatChanges,What Changes for Your Application>>). The archive is larger on disk than a shaded JAR, but smaller
 compressed.
 
@@ -47,6 +66,8 @@ application, and reads at every later start (<<jdkAotCache,The JDK AOT Cache>>).
 == When Runner is not the right fit
 
 * You build a GraalVM native image. Runner packages JVM applications only.
+* You deploy a serverless function, such as on AWS Lambda, Google Cloud Functions, Azure Functions or Oracle
+Functions. The function host loads your handler itself and never runs the archive's main class.
 * Your build relies on Shadow relocation to rename packages. Runner never relocates.
 
 A few third-party libraries behave differently in a Runner JAR. <<compatibility,Compatibility and Limitations>> lists

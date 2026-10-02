@@ -3,7 +3,7 @@ A JVM uses a cache only when it starts like the training run did:
 * *The same JDK build, operating system and CPU architecture.* Train where the application runs, usually in the
 image build, and pin the base image by digest.
 * *The same garbage collector and heap flags.* Set any collector or heap-size flag that production uses, such as
-`-Xmx`, for training too; with the plugins, in `jdkAotCache.jvmArgs`, which also go into `app.jvmopts`.
+`-Xmx`, for training too.
 * *A pinned collector in small containers.* With fewer than 2 CPUs or less than about 1792 MB of memory, the JVM
 picks SerialGC instead of G1. If training runs on a larger machine, pin the collector, for example with
 `-XX:+UseG1GC`, for training and production alike.

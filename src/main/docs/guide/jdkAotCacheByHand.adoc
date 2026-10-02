@@ -1,5 +1,5 @@
-Training by hand needs a Java runtime, `bash` and `curl`. Extract the Runner JAR
-(<<extract,Extracting to a Directory>>), then run this script with `JAR` set to the path production starts:
+Training needs a Java runtime, `bash` and `curl`. Extract the Runner JAR (<<extract,Extracting to a Directory>>), then
+run this script with `JAR` set to the path production starts:
 
 [source,bash]
 ----
@@ -62,17 +62,15 @@ ENTRYPOINT ["java", "-XX:+UseG1GC", "-XX:AOTCache=app.aot", "-jar", "my-app-0.1-
 ----
 
 The loop checks the cache ten times (<<jdkAotCacheVerify,Verifying a Cache>>). A failed training run or check fails
-the image build. To use the layout the plugins write, copy `build/micronaut-runner/layout/` (Maven:
-`target/micronaut-runner/layout/`) instead of `app/`. With Maven, the application JAR of the layout is
+the image build. The application JAR of the layout has the Runner JAR's file name, so with Maven it is
 `my-app-0.1.jar`: set `JAR` to it, and use it in the probe and the `ENTRYPOINT`.
 
 [[aotCreationFlags]]
 === JDK 27 and later
 
-When you train by hand on JDK 27 or later, creating a cache needs two more flags; without them, strict launches fail
-now and then with `incompatible CompressedOops::base()`. The plugins add them themselves. The JVM reads
-`JDK_AOT_VM_OPTIONS` only when it creates a cache, so put it in front of the script, in the Dockerfile's `RUN` step
-too:
+On JDK 27 and later, creating a cache needs two more flags; without them, strict launches fail now and then with
+`incompatible CompressedOops::base()`. The JVM reads `JDK_AOT_VM_OPTIONS` only when it creates a cache, so put it in
+front of the script, in the Dockerfile's `RUN` step too:
 
 [source,bash]
 ----

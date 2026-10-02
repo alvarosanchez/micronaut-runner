@@ -53,6 +53,10 @@ built guide contains such a link.
 The guide is for application developers. Behaviour that they cannot act on, such as class loader conformance tests
 or the entry stub's conditions, belongs in `docs/format.md` or the Javadoc.
 
+The guide describes Runner as the Micronaut Gradle and Maven plugins and Micronaut Launch provide it. The one WARNING
+at the top of the Introduction says that this support is in progress; it is the only interim text in the guide, and
+it goes once that support ships. Anything specific to Runner's own interim plugins goes in `docs/interim-plugins.md`.
+
 To also build the Javadocs, run `./gradlew docs`.
 
 ## Working on the code base

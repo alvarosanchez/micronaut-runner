@@ -1,12 +1,12 @@
-Runner does some work once, when it packages the application, instead of at every start. Each step is on by default
-and can be turned off. The build log says what each step did, and why when it did nothing; in Gradle, run with
-`--info` to see these lines.
+When the build packages a Runner JAR, some work moves from every start to the build. Each step is on by default and
+can be turned off. The build log says what each step did, and why when it did nothing; in Gradle, run with `--info`
+to see these lines.
 
 [cols="3,2,4,3",options="header"]
 |===
 |Step |Default |What you may notice |Option
 
-|<<precompiledLogback,Precompiled Logback configuration>>
+|<<precompiledLogback,Precompiled Logback configuration>>, from Micronaut AOT
 |On
 |A `logger.config` set outside the archive is not applied.
 |`precompileLogback`
@@ -29,8 +29,8 @@ log. It never rewrites the classes of signed JARs. `inspect` lists what the clas
 One more class rewrite is off unless you turn it on: dropping the local-variable names of dependency classes
 (<<localVariableTables,Opt-in: Dependency Local-Variable Names>>).
 
-To turn steps off, set their options to `false`. To rule Runner's build-time steps out while you track down a
-problem, turn off all three:
+To turn steps off, set their options to `false`. To rule these steps out while you track down a problem, turn off all
+three:
 
 [source.multi-language-sample,groovy]
 ----
@@ -54,7 +54,7 @@ micronaut {
 }
 ----
 
-In Maven, in the plugin's `<configuration>`:
+In Maven, in the `<configuration>` of `micronaut-maven-plugin`:
 
 [source,xml]
 ----
@@ -67,8 +67,8 @@ In Maven, in the plugin's `<configuration>`:
 </configuration>
 ----
 
-Maven also takes `-Dmicronaut.runner.<option>=false` on the command line. `PRESERVE` compression turns off only the two class
-rewrites (<<compression,Compression Modes>>).
+Maven also takes the property `micronaut.runner.<option>`, such as `-Dmicronaut.runner.desugarLambdas=false` on the
+command line. `PRESERVE` compression turns off only the class rewrites (<<compression,Compression Modes>>).
 
 Other differences from a shaded JAR do not come from these steps:
 

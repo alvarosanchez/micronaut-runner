@@ -1,4 +1,8 @@
-This section takes an existing Micronaut 5 application from a shaded JAR to a Runner JAR. Runner needs nothing that a
-Micronaut 5 build does not already have (<<requirements,Requirements and Status>>).
+This section takes a Micronaut 5 application from a shaded JAR to a Runner JAR. Runner needs nothing that a
+Micronaut 5 build does not already have (<<requirements,Requirements>>).
+
+For a new application, select the `runner` feature in Micronaut Launch. It replaces Shadow in a Gradle build and Shade
+in a Maven build, so the generated build packages a Runner JAR, as the next pages describe. Launch offers it for every
+application type except functions, whose host never runs a JAR's main class.
 
 The examples use an application named `my-app`, version `0.1`, whose main class is `com.example.Application`.

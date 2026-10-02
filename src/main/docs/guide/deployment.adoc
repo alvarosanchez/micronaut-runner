@@ -17,13 +17,13 @@ A Runner JAR can be deployed in several ways. Choose by what your pipeline can d
 |You deploy without a JDK AOT cache, on at least 2 CPUs.
 
 |Single JAR with a <<jdkAotCache,JDK AOT cache>>
-|One JAR, a cache file and an argument file
+|One JAR and a cache file
 |Much faster; about the same as a cached shaded JAR
 |Higher RSS, because the archive is mapped
 |Your image build can train the application, and the application must stay one file.
 
 |Extracted layout with a JDK AOT cache
-|A directory of JARs, a cache file and an argument file
+|A directory of JARs and a cache file
 |The same as the single JAR with its cache
 |The lowest RSS
 |Your image build can train the application, and RSS matters.
@@ -42,3 +42,9 @@ around a limitation in <<compatibility,Compatibility and Limitations>>.
 * A JDK AOT cache works only with the exact JDK build, operating system and architecture that created it. Train it
 where the application runs, usually in the image build (<<jdkAotCacheRules,What a Cache Depends On>>).
 * For a GraalVM native image, Runner does not apply.
+
+A container image that the Micronaut plugins build, with `./gradlew dockerBuild` or `mvn package -Dpackaging=docker`,
+is none of these: it keeps your application and its dependencies in separate layers and does not hold the Runner JAR
+(<<quickStartGradle,Quick Start for Gradle>>, <<quickStartMaven,Quick Start for Maven>>). To ship a Runner JAR in an
+image, copy it onto a Java 25 runtime image, as the container example in <<jdkAotCacheByHand,Training a Cache>>
+shows.

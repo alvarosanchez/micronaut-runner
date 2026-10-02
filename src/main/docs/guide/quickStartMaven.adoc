@@ -1,40 +1,16 @@
-Add the plugin to the `<build><plugins>` of your POM and bind its `package` goal:
-
-[source,xml,subs="attributes+"]
-----
-<plugin>
-    <groupId>io.micronaut.runner</groupId>
-    <artifactId>micronaut-runner-maven-plugin</artifactId>
-    <version>{version}</version>
-    <executions>
-        <execution>
-            <goals>
-                <goal>package</goal>
-            </goals>
-        </execution>
-    </executions>
-</plugin>
-----
-
-If your build also runs Maven Shade in the `package` phase, as the Micronaut Maven plugin's `jar` packaging does,
-turn that execution off, so that only Runner packages the application:
+Set the project's packaging to `runner`. In a project whose parent is `micronaut-parent`, as Micronaut Launch
+generates it, the packaging is the `packaging` property:
 
 [source,xml]
 ----
-<plugin>
-    <groupId>org.apache.maven.plugins</groupId>
-    <artifactId>maven-shade-plugin</artifactId>
-    <executions>
-        <execution>
-            <id>default-shade</id>
-            <phase>none</phase>
-        </execution>
-    </executions>
-</plugin>
+<properties>
+    <packaging>runner</packaging>
+</properties>
 ----
 
-Without it, the build still produces a Runner JAR, but it shades the application first, and
-`original-my-app-0.1.jar` is then the shaded JAR instead of the thin one.
+Nothing else is needed: `micronaut-parent` already declares the Micronaut Maven plugin, which builds the Runner JAR
+in `runner` packaging. The `runner` packaging never runs Maven Shade. A project without `micronaut-parent` declares
+`micronaut-maven-plugin` with `<extensions>true</extensions>` and sets `<packaging>runner</packaging>`.
 
 Build and run:
 
@@ -45,12 +21,18 @@ java -jar target/my-app-0.1.jar
 ----
 
 The Runner JAR replaces the project's main artifact, as Shade does, and the JAR that `maven-jar-plugin` built is
-kept as `target/original-my-app-0.1.jar`. To attach the Runner JAR as an extra artifact instead, set the `classifier`
-parameter. The main class comes from the `exec.mainClass` property, which Micronaut Launch already sets.
+kept as `target/original-my-app-0.1.jar`. To attach the Runner JAR as an extra artifact instead, set the property
+`micronaut.runner.classifier` (<<configurationArchive,Main Class, Archive Name and Manifest>>). The main class comes
+from the `exec.mainClass` property, which Micronaut Launch already sets. With Micronaut AOT, check the name of its
+configuration file (<<micronautAot,Micronaut AOT>>).
 
-The plugin's goal prefix is `mn-runner`, so its other goals run as, for example,
-`mvn package mn-runner:record-startup-profile`.
+Runner's other goals take the Micronaut Maven plugin's prefix, `mn`, such as
+`mvn package mn:runner-startup-profile` (<<startupProfile,Startup Profile>>).
 
-The Micronaut Maven plugin's `docker` packaging, `mvn package -Dpackaging=docker`, builds its image from the compiled
-classes and the dependency JARs, not from the Runner JAR. To ship the Runner JAR in an image, see
-<<quickStartContainer,Running in a Container>>.
+To build a container image, run `mvn package -Dpackaging=docker`, as without Runner: the packaging given on the command
+line replaces `runner` for that build. The image does not hold the Runner JAR: the Micronaut Maven plugin builds it
+from your application's classes and the dependency JARs, in separate layers, so that a change to your code rebuilds
+only your application's layers. For a faster start, let the image build train a <<jdkAotCache,JDK AOT cache>> with
+`-Dmicronaut.docker.jdkAotCache=true`; the Micronaut Maven plugin's documentation describes the option.
+
+To go back to Shade, set the packaging to `jar` again.

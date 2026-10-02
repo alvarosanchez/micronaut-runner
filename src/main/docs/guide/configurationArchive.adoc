@@ -1,24 +1,23 @@
-In Gradle, the main class and the archive's name are properties of the task only:
+In Gradle, the archive's name is a property of the task:
 
 [source.multi-language-sample,groovy]
 ----
-micronautRunnerJar {
-    mainClass = 'com.example.Application'   // defaults to application.mainClass
+tasks.named('micronautRunnerJar') {
     archiveClassifier = 'executable'        // defaults to all
 }
 ----
 
 [source.multi-language-sample,kotlin]
 ----
-tasks.named<io.micronaut.runner.gradle.MicronautRunnerJar>("micronautRunnerJar") {
-    mainClass = "com.example.Application"   // defaults to application.mainClass
+tasks.micronautRunnerJar {
     archiveClassifier = "executable"        // defaults to all
 }
 ----
 
 The task writes `<archiveBaseName>-<archiveVersion>-<archiveClassifier>.jar` to `destinationDirectory`, which default
-respectively to the project's archive name, its version, `all` and the project's `build/libs` directory. Do not choose the
-classifier `runner`: the Micronaut Gradle plugin already writes a `-runner.jar` for its Docker tasks.
+respectively to the project's archive name, its version, `all` and the project's `build/libs` directory. Do not
+choose the classifier `runner`: the Micronaut Gradle plugin already writes a `-runner.jar` for its Docker tasks. The
+main class is the `application` block's `mainClass`.
 
 The archive's manifest takes the application's `+Implementation-*+`, `+Specification-*+` and `Sealed` attributes from
 the `jar` task's manifest configuration. If the `jar` task adds attributes in `doFirst` or `doLast`, or merges a file
@@ -31,5 +30,9 @@ that another task generates, set `applicationJar = tasks.named('jar').flatMap { 
 Every dependency must be a JAR file. A dependency that is a directory, such as another project's classes folder,
 fails the build; any other file, such as a POM, is skipped with a warning.
 
-In Maven, the main class is the `mainClass` parameter, which defaults to `exec.mainClass`, and the archive is
-named after the project's `finalName` and the optional `classifier` (<<quickStartMaven,Quick Start for Maven>>).
+In Maven, the main class is the `mainClass` parameter, which defaults to the `exec.mainClass` property. The archive
+is named after the project's `finalName`. Without a classifier, it replaces the main artifact
+(<<quickStartMaven,Quick Start for Maven>>). With the property `micronaut.runner.classifier`, it is attached next to
+the main artifact as `<finalName>-<classifier>.jar`. Set a classifier when another module of the build depends on
+this one: a Runner JAR is not a library, so without one the build fails and names that module. To skip the Runner
+JAR in one build, set `micronaut.runner.skip` to `true`.

@@ -1,10 +1,17 @@
-https://micronaut-projects.github.io/micronaut-aot/latest/guide/[Micronaut AOT] generates optimized application code
-when you build. Runner packages that optimized application; it never runs Micronaut AOT itself.
+https://micronaut-projects.github.io/micronaut-aot/latest/guide/[Micronaut AOT] holds build-time optimizations that
+every packaging can use, so that a shaded JAR, a container image and a native image benefit from them as well as a
+Runner JAR. Its optimizer generates optimized application code when you build. Logback precompilation needs no
+optimizer run: the Micronaut Gradle and Maven plugins apply it themselves, and a Runner JAR gets it by default
+(<<precompiledLogback,Precompiled Logback Configuration>>).
+
+Runner adds what its archive and its launcher make possible: the index, the class loader and the startup profile, and
+the steps it takes while it packages the application (<<whatChanges,What Changes for Your Application>>). It packages
+the output of Micronaut AOT's optimizer, and never runs the optimizer itself.
 
 == Gradle
 
 In a project that applies `io.micronaut.aot` next to a Micronaut application plugin, as Micronaut Launch generates it,
-Runner adds the task `optimizedMicronautRunnerJar`. It is part of `assemble`:
+the `io.micronaut.runner` plugin adds the task `optimizedMicronautRunnerJar`. It is part of `assemble`:
 
 [source,bash]
 ----
@@ -21,8 +28,13 @@ the Shadow plugin is still applied, give `optimizedJitJarAll` another classifier
 Maven has no separate optimized archive. In a project built on `micronaut-parent`, set the property
 `micronaut.aot.enabled` to `true`: the Micronaut Maven plugin's `aot-analysis` goal then rewrites `target/classes`
 before the `package` phase, and the Runner JAR is the optimized application. Without the property, it is the plain
-one. A project without `micronaut-parent` adds the `aot-analysis` goal as the Micronaut Maven plugin's documentation
-describes.
+one.
+
+Micronaut AOT reads its settings from the file that the plugin's `configFile` parameter names. When your POM names it
+after the packaging, as `+aot-${packaging}.properties+` does in projects that Micronaut Launch generates, `runner`
+packaging reads `aot-runner.properties`. Launch generates that file when you select the `runner` feature; when you
+switch an existing project, copy your `aot-jar.properties` to that name. Without the file, Micronaut AOT runs with its
+defaults and says nothing.
 
 == What the optimized application changes
 
@@ -31,37 +43,23 @@ Runner JAR as in Micronaut AOT's own Shadow JAR. The
 https://micronaut-projects.github.io/micronaut-aot/latest/guide/[Micronaut AOT guide] describes each optimization.
 To go back, deploy `-all.jar`, or turn off the optimization that causes the change.
 
-When `replaceLogbackXml` is on, Runner's own Logback precompilation stands down in the optimized archive, because
-Micronaut AOT has already replaced `logback.xml`. The precomputed service lookups and the class rewrites still apply.
+When the optimizer's `logback.xml.to.java` optimization, `replaceLogbackXml` in Gradle, has already replaced
+`logback.xml`, the optimized archive keeps that configuration, and Logback precompilation does nothing there. The
+precomputed service lookups and the class rewrites still apply.
 
 == Startup profile and JDK AOT cache
 
-`recordStartupProfile` records from `-all.jar`, and both archives embed the committed profile. The optimized
-application loads other classes, so for `-all-optimized.jar` record a class-load log of a run of it, and set it on
-the task:
+In Gradle, `recordStartupProfile` records from `-all.jar`, and both archives embed the committed profile. The optimized
+application loads other classes, so if you deploy `-all-optimized.jar`, record a class-load log of a run of it and
+embed that list instead, with the `startupClasses` option (<<configurationOptions,Packaging Options>>):
 
 [source,bash]
 ----
 java -Dmicronaut.runner.preload=false -Xlog:class+load:file=optimized-classes.log -jar build/libs/my-app-0.1-all-optimized.jar
 ----
 
-[source.multi-language-sample,groovy]
-----
-tasks.named('optimizedMicronautRunnerJar') {
-    startupClasses = file('optimized-classes.log')
-}
-----
-
-[source.multi-language-sample,kotlin]
-----
-tasks.named<io.micronaut.runner.gradle.MicronautRunnerJar>("optimizedMicronautRunnerJar") {
-    startupClasses = file("optimized-classes.log")
-}
-----
-
 To add a JDK AOT cache, train it on `-all-optimized.jar` itself, as
-<<jdkAotCacheSingleJar,The Cache on the Single JAR>> describes; a cache trained on `-all.jar` does not fit it. The
-plugins' layout and cache tasks build from `-all.jar`.
+<<jdkAotCacheSingleJar,The Cache on the Single JAR>> describes; a cache trained on `-all.jar` does not fit it.
 
 == Which archive to deploy
 

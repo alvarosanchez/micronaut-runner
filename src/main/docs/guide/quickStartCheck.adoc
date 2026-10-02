@@ -26,7 +26,7 @@ Build transforms
 ----
 
 `Preload classes` shows whether the archive carries a <<startupProfile,startup profile>>, and `Build transforms`
-what the two class rewrites changed (<<whatChanges,What Changes for Your Application>>).
+what the class rewrites changed (<<whatChanges,What Changes for Your Application>>).
 
 If a start is slower than you expect, run it once with `-Dmicronaut.runner.timing=true`:
 

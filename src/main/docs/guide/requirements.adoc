@@ -1,6 +1,7 @@
 Runner needs nothing that a Micronaut 5 build does not already have:
 
-* *Micronaut 5*. The plugins are tested with Micronaut Platform 5.1, on micronaut-core 5.1 and 5.2.
+* *Micronaut 5*, built with the Micronaut Gradle plugin or the Micronaut Maven plugin, which package Runner JARs.
+Runner's version comes with them: you add no Runner dependency to your build or to your application.
 * *Java 25 or later*, Micronaut 5's baseline, for the build and for the application.
 * *Gradle 9.1 or later*, or *Maven 3.9*.
 
@@ -8,17 +9,5 @@ Some features depend on the versions you use. The first two say in the build log
 
 * Logback precompilation needs Logback from 1.5.37 up to, but not including, 1.6.
 * The precomputed service lookups need micronaut-core from 5.1.10 up to, but not including, 5.2.
-* The JDK AOT cache works on JDK 25 and later. JDK 27 and later need two extra flags when a cache is created; the
-plugins add them, and training by hand needs them (<<aotCreationFlags,JDK 27 and Later>>).
-
-[[pluginStatus]]
-=== Status
-
-Today, use the plugins that <<quickStart,Quick Start>> shows: the Gradle plugin `io.micronaut.runner.standalone`,
-published to the Gradle Plugin Portal, and the Maven plugin `io.micronaut.runner:micronaut-runner-maven-plugin`,
-published to Maven Central. They are interim. The `io.micronaut.runner` plugin of the Micronaut Gradle plugin and the
-`runner` packaging of the Micronaut Maven plugin will replace them in a future release; neither is released yet. In
-Gradle, the replacement keeps the task names and the `micronaut { runner { } }` block. Neither replacement includes
-the tasks and goals that build a <<jdkAotCache,JDK AOT cache>>, which stay experimental, in the interim plugins only.
-
-A build that applies both an interim plugin and its replacement fails with a message that names the one to remove.
+* The JDK AOT cache works on JDK 25 and later. On JDK 27 and later, creating a cache needs two extra flags
+(<<aotCreationFlags,JDK 27 and Later>>).

@@ -4,8 +4,10 @@ fits only the JDK build, operating system, CPU architecture, garbage collector a
 trained with, down to the files' modification times. It works with the single Runner JAR and with the extracted
 layout (<<deployment,Choosing a Deployment>>).
 
-The plugins' tasks and goals that build a cache are experimental and may change (<<pluginStatus,Status>>). Training
-by hand needs only a Java runtime, `bash` and `curl` (<<jdkAotCacheByHand,Training by Hand>>).
+You train the cache where the application runs, usually in your image build. That needs only a Java runtime, `bash`
+and `curl` (<<jdkAotCacheByHand,Training a Cache>>). A container image that the Micronaut plugins build does not hold
+the Runner JAR, and trains a cache of its own when you turn that on
+(<<quickStartGradle,Quick Start for Gradle>>, <<quickStartMaven,Quick Start for Maven>>).
 
 Dynamic class data sharing (CDS), the JDK's older class cache, also works with a Runner JAR, through
 `-XX:ArchiveClassesAtExit` or `-XX:+AutoCreateSharedArchive`. It follows the same rules as the AOT cache, and the

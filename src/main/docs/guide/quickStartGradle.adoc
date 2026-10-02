@@ -1,23 +1,27 @@
-Apply the plugin next to the Micronaut plugins your build already applies.
+Apply the Micronaut Gradle plugin's `io.micronaut.runner` plugin, at the version of the Micronaut plugins your build
+already applies:
 
-[source.multi-language-sample,groovy,subs="attributes+"]
+[source.multi-language-sample,groovy]
 ----
 plugins {
-    // ... the plugins your build already applies, such as io.micronaut.application
-    id 'io.micronaut.runner.standalone' version '{version}'
+    id 'io.micronaut.application' version '<version>'
+    id 'io.micronaut.runner' version '<version>'   // the same version as io.micronaut.application
 }
 ----
 
-[source.multi-language-sample,kotlin,subs="attributes+"]
+[source.multi-language-sample,kotlin]
 ----
 plugins {
-    // ... the plugins your build already applies, such as io.micronaut.application
-    id("io.micronaut.runner.standalone") version "{version}"
+    id("io.micronaut.application") version "<version>"
+    id("io.micronaut.runner") version "<version>"   // the same version as io.micronaut.application
 }
 ----
+
+Applying the plugin is the opt-in; it needs no configuration. Its settings go in `micronaut { runner { } }`
+(<<configurationOptions,Packaging Options>>).
 
 If your build also applies the Shadow plugin, `com.gradleup.shadow`, both write the same `-all.jar` file, and the
-build fails until only one task writes it. Remove the Shadow plugin, or give the Shadow JARs another classifier:
+build fails before either writes it. Remove the Shadow plugin, or give the Shadow JARs another classifier:
 
 [source.multi-language-sample,groovy]
 ----
@@ -50,14 +54,19 @@ java -jar build/libs/my-app-0.1-all.jar
 ----
 
 The plugin adds its `micronautRunnerJar` task to `assemble`, so `./gradlew build` produces the archive too; to build
-only the Runner JAR, run `./gradlew micronautRunnerJar`. The task takes the main class from the `application` block
-and the dependencies from the runtime class path. The archive keeps Shadow's `-all.jar` name, so Dockerfiles and CI
-scripts that refer to `+build/libs/*-all.jar+` keep working.
+only the Runner JAR, run `./gradlew micronautRunnerJar`. The task takes the main class and the dependencies from your
+build. The archive keeps Shadow's `-all.jar` name, so Dockerfiles and CI scripts that refer to `+build/libs/*-all.jar+`
+keep working.
 
 A project that applies Micronaut AOT also gets `optimizedMicronautRunnerJar`, which `assemble` runs too. It packages
 the optimized application as `-all-optimized.jar` (<<micronautAot,Micronaut AOT>>).
 
-Everything else stays the same: `./gradlew run` and the tests do not use the Runner JAR. Neither do Micronaut's
-`dockerBuild` and `dockerfile` tasks; to ship the Runner JAR in an image, see <<quickStartContainer,Running in a Container>>.
+Everything else stays the same: `./gradlew run` and the tests do not use the Runner JAR.
+
+To build a container image, run `./gradlew dockerBuild`, as without Runner. The image does not hold the Runner JAR:
+the Micronaut Gradle plugin builds it from your application's classes and the dependency JARs, in separate layers, so
+that a change to your code rebuilds only your application's layers. For a faster start, let the image build train a
+<<jdkAotCache,JDK AOT cache>> with `micronaut { docker { jdkAotCache { enabled = true } } }`; the Micronaut Gradle
+plugin's documentation describes the option.
 
 To go back to Shadow, remove the plugin, and restore the Shadow plugin or its classifier.

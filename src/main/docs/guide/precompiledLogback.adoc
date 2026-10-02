@@ -1,35 +1,33 @@
-Runner compiles your `logback.xml` into a Java class when it packages the application. At startup, Logback runs that
-class instead of reading the XML with Joran, Logback's XML configurator. `logback.xml` stays in the archive.
+Logback precompilation is a feature of https://micronaut-projects.github.io/micronaut-aot/latest/guide/[Micronaut AOT]
+that the Micronaut Gradle and Maven plugins apply when they build your application. It needs no Micronaut AOT
+optimizer run. It compiles your `logback.xml` into a Logback configurator class, which Logback runs at startup
+instead of reading the XML with Joran, Logback's XML configurator. `logback.xml` stays in the archive.
 
-Runner compiles a file only when all of it is within this subset; any other file is read by Joran at startup, as
-without Runner:
+A Runner JAR gets it by default. Other packagings, such as a shaded JAR or a container image, get it when you turn it
+on in the plugins, as their documentation describes.
 
-* `<configuration>` without `debug`, `scan` or `packagingData` turned on;
-* appenders of Logback's own classes, such as `ConsoleAppender` and `FileAppender`, with simple properties and at most
-one `PatternLayoutEncoder` using Logback's built-in conversion words;
-* `<logger>` and `<root>` elements that refer to those appenders;
-* no variables, `<property>`, `<include>`, `<if>`, filters, rolling policies or custom appenders.
+The build compiles `logback.xml` only when it can show that the result configures Logback as Joran would. Otherwise
+it leaves the file to Joran at startup, as without precompilation, and the build log says why. That happens, for
+example, when:
 
-It also leaves the file to Joran when Logback is not between 1.5.37 and 1.6 (exclusive), when the application has a
-`logback-test.xml` or `logback.groovy`, when a Logback `Configurator` is already registered (yours, or Micronaut
-AOT's), and when an `+application*+` or `+bootstrap*+` file of the application may set `logger.config`. The build log
-says which happened:
+* the file uses variables, `<property>`, `<include>`, `<if>`, filters, rolling policies or custom appenders;
+* the application already registers a Logback `Configurator`: its own, or the one that Micronaut AOT's
+`logback.xml.to.java` optimization generates;
+* a packaged `+application*+` or `+bootstrap*+` file may set `logger.config`;
+* Logback is not between 1.5.37 and 1.6 (exclusive).
 
-[source]
-----
-Precompiled logback.xml (application layer) into io.micronaut.runner.generated.logback.LogbackConfigurator: ...
-No Logback configuration was precompiled because <reason>; Logback will configure itself with Joran at startup
-----
+The Micronaut AOT guide lists every rule.
 
 At run time, Joran takes over when you set `-Dlogback.configurationFile`, `-Dlogback.debug` or
-`-Dlogback.statusListenerClass`, or start with `-Dmicronaut.runner.logback.precompiled=false`. A location given by
-`-Dlogger.config` or the `LOGGER_CONFIG` environment variable is applied as without Runner.
+`-Dlogback.statusListenerClass`, or start with `-Dmicronaut.logback.precompiled=false`. A location given by
+`-Dlogger.config` or the `LOGGER_CONFIG` environment variable is applied as without precompilation.
 
-WARNING: A `logger.config` set outside the archive is not applied. That includes an `application.yml` in the working
-directory or mounted from a Kubernetes ConfigMap, `micronaut.config.files`, a `--logger.config` argument,
-configuration imported with `micronaut.config.import`, and an `+application*+` or `+bootstrap*+` file in a dependency
-JAR. The precompiled copy of the packaged `logback.xml` applies instead, and Micronaut's `logger.levels.*` properties
-still apply from any source. `-Dmicronaut.runner.logback.precompiled=false` does not change this. Set the location
-with `-Dlogger.config` or `LOGGER_CONFIG` instead, or package with `precompileLogback` set to `false`.
+WARNING: A `logger.config` that only Micronaut sees at run time is not applied. That includes an `application.yml` in
+the working directory or mounted from a Kubernetes ConfigMap, `micronaut.config.files`, a `--logger.config` argument,
+and distributed configuration. The precompiled copy of the packaged `logback.xml` applies instead, and Micronaut's
+`logger.levels.*` properties still apply from any source. `-Dmicronaut.logback.precompiled=false` does not change
+this. Set the location with `-Dlogger.config` or `LOGGER_CONFIG` instead, or package with `precompileLogback` set to
+`false`.
 
-To turn it off, set the `precompileLogback` option to `false` (<<whatChanges,What Changes for Your Application>>).
+To turn it off in a Runner JAR, set the `precompileLogback` option to `false`
+(<<whatChanges,What Changes for Your Application>>).

@@ -49,10 +49,10 @@ wanted. Unset, the archive's `archiveReads` option decides.
 |With `system`, let an agent or tool on the real class path share types with the application
 (<<javaAgents,Java agents>>). It also turns off the precomputed service lookups.
 
-|`micronaut.runner.logback.precompiled`
+|`micronaut.logback.precompiled`
 |`true`
-|With `false`, configure Logback from `logback.xml` with Joran instead of the precompiled configuration
-(<<precompiledLogback,Precompiled Logback Configuration>>).
+|With `false`, configure Logback from `logback.xml` with Joran instead of the precompiled configuration. It is
+Micronaut AOT's switch, and works in every packaging (<<precompiledLogback,Precompiled Logback Configuration>>).
 
 |`micronaut.runner.static-services`
 |`true`
@@ -72,7 +72,7 @@ Several packaging options have a switch that overrides them for one start:
 |Packaging option |Run-time switch
 
 |`archiveReads` (`MAPPED`, `POSITIONAL`) |`micronaut.runner.mmap` (`full`, `index`)
-|`precompileLogback` |`micronaut.runner.logback.precompiled`
+|`precompileLogback` |`micronaut.logback.precompiled`
 |`staticServices` |`micronaut.runner.static-services`
 |`definitionPrefetch` |`micronaut.runner.prefetch`
 |`startupClasses`, or a committed startup profile |`micronaut.runner.preload`

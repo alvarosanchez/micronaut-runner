@@ -23,7 +23,15 @@ application packaged with Shadow, and uses less memory
 ## Quick start
 
 Micronaut Runner packages Micronaut 5 applications, and needs nothing beyond Micronaut 5's own requirements, such as
-Java 25. With Gradle, apply the plugin and build:
+Java 25. The Micronaut build plugins build Runner JARs: with Gradle, apply `io.micronaut.runner` next to
+`io.micronaut.application`; with Maven, set the packaging to `runner`. Micronaut Launch offers it as the `runner`
+feature, in place of Shadow. The [Quick Start](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#quickStart)
+has the details.
+
+That support is in progress in Micronaut Launch (micronaut-projects/micronaut-starter#3134), the Micronaut Gradle
+plugin (micronaut-projects/micronaut-gradle-plugin#1378) and the Micronaut Maven plugin
+(micronaut-projects/micronaut-maven-plugin#1720). Until it ships, build Runner JARs with Runner's own interim plugins,
+as [docs/interim-plugins.md](docs/interim-plugins.md) describes. With Gradle:
 
 ```groovy
 plugins {
@@ -35,10 +43,6 @@ plugins {
 ./gradlew assemble
 java -jar build/libs/<app>-<version>-all.jar
 ```
-
-With Maven, add the `io.micronaut.runner:micronaut-runner-maven-plugin` plugin and bind its `package` goal. The
-[Quick Start](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#quickStart) has the details,
-including what to change in a project that also builds a Shadow or Shade JAR.
 
 ## Documentation
 

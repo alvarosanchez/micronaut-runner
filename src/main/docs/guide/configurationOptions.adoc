@@ -3,15 +3,14 @@
 |Build |Where to set an option
 
 |Gradle
-|In `micronaut { runner { } }`, or in `micronautRunner { }` in a build without a Micronaut plugin. The options of
-the first table below are properties, such as `compression = 'PRESERVE'`; the others are set with
-`options.put('<name>', '<value>')`. A setting on the `micronautRunnerJar` task wins for that task.
+|In `micronaut { runner { } }`. The options of the first table below are properties, such as
+`compression = 'PRESERVE'`; the others are set with `options.put('<name>', '<value>')`.
 
 |Maven
-|In the `<configuration>` of `micronaut-runner-maven-plugin`. The options of the first table below are parameters,
-such as `<compression>`, and `manifestAttributes` is `<manifestEntries>`; the others go in `<runnerOptions>`. A
-single-valued option can also be set as the property `micronaut.runner.<name>`, on the command line or in
-`<properties>`.
+|As the property `micronaut.runner.<name>`, in `<properties>` or on the command line, for any single-valued option.
+`addOpens`, `addExports` and `manifestAttributes` are the parameters `<addOpens>`, `<addExports>` and
+`<manifestEntries>` of `micronaut-maven-plugin`. The options of the second table can also go in its
+`<runnerOptions>`.
 |===
 
 An option set by name, with `options.put` or in `<runnerOptions>`, wins over the same option set another way.
@@ -42,18 +41,29 @@ micronaut {
 
 [source,xml]
 ----
-<configuration>
-    <compression>PRESERVE</compression>
-    <addOpens>
-        <addOpen>java.base/java.lang</addOpen>
-    </addOpens>
-    <manifestEntries>
-        <Implementation-Vendor>Example Ltd</Implementation-Vendor>
-    </manifestEntries>
-    <runnerOptions>
-        <archiveReads>POSITIONAL</archiveReads>
-    </runnerOptions>
-</configuration>
+<properties>
+    <micronaut.runner.compression>PRESERVE</micronaut.runner.compression>
+</properties>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>io.micronaut.maven</groupId>
+            <artifactId>micronaut-maven-plugin</artifactId>
+            <configuration>
+                <addOpens>
+                    <addOpen>java.base/java.lang</addOpen>
+                </addOpens>
+                <manifestEntries>
+                    <Implementation-Vendor>Example Ltd</Implementation-Vendor>
+                </manifestEntries>
+                <runnerOptions>
+                    <archiveReads>POSITIONAL</archiveReads>
+                </runnerOptions>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
 ----
 
 Options that are Gradle properties and Maven parameters:
@@ -86,7 +96,8 @@ Options set by name:
 |===
 
 Write `true` and `false` in lower case. A list, such as `addOpens` set by name, is comma-separated. An unknown name
-fails the build. `startupClasses` names a file, so it is set only through its property or parameter, never by name.
+fails the build. `startupClasses` names a file, so it is set only as a Gradle property or the Maven property
+`micronaut.runner.startupClasses`, never by name.
 
 `addOpens` and `addExports` take `module/package` pairs, as the JAR manifest writes them, such as
 `java.base/sun.nio.ch`, without `=ALL-UNNAMED`.
