@@ -1,6 +1,20 @@
-In Gradle, set packaging options in `micronaut { runner { } }`, or in `micronautRunner { }` in a build without a
-Micronaut plugin. Each option is also a property of the `micronautRunnerJar` task, and a setting on the task wins
-for that task. `enabled = false` skips every Runner task.
+[cols="1,5",options="header"]
+|===
+|Build |Where to set an option
+
+|Gradle
+|In `micronaut { runner { } }`, or in `micronautRunner { }` in a build without a Micronaut plugin. The options of
+the first table below are properties, such as `compression = 'PRESERVE'`; the others are set with
+`options.put('<name>', '<value>')`. A setting on the `micronautRunnerJar` task wins for that task.
+
+|Maven
+|In the `<configuration>` of `micronaut-runner-maven-plugin`. The options of the first table below are parameters,
+such as `<compression>`, and `manifestAttributes` is `<manifestEntries>`; the others go in `<runnerOptions>`. A
+single-valued option can also be set as the property `micronaut.runner.<name>`, on the command line or in
+`<properties>`.
+|===
+
+An option set by name, with `options.put` or in `<runnerOptions>`, wins over the same option set another way.
 
 [source.multi-language-sample,groovy]
 ----
@@ -26,10 +40,6 @@ micronaut {
 }
 ----
 
-In Maven, the first eight options below are parameters of the `package` goal; `manifestAttributes` is
-`<manifestEntries>`. The others are set by name, in `<runnerOptions>` or on the command line as
-`-Dmicronaut.runner.<name>`, which also sets the single-valued parameters. A `<runnerOptions>` entry wins over both:
-
 [source,xml]
 ----
 <configuration>
@@ -46,33 +56,40 @@ In Maven, the first eight options below are parameters of the `package` goal; `m
 </configuration>
 ----
 
+Options that are Gradle properties and Maven parameters:
+
 [cols="3,2,6",options="header"]
 |===
 |Option |Default |What it does, and when to change it
 
-|`compression` |`STORED` |How dependencies are stored: `STORED`, `PRESERVE` or `HYBRID` (<<compression>>).
+|`compression` |`STORED` |How dependencies are stored: `STORED`, `PRESERVE` or `HYBRID` (<<compression,Compression Modes>>).
 |`startupClasses` |the committed profile |The <<startupProfile,startup profile>> to embed. Change it to embed another list.
-|`entryStub` |`true` |Enters `main` through a generated class instead of reflection. When the main class does not
-allow it, Runner uses reflection and the build log says why.
 |`multiRelease` |`false` |Set it when your own classes form a multi-release JAR.
 |`enableNativeAccess` |`false` |Writes `Enable-Native-Access: ALL-UNNAMED`, instead of a `--enable-native-access` flag.
 |`addOpens` |empty |Packages to open, instead of `--add-opens` flags.
 |`addExports` |empty |Packages to export, instead of `--add-exports` flags.
-|`manifestAttributes` |empty |Extra attributes of the archive's manifest.
-|`archiveReads` |`MAPPED` |`MAPPED` or `POSITIONAL` (<<archiveReads>>). Change it when RSS matters more than start time.
-|`precompileLogback` |`true` |<<precompiledLogback>>.
-|`desugarLambdas` |`true` |<<desugaredLambdas>>.
-|`stripLocalVariables` |`true` |<<localVariableTables>>.
-|`staticServices` |`true` |<<staticServices>>.
-|`definitionPrefetch` |`false` |<<definitionPrefetch>>.
+|`manifestAttributes` |empty |Extra attributes of the archive's manifest (<<configurationArchive,Main Class, Archive Name and Manifest>>).
 |===
 
-In Gradle, the first eight options are properties, as `compression` is above. The others are set by name, with
-`options.put('<name>', '<value>')`. Values are not case-sensitive: `true` or `false` for a switch, and a
-comma-separated list for `addOpens` and `addExports`. An unknown name fails the build. `startupClasses` names a file,
-so it is set only through its property or parameter, never by name.
+Options set by name:
+
+[cols="3,2,6",options="header"]
+|===
+|Option |Default |What it does, and when to change it
+
+|`archiveReads` |`MAPPED` |`MAPPED` or `POSITIONAL` (<<archiveReads,Mapped or Positional Reads>>). Change it when RSS matters more than start time.
+|`precompileLogback` |`true` |Compiles `logback.xml` at build time (<<precompiledLogback,Precompiled Logback Configuration>>).
+|`desugarLambdas` |`true` |Generates the classes of lambdas at build time (<<desugaredLambdas,Lambdas Generated at Build Time>>).
+|`stripLocalVariables` |`true` |Drops the local-variable names of dependency classes (<<localVariableTables,Dependency Local-Variable Names>>).
+|`staticServices` |`true` |Precomputes Micronaut's service lookups (<<staticServices,Precomputed Service Lookups>>).
+|`definitionPrefetch` |`false` |Loads Micronaut's bean definitions early, on a background thread; experimental (<<definitionPrefetch,Bean Definition Prefetch>>).
+|===
+
+Write `true` and `false` in lower case. A list, such as `addOpens` set by name, is comma-separated. An unknown name
+fails the build. `startupClasses` names a file, so it is set only through its property or parameter, never by name.
 
 `addOpens` and `addExports` take `module/package` pairs, as the JAR manifest writes them, such as
 `java.base/sun.nio.ch`, without `=ALL-UNNAMED`.
 
-Some options have a run-time switch that overrides the packaged setting for one start (<<runtimeProperties>>).
+Some options have a run-time switch that overrides the packaged setting for one start
+(<<runtimeProperties,System Properties>>).

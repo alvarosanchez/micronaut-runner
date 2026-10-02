@@ -5,7 +5,7 @@ that run only:
 [source,bash]
 ----
 JDK_JAVA_OPTIONS='-Dmicronaut.runner.aot.training=true' bash train.sh
-java -XX:AOTCache=app.aot -jar my-app-0.1-all.jar
+java -XX:+UseG1GC -XX:AOTCache=app.aot -jar my-app-0.1-all.jar
 ----
 
 WARNING: Set `micronaut.runner.aot.training` only on the training run: in the Dockerfile, put it in front of
@@ -17,5 +17,6 @@ On JDK 27 and later, add the <<aotCreationFlags,creation flags>> in front of the
 a <<startupProfile,startup profile>>, package it first and then train, so that the cache also holds what the
 profile loads.
 
-With the plugins, set `jdkAotCache.target = 'singleJar'` (<<jdkAotCachePlugins>>). They train on a copy of the Runner
-JAR and set the property for the training run only.
+With the plugins, set `jdkAotCache.target = 'singleJar'`
+(<<jdkAotCachePlugins,Building the Cache with the Plugins>>). They train on a copy of the Runner JAR and set the
+property for the training run only.

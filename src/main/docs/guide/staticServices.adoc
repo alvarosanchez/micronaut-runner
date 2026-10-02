@@ -8,15 +8,13 @@ that it did not.
 
 What changes:
 
-* A service provider added after packaging is not seen, such as a JAR an agent appends to the class path. Start with
-`-Dmicronaut.runner.static-services=false` in that case, and Micronaut scans as usual.
-* `-Dmicronaut.runner.parent=system` turns the precomputed lookups off.
+* A service provider added after packaging is not seen. When an agent or tool adds JARs to the class path, start
+with `-Dmicronaut.runner.parent=system`, which also turns the precomputed lookups off (<<javaAgents,Java agents>>).
+To let Micronaut scan in any other case, start with `-Dmicronaut.runner.static-services=false`.
 * `java.util.ServiceLoader` and `ClassLoader.getResources` are unchanged.
-* The thread that first looks up a Micronaut service needs the application's class loader as its context class
-loader, as the main thread has. Otherwise Micronaut scans.
 
 To check the precomputed lookups against Micronaut's own scan, start once with
 `-Dmicronaut.runner.static-services.verify=true`. A match prints a `static services verified` line to standard error.
 A mismatch stops the start with a message that names the differences.
 
-To turn it off, set the `staticServices` option to `false` (<<whatChanges>>).
+To turn it off, set the `staticServices` option to `false` (<<whatChanges,What Changes for Your Application>>).

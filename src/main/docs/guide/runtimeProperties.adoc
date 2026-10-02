@@ -1,15 +1,17 @@
 These system properties are read when the application starts, so pass them on the `java` command line, before
 `-jar`. They are not packaging options.
 
-.Diagnostics
+To look into a start or an archive:
+
 [cols="3,1,5",options="header"]
 |===
 |Property |Default |Use it to
 
 |`micronaut.runner.mode`
 |`run`
-|Look into the archive instead of starting it: `inspect` prints a summary (<<quickStartCheck>>), `list` prints the
-entries, optionally only those under a prefix given as an argument, and `extract` writes a directory (<<extract>>).
+|Look into the archive instead of starting it: `inspect` prints a summary (<<quickStartCheck,Checking the Archive>>),
+`list` prints the entries, optionally only those under a prefix given as an argument, and `extract` writes a
+directory (<<extract,Extracting to a Directory>>).
 
 |`micronaut.runner.timing`
 |`false`
@@ -22,18 +24,12 @@ your application, and when preloading finished. Use it to tell launcher time fro
 
 |`micronaut.runner.static-services.verify`
 |`false`
-|With `true`, compare the precomputed service lookups with Micronaut's own scan (<<staticServices>>).
-
-|`micronaut.runner.static-services.trace`
-|`false`
-|With `true`, print every service lookup the precomputed table answers.
-
-|`micronaut.runner.prefetch.trace`
-|`false`
-|With `true`, print whether the application context used the prefetched bean definitions (<<definitionPrefetch>>).
+|With `true`, compare the precomputed service lookups with Micronaut's own scan
+(<<staticServices,Precomputed Service Lookups>>).
 |===
 
-.Switches
+To change how the application starts:
+
 [cols="3,1,5",options="header"]
 |===
 |Property |Default |Use it to
@@ -44,29 +40,30 @@ your application, and when preloading finished. Use it to tell launcher time fro
 
 |`micronaut.runner.mmap`
 |from the archive
-|Choose how the archive is read: `full` maps it whole, `index` maps only the index (<<archiveReads>>), and `false`
-maps nothing, for a platform where mapping files is not wanted. Unset, the archive's `archiveReads` option decides.
+|Choose how the archive is read: `full` maps it whole, `index` maps only the index
+(<<archiveReads,Mapped or Positional Reads>>), and `false` maps nothing, for a platform where mapping files is not
+wanted. Unset, the archive's `archiveReads` option decides.
 
 |`micronaut.runner.parent`
 |`platform`
-|With `system`, let an agent or tool on the real class path share types with the application. It also turns off the
-precomputed service lookups.
+|With `system`, let an agent or tool on the real class path share types with the application
+(<<javaAgents,Java agents>>). It also turns off the precomputed service lookups.
 
 |`micronaut.runner.logback.precompiled`
 |`true`
 |With `false`, configure Logback from `logback.xml` with Joran instead of the precompiled configuration
-(<<precompiledLogback>>).
+(<<precompiledLogback,Precompiled Logback Configuration>>).
 
 |`micronaut.runner.static-services`
 |`true`
 |With `false`, let Micronaut scan for its services instead of using the precomputed lookups.
 
 |`micronaut.runner.prefetch`
-|`true`
-|With `false`, start without the bean definition prefetch.
+|`true`, when packaged with `definitionPrefetch`
+|With `false`, start without the <<definitionPrefetch,bean definition prefetch>>.
 |===
 
-Write the values in lower case, as shown: most switches do not recognise `FALSE` or `True`.
+Write `true` and `false` in lower case: most switches do not recognise `FALSE` or `True`.
 
 Several packaging options have a switch that overrides them for one start:
 

@@ -5,19 +5,15 @@ Before you deploy an archive, check what it holds:
 java -Dmicronaut.runner.mode=inspect -jar build/libs/my-app-0.1-all.jar
 ----
 
-It prints the main class, how the application is entered, the build-time changes and every nested JAR. For a small
-Netty application, trimmed:
+It prints the main class, the build-time changes and every nested JAR. For a small Netty application, trimmed:
 
-[source]
+[source,subs="attributes+"]
 ----
+Archive               build/libs/my-app-0.1-all.jar
 Format version        1
-Packaged by           1.0.0-SNAPSHOT
+Packaged by           {version}
 Main class            com.example.Application
-Entry stub            io.micronaut.runner.generated.AppEntry
-Jars                  42
 ...
-Nested compression    10817 stored, 0 deflated
-Application layer     single release
 Archive reads         mapped
 Preload classes       none
 ...
@@ -29,8 +25,8 @@ Build transforms
 ...
 ----
 
-`Entry stub` names the generated class that calls your `main` method directly; without one, the launcher calls it
-through reflection. `Preload classes` shows whether the archive carries a <<startupProfile,startup profile>>.
+`Preload classes` shows whether the archive carries a <<startupProfile,startup profile>>, and `Build transforms`
+what the two class rewrites changed (<<whatChanges,What Changes for Your Application>>).
 
 If a start is slower than you expect, run it once with `-Dmicronaut.runner.timing=true`:
 

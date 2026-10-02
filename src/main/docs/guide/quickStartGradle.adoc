@@ -55,9 +55,9 @@ from the `application` block and the dependencies from the runtime class path. T
 name, so Dockerfiles and CI scripts that refer to `+build/libs/*-all.jar+` keep working.
 
 A project that applies Micronaut AOT also gets `optimizedMicronautRunnerJar`, which packages the optimized
-application as `-all-optimized.jar` (<<micronautAot>>).
+application as `-all-optimized.jar` (<<micronautAot,Micronaut AOT>>).
 
 Everything else stays the same: `./gradlew run` and the tests do not use the Runner JAR. Neither do Micronaut's
-`dockerBuild` and `dockerfile` tasks; to ship the Runner JAR in an image, see <<quickStartContainer>>.
+`dockerBuild` and `dockerfile` tasks; to ship the Runner JAR in an image, see <<quickStartContainer,Running in a Container>>.
 
 To go back to Shadow, remove the plugin, and restore the Shadow plugin or its classifier.

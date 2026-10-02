@@ -1,11 +1,11 @@
 A strict probe checks a cache against the JDK and the class path without starting your application. Run it where
-the application finally lives, such as in the image's `RUN` step, and repeat it: some failures happen only on some
-starts.
+the application finally lives, such as in the image's `RUN` step, with the flags production uses, and repeat it: some
+failures happen only on some starts.
 
 [source,bash]
 ----
 for i in 1 2 3 4 5 6 7 8 9 10; do
-  java -XX:AOTMode=on -XX:AOTCache=app.aot -cp app/my-app-0.1-all.jar -version 2>/dev/null || exit 1
+  java -XX:+UseG1GC -XX:AOTMode=on -XX:AOTCache=app.aot -cp app/my-app-0.1-all.jar -version 2>/dev/null || exit 1
 done
 ----
 
@@ -16,7 +16,7 @@ Then start the application once with class loading logged, and check that your c
 
 [source,bash]
 ----
-java -XX:AOTMode=on -XX:AOTCache=app.aot -Xlog:class+load -jar app/my-app-0.1-all.jar
+java -XX:+UseG1GC -XX:AOTMode=on -XX:AOTCache=app.aot -Xlog:class+load -jar app/my-app-0.1-all.jar
 ----
 
 A class from the cache is logged as, for example, `com.example.Application source: shared objects file`. When the

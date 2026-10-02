@@ -1,5 +1,4 @@
-A Runner JAR can be deployed in several ways. Choose by what your pipeline can do and what you need to keep small;
-<<performance>> has the figures behind the comparison.
+A Runner JAR can be deployed in several ways. Choose by what your pipeline can do and what you need to keep small.
 
 [cols="3,3,3,3,4",options="header"]
 |===
@@ -38,7 +37,8 @@ A Runner JAR can be deployed in several ways. Choose by what your pipeline can d
 
 Some rules apply to every deployment:
 
-* Never deploy the extracted layout without its cache: uncached, it starts more slowly than the single JAR.
+* Without a JDK AOT cache, the extracted layout starts more slowly than the single JAR. Use it uncached only to work
+around a limitation in <<compatibility,Compatibility and Limitations>>.
 * A JDK AOT cache works only with the exact JDK build, operating system and architecture that created it. Train it
-where the application runs, usually in the image build (<<jdkAotCacheRules>>).
+where the application runs, usually in the image build (<<jdkAotCacheRules,What a Cache Depends On>>).
 * For a GraalVM native image, Runner does not apply.

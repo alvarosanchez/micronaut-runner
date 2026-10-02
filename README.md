@@ -11,12 +11,12 @@
 Fast-starting, lean single-JAR packaging for Micronaut applications.
 
 `micronaut-runner` packages an application and its dependencies into one executable JAR that you run with
-`java -jar`, without flattening the dependencies the way Gradle Shadow and Maven Shade do. Every dependency stays an
-intact JAR inside the archive, so `META-INF/services` files, multi-release classes, per-JAR manifests and duplicate
+`java -jar`, without flattening the dependencies the way Gradle Shadow and Maven Shade do. Every dependency stays a
+separate JAR inside the archive, so `META-INF/services` files, multi-release classes, per-JAR manifests and duplicate
 resources behave as on an ordinary class path. Only Micronaut's `META-INF/micronaut/` bean metadata is merged, on
 purpose, so that Micronaut reads it in one pass.
 
-Without a JDK AOT cache, a Runner JAR typically reaches its first response in about 25–30% less time than the same
+Without a JDK AOT cache, a Runner JAR typically reaches its first response in about a quarter less time than the same
 application packaged with Shadow, and uses less memory
 ([Performance](https://micronaut-projects.github.io/micronaut-runner/latest/guide/#performance)).
 

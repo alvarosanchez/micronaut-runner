@@ -26,8 +26,10 @@ At run time, Joran takes over when you set `-Dlogback.configurationFile`, `-Dlog
 `-Dlogger.config` or the `LOGGER_CONFIG` environment variable is applied as without Runner.
 
 WARNING: A `logger.config` set outside the archive is not applied. That includes an `application.yml` in the working
-directory or mounted from a Kubernetes ConfigMap, `micronaut.config.files`, a `--logger.config` argument, and
-configuration imported with `micronaut.config.import`. Set the location with `-Dlogger.config` or `LOGGER_CONFIG`
-instead, or package with `precompileLogback` set to `false`.
+directory or mounted from a Kubernetes ConfigMap, `micronaut.config.files`, a `--logger.config` argument,
+configuration imported with `micronaut.config.import`, and an `+application*+` or `+bootstrap*+` file in a dependency
+JAR. The precompiled copy of the packaged `logback.xml` applies instead, and Micronaut's `logger.levels.*` properties
+still apply from any source. `-Dmicronaut.runner.logback.precompiled=false` does not change this. Set the location
+with `-Dlogger.config` or `LOGGER_CONFIG` instead, or package with `precompileLogback` set to `false`.
 
-To turn it off, set the `precompileLogback` option to `false` (<<whatChanges>>).
+To turn it off, set the `precompileLogback` option to `false` (<<whatChanges,What Changes for Your Application>>).

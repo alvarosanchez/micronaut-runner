@@ -1,5 +1,4 @@
 An application behaves in a Runner JAR as it does on an ordinary class path, with the exceptions on this page.
-Runner's class loader is tested against the JDK's `URLClassLoader` over the same JARs.
 
 == What behaves as on a class path
 
@@ -26,7 +25,9 @@ merged.
 
 The system class loader:: Only the context class loader is Runner's. `ClassLoader.getSystemClassLoader()` and the
 `java.class.path` property see only the Runner JAR itself, so code that finds classes or dependencies through them
-does not find your dependencies. Micronaut uses the context class loader and is not affected.
+does not find your dependencies. Micronaut uses the context class loader and is not affected. In an
+<<extract,extracted layout>>, the system class loader finds your dependencies; `java.class.path` still names only the
+application JAR, as it does for any JAR started with `java -jar`.
 Signatures:: Runner does not verify the signatures of nested JARs, and classes have no code signers. Code that needs
 verified signed JARs, such as a signed JCE provider on a JDK that enforces provider signing, does not work from the
 single JAR. An <<extract,extracted layout>> of a Runner JAR packaged with `PRESERVE` keeps the signed JARs as published
@@ -39,20 +40,34 @@ Native libraries:: Libraries that ship native code, such as Netty's native trans
 directory themselves, as from any JAR. That directory must be writable.
 Relocation:: Runner never renames packages. A build that relies on Shadow relocation to separate two versions of a
 library needs another solution.
-Java agents:: An agent started with `-javaagent` sees every class as it is defined. If your agent must share types
-with the application, start with `-Dmicronaut.runner.parent=system`.
-The `io.micronaut.runner` package:: The launcher's own classes cannot be replaced by classes of the same name in
-your application or its dependencies.
-`JarFile` of a nested JAR:: `isMultiRelease()` and `getVersion()` report the outer archive; resolution itself is
-correct.
 
 The launcher uses only the `java.base` module, so a `jlink` runtime needs only the modules your application needs.
+
+[[javaAgents]]
+== Java agents
+
+An agent started with `-javaagent`, such as a monitoring or tracing agent, sees every class Runner defines and can
+transform it, as with any class loader. The agent itself is loaded by the system class loader, which your
+application does not see by default. An agent that puts the classes it shares with your application on the boot
+class path needs nothing more.
+
+Start with `-Dmicronaut.runner.parent=system` when your application must see the agent's classes from the class
+path, or when the agent adds JARs to the class path at run time. The application's class loader then delegates to the
+system class loader, and Runner turns off the <<staticServices,precomputed service lookups>>, so that Micronaut also
+finds services on the real class path.
+
+An agent attached to a running JVM, rather than started with `-javaagent`, sees the classes of a
+<<startupProfile,startup profile>> as already loaded.
+
+Runner's tests do not cover a particular monitoring agent, such as the OpenTelemetry, Datadog or New Relic Java
+agent. If one misbehaves in a Runner JAR, please https://github.com/{githubSlug}/issues[report it].
 
 [[authenticating]]
 == Authenticating a deployment artifact
 
-Do not run `jarsigner` on a Runner JAR, or change it in any other way after packaging (<<archiveLifetime>>). To prove
-where an archive comes from, sign the finished file externally and verify it before you start it, for example:
+Do not run `jarsigner` on a Runner JAR, or change it in any other way after packaging
+(<<archiveLifetime,Archive Lifetime>>). To prove where an archive comes from, sign the finished file externally and
+verify it before you start it, for example:
 
 [source,bash]
 ----

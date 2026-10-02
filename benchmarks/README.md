@@ -407,20 +407,24 @@ figure it is.
 
 ## Claims in the user guide
 
-The guide's Performance section rounds each claim to the nearest 5% or to a plain fraction, and phrases it as less or
-more time, never as "faster". Each claim comes from these comparisons (the startup harness's paired rows, or a manual
-comparison run with the same paired, interleaved method):
+The guide's Performance section makes four claims, rounded to a plain fraction and phrased as less or more time. Other
+pages compare options in words only, such as "slightly slower" or "about the same". Each claim comes from these
+comparisons (the startup harness's paired rows, or a manual comparison run with the same paired, interleaved
+method):
 
-| Claim | Comparison |
-|---|---|
-| Without a cache, less time than Shadow | `runner-stored` − `shadow` |
-| Less RSS and private memory than Shadow | the memory of `runner-stored` − `shadow` |
-| Size on disk and gzipped | `runner-stored` / `shadow` deployment size |
-| With caches, about the same as Shadow | `runner-stored-aot` − `shadow-aot`, `runner-extracted-aot` − `shadow-aot`; what a cache buys: `shadow-aot` − `shadow`, `runner-stored-aot` − `runner-stored` |
-| Extracted layout against the single JAR | `runner-extracted-aot` − `runner-stored-aot`, `runner-extracted` − `runner-stored` |
-| Startup profile | `runner-stored-preload` − `runner-stored`, and its `-aot` twins |
-| Micronaut AOT | `runner-stored` − `shadow-maot`, `runner-maot` − `shadow-maot`, `runner-maot-aot` − `shadow-maot-aot` |
-| Option trade-offs | the opt-in and control rows against `runner-stored` (and `-aot`), `runner-preserve`, `runner-stored-hybrid`; manually: dynamic CDS and `-XX:+AutoCreateSharedArchive` against the AOT cache, `-Dmicronaut.runner.mmap=false`, and a layout extracted from `PRESERVE` |
+| Claim | Where | Comparison | Last measured |
+|---|---|---|---|
+| Without a cache, about a quarter less time than Shadow, and clearly less memory | Performance, README | `runner-stored` − `shadow`: time and memory | −25…−28% time; RSS −17…−32%, private −35…−49% |
+| Larger on disk, about a third smaller compressed | Performance | `runner-stored` / `shadow` deployment size | 2.44× raw, 0.67× gzip |
+| With caches on both sides, about the same time as Shadow, somewhat less private memory | Performance, Choosing a Deployment | `runner-stored-aot` − `shadow-aot` | −7…+2% time; private −1…−14% |
+| A startup profile takes about a further fifth off a start without a cache | Performance | `runner-stored-preload` − `runner-stored` | −23% |
+| Extracted layout: the same with its cache, lower RSS; slower without one | Choosing a Deployment, Extracting to a Directory | `runner-extracted-aot` − `runner-stored-aot`, `runner-extracted` − `runner-stored` | −4…+3% time, RSS −13…−17%; uncached +9…+14% |
+| Micronaut AOT: `-all-optimized.jar` fastest uncached, `-all.jar` ahead of the optimized Shadow JAR, about the same cached | Micronaut AOT | `runner-maot` − `runner-stored`, `runner-stored` − `shadow-maot`, `runner-maot-aot` − `shadow-maot-aot` | −6%; −18…−21%; −4…+0% |
+| `PRESERVE` slower than `STORED` but faster than Shadow; slightly larger than Shadow on disk, about the same gzipped | Compression Modes | `runner-preserve` − `runner-stored`, `runner-preserve` − `shadow` | +15…+17%; −16%; 1.20× raw, 1.04× gzip |
+| `HYBRID` starts like `STORED`, smaller on disk, larger compressed | Compression Modes | `runner-stored-hybrid` − `runner-stored` | −1% (n.s.); 0.74× raw, 1.35× gzip |
+| `POSITIONAL`: lower RSS, slightly slower, same private memory | Mapped or Positional Reads | `runner-stored-positional` − `runner-stored` | +1…+2% time; RSS −13…−16% |
+| Bean definition prefetch: a few percent on many cores | Bean Definition Prefetch | `runner-stored-prefetch` − `runner-stored`, and its `-aot` twin | −3…−6% (12 cores) |
+| Dynamic CDS starts more slowly than the AOT cache | The JDK AOT Cache | manual: `-XX:ArchiveClassesAtExit` and `-XX:+AutoCreateSharedArchive` against the AOT cache | AOT −11…−12% |
 
 They were last measured on 2026-10-02 at commit `71e87dd`, on an Apple M4 Pro with 12 CPUs (macOS 26.6.2), with
 Homebrew OpenJDK 25.0.4.1 and 27, the sample on micronaut-core 5.1.15 and, in one batch, 5.2.12. To refresh them, run

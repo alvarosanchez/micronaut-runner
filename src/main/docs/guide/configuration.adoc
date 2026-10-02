@@ -1,2 +1,2 @@
-This section lists every packaging option, with its default and when to change it. Options that the launcher reads
-when the application starts are in <<runtimeProperties>>.
+This section lists the packaging options, with their defaults and when to change them. Options that the launcher
+reads when the application starts are in <<runtimeProperties,System Properties>>.

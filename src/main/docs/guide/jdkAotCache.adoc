@@ -2,7 +2,11 @@ The JDK AOT cache is a file that the JVM writes during a training run of your ap
 that run loaded and linked, and every later start reads them from the file instead of loading them again. A cache
 fits only the JDK build, operating system, CPU architecture, garbage collector and heap flags, and class path it was
 trained with, down to the files' modification times. It works with the single Runner JAR and with the extracted
-layout (<<deployment>>).
+layout (<<deployment,Choosing a Deployment>>).
 
-The plugins' tasks and goals that build a cache are experimental: they exist only in Runner's interim plugins
-(<<requirements>>) and may change. Training by hand needs only the JDK.
+The plugins' tasks and goals that build a cache are experimental and may change (<<pluginStatus,Status>>). Training
+by hand needs only a Java runtime, `bash` and `curl` (<<jdkAotCacheByHand,Training by Hand>>).
+
+Dynamic class data sharing (CDS), the JDK's older class cache, also works with a Runner JAR, through
+`-XX:ArchiveClassesAtExit` or `-XX:+AutoCreateSharedArchive`. It follows the same rules as the AOT cache, and the
+application starts more slowly with it than with the AOT cache.

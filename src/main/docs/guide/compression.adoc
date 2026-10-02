@@ -2,11 +2,15 @@ The `compression` option decides how the dependencies are stored in the archive:
 
 `STORED` (default):: Dependencies are re-packed uncompressed, so classes are defined without being decompressed. It
 starts fastest. The archive is the largest on disk and the smallest once compressed, as in an image layer.
-`PRESERVE`:: Dependencies are copied byte for byte, signature files included. The archive is about the size of a
-shaded JAR, larger compressed than `STORED`, and slower to start. The class rewrites (<<desugaredLambdas>>,
-<<localVariableTables>>) are off; Logback precompilation and the precomputed service lookups still apply.
+`PRESERVE`:: Dependencies are copied byte for byte, signature files included. The archive is slightly larger than a
+shaded JAR on disk, about the same size compressed, and larger compressed than `STORED`. It starts more slowly than
+`STORED`, though still faster than a shaded JAR. The class rewrites
+(<<desugaredLambdas,Lambdas Generated at Build Time>>, <<localVariableTables,Dependency Local-Variable Names>>) are
+off; Logback precompilation and the precomputed service lookups still apply.
 `HYBRID`:: Classes in the <<startupProfile,startup profile>> are stored uncompressed and the others stay compressed.
 It starts like `STORED`, is smaller on disk and larger compressed. Without a startup profile it packages as `STORED`
 and warns. Record the profile again after upgrades, because a class missing from it is decompressed when it loads.
+Rewritten classes are compressed again, so a `HYBRID` archive is byte-for-byte reproducible only with the same JDK
+build.
 
-Every mode keeps each dependency's manifest. <<performance>> compares the three.
+Every mode keeps each dependency's manifest.

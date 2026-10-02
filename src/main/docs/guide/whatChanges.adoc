@@ -27,11 +27,10 @@ and can be turned off. The build log says what each step did, and why when it di
 |`staticServices`
 |===
 
-Packaging does this work on purpose: the build takes longer, so that every start does less.
-
 Runner verifies every class it rewrites. When a rewrite fails, it keeps the original class and says so in the build
 log. It never rewrites the classes of signed JARs, and your own classes keep their local-variable names. `inspect`
-lists what each step changed (<<quickStartCheck>>).
+lists what the two class rewrites changed (<<quickStartCheck,Checking the Archive>>); the build log reports all four
+steps.
 
 To turn steps off, set their options to `false`. To rule Runner's build-time steps out while you track down a
 problem, turn off all four:
@@ -60,6 +59,8 @@ micronaut {
 }
 ----
 
+In Maven, in the plugin's `<configuration>`:
+
 [source,xml]
 ----
 <configuration>
@@ -72,13 +73,14 @@ micronaut {
 </configuration>
 ----
 
-In Maven, `-Dmicronaut.runner.<option>=false` works as well. `PRESERVE` compression turns off only the two class
-rewrites (<<compression>>).
+Maven also takes `-Dmicronaut.runner.<option>=false` on the command line. `PRESERVE` compression turns off only the two class
+rewrites (<<compression,Compression Modes>>).
 
 Other differences from a shaded JAR do not come from these steps:
 
-* Code that loads classes through the system class loader, or reads `java.class.path`, does not find the
-dependencies (<<compatibility>>).
-* Nested JAR signatures are not verified, and the module path is not supported (<<compatibility>>).
-* A dependency's own `Class-Path` manifest attribute is ignored (<<compatibility>>).
-* A deployed Runner JAR must never be modified, signed or re-zipped (<<archiveLifetime>>).
+* Code that loads your dependencies' classes through the system class loader, or finds them through
+`java.class.path`, does not find them (<<compatibility,Compatibility and Limitations>>).
+* Nested JAR signatures are not verified, and the module path is not supported
+(<<compatibility,Compatibility and Limitations>>).
+* A dependency's own `Class-Path` manifest attribute is ignored (<<compatibility,Compatibility and Limitations>>).
+* A deployed Runner JAR must never be modified, signed or re-zipped (<<archiveLifetime,Archive Lifetime>>).

@@ -12,9 +12,9 @@ them, such as jib with its default file time, or buildpacks, make the JVM reject
 `timestamp has changed`.
 * *Room in the image.* The cache is the largest file of a cached deployment.
 
-For the extracted layout, package with `STORED`, the default, or `PRESERVE` (<<compression>>): both start the same
-with their cache. `STORED` gives a smaller compressed image layer and a faster start if the cache is ever rejected;
-`PRESERVE` gives a smaller layout on disk.
+For the extracted layout, package with `STORED`, the default, or `PRESERVE` (<<compression,Compression Modes>>): both
+start the same with their cache. `STORED` gives a smaller compressed image layer and a faster start if the cache is
+ever rejected; `PRESERVE` gives a smaller layout on disk.
 
 The extracted layout keeps the precompiled Logback configuration and the precomputed service lookups. It has no
 launcher, so a startup profile and the bean definition prefetch do nothing there.

@@ -1,6 +1,5 @@
 introduction:
   title: Introduction
-  performance: Performance
   requirements: Requirements and Status
 releaseHistory: Release History
 quickStart:
@@ -17,6 +16,7 @@ whatChanges:
   staticServices: Precomputed Service Lookups
 deployment:
   title: Choosing a Deployment
+performance: Performance
 startupProfile: Startup Profile
 jdkAotCache:
   title: The JDK AOT Cache
@@ -25,7 +25,6 @@ jdkAotCache:
   jdkAotCacheSingleJar: The Cache on the Single JAR
   jdkAotCacheRules: What a Cache Depends On
   jdkAotCacheVerify: Verifying a Cache
-  jdkAotCacheAlternatives: Dynamic CDS Instead of the AOT Cache
 micronautAot: Micronaut AOT
 configuration:
   title: Configuration Reference

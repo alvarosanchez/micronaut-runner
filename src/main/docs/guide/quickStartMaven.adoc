@@ -1,4 +1,4 @@
-Add the plugin to the `<plugins>` of your POM and bind its `package` goal:
+Add the plugin to the `<build><plugins>` of your POM and bind its `package` goal:
 
 [source,xml,subs="attributes+"]
 ----
@@ -50,3 +50,7 @@ parameter. The main class comes from the `exec.mainClass` property, which Micron
 
 The plugin's goal prefix is `mn-runner`, so its other goals run as, for example,
 `mvn package mn-runner:record-startup-profile`.
+
+The Micronaut Maven plugin's `docker` packaging, `mvn package -Dpackaging=docker`, builds its image from the compiled
+classes and the dependency JARs, not from the Runner JAR. To ship the Runner JAR in an image, see
+<<quickStartContainer,Running in a Container>>.

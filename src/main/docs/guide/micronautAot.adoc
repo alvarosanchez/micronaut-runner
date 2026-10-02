@@ -13,7 +13,8 @@ java -jar build/libs/my-app-0.1-all-optimized.jar
 ----
 
 `-all.jar` never contains Micronaut AOT's output. Both archives take the options of `micronaut { runner { } }`. If
-the Shadow plugin is still applied, give `optimizedJitJarAll` another classifier, as <<quickStartGradle>> shows.
+the Shadow plugin is still applied, give `optimizedJitJarAll` another classifier, as
+<<quickStartGradle,Quick Start for Gradle>> shows.
 
 == Maven
 
@@ -25,20 +26,13 @@ describes.
 
 == What the optimized application changes
 
-The optimized application behaves differently from the plain one, in a Runner JAR as in Micronaut AOT's own Shadow
-JAR. With Micronaut AOT 3.0 and 3.1.0, depending on the optimizations you enable:
+Depending on the optimizations you enable, the optimized application can behave differently from the plain one, in a
+Runner JAR as in Micronaut AOT's own Shadow JAR. The
+https://micronaut-projects.github.io/micronaut-aot/latest/guide/[Micronaut AOT guide] describes each optimization.
+To go back, deploy `-all.jar`, or turn off the optimization that causes the change.
 
-* `replaceLogbackXml`: the generated Logback configuration ignores `-Dlogback.configurationFile`, `-Dlogger.config` and
-`LOGGER_CONFIG`.
-* `optimizeNetty`: `-Dio.netty.machineId` and `-Dio.netty.processId` are overridden.
-* `optimizeClassLoading`: `Publishers.registerReactiveType` and its siblings throw `UnsupportedOperationException`.
-* `deduceEnvironment`: the environments deduced on the build machine become the application's environments.
-
-To go back, deploy `-all.jar`, or turn off the optimization that causes the change. The Micronaut AOT guide describes
-each one.
-
-In the optimized archive, Runner's own Logback precompilation stands down, because Micronaut AOT has already replaced
-`logback.xml`. The precomputed service lookups and the class rewrites still apply.
+When `replaceLogbackXml` is on, Runner's own Logback precompilation stands down in the optimized archive, because
+Micronaut AOT has already replaced `logback.xml`. The precomputed service lookups and the class rewrites still apply.
 
 == Startup profile and JDK AOT cache
 
@@ -65,11 +59,12 @@ tasks.named<io.micronaut.runner.gradle.MicronautRunnerJar>("optimizedMicronautRu
 }
 ----
 
-To add a JDK AOT cache, train it on `-all-optimized.jar` itself, as <<jdkAotCacheSingleJar>> describes; a cache
-trained on `-all.jar` does not fit it. The plugins' layout and cache tasks build from `-all.jar`.
+To add a JDK AOT cache, train it on `-all-optimized.jar` itself, as
+<<jdkAotCacheSingleJar,The Cache on the Single JAR>> describes; a cache trained on `-all.jar` does not fit it. The
+plugins' layout and cache tasks build from `-all.jar`.
 
 == Which archive to deploy
 
 Without a JDK AOT cache, `-all-optimized.jar` starts fastest, and even `-all.jar` starts faster than Micronaut AOT's
-optimized Shadow JAR. With a JDK AOT cache, the two archives start in about the same time (<<performance>>), so
-`-all.jar`, which keeps the plain application's behaviour, is the simpler choice.
+optimized Shadow JAR. With a JDK AOT cache, the two archives start in about the same time, so `-all.jar`, which keeps
+the plain application's behaviour, is the simpler choice.

@@ -62,8 +62,8 @@ public abstract class JdkAotCacheSpec {
 
     /**
      * What the cache is trained for: {@code layout}, the extracted layout that every JDK caches in full, or
-     * {@code singleJar}, a copy of the Runner JAR, whose nested classes JDK 27 and later do not cache. Defaults to
-     * {@code layout}.
+     * {@code singleJar}, a copy of the Runner JAR, recorded with {@code micronaut.runner.aot.training} so that JDK 27
+     * and later cache its classes. Defaults to {@code layout}.
      *
      * @return the target
      */

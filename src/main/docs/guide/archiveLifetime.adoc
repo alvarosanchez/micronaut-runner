@@ -1,9 +1,11 @@
 WARNING: Never modify, overwrite, sign or re-zip a Runner JAR after it is packaged, and never replace it while a JVM
 runs from it. Publish each new version under a new path.
 
-The archive's index records where each entry is. A rewritten file no longer matches it, so the launcher refuses to
-start with `This runner jar was modified after it was packaged and must be rebuilt`, and exits with 2. Replacing the
-file under a running JVM makes class loading fail, or can stop the JVM, because the archive is mapped into memory.
+The archive's index records the archive's length and where each entry is. A file that was re-zipped, signed or
+otherwise rewritten no longer matches it, so the launcher refuses to start with `This runner jar was modified after it
+was packaged and must be rebuilt`, and exits with 2. This is a staleness check, not an integrity check: to check every
+entry's checksum, start with `-Dmicronaut.runner.verify=true`. Replacing the file under a running JVM makes class
+loading fail, or can stop the JVM, because the archive is mapped into memory.
 
 To authenticate a deployment, sign the finished file externally, for example with a detached signature, and verify
-it before you start it (<<authenticating>>).
+it before you start it (<<authenticating,Authenticating a deployment artifact>>).

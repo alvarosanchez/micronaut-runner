@@ -18,4 +18,4 @@ and warns in the build log.
 
 TIP: To step through dependency code in a debugger, use `./gradlew run`, which does not use the Runner JAR.
 
-To turn it off, set the `stripLocalVariables` option to `false` (<<whatChanges>>).
+To turn it off, set the `stripLocalVariables` option to `false` (<<whatChanges,What Changes for Your Application>>).

@@ -1,5 +1,6 @@
-Micronaut Runner packages a Micronaut application as one executable JAR that you run with `java -jar`. Unlike a
-shaded JAR, every dependency stays an intact JAR inside it.
+Micronaut Runner packages a Micronaut application as one executable JAR that you run with `java -jar`. Compared with
+a Shadow or Shade JAR, it starts noticeably faster and uses less memory, at the cost of a slower, more thorough build
+(<<performance,Performance>>). Unlike a shaded JAR, it keeps every dependency as a separate JAR inside it.
 
 Gradle Shadow and Maven Shade flatten all dependencies into one namespace, which loses information:
 
@@ -28,27 +29,29 @@ my-app-0.1-all.jar
 <3> the launcher, a few small classes that start your application
 <4> the Micronaut bean metadata of every JAR, merged so that Micronaut reads it in one pass
 <5> your application's own classes and resources
-<6> the dependencies, each one a complete JAR
+<6> the dependencies, each one a separate JAR
 
 == How it starts faster
 
 The index is built when the archive is packaged, so nothing is scanned at startup. The launcher maps the archive
 into memory once and extracts nothing. By default, dependencies are stored uncompressed, so classes are defined
-straight from the archive. Packaging also moves work from every start to the build: it compiles `logback.xml`,
-generates the classes for lambdas, and precomputes Micronaut's service lookups (<<whatChanges>>).
-
-The trade-off is deliberate: the archive is larger on disk than a shaded JAR but smaller compressed, and packaging
-does more work so that every start does less (<<performance>>).
+straight from the archive. Packaging also does once what a shaded JAR repeats at every start: it compiles
+`logback.xml`, generates the classes for lambdas, and precomputes Micronaut's service lookups
+(<<whatChanges,What Changes for Your Application>>). The archive is larger on disk than a shaded JAR, but smaller
+compressed.
 
 Two features share the letters AOT. _Micronaut AOT_ generates optimized application code when you build
-(<<micronautAot>>). The _JDK AOT cache_ is a file the JVM writes during a training run of your application, and
-reads at every later start (<<jdkAotCache>>). Runner works with both.
+(<<micronautAot,Micronaut AOT>>). The _JDK AOT cache_ is a file the JVM writes during a training run of your
+application, and reads at every later start (<<jdkAotCache,The JDK AOT Cache>>). Runner works with both.
 
 == When Runner is not the right fit
 
 * You build a GraalVM native image. Runner packages JVM applications only.
-* You use a signed JCE provider, or other code that needs verified JAR signatures (<<compatibility>>).
-* Your code needs the module path, reads `java.class.path`, or loads classes through the system class loader.
+* You use a signed JCE provider, or other code that needs verified JAR signatures. That works only from the extracted
+layout of a `PRESERVE` archive (<<compatibility,Compatibility and Limitations>>).
+* Your code loads your dependencies' classes through the system class loader. That works only from an extracted
+layout (<<compatibility,Compatibility and Limitations>>).
+* Your code needs the module path, or finds your dependencies by reading `java.class.path`.
 * Your build relies on Shadow relocation to rename packages. Runner never relocates.
 
-Start with <<quickStart>>, then read <<whatChanges>>.
+Start with <<quickStart,Quick Start>>, then read <<whatChanges,What Changes for Your Application>>.

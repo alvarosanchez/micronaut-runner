@@ -106,3 +106,24 @@ concatenation through `invokedynamic`, no reflection on the entry path, and no `
 `java.base`. It hands control to the application's `main` through an interface call, which the generated entry stub
 implements. The tool modes (`inspect`, `list`, `extract`) are loaded only when selected, and these rules do not apply
 to them.
+
+## Details kept out of the user guide
+
+These facts are true and tested, but an application developer cannot act on them, so the user guide leaves them out.
+
+- **Class loader conformance.** The launcher's class loader is tested against the JDK's `URLClassLoader` over the same
+  JARs, for resource order, duplicate resources, manifests, sealing and multi-release resolution.
+- **The launcher's own package.** Classes under `io.micronaut.runner` always come from the launcher: a class of the
+  same name in the application or a dependency cannot replace them.
+- **`JarFile` of a nested JAR.** `isMultiRelease()` and `getVersion()` on a `JarURLConnection`'s `JarFile` report the
+  outer archive; multi-release resolution itself is per nested JAR and correct.
+- **Entry stub.** The packager generates a class that calls the application's `main` directly when the main class is
+  a public, non-abstract class in a named package that declares its own `public static void main(String[])`.
+  Otherwise the launcher enters `main` reflectively, and the build log says why. The difference is not measurable;
+  the `entryStub` option turns the stub off. The bean definition prefetch needs the stub.
+- **Static service table and the context class loader.** The table answers a lookup only when the thread's context
+  class loader is the application's, as the main thread's is; any other lookup falls back to Micronaut's scan.
+- **Generated lambda classes.** The classes `desugarLambdas` generates are ordinary classes: `Class.isHidden()` is
+  `false`, and `Class.forName` finds them.
+- **Trace switches.** `-Dmicronaut.runner.static-services.trace=true` prints every lookup the static table answers;
+  `-Dmicronaut.runner.prefetch.trace=true` prints whether the application context used the prefetched definitions.

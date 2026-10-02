@@ -4,27 +4,30 @@ Runner JAR, please https://github.com/{githubSlug}/issues[report it].
 == The build fails
 
 `The shadow plugin is configured to write ... which is also the micronautRunnerJar output`:: Shadow and Runner write
-the same `-all.jar`. Remove the Shadow plugin, or give its JARs another classifier (<<quickStartGradle>>).
+the same `-all.jar`. Remove the Shadow plugin, or give its JARs another classifier
+(<<quickStartGradle,Quick Start for Gradle>>).
 `The io.micronaut.runner plugin from micronaut-gradle-plugin builds the Runner JAR in this build`:: Both the interim
 and the Micronaut Gradle plugin's Runner plugin are applied. Remove `io.micronaut.runner.standalone`, and move any
 `micronautRunner { }` settings into `micronaut { runner { } }`.
 `micronaut-maven-plugin builds the Runner JAR in runner packaging; remove this plugin's execution`:: The project
 uses the Micronaut Maven plugin's `runner` packaging. Remove the `micronaut-runner-maven-plugin` execution.
 The plugin cannot be resolved or loaded:: Gradle reports that it needs JVM runtime version 25, or Maven reports class
-file version 69.0. The build runs on an older JVM: run Gradle or Maven itself on Java 25 (<<requirements>>).
+file version 69.0. The build runs on an older JVM: run Gradle or Maven itself on Java 25
+(<<requirements,Requirements and Status>>).
 `The dependency ... is a directory, and Micronaut Runner nests only JAR files`:: A dependency is a classes
 directory. Package it as a JAR first; in a Maven reactor, run the build through the `package` phase.
 `Unknown Micronaut Runner option '...'`:: A misspelled option, or one that a newer version of Runner added. The
 message lists the options this version knows.
 `original-my-app-0.1.jar` is a shaded JAR:: Maven Shade ran before Runner. Turn off its `default-shade` execution
-(<<quickStartMaven>>).
+(<<quickStartMaven,Quick Start for Maven>>).
 
 == The build warns
 
 `No Logback configuration was precompiled because ...`:: Only a notice: Logback reads `logback.xml` at startup, as
-without Runner. The reason says what kept it from being compiled (<<precompiledLogback>>).
+without Runner. The reason says what kept it from being compiled
+(<<precompiledLogback,Precompiled Logback Configuration>>).
 `The startup profile looks stale; re-record it ...`:: The application changed since the profile was recorded. Record it
-again and commit it (<<startupProfile>>).
+again and commit it (<<startupProfile,Startup Profile>>).
 `No local-variable table was stripped, because ... reads local-variable tables at run time`:: A library such as
 Paranamer, AspectJ or an old Spring needs the tables, so Runner keeps them. To silence the warning, set
 `stripLocalVariables` to `false`.
@@ -32,24 +35,31 @@ Paranamer, AspectJ or an old Spring needs the tables, so Runner keeps them. To s
 == The application behaves differently
 
 The logging configuration in a mounted `application.yml`, `micronaut.config.files` or `--logger.config` is ignored::
-Logback was precompiled. Set the location with `-Dlogger.config` or `LOGGER_CONFIG`, or package with
-`precompileLogback=false` (<<precompiledLogback>>).
+Logback was precompiled, and the packaged `logback.xml` applies instead; `logger.levels.*` properties still apply. Set
+the location with `-Dlogger.config` or `LOGGER_CONFIG`, or package with `precompileLogback=false`.
+`-Dmicronaut.runner.logback.precompiled=false` does not help here
+(<<precompiledLogback,Precompiled Logback Configuration>>).
 A `NullPointerException` says `"<local1>" is null`, or a debugger shows no local variables:: Dependency
-local-variable names were dropped (<<localVariableTables>>).
-Stack traces have extra `$$Lambda$R` frames:: Lambdas were generated at build time (<<desugaredLambdas>>).
+local-variable names were dropped (<<localVariableTables,Dependency Local-Variable Names>>).
+Stack traces have extra `$$Lambda$R` frames:: Lambdas were generated at build time
+(<<desugaredLambdas,Lambdas Generated at Build Time>>).
 The order of a dependency class's methods or JSON properties changed:: Dependency classes were rewritten. Package
 with `stripLocalVariables=false`.
-A service provider added after packaging is not found:: Start with `-Dmicronaut.runner.static-services=false`
-(<<staticServices>>).
+A service provider added after packaging is not found:: If an agent or tool adds it to the class path, start with
+`-Dmicronaut.runner.parent=system` (<<javaAgents,Java agents>>); otherwise, start with
+`-Dmicronaut.runner.static-services=false` (<<staticServices,Precomputed Service Lookups>>).
 `static-services.verify` reports a mismatch:: Start with `-Dmicronaut.runner.static-services=false`, package with
 `staticServices=false`, and please report it.
-An agent or tool cannot see the application's classes:: Start with `-Dmicronaut.runner.parent=system`.
-A library finds no classes or resources through the system class loader or `java.class.path`:: A known limitation
-(<<compatibility>>). It works in an <<extract,extracted layout>>.
+An agent or tool cannot see the application's classes, or the application cannot see the agent's:: Start with
+`-Dmicronaut.runner.parent=system` (<<javaAgents,Java agents>>).
+A library finds no classes or resources through the system class loader:: A known limitation
+(<<compatibility,Compatibility and Limitations>>). It works in an <<extract,extracted layout>>.
+A library finds no dependencies through `java.class.path`:: A known limitation
+(<<compatibility,Compatibility and Limitations>>). The library needs to use the context class loader instead.
 A signed JCE provider fails to authenticate:: Nested signatures are not verified. Deploy an extracted layout packaged
-with `PRESERVE` (<<compatibility>>).
+with `PRESERVE` (<<compatibility,Compatibility and Limitations>>).
 `InaccessibleObjectException`, or warnings about `--add-opens`:: Add the packages to the `addOpens` or `addExports`
-option (<<configurationOptions>>).
+option (<<configurationOptions,Packaging Options>>).
 `SecurityException: sealing violation`:: Two dependencies contribute classes to one sealed package. A shaded JAR hid
 that conflict; exclude one of the duplicate dependencies.
 A resource is not found, or the wrong one is found:: Resources resolve in class path order: your application first,
@@ -65,22 +75,24 @@ A library fails to parse a resource URL:: A nested resource has a URL such as
 The application logs `[error][aot]` and starts slowly, or exits with 1 under `-XX:AOTMode=on`:: The cache does not fit
 this start. `timestamp has changed` means a JAR's modification time changed; `incompatible CompressedOops::base()`
 means the cache was created on JDK 27 or later without the <<aotCreationFlags,creation flags>>; other messages name a
-different JDK build, garbage collector or heap size. Train again where the application runs (<<jdkAotCacheRules>>).
+different JDK build, garbage collector or heap size. Train again where the application runs, with the flags it uses
+(<<jdkAotCacheRules,What a Cache Depends On>>).
 
 == The application does not start, or starts slowly
 
 The launcher exits with 2:: It printed the reason. `This runner jar was modified after it was packaged and must be
-rebuilt` means the file was changed after packaging (<<archiveLifetime>>); `Unsupported runner jar format version`
-means the archive is newer than its launcher. Rebuild it.
+rebuilt` means the file was changed after packaging (<<archiveLifetime,Archive Lifetime>>);
+`Unsupported runner jar format version` means the archive's index and its launcher come from different versions of
+Runner, which a packaged archive never has. Rebuild it.
 `Error: Invalid or corrupt jarfile`:: The JDK cannot read the file, which was truncated or appended to. Rebuild it.
 Class loading fails in a running application:: The JAR was replaced under the running JVM. Restart it, and publish
-new versions under new paths (<<archiveLifetime>>).
+new versions under new paths (<<archiveLifetime,Archive Lifetime>>).
 The start is slower than expected:: Start with `-Dmicronaut.runner.timing=true`. Time spent after `application
 entered` belongs to the framework and the application.
 `-Dmicronaut.runner.timing=true` shows no `preload finished` line:: Preloading did not run: the archive carries no
-startup profile, or the JVM sees only one CPU. Give the container at least 2 CPUs (<<startupProfile>>).
-RSS is higher than expected:: The mapped archive counts in RSS. Compare private memory instead, or use `POSITIONAL`
-reads (<<archiveReads>>).
+startup profile, or the JVM sees only one CPU. Give the container at least 2 CPUs (<<startupProfile,Startup Profile>>).
+RSS is higher than expected:: The mapped archive counts in RSS. Compare the memory the process does not share with the
+OS page cache instead, or use `POSITIONAL` reads (<<archiveReads,Mapped or Positional Reads>>).
 
 == Narrowing a problem down
 
