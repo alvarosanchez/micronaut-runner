@@ -41,7 +41,7 @@ the location with `-Dlogger.config` or `LOGGER_CONFIG`, or package with `precomp
 (<<precompiledLogback,Precompiled Logback Configuration>>).
 A `NullPointerException` says `"<local1>" is null`, or a debugger shows no local variables:: Dependency
 local-variable names were dropped (<<localVariableTables,Dependency Local-Variable Names>>).
-Stack traces have extra `$$Lambda$R` frames:: Lambdas were generated at build time
+Stack traces have extra `pass:c[$$Lambda$R]` frames:: Lambdas were generated at build time
 (<<desugaredLambdas,Lambdas Generated at Build Time>>).
 The order of a dependency class's methods or JSON properties changed:: Dependency classes were rewritten. Package
 with `stripLocalVariables=false`.

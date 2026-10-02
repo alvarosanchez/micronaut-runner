@@ -4,8 +4,8 @@ that startup does not create them and a <<jdkAotCache,JDK AOT cache>> can store 
 
 What you may notice:
 
-* Each call of a lambda adds one frame to stack traces, `<Host>$$Lambda$R<n>.<method>`, between the caller and the
-lambda's body. The generated class keeps `$$Lambda` in its name.
+* Each call of a lambda adds one frame to stack traces, `pass:c[<Host>$$Lambda$R<n>.<method>]`, between the caller
+and the lambda's body. The generated class keeps `pass:c[$$Lambda]` in its name.
 * The rewritten classes have new bytes, so software composition analysis tools may report them as modified.
 * The archive is byte-for-byte reproducible only when it is built with the same JDK build.
 
