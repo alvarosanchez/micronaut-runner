@@ -787,8 +787,8 @@ public final class RunnerJarSpec {
          * grows with class bytes and with the symbols the JVM interns. The names and signatures of local
          * variables are neither needed to run a class nor visible to reflection, so a re-packed dependency
          * class is rewritten without them, with a rebuilt constant pool. On the benchmark sample that makes the
-         * dependency classes about 15% smaller; the user guide's build-time transforms section has the measured
-         * effect on startup.</p>
+         * dependency classes about 15% smaller; the user guide's Performance section summarises the effect on
+         * startup.</p>
          *
          * <p>What is dropped from a dependency class:</p>
          * <ul>
@@ -882,8 +882,8 @@ public final class RunnerJarSpec {
          * class loaders, which the classes of a runner jar do not have, so every lambda that runs before the
          * application is ready is linked at every start, with or without a cache. With this option each eligible
          * site calls a class that was generated when the application was packaged: nothing is linked at run
-         * time, and a cache holds the class like any other. The user guide's build-time transforms section has
-         * the measured effect.</p>
+         * time, and a cache holds the class like any other. The user guide's Performance section summarises the
+         * effect.</p>
          *
          * <p>What is rewritten, in dependency classes and in the application's own: a call site whose bootstrap
          * is {@code LambdaMetafactory.metafactory}, when the generated class provably resolves what the site
@@ -958,7 +958,7 @@ public final class RunnerJarSpec {
          *
          * <p>Defaults to {@code false}. On the benchmark sample the prefetch shortens a start without a JDK AOT
          * cache, a start with one by a few milliseconds at most, and a start with three processors not at all;
-         * the user guide's section on the bean definition prefetch has the measurements.</p>
+         * the user guide's Performance section summarises the effect.</p>
          *
          * @param value whether to package the bean definition prefetch
          * @return this builder
