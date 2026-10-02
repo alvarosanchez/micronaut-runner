@@ -378,21 +378,26 @@ figure it is.
 
 The guide's Performance section makes four claims, rounded to a plain fraction and phrased as less or more time. Other
 pages compare options in words only, such as "slightly slower" or "about the same", and the Introduction says once,
-without figures, that a Runner JAR is faster to build than a Shadow JAR. A claim stays in the guide only while every
-session that measured it agrees with its wording. Each claim comes from these comparisons (the startup harness's
-paired rows, or a manual comparison run with the same paired, interleaved method):
+without figures, that with the default settings a Runner JAR takes less time to build than a Shadow JAR of the same
+application. A claim stays in the guide only while every session that measured it agrees with its wording. Each claim
+comes from these comparisons (the startup harness's paired rows, or a manual comparison run with the same paired,
+interleaved method):
 
 | Claim | Where | Comparison | Last measured |
 |---|---|---|---|
-| Without a cache, about a quarter less time than Shadow, and clearly less memory | Performance, README | `runner-stored` − `shadow`: time and memory | JDK 25: −26…−28% time, RSS −19…−20%, private −40…−41%. JDK 27 (stripping on): −25…−27% time, RSS −32%, private −48…−49% |
-| Nearly three times as large on disk, about a fifth smaller compressed | Performance | `runner-stored` / `shadow` deployment size | 2.80× raw, 0.78× gzip |
-| With caches on both sides, about the same time as Shadow or slightly less, somewhat less private memory | Performance, Choosing a Deployment | `runner-stored-aot` − `shadow-aot` | JDK 25: −4…−8% time (two of four n.s.), private −7…−8%. JDK 27 (stripping on): −1…−3% (n.s.), private −13…−14% |
-| A startup profile takes nearly a further quarter off a start without a cache | Performance | `runner-stored-preload` − `runner-stored` | −23% |
+| Without a cache, about a quarter less time than Shadow, and clearly less memory | Performance, Introduction, Choosing a Deployment, README | `runner-stored` − `shadow`: time and memory | JDK 25: −26…−28% time, RSS −19…−20%, private −40…−41%. JDK 27 (stripping on): −25…−27% time, RSS −32%, private −48…−49% |
+| Nearly three times as large on disk, about a fifth smaller compressed | Performance, Introduction | `runner-stored` / `shadow` deployment size | 2.80× raw, 0.78× gzip |
+| With caches on both sides, about the same time as Shadow or slightly less, somewhat less private memory, higher RSS | Performance, Choosing a Deployment | `runner-stored-aot` − `shadow-aot` | JDK 25: −4…−8% time (two of four n.s.), private −7…−8%, RSS +12…+13%. JDK 27 (stripping on): −1…−3% (n.s.), private −13…−14%, RSS +6…+7% |
+| A JDK AOT cache makes the single JAR start much faster | Choosing a Deployment | `runner-stored-aot` − `runner-stored` | JDK 25: −39…−45%. JDK 27 (stripping on): −42…−43% |
+| A startup profile takes nearly a further quarter off a start without a cache | Performance, Choosing a Deployment | `runner-stored-preload` − `runner-stored` | −23% (JDK 25) |
+| With a cache, a startup profile adds little; it uses slightly more memory during startup | Startup Profile, Choosing a Deployment | `runner-stored-preload-aot` − `runner-stored-aot`; `runner-stored-preload` − `runner-stored`: private memory | −5…−8% (one of three n.s.); private +3…+4% (JDK 25) |
 | Extracted layout: about the same with its cache, lower RSS; slower without one | Choosing a Deployment, Extracting to a Directory | `runner-extracted-aot` − `runner-stored-aot`, `runner-extracted` − `runner-stored` | −5…+6% time, RSS −13…−17%; uncached +9…+26% |
-| Micronaut AOT: `-all-optimized.jar` fastest uncached, `-all.jar` ahead of the optimized Shadow JAR, about the same cached | Micronaut AOT | `runner-maot` − `runner-stored`, `runner-stored` − `shadow-maot`, `runner-maot-aot` − `shadow-maot-aot` | −5…−7%; −18…−21% (JDK 25; −18…−19% on JDK 27 with stripping); −5…+3% |
+| Extracted `STORED` and `PRESERVE` layouts start the same with their cache; `STORED` starts faster without it | What a Cache Depends On | manual: `PRESERVE` layout − `STORED` layout, with and without their caches | +1% (n.s.); uncached +16% (one JDK 25 session, the `STORED` side with stripping) |
+| Micronaut AOT: `-all-optimized.jar` fastest uncached, `-all.jar` ahead of the optimized Shadow JAR, about the same cached | Micronaut AOT, Choosing a Deployment | `runner-maot` − `runner-stored`, `runner-stored` − `shadow-maot`, `runner-maot-aot` − `runner-stored-aot` | −5…−7%; −18…−21% (JDK 25; −18…−19% on JDK 27 with stripping); −1…+1% (n.s. in all six sessions; paired from `results.json`, because the harness declares no such comparison) |
 | `PRESERVE` slower than `STORED` but faster than Shadow; slightly larger than Shadow on disk, about the same gzipped | Compression Modes | `runner-preserve` − `runner-stored`, `runner-preserve` − `shadow` | +13…+17% (JDK 25; +15…+16% on JDK 27 with stripping); −14…−17%; 1.20× raw, 1.04× gzip |
 | `HYBRID` starts like `STORED`, smaller on disk, larger compressed | Compression Modes | `runner-stored-hybrid` − `runner-stored` | −1…+3% (n.s.); 0.74× raw, 1.35× gzip (stripping on) |
 | `POSITIONAL`: lower RSS, slightly slower, same private memory | Mapped or Positional Reads | `runner-stored-positional` − `runner-stored` | +1…+3% time; RSS −13…−16% |
+| Opt-in local-variable stripping: somewhat smaller, slightly faster without a cache, no difference with one | Opt-in: Dependency Local-Variable Names | `runner-stored-stripdebug` − `runner-stored`, and their `-aot` twins | 0.87× raw; −3…−4% uncached; −1…+2% cached (n.s.) |
 | Bean definition prefetch: a few percent on many cores | Bean Definition Prefetch | `runner-stored-prefetch` − `runner-stored`, and its `-aot` twin | −2…−6% (12 cores) |
 | Dynamic CDS starts more slowly than the AOT cache | The JDK AOT Cache | manual: `-XX:ArchiveClassesAtExit` and `-XX:+AutoCreateSharedArchive` against the AOT cache | AOT −11…−12% |
 | With the default settings, building a Runner JAR takes less time than building a Shadow JAR | Introduction | manual: `packagingComparison`, `runner-stored` − `shadow`, `--rerun` and edit-then-build; plus an up-to-date check | packaging task −59…−61%, whole build −30…−35%; no difference when up to date |
@@ -401,14 +406,19 @@ They were last measured on 2026-10-02 at commit `71e87dd`, on an Apple M4 Pro wi
 Homebrew OpenJDK 25.0.4.1 (four startup batches) and 27 (two), the sample on micronaut-core 5.1.15. That commit
 still stripped dependency local-variable tables by default. The JDK 25 figures for the default against Shadow come
 from its `runner-stored-keepdebug` rows, which are byte for byte today's default; the JDK 27 figures marked
-"stripping on" do not. The packaging claim comes from three manual sessions of the packaging comparison, on JDK
-25.0.4.1 with a warm Gradle daemon, with stripping on: today's default skips that step, so it does less work than was
-measured. The claim names only Shadow, because Maven Shade was not measured. The advantage comes from not compressing
-entries: against a Shadow JAR whose entries are stored uncompressed, the two take about the same time.
+"stripping on" do not. That commit's `runner-stored` rows are today's `runner-stored-stripdebug`, which gives the
+opt-in stripping row. Comparisons within Runner (the startup profile, the extracted layout, `-all-optimized.jar`
+against `-all.jar`, `HYBRID`, `POSITIONAL` and the prefetch) were measured with stripping on for both rows, so they
+are not yet measured on today's default. The packaging claim comes from three manual sessions of the packaging
+comparison, on JDK 25.0.4.1 with a warm Gradle daemon, with stripping on: today's default skips that step, so it does
+less work than was measured. The claim names only Shadow, because Maven Shade was not measured. The advantage comes
+from not compressing entries: against a Shadow JAR whose entries are stored uncompressed, the two take about the same
+time.
 
 The `packagingComparison` task has since been removed from this module. To refresh the packaging claim, run
-`./gradlew :benchmarks:packagingComparison` from `2035468`, the last `master` commit that has the task; to measure a
-later Runner, restore the task from there. To refresh the startup claims, run on a quiet machine:
+`./gradlew :benchmarks:packagingComparison` from `2035468`, the base of #245, which still has the task and today's
+stripping default; to measure a later Runner, restore the task from there. To refresh the startup claims, run on a
+quiet machine:
 
 ```bash
 ./gradlew :benchmarks:startupBenchmark -Pbenchmarks.iterations=40 -Pbenchmarks.optionalRows=true

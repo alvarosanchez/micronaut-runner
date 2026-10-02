@@ -1,5 +1,5 @@
 Runner moves work from every start to the build. Measured with a Micronaut Netty service of about 50 dependencies,
-on micronaut-core 5.1 and JDK 25 and 27, on a multi-core developer machine, from launch to the first HTTP response:
+on micronaut-core 5.1, with JDK 25 and 27, on a multi-core developer machine, from launch to the first HTTP response:
 
 * Without a JDK AOT cache, a Runner JAR reaches its first response in about a quarter less time than a Shadow JAR of
 the same application, and uses clearly less memory.
