@@ -62,6 +62,16 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      # The user guide states rounded, relative performance claims only (CONTRIBUTING.md, "Benchmarks").
+      # Measured values, harness row names and CI run links belong in pull requests and benchmarks/README.md.
+      - name: "📏 Check that the guide carries no measurements"
+        if: matrix.java == '25'
+        run: |
+          if grep -rnE 'actions/runs/|95% CI|[0-9]+\.[0-9]+ ?(ms|s|MiB|MB|KiB|µs)\b|\b(runner|shadow)-(stored|preserve|extracted|maot|aot)\b|vCPU|benchmark-large|RssAnon|phys_footprint' src/main/docs/guide; then
+            echo "::error::The user guide contains measured values or benchmark details; see CONTRIBUTING.md"
+            exit 1
+          fi
+
       # Building buildSrc does not run its tests, and check does not either: the build-logic tests run
       # here only, in the same Gradle invocation, on one JDK.
       - name: "🛠 Build and test"
