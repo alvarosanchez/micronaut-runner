@@ -52,12 +52,15 @@ A service provider added after packaging is not found:: If an agent or tool adds
 `staticServices=false`, and please report it.
 An agent or tool cannot see the application's classes, or the application cannot see the agent's:: Start with
 `-Dmicronaut.runner.parent=system` (<<javaAgents,Java agents>>).
-A library finds no classes or resources through the system class loader:: A known limitation
-(<<compatibility,Compatibility and Limitations>>). It works in an <<extract,extracted layout>>.
+A library finds no class through the system class loader, or a provider listed in `java.security` is missing::
+In the single JAR, the system class loader does not see your dependencies
+(<<compatibility,Compatibility and Limitations>>). Deploy an <<extract,extracted layout>>, or register the provider in
+code with `Security.addProvider`.
 A library finds no dependencies through `java.class.path`:: A known limitation
 (<<compatibility,Compatibility and Limitations>>). The library needs to use the context class loader instead.
-A signed JCE provider fails to authenticate:: Nested signatures are not verified. Deploy an extracted layout packaged
-with `PRESERVE` (<<compatibility,Compatibility and Limitations>>).
+`JCE cannot authenticate the provider ...`:: The JDK enforces JCE provider signing, as Oracle JDK does, and the
+provider's signature is not verified in the single JAR. Package with `PRESERVE` and deploy an
+<<extract,extracted layout>> (<<compatibility,Compatibility and Limitations>>).
 `InaccessibleObjectException`, or warnings about `--add-opens`:: Add the packages to the `addOpens` or `addExports`
 option (<<configurationOptions,Packaging Options>>).
 `SecurityException: sealing violation`:: Two dependencies contribute classes to one sealed package. A shaded JAR hid

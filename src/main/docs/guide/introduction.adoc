@@ -47,11 +47,9 @@ application, and reads at every later start (<<jdkAotCache,The JDK AOT Cache>>).
 == When Runner is not the right fit
 
 * You build a GraalVM native image. Runner packages JVM applications only.
-* You use a signed JCE provider, or other code that needs verified JAR signatures. That works only from the extracted
-layout of a `PRESERVE` archive (<<compatibility,Compatibility and Limitations>>).
-* Your code loads your dependencies' classes through the system class loader. That works only from an extracted
-layout (<<compatibility,Compatibility and Limitations>>).
-* Your code needs the module path, or finds your dependencies by reading `java.class.path`.
 * Your build relies on Shadow relocation to rename packages. Runner never relocates.
+
+A few third-party libraries behave differently in a Runner JAR. <<compatibility,Compatibility and Limitations>> lists
+them, with the workaround when there is one.
 
 Start with <<quickStart,Quick Start>>, then read <<whatChanges,What Changes for Your Application>>.
