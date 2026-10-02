@@ -67,7 +67,7 @@ jobs:
           java-version: '25'
 
       - name: "🔧 Setup Gradle"
-        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
 
       # The page-cache eviction test checks a file's resident pages with fincore and is skipped without it.
       # Ubuntu ships fincore in util-linux-extra, which the hosted image does not install. A failed install
@@ -163,7 +163,7 @@ jobs:
           java-version: '25'
 
       - name: "🔧 Setup Gradle"
-        uses: gradle/actions/setup-gradle@39e147cb9de83bb9910b8ef8bd7fff0ee20fcd6f # v6
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
 
       - name: "📈 Run the startup benchmark"
         env:
