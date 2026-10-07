@@ -76,7 +76,6 @@ public final class RunnerJarSpec {
     private final Path startupClasses;
     private final boolean staticServices;
     private final boolean desugarLambdas;
-    private final boolean definitionPrefetch;
     private final Instant timestamp;
     private final Map<String, String> effectiveOptions;
 
@@ -105,7 +104,6 @@ public final class RunnerJarSpec {
         this.startupClasses = builder.startupClasses;
         this.staticServices = builder.staticServices;
         this.desugarLambdas = builder.desugarLambdas;
-        this.definitionPrefetch = builder.definitionPrefetch;
         this.timestamp = builder.timestamp;
         Map<String, String> effective = new LinkedHashMap<>();
         for (RunnerJarOption option : RunnerJarOption.values()) {
@@ -390,27 +388,6 @@ public final class RunnerJarSpec {
     }
 
     /**
-     * Whether the bean definition prefetch was requested: the entry stub then starts Micronaut's own bean
-     * definition loading on the common pool before it enters the application, and a generated
-     * {@code ApplicationContextConfigurer} hands the result to the first application context.
-     *
-     * <p>A request does not guarantee a prefetch. The packager leaves it out, and logs why, when no entry stub
-     * was generated; when the class path has no micronaut-inject 5.0 or later, whose
-     * {@code DefaultBeanDefinitionsProvider} the prefetch runs; when the class path registers no bean definition
-     * reference under {@code META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/}; when one of those
-     * entries has content, which a later Micronaut may give a meaning this version does not know; and when the
-     * application already carries a class in {@code io.micronaut.runner.generated.prefetch}.
-     * {@link RunnerJarResult#definitionPrefetch()} reports the outcome.</p>
-     *
-     * <p>See {@link Builder#definitionPrefetch(boolean)} for what changes at run time.</p>
-     *
-     * @return whether the bean definition prefetch was requested, {@code false} unless configured otherwise
-     */
-    boolean definitionPrefetch() {
-        return definitionPrefetch;
-    }
-
-    /**
      * The instant every entry of the archive is dated with, converted to MS-DOS time in UTC.
      *
      * @return the reproducible timestamp
@@ -450,7 +427,6 @@ public final class RunnerJarSpec {
             case STARTUP_CLASSES -> startupClasses == null ? "" : startupClasses.toString();
             case STATIC_SERVICES -> Boolean.toString(staticServices);
             case DESUGAR_LAMBDAS -> Boolean.toString(desugarLambdas);
-            case DEFINITION_PREFETCH -> Boolean.toString(definitionPrefetch);
         };
     }
 
@@ -498,7 +474,6 @@ public final class RunnerJarSpec {
         private Path startupClasses;
         private boolean staticServices;
         private boolean desugarLambdas;
-        private boolean definitionPrefetch;
         private Instant timestamp = ZipWriter.DEFAULT_TIMESTAMP;
 
         /**
@@ -924,49 +899,6 @@ public final class RunnerJarSpec {
         }
 
         /**
-         * Requests the bean definition prefetch. The packager leaves it out, and logs why, whenever the
-         * application cannot use it; see {@link RunnerJarSpec#definitionPrefetch()}.
-         *
-         * <p>Micronaut loads and initialises almost every bean definition before the application is ready, in
-         * parallel on the common pool, but only after the main thread has configured logging and created the
-         * context builder. With the prefetch, the entry stub starts that same work before the application's
-         * {@code main}: Micronaut's own {@code DefaultBeanDefinitionsProvider} runs on the common pool while the
-         * main thread does the rest, and the first application context built through an
-         * {@code ApplicationContextBuilder} receives what it returned, or the exception it threw, unchanged.
-         * Which failures of a bean definition Micronaut ignores and which ones stop the application is therefore
-         * decided as it is without the prefetch.</p>
-         *
-         * <p>What changes observably when it is packaged:</p>
-         * <ul>
-         *     <li>{@code ConversionService}, with its {@code TypeConverterRegistrar} services, and the static
-         *     initialisers of the bean definitions run on common pool threads, before the body of {@code main}
-         *     and before any other {@code ApplicationContextConfigurer};</li>
-         *     <li>the common pool is created before {@code main}, so
-         *     {@code java.util.concurrent.ForkJoinPool.common.*} properties that {@code main} sets
-         *     programmatically no longer take effect, while the same properties on the command line do;</li>
-         *     <li>an application that creates its context without a builder, or replaces the builder's
-         *     {@code BeanDefinitionsProvider}, does not receive the result; the first should not be packaged
-         *     with this option, or has to be started with {@code -Dmicronaut.runner.prefetch=false}.</li>
-         * </ul>
-         *
-         * <p>At run time the prefetch does not start with {@code -Dmicronaut.runner.prefetch=false} or
-         * {@code -Dmicronaut.runner.static-services.verify=true}, when the common pool has fewer than three
-         * threads, which is a JVM with fewer than four processors, or in the extracted layout, which has no entry
-         * stub. Without this option the two classes and the service registration are not in the archive at
-         * all.</p>
-         *
-         * <p>Defaults to {@code false}. On the benchmark sample, on a machine with many cores, the prefetch shortens
-         * a start by a few percent, with or without a JDK AOT cache; with three processors it does not run.</p>
-         *
-         * @param value whether to package the bean definition prefetch
-         * @return this builder
-         */
-        Builder definitionPrefetch(boolean value) {
-            this.definitionPrefetch = value;
-            return this;
-        }
-
-        /**
          * Sets a packaging option by its {@linkplain RunnerJarOption#optionName() name}, whether it has a
          * typed setter or not. This is how a build plugin passes the options it has no typed property for.
          *
@@ -1009,7 +941,6 @@ public final class RunnerJarSpec {
                 case STARTUP_CLASSES -> startupClasses(parsePath(option, value));
                 case STATIC_SERVICES -> staticServices(parseBoolean(option, value));
                 case DESUGAR_LAMBDAS -> desugarLambdas(parseBoolean(option, value));
-                case DEFINITION_PREFETCH -> definitionPrefetch(parseBoolean(option, value));
             };
         }
 

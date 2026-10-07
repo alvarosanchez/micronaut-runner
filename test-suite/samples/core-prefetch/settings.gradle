@@ -1,0 +1,38 @@
+/*
+ * A standalone build: hello-netty on micronaut-core 5.3, plus a bean definition reference whose static initialiser
+ * fails on demand. The end-to-end tests drive it with Gradle TestKit, passing runner.repo and runner.version so it
+ * resolves the plugin from the aggregated local repository of -DUMMY publications, and compare how the packaged
+ * application starts with micronaut-core's bean definition prefetch and without it.
+ */
+pluginManagement {
+    repositories {
+        maven { url = uri(providers.gradleProperty('runner.repo').get()) }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+    plugins {
+        id 'io.micronaut.runner.standalone' version providers.gradleProperty('runner.version').get()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        maven { url = uri(providers.gradleProperty('runner.repo').get()) }
+        mavenCentral()
+        // micronaut-core 5.3.0-SNAPSHOT until 5.3.0 is released: see build.gradle.
+        maven {
+            url = uri('https://central.sonatype.com/repository/maven-snapshots/')
+            mavenContent {
+                snapshotsOnly()
+                includeGroup 'io.micronaut'
+            }
+        }
+    }
+    versionCatalogs {
+        libs {
+            from(files('../../../gradle/libs.versions.toml'))
+        }
+    }
+}
+
+rootProject.name = 'core-prefetch'

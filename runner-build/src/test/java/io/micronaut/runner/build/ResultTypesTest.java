@@ -120,21 +120,6 @@ class ResultTypesTest {
     }
 
     @Test
-    void aResultReportsWhetherTheDefinitionPrefetchWasPackaged() {
-        assertFalse(result(new ArrayList<>(), new LinkedHashMap<>()).definitionPrefetch());
-        RunnerJarResult packaged = new RunnerJarResult(Path.of("app.jar"), 2, 10, 3, 0, 1024, List.of("a warning"),
-                Map.of("definitionPrefetch", "true"), true, List.of(), 7, "5.1.15").withDefinitionPrefetch(true);
-        assertTrue(packaged.definitionPrefetch());
-        assertEquals(List.of("a warning"), packaged.warnings());
-        assertEquals(Map.of("definitionPrefetch", "true"), packaged.effectiveOptions());
-        assertTrue(packaged.logbackPrecompiled());
-        assertEquals(7, packaged.staticServiceSlots());
-        assertEquals(java.util.Optional.of("5.1.15"), packaged.staticServicesCoreVersion());
-        assertEquals(1024, packaged.archiveSize());
-        assertFalse(packaged.withDefinitionPrefetch(false).definitionPrefetch());
-    }
-
-    @Test
     void aNegativeCountIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> new RunnerJarResult(Path.of("app.jar"), -1, 0, 0, 0,
                 0, List.of(), Map.of(), false, List.of(), 0, null));

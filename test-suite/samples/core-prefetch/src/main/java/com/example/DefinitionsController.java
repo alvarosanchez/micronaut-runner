@@ -4,7 +4,9 @@ import io.micronaut.context.BeanContext;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 
-/** Answers with the bean definitions of the running application. */
+import java.util.stream.Collectors;
+
+/** Answers with the bean definitions of the running application, so that two starts can be compared. */
 @Controller("/definitions")
 public class DefinitionsController {
 
@@ -26,6 +28,9 @@ public class DefinitionsController {
      */
     @Get(produces = "text/plain")
     public String definitions() {
-        return Definitions.names(context);
+        return context.getAllBeanDefinitions().stream()
+                .map(definition -> definition.getClass().getName())
+                .sorted()
+                .collect(Collectors.joining("\n"));
     }
 }

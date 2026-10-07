@@ -39,7 +39,6 @@ io.micronaut.runner.build.RunnerJarOption#ADD_EXPORTS:Lio/micronaut/runner/build
 io.micronaut.runner.build.RunnerJarOption#ADD_OPENS:Lio/micronaut/runner/build/RunnerJarOption;
 io.micronaut.runner.build.RunnerJarOption#ARCHIVE_READS:Lio/micronaut/runner/build/RunnerJarOption;
 io.micronaut.runner.build.RunnerJarOption#COMPRESSION:Lio/micronaut/runner/build/RunnerJarOption;
-io.micronaut.runner.build.RunnerJarOption#DEFINITION_PREFETCH:Lio/micronaut/runner/build/RunnerJarOption;
 io.micronaut.runner.build.RunnerJarOption#DESUGAR_LAMBDAS:Lio/micronaut/runner/build/RunnerJarOption;
 io.micronaut.runner.build.RunnerJarOption#ENABLE_NATIVE_ACCESS:Lio/micronaut/runner/build/RunnerJarOption;
 io.micronaut.runner.build.RunnerJarOption#ENTRY_STUB:Lio/micronaut/runner/build/RunnerJarOption;

@@ -17,4 +17,4 @@ start the same with their cache. `STORED` gives a smaller compressed image layer
 ever rejected; `PRESERVE` gives a smaller layout on disk.
 
 The extracted layout keeps the precompiled Logback configuration and the precomputed service lookups. It has no
-launcher, so a startup profile and the bean definition prefetch do nothing there.
+launcher, so a startup profile does nothing there.

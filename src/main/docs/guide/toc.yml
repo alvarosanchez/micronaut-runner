@@ -31,7 +31,6 @@ configuration:
   localVariableTables: "Opt-in: Dependency Local-Variable Names"
   configurationArchive: Main Class, Archive Name and Manifest
   publishing: Publishing the Archive
-  definitionPrefetch: "Experimental: Bean Definition Prefetch"
   runtimeProperties: Run-Time System Properties
 runtime:
   title: Running a Runner JAR

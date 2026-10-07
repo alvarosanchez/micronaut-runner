@@ -85,9 +85,7 @@ class BenchmarkEntryModeTest {
             "runner-stored-dynamic-services-aot",
             "runner-stored-lambdas",
             "runner-stored-lambdas-aot",
-            "runner-extracted-lambdas-aot",
-            "runner-stored-prefetch",
-            "runner-stored-prefetch-aot");
+            "runner-extracted-lambdas-aot");
 
     /**
      * The table pins the core rows and, row by row, the entry mode a row asks for, whether it launches with a JDK
@@ -150,10 +148,6 @@ class BenchmarkEntryModeTest {
                 "the lambda controls, in this order, after the runner-stored group");
         assertTrue(withOptIn.indexOf("runner-stored-lambdas") > withOptIn.indexOf("runner-stored-dynamic-services-aot")
                 && withOptIn.indexOf("runner-extracted-lambdas-aot") < withOptIn.indexOf("runner-preserve"));
-        assertEquals(List.of("runner-stored-prefetch", "runner-stored-prefetch-aot"),
-                withOptIn.subList(withOptIn.indexOf("runner-extracted-lambdas-aot") + 1,
-                        withOptIn.indexOf("runner-preserve")),
-                "the prefetch candidates close the runner-stored group");
         assertTrue(core.stream().noneMatch(OPT_IN_ROWS::contains), "opt-in rows never gate: " + core);
     }
 
@@ -710,95 +704,6 @@ class BenchmarkEntryModeTest {
                 && spec.baseline().equals("runner-stored-lambdas-aot")));
         assertTrue(comparisons.stream().anyMatch(spec -> spec.candidate().equals("runner-extracted-aot")
                 && spec.baseline().equals("runner-extracted-lambdas-aot")));
-    }
-
-    @Test
-    void thePrefetchRowsAreComparedAsCandidatesAgainstTheDefaultRows() {
-        List<String> pairs = SampleBuild.comparisons().stream()
-                .map(spec -> spec.candidate() + " - " + spec.baseline())
-                .toList();
-        int first = pairs.indexOf("runner-stored-prefetch - runner-stored");
-        assertTrue(first >= 0, pairs.toString());
-        assertEquals(List.of("runner-stored-prefetch - runner-stored",
-                "runner-stored-prefetch-aot - runner-stored-aot"), pairs.subList(first, first + 2),
-                "the prefetch comparisons follow each other");
-        assertTrue(first > pairs.indexOf("runner-extracted-aot - runner-extracted-lambdas-aot"),
-                "a row added to the matrix appends its comparisons");
-    }
-
-    /**
-     * The candidate packages the prefetch into an archive the default leaves it out of. The fixture is one the
-     * packager really packages the prefetch for: a class path with a bean definition reference and classes shaped
-     * like micronaut-inject 5's, which the packager parses and never loads. Without them no archive carries the
-     * prefetch whatever the option says, and the candidate would be the default archive under another name.
-     */
-    @Test
-    void thePrefetchCandidatePackagesThePrefetchTheDefaultLeavesOut(@TempDir Path output) throws Exception {
-        Path classes = compile(output.resolve("prefetch"), "fixture.PrefetchMain", """
-                package fixture;
-                public final class PrefetchMain {
-                    public static void main(String[] args) { }
-                }
-                """);
-        Path reference = classes.resolve(
-                "META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/fixture.$PrefetchMain$Definition");
-        Files.createDirectories(reference.getParent());
-        Files.createFile(reference);
-        Path micronaut = compile(output.resolve("micronaut"), "io.micronaut.context.DefaultBeanDefinitionsProvider",
-                """
-                package io.micronaut.context;
-                public final class DefaultBeanDefinitionsProvider implements BeanDefinitionsProvider {
-                    public java.util.List<Object> provide(ClassLoader classLoader) {
-                        return java.util.List.of();
-                    }
-                }
-                interface BeanDefinitionsProvider {
-                    java.util.List<Object> provide(ClassLoader classLoader);
-                }
-                interface ApplicationContextBuilder {
-                    default ApplicationContextBuilder beanDefinitionsProvider(BeanDefinitionsProvider provider) {
-                        return this;
-                    }
-                }
-                interface BeanContextConfiguration {
-                    default BeanDefinitionsProvider getBeanDefinitionsProvider() {
-                        return null;
-                    }
-                }
-                """);
-        Path library = output.resolve("micronaut-inject-shaped.jar");
-        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(library));
-             var files = Files.walk(micronaut)) {
-            for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {
-                jar.putNextEntry(new ZipEntry(micronaut.relativize(file).toString().replace(File.separatorChar, '/')));
-                jar.write(Files.readAllBytes(file));
-                jar.closeEntry();
-            }
-        }
-        SampleBuild.RunnerJarOptions candidate = SampleBuild.RunnerJarOptions.DEFAULTS.withDefinitionPrefetch(true);
-        assertNull(SampleBuild.RunnerJarOptions.DEFAULTS.definitionPrefetch(),
-                "a row that sets nothing follows the builder default");
-        assertNull(candidate.precompileLogback());
-        assertEquals(Boolean.TRUE, candidate.withArchiveReads("POSITIONAL").withPrecompileLogback(false)
-                .withStripLocalVariables(false).definitionPrefetch(), "one option does not reset the other");
-        assertEquals(Boolean.FALSE, SampleBuild.RunnerJarOptions.DEFAULTS.withStripLocalVariables(false)
-                .withDefinitionPrefetch(true).stripLocalVariables());
-
-        Variant left = runnerJar(output, "runner-stored", "fixture.PrefetchMain",
-                List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB);
-        Variant packaged = runnerJar(output, "runner-stored-prefetch", "fixture.PrefetchMain",
-                List.of(classes), List.of(library), Compression.STORED, EntryMode.STUB, candidate);
-
-        assertFalse(SampleBuild.definitionPrefetch(left.artifact()),
-                "the builder default leaves the prefetch out, so the candidate differs from it");
-        assertTrue(SampleBuild.definitionPrefetch(packaged.artifact()),
-                "the candidate's option reached the packaging library");
-        assertEquals(EntryMode.STUB, packaged.effectiveEntryMode(), "the candidate keeps the entry stub");
-        assertFalse(entryNames(left.artifact()).stream().anyMatch(name -> name.contains("generated/prefetch/")));
-        assertTrue(entryNames(packaged.artifact()).contains(
-                "MICRONAUT-INF/classes/io/micronaut/runner/generated/prefetch/DefinitionPrefetch.class"));
-        assertEquals(LaunchInputs.PINNED_MODIFICATION_TIME, Files.getLastModifiedTime(packaged.artifact()),
-                "a trained cache of the -aot candidate stays valid across runs only if the jar's time is pinned");
     }
 
     private static List<String> entryNames(Path artifact) throws IOException {

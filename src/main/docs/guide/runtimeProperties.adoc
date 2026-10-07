@@ -58,10 +58,6 @@ Micronaut AOT's switch, and works in every packaging (<<precompiledLogback,Preco
 |`true`
 |With `false`, let Micronaut scan for its services instead of using the precomputed lookups.
 
-|`micronaut.runner.prefetch`
-|`true`, when packaged with `definitionPrefetch`
-|With `false`, start without the <<definitionPrefetch,bean definition prefetch>>.
-
 |`micronaut.runner.aot.training`
 |`false`
 |With `true`, only for the run that trains a JDK AOT cache on the single JAR, never in production
@@ -79,7 +75,6 @@ Several packaging options have a switch that overrides them for one start:
 |`archiveReads` (`MAPPED`, `POSITIONAL`) |`micronaut.runner.mmap` (`full`, `index`)
 |`precompileLogback` |`micronaut.logback.precompiled`
 |`staticServices` |`micronaut.runner.static-services`
-|`definitionPrefetch` |`micronaut.runner.prefetch`
 |`startupClasses`, or a committed startup profile |`micronaut.runner.preload`
 |===
 

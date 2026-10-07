@@ -14,10 +14,6 @@ micronaut {
         incremental true
         annotations 'com.example.*'
     }
-    // What this sample is for: the bean definition prefetch, which is off unless a build asks for it.
-    runner {
-        options.put('definitionPrefetch', 'true')
-    }
 }
 
 dependencies {
@@ -28,6 +24,19 @@ dependencies {
     annotationProcessor 'io.micronaut.serde:micronaut-serde-processor'
     implementation 'io.micronaut.serde:micronaut-serde-jackson'
     runtimeOnly 'ch.qos.logback:logback-classic'
+}
+
+// What this sample is for: micronaut-core's own bean definition prefetch, which micronaut-core 5.3.0 is the first
+// to have. Every module of the micronaut-core repository, the annotation processor included, is aligned to it. It
+// is a snapshot until 5.3.0 is released, and only this sample uses it.
+def micronautCore = '5.3.0-SNAPSHOT'
+configurations.configureEach {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == 'io.micronaut') {
+            details.useVersion(micronautCore)
+            details.because('the first micronaut-core with its own bean definition prefetch')
+        }
+    }
 }
 
 application {
