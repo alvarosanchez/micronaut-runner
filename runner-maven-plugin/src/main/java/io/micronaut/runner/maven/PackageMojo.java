@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * Packages a Micronaut application as a runner jar: one executable archive in which every dependency
@@ -81,6 +82,13 @@ public final class PackageMojo extends AbstractMojo {
 
     /** The prefix of the properties that set a packaging option by name. */
     private static final String PROPERTY_PREFIX = "micronaut.runner.";
+
+    /**
+     * The passthrough options that the packaging library no longer has. Their properties are still read, so that
+     * a build that sets one fails with the packaging library's message, which names what replaces the option,
+     * instead of ignoring it.
+     */
+    private static final List<String> REMOVED_OPTIONS = List.of("definitionPrefetch");
 
     /** The packaging with which micronaut-maven-plugin builds the Runner JAR itself. */
     private static final String RUNNER_PACKAGING = "runner";
@@ -374,12 +382,13 @@ public final class PackageMojo extends AbstractMojo {
             if (list != null) {
                 spec.startupClasses(list.toPath());
             }
-            List<String> passthrough = Arrays.stream(RunnerJarOption.values())
-                    .filter(option -> option.exposure() == RunnerJarOption.Exposure.PASSTHROUGH)
-                    .map(RunnerJarOption::optionName)
+            List<String> byProperty = Stream.concat(Arrays.stream(RunnerJarOption.values())
+                            .filter(option -> option.exposure() == RunnerJarOption.Exposure.PASSTHROUGH)
+                            .map(RunnerJarOption::optionName),
+                    REMOVED_OPTIONS.stream())
                     .toList();
             for (Map.Entry<String, String> option : options(session.getUserProperties(),
-                    project.getProperties(), runnerOptions, passthrough).entrySet()) {
+                    project.getProperties(), runnerOptions, byProperty).entrySet()) {
                 spec.option(notATypedFile(option.getKey()), option.getValue());
             }
 
@@ -447,7 +456,7 @@ public final class PackageMojo extends AbstractMojo {
      * @param userProperties    the session's user properties
      * @param projectProperties the project's properties
      * @param configured        the {@code <runnerOptions>} entries, or {@code null} when there are none
-     * @param passthroughNames  the names of the passthrough options, in table order
+     * @param passthroughNames  the names of the passthrough options, in table order, then those of the removed ones
      * @return the options by name, in the order they are applied
      */
     static Map<String, String> options(Properties userProperties, Properties projectProperties,

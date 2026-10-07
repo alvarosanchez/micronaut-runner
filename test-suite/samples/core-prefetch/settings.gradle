@@ -19,7 +19,7 @@ dependencyResolutionManagement {
     repositories {
         maven { url = uri(providers.gradleProperty('runner.repo').get()) }
         mavenCentral()
-        // micronaut-core 5.3.0-SNAPSHOT until 5.3.0 is released: see build.gradle.
+        // micronaut-core 5.3.0-SNAPSHOT until 5.3.0 is released (#252): see build.gradle.
         maven {
             url = uri('https://central.sonatype.com/repository/maven-snapshots/')
             mavenContent {
