@@ -105,7 +105,7 @@ The Runner rows call `RunnerJarBuilder` directly with the packaging library's de
 transforms included; a control row changes one option. The harness passes the builder a logger, so the run's log
 has every info and warning line the builder printed, prefixed `[startup-benchmark] <row>:`. That is where a run
 says which build steps ran, stood down (with the reason) or were off for each row: the `Runner options:` line,
-the strip and desugar counts, the precompiled Logback configurator, the static service table, the prefetch. The
+the strip and desugar counts, the precompiled Logback configurator, the static service table. The
 description of every Runner row also ends with `static services: N slots (core V)` when its JAR carries a static
 service table, and `dynamic service scan` when it does not.
 
@@ -133,7 +133,7 @@ In a row name, `maot` is Micronaut AOT and the `-aot` suffix is the JDK AOT cach
 - **Controls:** `runner-stored` − control and `runner-stored-aot` − its `-aot` twin, for each default the control turns
   off (`-joran`, `-dynamic-services`, `-lambdas`). `runner-extracted-aot` − `runner-extracted-lambdas-aot` runs on the
   JDK's own loader, which archives lambdas itself, so it checks that desugaring costs the extracted layout nothing.
-- **Opt-in candidates:** `-preload`, `-prefetch`, `-positional` and `-stripdebug` (`stripLocalVariables=true`) against
+- **Opt-in candidates:** `-preload`, `-positional` and `-stripdebug` (`stripLocalVariables=true`) against
   `runner-stored` (and their `-aot` twins against `runner-stored-aot`); `runner-stored` − `runner-stored-reflection`
   for the entry stub, whose interval still spans zero at 20 iterations, so run it with 40.
 - **Micronaut AOT:** `runner-maot` − `shadow-maot` is like for like, both archives holding the same AOT-optimized
@@ -398,7 +398,6 @@ interleaved method):
 | `HYBRID` starts like `STORED`, smaller on disk, larger compressed | Compression Modes | `runner-stored-hybrid` − `runner-stored` | −1…+3% (n.s.); 0.74× raw, 1.35× gzip (stripping on) |
 | `POSITIONAL`: lower RSS, slightly slower, same private memory | Mapped or Positional Reads | `runner-stored-positional` − `runner-stored` | +1…+3% time; RSS −13…−16% |
 | Opt-in local-variable stripping: somewhat smaller, slightly faster without a cache, no difference with one | Opt-in: Dependency Local-Variable Names | `runner-stored-stripdebug` − `runner-stored`, and their `-aot` twins | 0.87× raw; −3…−4% uncached; −1…+2% cached (n.s.) |
-| Bean definition prefetch: a few percent on many cores | Bean Definition Prefetch | `runner-stored-prefetch` − `runner-stored`, and its `-aot` twin | −2…−6% (12 cores) |
 | Dynamic CDS starts more slowly than the AOT cache | The JDK AOT Cache | manual: `-XX:ArchiveClassesAtExit` and `-XX:+AutoCreateSharedArchive` against the AOT cache | AOT −11…−12% |
 | With the default settings, building a Runner JAR takes less time than building a Shadow JAR | Introduction | manual: `packagingComparison`, `runner-stored` − `shadow`, `--rerun` and edit-then-build; plus an up-to-date check | packaging task −59…−61%, whole build −30…−35%; no difference when up to date |
 
@@ -408,7 +407,7 @@ still stripped dependency local-variable tables by default. The JDK 25 figures f
 from its `runner-stored-keepdebug` rows, which are byte for byte today's default; the JDK 27 figures marked
 "stripping on" do not. That commit's `runner-stored` rows are today's `runner-stored-stripdebug`, which gives the
 opt-in stripping row. Comparisons within Runner (the startup profile, the extracted layout, `-all-optimized.jar`
-against `-all.jar`, `HYBRID`, `POSITIONAL` and the prefetch) were measured with stripping on for both rows, so they
+against `-all.jar`, `HYBRID` and `POSITIONAL`) were measured with stripping on for both rows, so they
 are not yet measured on today's default. The packaging claim comes from three manual sessions of the packaging
 comparison, on JDK 25.0.4.1 with a warm Gradle daemon, with stripping on: today's default skips that step, so it does
 less work than was measured. The claim names only Shadow, because Maven Shade was not measured. The advantage comes

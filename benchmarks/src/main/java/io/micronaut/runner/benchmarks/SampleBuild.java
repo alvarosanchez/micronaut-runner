@@ -142,10 +142,6 @@ final class SampleBuild implements SampleSteps {
     /** The request the recording is ready at and its workload, as for the trained caches. */
     private static final String HELLO = "/hello";
 
-    /** The class the entry stub calls when runner-build packages the bean definition prefetch. */
-    private static final String PREFETCH_CONFIGURER =
-            "io.micronaut.runner.generated.prefetch.DefinitionPrefetchConfigurer";
-
     /** The task the init script registers on the sample's build. */
     private static final String METADATA_TASK = "runnerBenchmarkMetadata";
 
@@ -379,11 +375,6 @@ final class SampleBuild implements SampleSteps {
                     + " run by the JDK's own loader, with a verified JDK AOT cache", EntryMode.STANDARD_LOADER, true,
                     OPT_IN, "runner-stored-lambdas"),
                     (steps, spec, lambdas) -> steps.aotCache(steps.extracted(lambdas, EXTRACTED_LAMBDAS), spec)),
-            row("runner-stored-prefetch", "The same stored Runner jar with definitionPrefetch=true: bean definitions"
-                    + " loaded from the entry stub", EntryMode.STUB, OPT_IN, "runner-stored",
-                    (steps, spec, stored) -> steps.prefetchCandidate(stored, spec)),
-            cached("runner-stored-prefetch-aot", "The same prefetching Runner jar with a verified JDK AOT cache",
-                    EntryMode.STUB, OPT_IN, "runner-stored-prefetch"),
             row("runner-preserve", "Runner jar, nested dependencies copied byte for byte; plugin-default entry stub",
                     EntryMode.STUB, CORE, null, (steps, spec, source) -> steps.runnerJar(spec, Compression.PRESERVE,
                             RunnerJarOptions.DEFAULTS)),
@@ -519,10 +510,6 @@ final class SampleBuild implements SampleSteps {
                         "Lambdas desugared vs kept, with the AOT cache"),
                 new ComparisonSpec("runner-extracted-aot", "runner-extracted-lambdas-aot",
                         "Extracted layout + AOT cache: lambdas desugared vs kept"),
-                new ComparisonSpec("runner-stored-prefetch", "runner-stored",
-                        "Bean definition prefetch vs the default, which has none"),
-                new ComparisonSpec("runner-stored-prefetch-aot", "runner-stored-aot",
-                        "Bean definition prefetch vs the default, which has none, with the AOT cache"),
                 new ComparisonSpec("runner-stored-ordered", "runner-stored",
                         "Startup classes first in each nested jar vs the jar's own order"),
                 new ComparisonSpec("runner-stored-hybrid", "runner-stored", "HYBRID vs STORED"),
@@ -880,45 +867,6 @@ final class SampleBuild implements SampleSteps {
     }
 
     /**
-     * The prefetch candidate row: the {@code runner-stored} inputs with {@code definitionPrefetch=true}. It is
-     * only a candidate while this archive really carries the prefetch and {@code runner-stored} does not: the
-     * packager leaves the prefetch out of a sample that cannot use it, and the comparison would then pit two
-     * identical jars against each other.
-     *
-     * @param stored the {@code runner-stored} row
-     * @param spec   the candidate row
-     * @return the candidate row
-     * @throws IOException if either archive is not what the comparison needs
-     */
-    @Override
-    public Variant prefetchCandidate(Variant stored, VariantSpec spec) throws IOException {
-        if (!stored.available() || definitionPrefetch(stored.artifact())) {
-            throw new IOException("runner-stored is unavailable or already carries " + PREFETCH_CONFIGURER
-                    + ", so there is no start without the bean definition prefetch to compare it with");
-        }
-        Variant candidate = runnerJar(spec, Compression.STORED, RunnerJarOptions.DEFAULTS.withDefinitionPrefetch(true));
-        if (!definitionPrefetch(candidate.artifact())) {
-            throw new IOException("the packager left the bean definition prefetch out of " + candidate.artifact()
-                    + " although definitionPrefetch=true, so it is the runner-stored archive");
-        }
-        return candidate;
-    }
-
-    /**
-     * Whether a runner jar carries the bean definition prefetch, which is what
-     * {@code RunnerJarResult.definitionPrefetch()} reported when it was built.
-     *
-     * @param archive the runner jar
-     * @return whether its index knows the class the entry stub starts the prefetch through
-     * @throws IOException if the archive cannot be read
-     */
-    static boolean definitionPrefetch(Path archive) throws IOException {
-        try (RunnerJarIndex reader = RunnerJarIndex.open(archive)) {
-            return reader.index().findClass(PREFETCH_CONFIGURER) != IndexFormat.NO_INDEX;
-        }
-    }
-
-    /**
      * Builds a runner jar straight from the packaging library, as the plugins would, entered as the row asks.
      * The jar is checked against what the row claims: its entry mode, archive read mode, preload list and service
      * table. Its build note says whether it carries a static service table and how many startup classes it
@@ -963,9 +911,6 @@ final class SampleBuild implements SampleSteps {
         }
         if (options.desugarLambdas() != null) {
             builder.option("desugarLambdas", options.desugarLambdas().toString());
-        }
-        if (options.definitionPrefetch() != null) {
-            builder.option("definitionPrefetch", options.definitionPrefetch().toString());
         }
         RunnerJarSpec jarSpec = builder.build();
         RunnerJarResult result = RunnerJarBuilder.build(jarSpec, new HarnessLogger(log, spec.name()));
@@ -1076,17 +1021,15 @@ final class SampleBuild implements SampleSteps {
      *                            default
      * @param desugarLambdas      whether lambda call sites are replaced with generated classes, or {@code null}
      *                            for the builder default
-     * @param definitionPrefetch  whether to package the bean definition prefetch, or {@code null} for the
-     *                            builder default
      * @param preload             whether the launcher preloads the embedded startup classes, or {@code null} for
      *                            its default; {@code false} launches with {@code -Dmicronaut.runner.preload=false}
      */
     record RunnerJarOptions(String archiveReads, Boolean precompileLogback, Boolean stripLocalVariables,
                             Path startupClasses, Boolean staticServices, Boolean desugarLambdas,
-                            Boolean definitionPrefetch, Boolean preload) {
+                            Boolean preload) {
 
         /** Every option at the builder default. */
-        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null, null, null, null, null, null);
+        static final RunnerJarOptions DEFAULTS = new RunnerJarOptions(null, null, null, null, null, null, null);
 
         /**
          * These options with another archive read mode.
@@ -1096,7 +1039,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withArchiveReads(String value) {
             return new RunnerJarOptions(value, precompileLogback, stripLocalVariables, startupClasses,
-                    staticServices, desugarLambdas, definitionPrefetch, preload);
+                    staticServices, desugarLambdas, preload);
         }
 
         /**
@@ -1107,7 +1050,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withPrecompileLogback(boolean value) {
             return new RunnerJarOptions(archiveReads, value, stripLocalVariables, startupClasses,
-                    staticServices, desugarLambdas, definitionPrefetch, preload);
+                    staticServices, desugarLambdas, preload);
         }
 
         /**
@@ -1118,7 +1061,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withStripLocalVariables(boolean value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, value, startupClasses,
-                    staticServices, desugarLambdas, definitionPrefetch, preload);
+                    staticServices, desugarLambdas, preload);
         }
 
         /**
@@ -1129,7 +1072,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withStartupClasses(Path value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, value,
-                    staticServices, desugarLambdas, definitionPrefetch, preload);
+                    staticServices, desugarLambdas, preload);
         }
 
         /**
@@ -1140,7 +1083,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withStaticServices(boolean value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
-                    value, desugarLambdas, definitionPrefetch, preload);
+                    value, desugarLambdas, preload);
         }
 
         /**
@@ -1151,18 +1094,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withDesugarLambdas(boolean value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
-                    staticServices, value, definitionPrefetch, preload);
-        }
-
-        /**
-         * These options with the bean definition prefetch packaged or left out.
-         *
-         * @param value whether to package the bean definition prefetch
-         * @return the new options
-         */
-        RunnerJarOptions withDefinitionPrefetch(boolean value) {
-            return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
-                    staticServices, desugarLambdas, value, preload);
+                    staticServices, value, preload);
         }
 
         /**
@@ -1175,7 +1107,7 @@ final class SampleBuild implements SampleSteps {
          */
         RunnerJarOptions withPreload(boolean value) {
             return new RunnerJarOptions(archiveReads, precompileLogback, stripLocalVariables, startupClasses,
-                    staticServices, desugarLambdas, definitionPrefetch, value);
+                    staticServices, desugarLambdas, value);
         }
     }
 

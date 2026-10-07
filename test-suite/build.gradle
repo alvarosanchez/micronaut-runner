@@ -25,32 +25,7 @@ tasks.withType(Test).configureEach {
 tasks.named('test', Test) {
     filter {
         excludeTestsMatching '*PublicationMetadataSmokeTest'
-        excludeTestsMatching '*DefinitionPrefetchSoakTest'
     }
-}
-
-/*
- * Starts the sample applications hundreds of times with the bean definition prefetch, looking for a start that
- * hangs. It takes tens of minutes, so it is not part of check: the "Prefetch soak" workflow runs it on demand.
- * -PprefetchSoak.launches=N changes the number of starts per leg, which is 30.
- */
-tasks.register('prefetchSoak', Test) {
-    description = 'Starts the samples repeatedly with the bean definition prefetch and fails on a start that hangs'
-    group = 'verification'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    filter {
-        includeTestsMatching '*DefinitionPrefetchSoakTest'
-    }
-    // Both tasks build samples/hello-netty in place.
-    mustRunAfter tasks.named('test')
-    def launches = providers.gradleProperty('prefetchSoak.launches').orElse('30')
-    inputs.property('launches', launches)
-    systemProperty 'runner.prefetchSoak.launches', launches.get()
-    // A soak proves something only when it runs: never up to date, never from the build cache.
-    outputs.upToDateWhen { false }
-    outputs.cacheIf { false }
-    testLogging.showStandardStreams = true
 }
 
 /*

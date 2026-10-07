@@ -82,22 +82,24 @@ class RunnerJarSpecTest {
                 "PRESERVE accepts the option, which then has no effect");
     }
 
+    /**
+     * Runner's own bean definition prefetch was removed before 1.0 in favour of micronaut-core's: a build that
+     * still sets the option fails with a message that names micronaut-core's system property, by value or not.
+     */
     @Test
-    void leavesTheDefinitionPrefetchOutByDefaultAndTakesTheOptInByName() {
-        assertFalse(complete(RunnerJarSpec.builder()).build().definitionPrefetch());
-        assertEquals("false", complete(RunnerJarSpec.builder()).build().effectiveOptions().get("definitionPrefetch"));
-        assertTrue(complete(RunnerJarSpec.builder().definitionPrefetch(true)).build().definitionPrefetch());
-        RunnerJarSpec on = complete(RunnerJarSpec.builder().option("definitionPrefetch", " TRUE ")).build();
-        assertTrue(on.definitionPrefetch());
-        assertEquals("true", on.effectiveOptions().get("definitionPrefetch"));
-        assertFalse(complete(RunnerJarSpec.builder().option("definitionPrefetch", "true")
-                .option("definitionPrefetch", "false")).build().definitionPrefetch(), "the last call wins");
-        assertEquals(RunnerJarOption.Exposure.PASSTHROUGH, RunnerJarOption.DEFINITION_PREFETCH.exposure());
-        assertEquals("false", RunnerJarOption.DEFINITION_PREFETCH.defaultValue().orElseThrow());
-        assertEquals(Boolean.class, RunnerJarOption.DEFINITION_PREFETCH.valueType());
-        assertTrue(complete(RunnerJarSpec.builder().entryStub(false).definitionPrefetch(true)).build()
-                        .definitionPrefetch(),
-                "asking for the prefetch without an entry stub is not an error: nothing is packaged");
+    void theRemovedDefinitionPrefetchOptionNamesMicronautsProperty() {
+        assertEquals(Optional.empty(), RunnerJarOption.named("definitionPrefetch"));
+        assertFalse(complete(RunnerJarSpec.builder()).build().effectiveOptions().containsKey("definitionPrefetch"));
+        for (String value : List.of("true", "false")) {
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> RunnerJarSpec.builder().option("definitionPrefetch", value));
+
+            assertTrue(failure.getMessage().startsWith("The Micronaut Runner option 'definitionPrefetch' was removed"),
+                    failure::getMessage);
+            assertTrue(failure.getMessage().contains("micronaut.bean-definitions.prefetch=true"),
+                    failure::getMessage);
+            assertFalse(failure.getMessage().contains(" knows: "), failure::getMessage);
+        }
     }
 
     @Test
@@ -186,7 +188,7 @@ class RunnerJarSpecTest {
     @Test
     void aBooleanOptionAcceptsOnlyTrueOrFalse() {
         for (String name : List.of("entryStub", "multiRelease", "enableNativeAccess", "precompileLogback",
-                "stripLocalVariables", "desugarLambdas", "definitionPrefetch")) {
+                "stripLocalVariables", "desugarLambdas")) {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                     () -> RunnerJarSpec.builder().option(name, "yes"));
             assertTrue(failure.getMessage().contains(name), failure::getMessage);

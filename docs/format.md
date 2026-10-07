@@ -120,10 +120,9 @@ These facts are true and tested, but an application developer cannot act on them
 - **Entry stub.** The packager generates a class that calls the application's `main` directly when the main class is
   a public, non-abstract class in a named package that declares its own `public static void main(String[])`.
   Otherwise the launcher enters `main` reflectively, and the build log says why. The difference is not measurable;
-  the `entryStub` option turns the stub off. The bean definition prefetch needs the stub.
+  the `entryStub` option turns the stub off.
 - **Static service table and the context class loader.** The table answers a lookup only when the thread's context
   class loader is the application's, as the main thread's is; any other lookup falls back to Micronaut's scan.
 - **Generated lambda classes.** The classes `desugarLambdas` generates are ordinary classes: `Class.isHidden()` is
   `false`, and `Class.forName` finds them.
-- **Trace switches.** `-Dmicronaut.runner.static-services.trace=true` prints every lookup the static table answers;
-  `-Dmicronaut.runner.prefetch.trace=true` prints whether the application context used the prefetched definitions.
+- **Trace switch.** `-Dmicronaut.runner.static-services.trace=true` prints every lookup the static table answers.

@@ -8,6 +8,12 @@ Runner adds what its archive and its launcher make possible: the index, the clas
 the steps it takes while it packages the application (<<whatChanges,What Changes for Your Application>>). It packages
 the output of Micronaut AOT's optimizer, and never runs the optimizer itself.
 
+Micronaut 5.3 and later can also load the bean definitions on a background thread while logging starts, an
+experimental feature that you switch on with the JVM system property `micronaut.bean-definitions.prefetch=true`; it
+works in a Runner JAR, in the single JAR and the extracted layout alike, and the
+https://docs.micronaut.io/latest/api/io/micronaut/runtime/Micronaut.html[`Micronaut` class documentation] describes
+it.
+
 == Gradle
 
 In a project that applies `io.micronaut.aot` next to a Micronaut application plugin, as Micronaut Launch generates it,

@@ -40,10 +40,6 @@ configurations {
 sourceSets {
     logbackFrontend
     staticServices
-    // The two classes of the bean definition prefetch, which DefinitionPrefetchPackager copies into runner jars.
-    // They are compiled against micronaut-inject and run only inside an application, next to its own Micronaut;
-    // like the front end they ship as a jar resource, so micronaut-inject never joins this library's class path.
-    prefetch
 }
 
 dependencies {
@@ -63,14 +59,9 @@ dependencies {
     staticServicesCompileOnly "io.micronaut:micronaut-core:${libs.versions.micronaut.core51.get()}"
     micronautCore51 "io.micronaut:micronaut-inject:${libs.versions.micronaut.core51.get()}"
 
-    prefetchCompileOnly platform(libs.micronaut.core)
-    prefetchCompileOnly 'io.micronaut:micronaut-inject'
-
     // micronaut-core is only needed by the service-discovery tests, never at packaging runtime.
     testImplementation platform(libs.micronaut.core)
     testImplementation 'io.micronaut:micronaut-inject'
-    // DefinitionPrefetchTest runs the two prefetch classes against the micronaut-inject above.
-    testImplementation sourceSets.prefetch.output
     // The differential tests of LogbackPrecompiler configure Logback with Joran and with the generated classes.
     testImplementation libs.logback.classic
 }
@@ -96,24 +87,6 @@ def logbackFrontendJar = tasks.register('logbackFrontendJar', Jar) {
     archiveFileName = 'logback-frontend.jar'
     destinationDirectory = layout.buildDirectory.dir('logback-frontend')
     from sourceSets.logbackFrontend.output
-}
-
-tasks.named('compilePrefetchJava', JavaCompile) {
-    options.release = 25
-    // The prefetch classes are copied into applications verbatim and run before main: no invokedynamic string
-    // concatenation in them.
-    options.compilerArgs.addAll(['-XDstringConcat=inline'])
-    // Line numbers for stack traces, no local variable tables: every application that asks carries these classes.
-    options.debugOptions.debugLevel = 'source,lines'
-}
-
-// A jar, not loose class files: Gradle rewrites the class files of a plugin class path when it instruments it
-// without its agent (System.getProperty becomes a call into Gradle), and it does not look inside a nested jar.
-def prefetchJar = tasks.register('prefetchJar', Jar) {
-    description = 'Packages the bean definition prefetch classes that runner-build carries as a resource'
-    archiveFileName = 'prefetch.jar'
-    destinationDirectory = layout.buildDirectory.dir('prefetch')
-    from sourceSets.prefetch.output
 }
 
 // The transform corpus runs the class transform pipeline over the class paths of real applications, which
@@ -173,9 +146,6 @@ tasks.named('processResources', ProcessResources) {
         into 'META-INF/micronaut-runner'
     }
     from(staticServicesJar) {
-        into 'META-INF/micronaut-runner'
-    }
-    from(prefetchJar) {
         into 'META-INF/micronaut-runner'
     }
 }

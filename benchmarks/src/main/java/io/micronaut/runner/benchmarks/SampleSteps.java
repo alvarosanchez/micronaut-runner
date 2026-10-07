@@ -138,16 +138,6 @@ interface SampleSteps {
     Variant joranControl(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
 
     /**
-     * Builds the bean definition prefetch candidate: the {@code runner-stored} inputs with the prefetch packaged.
-     *
-     * @param stored the {@code runner-stored} row, which must not carry the prefetch
-     * @param spec   the {@code runner-stored-prefetch} row
-     * @return the variant
-     * @throws Exception if it cannot be built, or if either archive is not what the comparison needs
-     */
-    Variant prefetchCandidate(Variant stored, SampleBuild.VariantSpec spec) throws Exception;
-
-    /**
      * Trains, or reuses, and verifies a JDK AOT cache for another row.
      *
      * @param source the variant the cache is trained on

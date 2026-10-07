@@ -169,14 +169,13 @@ public enum RunnerJarOption {
      * applies to {@link Compression#STORED} and {@link Compression#HYBRID}. A rewritten lambda's class is not
      * hidden, has a stable name and adds one frame to stack traces.
      */
-    DESUGAR_LAMBDAS("desugarLambdas", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
+    DESUGAR_LAMBDAS("desugarLambdas", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
 
     /**
-     * Whether to package the bean definition prefetch, which the entry stub starts on the common pool before the
-     * application's {@code main}. Off unless a build asks for it. The packager leaves it out, and logs why, when
-     * the application cannot use it; {@code -Dmicronaut.runner.prefetch=false} turns it off at run time.
+     * The name of the option that packaged Runner's own bean definition prefetch, removed before 1.0 because
+     * micronaut-core 5.3 has one.
      */
-    DEFINITION_PREFETCH("definitionPrefetch", Boolean.class, "false", Exposure.PASSTHROUGH, "1.0");
+    private static final String REMOVED_DEFINITION_PREFETCH = "definitionPrefetch";
 
     private final String optionName;
     private final Class<?> valueType;
@@ -278,12 +277,19 @@ public enum RunnerJarOption {
     /**
      * The failure for a name that is not in this table. It lists the known names, in table order, and the
      * version of the packaging library that knows them, because an unknown name usually means that a build
-     * sets an option a newer release added.
+     * sets an option a newer release added. For an option that was removed, it says so and names what replaces
+     * it instead.
      *
      * @param optionName the unknown name
      * @return the exception to throw
      */
     static IllegalArgumentException unknown(String optionName) {
+        if (REMOVED_DEFINITION_PREFETCH.equals(optionName)) {
+            return new IllegalArgumentException("The Micronaut Runner option '" + optionName + "' was removed: "
+                    + "Micronaut 5.3 and later prefetch the bean definitions themselves when the application is "
+                    + "started with the JVM system property micronaut.bean-definitions.prefetch=true. Remove the "
+                    + "option from the build, and see the Javadoc of io.micronaut.runtime.Micronaut");
+        }
         String version = RunnerJarOption.class.getPackage().getImplementationVersion();
         return new IllegalArgumentException("Unknown Micronaut Runner option '" + optionName
                 + "'. micronaut-runner-build " + (version == null ? "unknown" : version) + " knows: "

@@ -51,7 +51,6 @@ public final class RunnerJarResult {
     private final List<TransformReport> transforms;
     private final int staticServiceSlots;
     private final String staticServicesCoreVersion;
-    private final boolean definitionPrefetch;
 
     /**
      * Validates the result and makes its collections immutable.
@@ -117,40 +116,6 @@ public final class RunnerJarResult {
         this.logbackPrecompiled = logbackPrecompiled;
         this.staticServiceSlots = staticServiceSlots;
         this.staticServicesCoreVersion = staticServicesCoreVersion;
-        this.definitionPrefetch = false;
-    }
-
-    /**
-     * A copy of another result that says whether the bean definition prefetch was packaged.
-     *
-     * @param result             the result to copy
-     * @param definitionPrefetch whether the bean definition prefetch was packaged
-     */
-    private RunnerJarResult(RunnerJarResult result, boolean definitionPrefetch) {
-        this.output = result.output;
-        this.jarCount = result.jarCount;
-        this.entryCount = result.entryCount;
-        this.applicationEntryCount = result.applicationEntryCount;
-        this.mergedServiceEntryCount = result.mergedServiceEntryCount;
-        this.archiveSize = result.archiveSize;
-        this.warnings = result.warnings;
-        this.effectiveOptions = result.effectiveOptions;
-        this.logbackPrecompiled = result.logbackPrecompiled;
-        this.transforms = result.transforms;
-        this.staticServiceSlots = result.staticServiceSlots;
-        this.staticServicesCoreVersion = result.staticServicesCoreVersion;
-        this.definitionPrefetch = definitionPrefetch;
-    }
-
-    /**
-     * This result, saying whether the bean definition prefetch was packaged; a result says it was not unless it
-     * comes from here.
-     *
-     * @param value whether the bean definition prefetch was packaged
-     * @return the result
-     */
-    RunnerJarResult withDefinitionPrefetch(boolean value) {
-        return new RunnerJarResult(this, value);
     }
 
     /**
@@ -292,18 +257,6 @@ public final class RunnerJarResult {
     @Internal
     public Optional<String> staticServicesCoreVersion() {
         return Optional.ofNullable(staticServicesCoreVersion);
-    }
-
-    /**
-     * Whether the build packaged the bean definition prefetch, which {@link RunnerJarSpec#definitionPrefetch()}
-     * requests: the entry stub then starts Micronaut's bean definition loading before the application's
-     * {@code main}. It is {@code false} whenever the prefetch was left out, whatever the option said; the build
-     * log names the reason. {@link #effectiveOptions()} reports what was requested.
-     *
-     * @return whether the archive carries the bean definition prefetch
-     */
-    boolean definitionPrefetch() {
-        return definitionPrefetch;
     }
 
     /**

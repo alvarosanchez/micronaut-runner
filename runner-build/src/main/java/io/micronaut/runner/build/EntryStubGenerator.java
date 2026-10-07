@@ -56,11 +56,6 @@ import java.util.function.Consumer;
  * {@code invokestatic}, which costs no reflection and no method handle invocation. {@code run} declares
  * {@code Throwable} so that whatever the application throws travels out of the launcher unchanged.</p>
  *
- * <p>When the archive carries the bean definition prefetch, {@code run} first calls
- * {@code io.micronaut.runner.generated.prefetch.DefinitionPrefetchConfigurer.start()}; see
- * {@link DefinitionPrefetchPackager}. The stub runs before the application's {@code main}, which is earlier than
- * any point the application or Micronaut owns.</p>
- *
  * <h2>Class file version</h2>
  * <p>The version is set explicitly to {@value #CLASS_FILE_MAJOR_VERSION}.{@value #CLASS_FILE_MINOR_VERSION}
  * (Java 25, the baseline of this project). {@link ClassFile} otherwise defaults to the version of the JDK
@@ -115,7 +110,6 @@ final class EntryStubGenerator {
             MethodTypeDesc.of(ConstantDescs.CD_void, ConstantDescs.CD_String.arrayType());
     private static final MethodTypeDesc REGISTER_TYPE =
             MethodTypeDesc.of(ConstantDescs.CD_void, ENTRY_TYPE);
-    private static final ClassDesc PREFETCH_STARTER_TYPE = ClassDesc.of(DefinitionPrefetchPackager.CONFIGURER_CLASS);
 
     private static final Consumer<CodeBuilder> CONSTRUCTOR_BODY = new ConstructorBody();
     private static final Consumer<CodeBuilder> STATIC_INITIALISER_BODY = new StaticInitialiserBody();
@@ -136,28 +130,8 @@ final class EntryStubGenerator {
      * @throws NullPointerException     if the name is {@code null}
      */
     static byte[] generate(String mainClass) {
-        return generate(mainClass, false);
-    }
-
-    /**
-     * Generates the entry stub for an application, optionally starting the bean definition prefetch before it
-     * enters the application.
-     *
-     * <p>With {@code definitionPrefetch}, {@code run} is
-     * {@code invokestatic DefinitionPrefetchConfigurer.start()} followed by the three instructions it has
-     * without it. The caller must then package {@value DefinitionPrefetchPackager#CONFIGURER_CLASS} in the
-     * application layer, because the stub links against it when it runs. Without the flag the bytes are the ones
-     * {@link #generate(String)} returns.</p>
-     *
-     * @param mainClass          the binary name of the application main class
-     * @param definitionPrefetch whether {@code run} starts the bean definition prefetch first
-     * @return the class file of {@value #STUB_CLASS}
-     * @throws IllegalArgumentException if the name is not a legal binary class name
-     * @throws NullPointerException     if the name is {@code null}
-     */
-    static byte[] generate(String mainClass, boolean definitionPrefetch) {
         Objects.requireNonNull(mainClass, "mainClass");
-        return ClassFile.of().build(STUB_TYPE, new StubClass(ClassDesc.of(mainClass), definitionPrefetch));
+        return ClassFile.of().build(STUB_TYPE, new StubClass(ClassDesc.of(mainClass)));
     }
 
     /**
@@ -233,11 +207,9 @@ final class EntryStubGenerator {
     private static final class StubClass implements Consumer<ClassBuilder> {
 
         private final ClassDesc application;
-        private final boolean definitionPrefetch;
 
-        private StubClass(ClassDesc application, boolean definitionPrefetch) {
+        private StubClass(ClassDesc application) {
             this.application = application;
-            this.definitionPrefetch = definitionPrefetch;
         }
 
         @Override
@@ -250,8 +222,7 @@ final class EntryStubGenerator {
                     ClassFile.ACC_PUBLIC, CONSTRUCTOR_BODY);
             builder.withMethodBody(ConstantDescs.CLASS_INIT_NAME, ConstantDescs.MTD_void,
                     ClassFile.ACC_STATIC, STATIC_INITIALISER_BODY);
-            builder.withMethod(RUN_METHOD, MAIN_TYPE, ClassFile.ACC_PUBLIC,
-                    new RunMethod(application, definitionPrefetch));
+            builder.withMethod(RUN_METHOD, MAIN_TYPE, ClassFile.ACC_PUBLIC, new RunMethod(application));
         }
     }
 
@@ -291,40 +262,31 @@ final class EntryStubGenerator {
     private static final class RunMethod implements Consumer<MethodBuilder> {
 
         private final ClassDesc application;
-        private final boolean definitionPrefetch;
 
-        private RunMethod(ClassDesc application, boolean definitionPrefetch) {
+        private RunMethod(ClassDesc application) {
             this.application = application;
-            this.definitionPrefetch = definitionPrefetch;
         }
 
         @Override
         public void accept(MethodBuilder builder) {
             builder.with(ExceptionsAttribute.ofSymbols(ConstantDescs.CD_Throwable));
-            builder.withCode(new RunBody(application, definitionPrefetch));
+            builder.withCode(new RunBody(application));
         }
     }
 
     /**
-     * {@code Application.main(args);}, the one call the whole stub exists for, after
-     * {@code DefinitionPrefetchConfigurer.start();} when the archive carries the bean definition prefetch.
+     * {@code Application.main(args);}, the one call the whole stub exists for.
      */
     private static final class RunBody implements Consumer<CodeBuilder> {
 
         private final ClassDesc application;
-        private final boolean definitionPrefetch;
 
-        private RunBody(ClassDesc application, boolean definitionPrefetch) {
+        private RunBody(ClassDesc application) {
             this.application = application;
-            this.definitionPrefetch = definitionPrefetch;
         }
 
         @Override
         public void accept(CodeBuilder code) {
-            if (definitionPrefetch) {
-                code.invokestatic(PREFETCH_STARTER_TYPE, DefinitionPrefetchPackager.START_METHOD,
-                        ConstantDescs.MTD_void);
-            }
             code.aload(1)
                     .invokestatic(application, MAIN_METHOD, MAIN_TYPE)
                     .return_();
