@@ -76,7 +76,6 @@ loadScripts(document, 'script');</script>
 <li><a href="#STARTUP_CLASSES" tabindex="0">STARTUP_CLASSES</a></li>
 <li><a href="#STATIC_SERVICES" tabindex="0">STATIC_SERVICES</a></li>
 <li><a href="#DESUGAR_LAMBDAS" tabindex="0">DESUGAR_LAMBDAS</a></li>
-<li><a href="#DEFINITION_PREFETCH" tabindex="0">DEFINITION_PREFETCH</a></li>
 </ol>
 </li>
 <li><a href="#method-detail" tabindex="0">Method Details</a>
@@ -211,49 +210,44 @@ and <a href="RunnerJarSpec.html#effectiveOptions()"><code>RunnerJarSpec.effectiv
 <div class="col-last odd-row-color">
 <div class="block">How the nested dependencies are stored, a <a href="Compression.html" title="enum class in io.micronaut.runner.build"><code>Compression</code></a> name.</div>
 </div>
-<div class="col-first even-row-color"><code><a href="#DEFINITION_PREFETCH" class="member-name-link">DEFINITION_PREFETCH</a></code></div>
+<div class="col-first even-row-color"><code><a href="#DESUGAR_LAMBDAS" class="member-name-link">DESUGAR_LAMBDAS</a></code></div>
 <div class="col-last even-row-color">
-<div class="block">Whether to package the bean definition prefetch, which the entry stub starts on the common pool before the
-application's <code>main</code>.</div>
-</div>
-<div class="col-first odd-row-color"><code><a href="#DESUGAR_LAMBDAS" class="member-name-link">DESUGAR_LAMBDAS</a></code></div>
-<div class="col-last odd-row-color">
 <div class="block">Whether to replace lambda and method-reference call sites with classes generated when the application is
 packaged, so that they are not linked at every start and a JDK AOT cache can hold them.</div>
 </div>
-<div class="col-first even-row-color"><code><a href="#ENABLE_NATIVE_ACCESS" class="member-name-link">ENABLE_NATIVE_ACCESS</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code><a href="#ENABLE_NATIVE_ACCESS" class="member-name-link">ENABLE_NATIVE_ACCESS</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Whether to write <code>Enable-Native-Access: ALL-UNNAMED</code> into the manifest.</div>
 </div>
-<div class="col-first odd-row-color"><code><a href="#ENTRY_STUB" class="member-name-link">ENTRY_STUB</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code><a href="#ENTRY_STUB" class="member-name-link">ENTRY_STUB</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Whether to generate the entry stub that calls the main method directly.</div>
 </div>
-<div class="col-first even-row-color"><code><a href="#MANIFEST_ATTRIBUTES" class="member-name-link">MANIFEST_ATTRIBUTES</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code><a href="#MANIFEST_ATTRIBUTES" class="member-name-link">MANIFEST_ATTRIBUTES</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Extra main attributes of the runner jar's manifest.</div>
 </div>
-<div class="col-first odd-row-color"><code><a href="#MULTI_RELEASE" class="member-name-link">MULTI_RELEASE</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code><a href="#MULTI_RELEASE" class="member-name-link">MULTI_RELEASE</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Whether the application layer itself is multi-release.</div>
 </div>
-<div class="col-first even-row-color"><code><a href="#PRECOMPILE_LOGBACK" class="member-name-link">PRECOMPILE_LOGBACK</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code><a href="#PRECOMPILE_LOGBACK" class="member-name-link">PRECOMPILE_LOGBACK</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
 packaged, so that the application does not parse XML and run Joran at every start.</div>
 </div>
-<div class="col-first odd-row-color"><code><a href="#STARTUP_CLASSES" class="member-name-link">STARTUP_CLASSES</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code><a href="#STARTUP_CLASSES" class="member-name-link">STARTUP_CLASSES</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">The recorded startup class list the launcher preloads on a background thread: the
 <code>-Xlog:class+load</code> output of a run of the runner jar, or a file of binary class names.</div>
 </div>
-<div class="col-first even-row-color"><code><a href="#STATIC_SERVICES" class="member-name-link">STATIC_SERVICES</a></code></div>
-<div class="col-last even-row-color">
+<div class="col-first odd-row-color"><code><a href="#STATIC_SERVICES" class="member-name-link">STATIC_SERVICES</a></code></div>
+<div class="col-last odd-row-color">
 <div class="block">Whether to generate the static service table, classes that answer Micronaut's service lookups from names
 computed at packaging time, so that the application does not scan its class path for them when it starts.</div>
 </div>
-<div class="col-first odd-row-color"><code><a href="#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a></code></div>
-<div class="col-last odd-row-color">
+<div class="col-first even-row-color"><code><a href="#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a></code></div>
+<div class="col-last even-row-color">
 <div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed, which makes them
 smaller to read and define.</div>
 </div>
@@ -489,17 +483,6 @@ otherwise; <code>-Dmicronaut.runner.static-services=false</code> turns it off at
 packaged, so that they are not linked at every start and a JDK AOT cache can hold them. On by default; it
 applies to <a href="Compression.html#STORED"><code>Compression.STORED</code></a> and <a href="Compression.html#HYBRID"><code>Compression.HYBRID</code></a>. A rewritten lambda's class is not
 hidden, has a stable name and adds one frame to stack traces.</div>
-</div>
-</section>
-</li>
-<li>
-<section class="detail" id="DEFINITION_PREFETCH">
-<h3>DEFINITION_PREFETCH</h3>
-<div class="horizontal-scroll">
-<div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">DEFINITION_PREFETCH</span></div>
-<div class="block">Whether to package the bean definition prefetch, which the entry stub starts on the common pool before the
-application's <code>main</code>. Off unless a build asks for it. The packager leaves it out, and logs why, when
-the application cannot use it; <code>-Dmicronaut.runner.prefetch=false</code> turns it off at run time.</div>
 </div>
 </section>
 </li>

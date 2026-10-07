@@ -157,9 +157,7 @@
         
         <div class="toc-item" style="margin-left:10px" id="toc-item-publishing"><a href="#publishing"><strong>10.6</strong><span>Publishing the Archive</span></a></div>
         
-        <div class="toc-item" style="margin-left:10px" id="toc-item-definitionPrefetch"><a href="#definitionPrefetch"><strong>10.7</strong><span>Experimental: Bean Definition Prefetch</span></a></div>
-        
-        <div class="toc-item" style="margin-left:10px" id="toc-item-runtimeProperties"><a href="#runtimeProperties"><strong>10.8</strong><span>Run-Time System Properties</span></a></div>
+        <div class="toc-item" style="margin-left:10px" id="toc-item-runtimeProperties"><a href="#runtimeProperties"><strong>10.7</strong><span>Run-Time System Properties</span></a></div>
         
         <div class="toc-item" style="margin-left:0px" id="toc-item-runtime"><a href="#runtime"><strong>11</strong><span>Running a Runner JAR</span></a></div>
         
@@ -1476,7 +1474,7 @@ ever rejected; <code>PRESERVE</code> gives a smaller layout on disk.</p>
 </div>
 <div class="paragraph">
 <p>The extracted layout keeps the precompiled Logback configuration and the precomputed service lookups. It has no
-launcher, so a startup profile and the bean definition prefetch do nothing there.</p>
+launcher, so a startup profile does nothing there.</p>
 </div>
 
 <h2 id="jdkAotCacheVerify"><a class="anchor" href="#jdkAotCacheVerify"></a>8.4 Verifying a Cache</h2>
@@ -1537,6 +1535,13 @@ optimizer run: the Micronaut Gradle and Maven plugins apply it themselves, and a
 <p>Runner adds what its archive and its launcher make possible: the index, the class loader and the startup profile, and
 the steps it takes while it packages the application (<a href="#whatChanges">What Changes for Your Application</a>). It packages
 the output of Micronaut AOT&#8217;s optimizer, and never runs the optimizer itself.</p>
+</div>
+<div class="paragraph">
+<p>Micronaut 5.3 and later can also load the bean definitions on a background thread while logging starts, an
+experimental feature that you switch on with the JVM system property <code>micronaut.bean-definitions.prefetch=true</code>; it
+works in a Runner JAR, in the single JAR and the extracted layout alike, and the
+<a href="https://docs.micronaut.io/latest/api/io/micronaut/runtime/Micronaut.html"><code>Micronaut</code> class documentation</a> describes
+it.</p>
 </div>
 <div class="sect1">
 <h2 id="_gradle">Gradle</h2>
@@ -1739,8 +1744,8 @@ property, set in <code>&lt;properties&gt;</code> or with <code>-D</code> on the 
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>entryStub = false</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.entryStub</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Generates a class that calls your <code>main</code> method directly. With <code>false</code>, the launcher calls <code>main</code> reflectively, and
-the bean definition prefetch cannot run. Leave it on.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Generates a class that calls your <code>main</code> method directly. With <code>false</code>, the launcher calls <code>main</code> reflectively.
+Leave it on.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>multiRelease</code></p></td>
@@ -1814,14 +1819,6 @@ time.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>options.put('staticServices', 'false')</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.staticServices</code>, or <code>&lt;staticServices&gt;</code> in <code>&lt;runnerOptions&gt;</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Precomputes Micronaut&#8217;s service lookups (<a href="#staticServices">Precomputed Service Lookups</a>).</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>definitionPrefetch</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>options.put('definitionPrefetch', 'true')</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.definitionPrefetch</code>, or <code>&lt;definitionPrefetch&gt;</code> in <code>&lt;runnerOptions&gt;</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Loads Micronaut&#8217;s bean definitions early, on a background thread; experimental
-(<a href="#definitionPrefetch">Bean Definition Prefetch</a>).</p></td>
 </tr>
 </tbody>
 </table>
@@ -2098,44 +2095,7 @@ publish it with <code>maven-publish</code>, add it to the publication:</p>
 <code>micronaut.runner.classifier</code>, it is attached and published next to the main artifact.</p>
 </div>
 
-<h2 id="definitionPrefetch"><a class="anchor" href="#definitionPrefetch"></a>10.7 Experimental: Bean Definition Prefetch</h2>
-
-<div class='contribute-btn'>
-    <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/alvarosanchez/micronaut-runner/edit/master/src/main/docs/guide/definitionPrefetch.adoc"'>
-        <i class='fa fa-pencil-square-o'></i> Improve this doc
-    </button>
-</div>
-
-
-<div class="paragraph">
-<p>The <code>definitionPrefetch</code> option, off by default, starts loading Micronaut&#8217;s bean definitions on a background thread
-before your <code>main</code> method runs. It shortens a start by a few percent on machines with many cores, and does nothing
-measurable on small ones. When the application cannot use it, Runner leaves it out and the build log says why. It
-runs only from the single JAR, when the JVM sees at least four processors.</p>
-</div>
-<div class="paragraph">
-<p>Do not use it when:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p><code>main</code> sets, in code, <code>java.util.concurrent.ForkJoinPool.common.*</code> properties or state that static initializers of
-your beans read: both are used before <code>main</code> runs;</p>
-</li>
-<li>
-<p>the application creates its context without a builder, such as with <code>BeanContext.run()</code>;</p>
-</li>
-<li>
-<p>the application replaces the context builder&#8217;s <code>BeanDefinitionsProvider</code>.</p>
-</li>
-</ul>
-</div>
-<div class="paragraph">
-<p>To start once without it, pass <code>-Dmicronaut.runner.prefetch=false</code>. A start with
-<code>-Dmicronaut.runner.static-services.verify=true</code> also runs without it.</p>
-</div>
-
-<h2 id="runtimeProperties"><a class="anchor" href="#runtimeProperties"></a>10.8 Run-Time System Properties</h2>
+<h2 id="runtimeProperties"><a class="anchor" href="#runtimeProperties"></a>10.7 Run-Time System Properties</h2>
 
 <div class='contribute-btn'>
     <button type='button' class='btn btn-default' onclick='window.location.href="https://github.com/alvarosanchez/micronaut-runner/edit/master/src/main/docs/guide/runtimeProperties.adoc"'>
@@ -2238,11 +2198,6 @@ Micronaut AOT&#8217;s switch, and works in every packaging (<a href="#precompile
 <td class="tableblock halign-left valign-top"><p class="tableblock">With <code>false</code>, let Micronaut scan for its services instead of using the precomputed lookups.</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.prefetch</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code>, when packaged with <code>definitionPrefetch</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">With <code>false</code>, start without the <a href="#definitionPrefetch">bean definition prefetch</a>.</p></td>
-</tr>
-<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.aot.training</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">With <code>true</code>, only for the run that trains a JDK AOT cache on the single JAR, never in production
@@ -2279,10 +2234,6 @@ Micronaut AOT&#8217;s switch, and works in every packaging (<a href="#precompile
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>staticServices</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.static-services</code></p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>definitionPrefetch</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.prefetch</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>startupClasses</code>, or a committed startup profile</p></td>
