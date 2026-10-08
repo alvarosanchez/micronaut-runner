@@ -42,15 +42,15 @@ import java.util.function.Consumer;
  */
 final class LogbackPrecompilation {
 
-    private static final String NOT_PRECOMPILED = "No Logback configuration was precompiled because ";
-
-    private static final String JORAN_AT_STARTUP = "; Logback will configure itself with Joran at startup";
-
     /**
      * Runs just before the module is called. Tests replace it to force the {@link LinkageError} of a module
      * version that does not match; it does nothing in production.
      */
     static volatile Runnable beforeCall = () -> { };
+
+    private static final String NOT_PRECOMPILED = "No Logback configuration was precompiled because ";
+
+    private static final String JORAN_AT_STARTUP = "; Logback will configure itself with Joran at startup";
 
     private LogbackPrecompilation() {
     }
