@@ -97,11 +97,14 @@ import java.util.zip.CRC32;
  * starts, warnings are emitted in that order afterwards, and the outer archive is written on one thread.</p>
  *
  * <h2>Class transforms</h2>
- * <p>In STORED and HYBRID, each stage also runs the class transforms of the build over its dependency's
- * classes: {@code desugarLambdas}, then the opt-in {@code stripLocalVariables}. Before staging, one scan task
- * per dependency runs on the same threads, with its own {@code ZipReader}, into a read-only model of the class
- * path that every stage shares and that is discarded when {@code build} returns. A staging thread then also holds
- * the original and the rewritten bytes of one class, at most 8 MiB each. With {@code desugarLambdas}, a stage plans its
+ * <p>The opt-in {@code stripLocalVariables} runs Micronaut AOT's local-variable stripping over the dependencies
+ * before they are staged, in every mode, on threads of its own: it writes a copy of each jar whose classes it
+ * rewrites into the work directory, and that copy is staged instead.</p>
+ *
+ * <p>In STORED and HYBRID, each stage also runs {@code desugarLambdas} over its dependency's classes. Before
+ * staging, one scan task per dependency runs on the same threads, with its own {@code ZipReader}, into a read-only
+ * model of the class path that every stage shares and that is discarded when {@code build} returns. A staging thread
+ * then also holds the original and the rewritten bytes of one class, at most 8 MiB each. A stage plans its
  * dependency's nests before it writes the first entry, so the thread also holds the planned nests of the jar
  * it is staging: the original and the accepted bytes of each class with a rewritten lambda call site, of its
  * nest host and of the classes generated for it, each released when the entry loop has written it. One jar's
@@ -858,17 +861,16 @@ public final class RunnerJarBuilder {
         ExecutorService pool = factory == null ? null : Executors.newFixedThreadPool(threads, factory);
         Throwable failure = null;
         try {
-            transforms = ClassTransforms.prepare(spec, dependencies, pool, this::scanApplication, logger, this::warn,
-                    options);
+            transforms = ClassTransforms.prepare(spec, dependencies, work, parallelism, pool, this::scanApplication,
+                    logger, this::warn, options);
             // The application layer is transformed on this thread while the pool stages the dependencies.
-            List<DependencyStage.Staged> staged = DependencyStage.stageAll(
-                    DependencyStage.of(dependencies, work, compression, transforms.pipeline()), pool,
-                    this::transformApplication);
+            List<DependencyStage.Staged> staged = DependencyStage.stageAll(DependencyStage.of(dependencies,
+                    transforms.sources(), work, compression, transforms.pipeline()), pool, this::transformApplication);
             if (compression == Compression.HYBRID && DependencyStage.hotEntries(staged) == 0) {
                 warn(DependencyStage.HYBRID_WITHOUT_HOT_ENTRY);
                 transforms.storeColdClasses();
-                staged = DependencyStage.stageAll(DependencyStage.of(dependencies, work, Compression.STORED,
-                        transforms.pipeline()), pool, () -> { });
+                staged = DependencyStage.stageAll(DependencyStage.of(dependencies, transforms.sources(), work,
+                        Compression.STORED, transforms.pipeline()), pool, () -> { });
             }
             staged.forEach(this::join);
         } catch (Throwable e) {
@@ -1071,7 +1073,7 @@ public final class RunnerJarBuilder {
         if (staged.signatureWarning() != null) {
             warn(staged.signatureWarning());
         }
-        transforms.add(staged.transforms());
+        transforms.add(staged.jar().entryName, staged.transforms());
         nested.add(staged.jar());
     }
 

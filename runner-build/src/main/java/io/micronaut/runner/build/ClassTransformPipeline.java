@@ -43,9 +43,9 @@ import java.util.zip.CRC32;
  * <h2>Steps</h2>
  * <p>A {@link Step} supplies a pre-filter that sees the entry name and the bytes as read from the jar, a check
  * of whether it changes a parsed class, and the {@link ClassTransform} that makes the change. Enabled steps run
- * in a fixed order: {@linkplain LambdaDesugarer desugaring lambdas} first, then
- * {@linkplain LocalVariableStripper stripping}; their transforms are composed with
- * {@link ClassTransform#andThen(ClassTransform)}, so a class is parsed and written once whatever runs.</p>
+ * in the order they are given, today only {@linkplain LambdaDesugarer desugaring lambdas}; their transforms are
+ * composed with {@link ClassTransform#andThen(ClassTransform)}, so a class is parsed and written once whatever
+ * runs.</p>
  *
  * <h2>Planned nests</h2>
  * <p>Desugaring changes several classes together: a host, its nest host and the classes it generates. It
@@ -61,16 +61,11 @@ import java.util.zip.CRC32;
  *
  * <h2>Rules the pipeline owns</h2>
  * <ol type="a">
- *     <li><b>Pool.</b> {@code NEW_POOL}, {@code DROP_DEBUG} and {@code PASS_LINE_NUMBERS} apply only to a class
- *     that a {@linkplain Step#rebuildsConstantPool() pool-rebuilding} step, stripping, actually rewrites. Every
- *     other rewritten class keeps {@code SHARED_POOL} for every step: a rebuilt pool would silently break the
- *     raw pool indexes of an attribute the JDK does not know, which stripping declines and another step
- *     would not.</li>
+ *     <li><b>Pool.</b> Every rewritten class keeps {@code SHARED_POOL}: a rebuilt pool would silently break the
+ *     raw pool indexes of an attribute the JDK does not know.</li>
  *     <li><b>Frames.</b> Every rewritten class is written with {@code DROP_STACK_MAPS}, and each method's
  *     original frames are attached again, by label, after the last step ({@link OriginalFrames}). Steps keep
  *     their edits length- and stack-neutral.</li>
- *     <li><b>Size.</b> A step that {@linkplain Step#skipsLargerOutput() skips a larger output} is skipped when
- *     its output is not smaller only when it is the only step that changed the class.</li>
  *     <li><b>Signed jars.</b> No step applies to any entry of a signed jar.</li>
  * </ol>
  *
@@ -121,8 +116,7 @@ final class ClassTransformPipeline {
     /** The step that plans whole nests, and its position among the steps; {@code null} and -1 without one. */
     private final LambdaDesugarer desugarer;
     private final int desugarIndex;
-    /** The two ClassFile contexts; {@code null} in a pipeline without a step, which never parses a class. */
-    private final ClassFile rebuilt;
+    /** The ClassFile context; {@code null} in a pipeline without a step, which never parses a class. */
     private final ClassFile shared;
     private final Function<byte[], List<String>> verifier;
     private final Options options;
@@ -178,7 +172,6 @@ final class ClassTransformPipeline {
         this.steps = pipeline.steps;
         this.desugarer = pipeline.desugarer;
         this.desugarIndex = pipeline.desugarIndex;
-        this.rebuilt = pipeline.rebuilt;
         this.shared = pipeline.shared;
         this.verifier = pipeline.verifier;
         this.options = options;
@@ -207,21 +200,15 @@ final class ClassTransformPipeline {
         this.desugarIndex = planningIndex;
         if (hierarchy == null) {
             // A pipeline without a step parses nothing.
-            this.rebuilt = null;
             this.shared = null;
             return;
         }
-        ClassFile.ClassHierarchyResolverOption resolver = ClassFile.ClassHierarchyResolverOption.of(hierarchy);
-        List<ClassFile.Option> rebuiltOptions = new ArrayList<>(LocalVariableStripper.OPTIONS);
-        rebuiltOptions.add(ClassFile.StackMapsOption.DROP_STACK_MAPS);
-        rebuiltOptions.add(resolver);
-        this.rebuilt = ClassFile.of(rebuiltOptions.toArray(ClassFile.Option[]::new));
         this.shared = ClassFile.of(ClassFile.ConstantPoolSharingOption.SHARED_POOL,
                 ClassFile.DebugElementsOption.PASS_DEBUG,
                 ClassFile.LineNumbersOption.PASS_LINE_NUMBERS,
                 ClassFile.AttributesProcessingOption.PASS_ALL_ATTRIBUTES,
                 ClassFile.StackMapsOption.DROP_STACK_MAPS,
-                resolver);
+                ClassFile.ClassHierarchyResolverOption.of(hierarchy));
     }
 
     /**
@@ -394,7 +381,7 @@ final class ClassTransformPipeline {
      * @param reports one report per jar, in class-path order
      * @return the content, or {@code null} when no step changed any class and nothing was noted
      */
-    byte[] describe(String version, List<JarReport> reports) {
+    static byte[] describe(String version, List<JarReport> reports) {
         boolean anything = false;
         for (JarReport report : reports) {
             anything |= !report.notes().isEmpty();
@@ -463,15 +450,6 @@ final class ClassTransformPipeline {
         return line.length() > MAX_NOTE_ERROR ? line.substring(0, MAX_NOTE_ERROR) + "..." : line;
     }
 
-    private static boolean rebuildsPool(List<Step> steps) {
-        for (Step step : steps) {
-            if (step.rebuildsConstantPool()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /**
      * One step of the pipeline.
      */
@@ -521,26 +499,6 @@ final class ClassTransformPipeline {
         ClassTransform transform(ClassModel model);
 
         /**
-         * Whether a class the step rewrites gets a rebuilt constant pool, without its debug elements but with
-         * its line numbers (rule a).
-         *
-         * @return whether the step rebuilds the pool
-         */
-        default boolean rebuildsConstantPool() {
-            return false;
-        }
-
-        /**
-         * Whether the class is left alone when the step is the only change and its output is not smaller
-         * (rule c).
-         *
-         * @return whether a larger output is skipped
-         */
-        default boolean skipsLargerOutput() {
-            return false;
-        }
-
-        /**
          * The line the build logs for the step once every jar is staged.
          *
          * @param report  what the step did
@@ -553,14 +511,13 @@ final class ClassTransformPipeline {
     /**
      * The jar a run works on.
      *
-     * @param name          its nested entry name, which notes and {@code transforms.txt} use
-     * @param index         its position in the class path model: {@code 0} for the application layer, then one
-     *                      per dependency
-     * @param application   whether it is the application layer
-     * @param signed        whether it carried signature files
-     * @param projectModule whether the build that packages the application also produced it
+     * @param name        its nested entry name, which notes and {@code transforms.txt} use
+     * @param index       its position in the class path model: {@code 0} for the application layer, then one per
+     *                    dependency
+     * @param application whether it is the application layer
+     * @param signed      whether it carried signature files
      */
-    record Layer(String name, int index, boolean application, boolean signed, boolean projectModule) {
+    record Layer(String name, int index, boolean application, boolean signed) {
     }
 
     /**
@@ -818,7 +775,7 @@ final class ClassTransformPipeline {
             counted = new boolean[count];
             boolean applicable = false;
             for (int i = 0; i < count; i++) {
-                // Rule d: nothing in a signed jar is rewritten, whatever the step says.
+                // Rule c: nothing in a signed jar is rewritten, whatever the step says.
                 applies[i] = !layer.signed() && steps.get(i).appliesTo(layer);
                 counted[i] = !layer.application() || steps.get(i).appliesTo(layer);
                 applicable |= applies[i] && i != desugarIndex;
@@ -890,7 +847,7 @@ final class ClassTransformPipeline {
                 left[reason] += plan.left()[reason];
             }
             if (!applies[desugarIndex]) {
-                // Rule d: whatever the plan says, nothing of a signed jar is rewritten.
+                // Rule c: whatever the plan says, nothing of a signed jar is rewritten.
                 return;
             }
             for (LambdaDesugarer.Unit unit : plan.units()) {
@@ -1127,9 +1084,7 @@ final class ClassTransformPipeline {
             Attribution attribution = new Attribution();
             Step blame = candidates.get(0);
             try {
-                boolean rebuild = rebuildsPool(candidates);
-                ClassFile context = rebuild ? rebuilt : shared;
-                ClassModel model = context.parse(original);
+                ClassModel model = shared.parse(original);
                 List<Step> active = new ArrayList<>(candidates.size());
                 for (Step step : candidates) {
                     blame = step;
@@ -1139,13 +1094,6 @@ final class ClassTransformPipeline {
                 }
                 if (active.isEmpty()) {
                     return Attempt.UNCHANGED;
-                }
-                blame = active.get(0);
-                if (rebuild && !rebuildsPool(active)) {
-                    // Rule a: the step that rebuilds the pool declined, so every other step keeps it shared, and
-                    // the class must be parsed again with its debug elements.
-                    context = shared;
-                    model = context.parse(original);
                 }
                 ClassTransform transform = null;
                 for (Step step : active) {
@@ -1157,11 +1105,8 @@ final class ClassTransformPipeline {
                 blame = active.get(0);
                 transform = transform.andThen(new Gate(null, attribution))
                         .andThen(OriginalFrames.of(model).reattaching());
-                byte[] output = context.transformClass(model, transform);
+                byte[] output = shared.transformClass(model, transform);
                 attribution.current = null;
-                if (active.size() == 1 && active.get(0).skipsLargerOutput() && output.length >= original.length) {
-                    return Attempt.UNCHANGED;
-                }
                 List<String> errors = verifier.apply(output);
                 if (!errors.isEmpty()) {
                     String grown = grown(errors, verifier.apply(original));

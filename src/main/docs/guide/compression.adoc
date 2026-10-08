@@ -4,8 +4,8 @@ The `compression` option decides how the dependencies are stored in the archive:
 starts fastest. The archive is the largest on disk and the smallest once compressed, as in an image layer.
 `PRESERVE`:: Dependencies are copied byte for byte, signature files included. The archive is slightly larger than a
 shaded JAR on disk, about the same size compressed, and larger compressed than `STORED`. It starts more slowly than
-`STORED`, though still faster than a shaded JAR. The class rewrites are off: lambdas are not
-<<desugaredLambdas,generated at build time>>, and <<localVariableTables,`stripLocalVariables`>> does nothing. Logback
+`STORED`, though still faster than a shaded JAR. Lambdas are not <<desugaredLambdas,generated at build time>>. With
+<<localVariableTables,`stripLocalVariables`>>, a dependency whose classes it rewrote is copied as rewritten. Logback
 precompilation and the precomputed service lookups still apply.
 `HYBRID`:: Classes in the <<startupProfile,startup profile>> are stored uncompressed and the others stay compressed.
 It starts like `STORED`, is smaller on disk and larger compressed. Without a startup profile it packages as `STORED`

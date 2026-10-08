@@ -66,6 +66,8 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
     private static final int BUFFER_SIZE = 64 * 1024;
 
     private final Dependency dependency;
+    /** The file the stage reads: the dependency, or the copy that stripping wrote. */
+    private final Path source;
     /** The dependency's layer in the class path model: its class-path position plus one. */
     private final int layer;
     private final String entryName;
@@ -78,9 +80,10 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
      */
     private final ClassTransformPipeline pipeline;
 
-    DependencyStage(Dependency dependency, int layer, String entryName, Path target, Compression compression,
-                    ClassTransformPipeline pipeline) {
+    DependencyStage(Dependency dependency, Path source, int layer, String entryName, Path target,
+                    Compression compression, ClassTransformPipeline pipeline) {
         this.dependency = dependency;
+        this.source = source;
         this.layer = layer;
         this.entryName = entryName;
         this.target = target;
@@ -94,18 +97,19 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
      * file name, made unique in the archive ignoring case.
      *
      * @param dependencies the dependencies that are nested, in class-path order
+     * @param sources      the file each stage reads, in class-path order
      * @param work         the directory the repacked nested jars are built in
      * @param compression  how the stages nest their dependencies
      * @param pipeline     the class transforms, startup class ranks and HYBRID flag a repack applies, or {@code null}
      * @return the stages, in class-path order
      */
-    static List<DependencyStage> of(List<Dependency> dependencies, Path work, Compression compression,
-                                    ClassTransformPipeline pipeline) {
+    static List<DependencyStage> of(List<Dependency> dependencies, List<Path> sources, Path work,
+                                    Compression compression, ClassTransformPipeline pipeline) {
         List<DependencyStage> stages = new ArrayList<>(dependencies.size());
         Set<String> taken = new HashSet<>();
         for (int position = 0; position < dependencies.size(); position++) {
             Dependency dependency = dependencies.get(position);
-            stages.add(new DependencyStage(dependency, position + 1,
+            stages.add(new DependencyStage(dependency, sources.get(position), position + 1,
                     IndexFormat.LIB_PREFIX + uniqueName(taken, dependency.fileName()),
                     work.resolve("lib-" + position + ".jar"), compression, pipeline));
         }
@@ -184,13 +188,13 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
         Manifest manifest;
         boolean hasManifest;
         ClassTransformPipeline.JarReport transforms = null;
-        try (ZipReader reader = ZipReader.open(dependency.path())) {
+        try (ZipReader reader = ZipReader.open(source)) {
             manifest = reader.manifest().orElse(null);
             hasManifest = reader.entry("META-INF/MANIFEST.MF").isPresent();
             if (compression == Compression.PRESERVE) {
                 // Nested as it is, so nothing is written: the reader has already resolved every offset
-                // relative to the dependency's first byte, and the dependency is the nested jar.
-                file = dependency.path();
+                // relative to the source's first byte, and the source is the nested jar.
+                file = source;
                 result = new ZipRepacker.RepackResult(reader.entries(), reader.fileLength(),
                         reader.hasSignatureFiles(), List.of());
                 crc32 = checksum(file, reader.fileLength(), new byte[BUFFER_SIZE]);
@@ -200,7 +204,7 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
                 // The run is decided before any entry is read: a signed jar keeps every class as it is.
                 ClassTransformPipeline.JarRun run = pipeline == null ? null
                         : pipeline.start(new ClassTransformPipeline.Layer(entryName, layer, false,
-                                reader.hasSignatureFiles(), dependency.projectModule()));
+                                reader.hasSignatureFiles()));
                 try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(target), BUFFER_SIZE);
                      CheckedOutputStream checked = new CheckedOutputStream(out, crc)) {
                     result = ZipRepacker.repack(reader, checked, run);

@@ -345,39 +345,33 @@ final class LambdaFixtures {
      * Runs the pipeline over fixture layers.
      *
      * @param layers the layers, in class-path order; the model numbers them from zero
-     * @param strip  whether the strip step runs after desugaring
      * @return what each layer became and what the pipeline reports
      * @throws IOException never, from in-memory layers
      */
-    static Outcome transform(List<Layer> layers, boolean strip) throws IOException {
+    static Outcome transform(List<Layer> layers) throws IOException {
         ClassPathModel model = model(layers);
-        return transform(layers, strip, model, ClassTransformPipeline.verifierOf(model));
+        return transform(layers, model, ClassTransformPipeline.verifierOf(model));
     }
 
     /**
      * Runs the pipeline over fixture layers with a verifier of the test's own.
      *
      * @param layers   the layers, in class-path order
-     * @param strip    whether the strip step runs after desugaring
      * @param model    the class path model of the layers
      * @param verifier returns the verification errors of a class
      * @return what each layer became and what the pipeline reports
      * @throws IOException never, from in-memory layers
      */
-    static Outcome transform(List<Layer> layers, boolean strip, ClassPathModel model,
-                             Function<byte[], List<String>> verifier) throws IOException {
-        List<ClassTransformPipeline.Step> steps = new ArrayList<>();
-        steps.add(new LambdaDesugarer(model));
-        if (strip) {
-            steps.add(new LocalVariableStripper());
-        }
-        ClassTransformPipeline pipeline = new ClassTransformPipeline(steps, model, verifier);
+    static Outcome transform(List<Layer> layers, ClassPathModel model, Function<byte[], List<String>> verifier)
+            throws IOException {
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LambdaDesugarer(model)), model,
+                verifier);
         List<Map<String, byte[]>> outputs = new ArrayList<>();
         List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
         for (int index = 0; index < layers.size(); index++) {
             Layer layer = layers.get(index);
             ClassTransformPipeline.JarRun run = pipeline.start(new ClassTransformPipeline.Layer(layer.name, index,
-                    layer.application, layer.signed, false));
+                    layer.application, layer.signed));
             if (run.plans()) {
                 run.plan(new InMemory(layer.entries));
             }
@@ -419,7 +413,7 @@ final class LambdaFixtures {
         for (int index = 0; index < layers.size(); index++) {
             Layer layer = layers.get(index);
             ClassPathModel.LayerScan scan = ClassPathModel.scan(index, layer.name, layer.multiRelease, true,
-                    name -> false, strings);
+                    strings);
             layer.entries.forEach((name, bytes) -> {
                 if (scan.wants(name, bytes.length)) {
                     scan.accept(name, bytes);

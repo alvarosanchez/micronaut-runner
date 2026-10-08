@@ -26,11 +26,14 @@ With `STORED` and `HYBRID` compression, each dependency is re-packed:
 - Its own entries are written `STORED` (`HYBRID`: only the startup classes and resources; see below).
 - Signature files (`META-INF/*.SF`, `*.DSA`, `*.RSA`, `*.EC`, `META-INF/SIG-*`) and `META-INF/INDEX.LIST` are dropped.
 - Manifests are never rewritten, so package metadata and sealing survive.
-- The build-time class transforms run: lambda desugaring, which adds a generated `$$Lambda$R<n>` class after each
-  host, and local-variable stripping on dependency classes when `stripLocalVariables` is on. Rewritten entries get
-  new CRC-32 values. The application layer's lambdas are desugared the same way.
+- The build-time class transform runs: lambda desugaring, which adds a generated `$$Lambda$R<n>` class after each
+  host. Rewritten entries get new CRC-32 values. The application layer's lambdas are desugared the same way.
 
-`PRESERVE` copies each dependency byte for byte and runs no class transform.
+`PRESERVE` copies each dependency byte for byte and desugars nothing.
+
+With `stripLocalVariables`, Micronaut AOT's local-variable stripping (`micronaut-aot-bytecode`) rewrites the classes of
+every dependency that is not a project module before it is staged, in every mode: a dependency with a stripped class
+is re-packed, or in `PRESERVE` copied, from its rewritten copy.
 
 With a startup class list (`startupClasses`, which the recorded startup profile provides), re-packing also writes
 each nested JAR's startup classes first, in the order they were recorded, after `META-INF/` and the manifest. Nested

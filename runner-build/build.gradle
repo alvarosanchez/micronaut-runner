@@ -48,8 +48,10 @@ dependencies {
     compileOnly platform(libs.micronaut.core)
     compileOnly 'io.micronaut:micronaut-core'
 
-    // Precompiles logback.xml (LogbackPrecompilation). It has no dependencies of its own, and no public
-    // signature of this library names one of its types (PublicApiTest checks it).
+    // Micronaut AOT's class path rewrite, which the stripLocalVariables option runs (ClassTransforms), and its
+    // logback.xml precompiler (LogbackPrecompilation). Neither has dependencies of its own, and no public signature of
+    // this library names one of their types (PublicApiTest checks it).
+    implementation libs.micronaut.aot.bytecode
     implementation libs.micronaut.aot.logback
 
     // The line of micronaut-core the table serves.
@@ -59,7 +61,7 @@ dependencies {
     // micronaut-core is only needed by the service-discovery tests, never at packaging runtime.
     testImplementation platform(libs.micronaut.core)
     testImplementation 'io.micronaut:micronaut-inject'
-    // LocalVariableStripperTest and RunnerJarBuilderTest package the real Logback jars of this class path.
+    // RunnerJarBuilderTest packages the real Logback jars of this class path.
     testImplementation libs.logback.classic
 }
 

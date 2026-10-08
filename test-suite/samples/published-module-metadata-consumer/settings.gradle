@@ -4,7 +4,7 @@ dependencyResolutionManagement {
             url = uri(providers.gradleProperty('runner.repo').get())
             metadataSources { gradleMetadata() }
         }
-        // runner-build's micronaut-aot-logback, which Maven Central serves.
+        // runner-build's micronaut-aot-bytecode and micronaut-aot-logback, which Maven Central serves.
         mavenCentral {
             content {
                 includeGroup 'io.micronaut.aot'

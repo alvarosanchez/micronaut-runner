@@ -15,15 +15,16 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.aot.bytecode.ClassPathTransform;
 import io.micronaut.runner.IndexFormat;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -38,8 +39,15 @@ import java.util.jar.Manifest;
  * <p>It belongs to the calling thread of {@link RunnerJarBuilder}. Only its {@link #pipeline()} reaches the stage
  * tasks, which share it read-only and hand their {@link ClassTransformPipeline.JarReport} back with their result;
  * the calling thread adds the reports in class-path order and logs them.</p>
+ *
+ * <p>The {@code stripLocalVariables} option runs Micronaut AOT's {@link ClassPathTransform} before any dependency
+ * is staged, in every compression mode: a stage then reads the dependency's rewritten copy ({@link #sources()}).
+ * What it did is logged and written into {@code transforms.txt} with the pipeline's steps.</p>
  */
 final class ClassTransforms {
+
+    /** The name of the stripping step in reports: the option's. */
+    private static final String STRIP = RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName();
 
     /** What warnings and the class path model call the application layer. */
     private static final String APPLICATION_LAYER = "the application output";
@@ -50,76 +58,113 @@ final class ClassTransforms {
 
     private ClassTransformPipeline pipeline;
     private final List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
+    /** What every step did to each dependency, in class-path order, for {@code transforms.txt}. */
+    private final List<ClassTransformPipeline.JarReport> described = new ArrayList<>();
     /** What the pipeline did to the application layer, first on the class path; {@code null} if it did not run. */
     private ClassTransformPipeline.JarReport applicationReport;
+    /** What stripping did; {@code null} when it did not run. */
+    private final Stripped stripped;
+    /** The file each stage reads, by dependency position. */
+    private final List<Path> sources;
 
-    private ClassTransforms(ClassTransformPipeline pipeline) {
+    private ClassTransforms(ClassTransformPipeline pipeline, Stripped stripped, List<Path> sources) {
         this.pipeline = pipeline;
+        this.stripped = stripped;
+        this.sources = sources;
     }
 
     /**
-     * Decides which class transforms run and, when any does, scans the class path they need.
+     * Decides which class transforms run, runs Micronaut AOT's local-variable stripping when it is on, and scans
+     * the class path that desugaring needs when it is on.
      *
-     * <p>The transforms run only in STORED and HYBRID: in PRESERVE every dependency is nested byte for byte,
-     * which is reported once at info for each enabled option, and the application layer is left alone too.
-     * Stripping is turned off for the whole build, with one warning, when a layer contains a library that reads
-     * local-variable tables at run time. With every transform off, or with only stripping and no dependency,
-     * nothing is scanned, and the pipeline, if the options need one, has no step. Otherwise one scan task per
-     * dependency runs on the pool, each through a {@link ZipReader} of its own, while the calling thread scans the
-     * application layer, and the scans are merged in class-path order. Desugaring lambdas needs the member tables
-     * of every class, so the scans record them when it is on.</p>
+     * <p>Stripping runs first, in every compression mode, over the dependencies that are not
+     * {@linkplain Dependency#projectModule() project modules}, on at most {@code parallelism} threads of its own;
+     * its warnings are reported at once. The pipeline's transforms run only in STORED and HYBRID: in PRESERVE every
+     * dependency is nested byte for byte, which is reported at info when lambdas would be desugared, and the
+     * application layer is left alone too. Without desugaring nothing is scanned, and the pipeline, if the
+     * options need one, has no step. Otherwise one scan task per dependency runs on the pool, each through a
+     * {@link ZipReader} of its own, while the calling thread scans the application layer, and the scans, which
+     * record the member tables of every class, are merged in class-path order.</p>
      *
      * @param spec         the build's spec
      * @param dependencies the dependencies that are nested, in class-path order
+     * @param work         the build's work directory, which holds the stripped copies until it is deleted
+     * @param parallelism  the most threads stripping runs on; {@code 1} runs it on the calling thread
      * @param pool         the staging pool, or {@code null} to scan on the calling thread
      * @param application  scans the application layer, on the calling thread
      * @param logger       where to report that an option has no effect
-     * @param warn         where to report that a transform was turned off
+     * @param warn         where to report what stripping warns about
      * @param options      the startup class ranks and the HYBRID flag every stage applies; ignored in PRESERVE
      * @return the build's transforms
-     * @throws IOException if a dependency or an application class cannot be read; when several dependencies
-     *                     cannot, the failure of the first one on the class path
+     * @throws IOException if a dependency or an application class cannot be read, or a stripped copy cannot be
+     *                     written; when several dependencies cannot be read, the failure of the first one on the
+     *                     class path
      */
-    static ClassTransforms prepare(RunnerJarSpec spec, List<Dependency> dependencies, ExecutorService pool,
-                                   ApplicationClasses application, BuildLogger logger, Consumer<String> warn,
-                                   ClassTransformPipeline.Options options)
+    static ClassTransforms prepare(RunnerJarSpec spec, List<Dependency> dependencies, Path work, int parallelism,
+                                   ExecutorService pool, ApplicationClasses application, BuildLogger logger,
+                                   Consumer<String> warn, ClassTransformPipeline.Options options)
             throws IOException {
+        List<Path> sources = new ArrayList<>(dependencies.size());
+        for (Dependency dependency : dependencies) {
+            sources.add(dependency.path());
+        }
+        Stripped stripped = spec.stripLocalVariables() ? strip(spec, dependencies, work, parallelism, sources) : null;
+        if (stripped != null) {
+            stripped.result.warnings().forEach(warn);
+        }
         boolean desugar = spec.desugarLambdas();
-        boolean strip = spec.stripLocalVariables();
         if (spec.compression() == Compression.PRESERVE) {
-            for (String option : new String[] {desugar ? LambdaDesugarer.NAME : null,
-                strip ? LocalVariableStripper.NAME : null}) {
-                if (option != null) {
-                    logger.info("The " + option + " option has no effect with PRESERVE compression, which nests"
-                            + " every dependency byte for byte");
-                }
+            if (desugar) {
+                logger.info("The " + LambdaDesugarer.NAME + " option has no effect with PRESERVE compression, which"
+                        + " nests every dependency byte for byte");
             }
-            return new ClassTransforms(null);
+            return new ClassTransforms(null, stripped, sources);
         }
-        if (!desugar && (!strip || dependencies.isEmpty())) {
-            return new ClassTransforms(options.any() ? ClassTransformPipeline.ordering(options) : null);
+        if (!desugar) {
+            return new ClassTransforms(options.any() ? ClassTransformPipeline.ordering(options) : null, stripped,
+                    sources);
         }
-        // The member tables are recorded only for the step that needs them: desugaring.
-        ClassPathModel model = scan(spec, dependencies, pool, application, desugar);
-        // The order the steps run in: desugaring first, then stripping.
-        List<ClassTransformPipeline.Step> steps = new ArrayList<>();
-        if (desugar) {
-            steps.add(new LambdaDesugarer(model));
-        }
-        if (strip && !dependencies.isEmpty()) {
-            Optional<ClassPathModel.Watched> reader = model.watched();
-            if (reader.isPresent()) {
-                warn.accept("No local-variable table was stripped, because " + reader.get().layer() + " contains "
-                        + reader.get().entry() + ", which reads local-variable tables at run time. To silence this"
-                        + " warning, set the stripLocalVariables option to false");
-            } else {
-                steps.add(new LocalVariableStripper());
+        ClassPathModel model = scan(spec, dependencies, sources, pool, application);
+        return new ClassTransforms(new ClassTransformPipeline(List.of(new LambdaDesugarer(model)), model, options),
+                stripped, sources);
+    }
+
+    /**
+     * Runs Micronaut AOT's local-variable stripping over the dependencies that are not project modules, against
+     * the whole class path, and points {@code sources} at the copies it wrote.
+     *
+     * @return what it did, or {@code null} when every dependency is a project module
+     */
+    private static Stripped strip(RunnerJarSpec spec, List<Dependency> dependencies, Path work, int parallelism,
+                                  List<Path> sources) throws IOException {
+        List<Path> thirdParty = new ArrayList<>(dependencies.size());
+        for (Dependency dependency : dependencies) {
+            if (!dependency.projectModule()) {
+                thirdParty.add(dependency.path());
             }
         }
-        if (steps.isEmpty()) {
-            return new ClassTransforms(options.any() ? ClassTransformPipeline.ordering(options) : null);
+        if (thirdParty.isEmpty()) {
+            return null;
         }
-        return new ClassTransforms(new ClassTransformPipeline(steps, model, options));
+        List<Path> classPath = new ArrayList<>(spec.applicationOutput());
+        int first = classPath.size();
+        classPath.addAll(sources);
+        ClassPathTransform.Result result = ClassPathTransform.run(ClassPathTransform.Request.builder()
+                .classPath(classPath)
+                .outputDirectory(work.resolve("stripped"))
+                .stripLocalVariables(thirdParty)
+                .parallelism(parallelism)
+                .build());
+        List<ClassPathTransform.Result.Entry> entries = new ArrayList<>(Collections.nCopies(sources.size(), null));
+        int next = 0;
+        for (int position = 0; position < sources.size(); position++) {
+            sources.set(position, result.classPath().get(first + position));
+            // One entry per jar named to strip, in class-path order; none when a library reads the tables.
+            if (!dependencies.get(position).projectModule() && next < result.entries().size()) {
+                entries.set(position, result.entries().get(next++));
+            }
+        }
+        return new Stripped(result, entries);
     }
 
     /**
@@ -148,7 +193,7 @@ final class ClassTransforms {
             return Map.of();
         }
         ClassTransformPipeline.JarRun run = pipeline.start(
-                new ClassTransformPipeline.Layer(APPLICATION_NAME, 0, true, false, false));
+                new ClassTransformPipeline.Layer(APPLICATION_NAME, 0, true, false));
         run.plan(classes);
         Map<String, ClassTransformPipeline.Planned> rewritten = new HashMap<>();
         for (ClassTransformPipeline.ClassEntry entry : classes.classes()) {
@@ -173,38 +218,87 @@ final class ClassTransforms {
     }
 
     /**
-     * Adds what the pipeline did to one dependency, in class-path order.
+     * The file each stage reads: the dependency's stripped copy, or the dependency itself.
      *
-     * @param report the dependency's report, or {@code null} when its stage ran no pipeline
+     * @return one path per dependency, in class-path order
      */
-    void add(ClassTransformPipeline.JarReport report) {
+    List<Path> sources() {
+        return sources;
+    }
+
+    /**
+     * Adds what the transforms did to one dependency, in class-path order.
+     *
+     * @param entryName the dependency's nested entry name
+     * @param report    what the pipeline did to it, or {@code null} when its stage ran no pipeline
+     */
+    void add(String entryName, ClassTransformPipeline.JarReport report) {
+        ClassPathTransform.Result.Entry entry = stripped == null ? null : stripped.entries.get(described.size());
         if (report != null) {
             reports.add(report);
         }
+        if (entry == null) {
+            described.add(report);
+            return;
+        }
+        List<ClassTransformPipeline.StepCount> counts = new ArrayList<>();
+        counts.add(new ClassTransformPipeline.StepCount(STRIP, entry.classesStripped(),
+                entry.classesUnchanged(), entry.fallbacks(), entry.bytesSaved()));
+        List<String> notes = new ArrayList<>();
+        for (String note : entry.notes()) {
+            // The note names the jar by its path; transforms.txt names it by its entry.
+            notes.add(entryName + note.substring(note.indexOf('\t')));
+        }
+        if (report != null) {
+            counts.addAll(report.counts());
+            notes.addAll(report.notes());
+        }
+        described.add(new ClassTransformPipeline.JarReport(entryName, false, counts, notes,
+                report == null ? null : report.desugared()));
     }
 
     /**
      * Reports what the transforms did once every dependency is staged: each fallback note at info, in
-     * class-path order, then one info line per step.
+     * class-path order, then one info line per step, stripping first.
      *
      * @param logger where to report
      * @return one report per step that ran, empty when none ran
      */
     List<TransformReport> report(BuildLogger logger) {
-        if (pipeline == null) {
-            return List.of();
-        }
-        List<ClassTransformPipeline.JarReport> all = reports();
-        for (ClassTransformPipeline.JarReport report : all) {
-            for (String note : report.notes()) {
-                String[] fields = note.split("\t", 4);
-                logger.info("Kept " + fields[1] + " of " + fields[0] + " without " + fields[2] + ": " + fields[3]);
+        List<TransformReport> totals = new ArrayList<>();
+        if (stripped != null) {
+            int rewritten = 0;
+            int unchanged = 0;
+            int fallbacks = 0;
+            long saved = 0;
+            for (ClassPathTransform.Result.Entry entry : stripped.result.entries()) {
+                entry.notes().forEach(note -> logNote(logger, note));
+                rewritten += entry.classesStripped();
+                unchanged += entry.classesUnchanged();
+                fallbacks += entry.fallbacks();
+                saved += entry.bytesSaved();
+            }
+            logger.info(stripped.result.summary());
+            if (!stripped.result.entries().isEmpty()) {
+                totals.add(new TransformReport(STRIP, rewritten, unchanged, fallbacks, saved));
             }
         }
-        for (String line : pipeline.summaries(all)) {
-            logger.info(line);
+        if (pipeline != null) {
+            List<ClassTransformPipeline.JarReport> all = reports();
+            for (ClassTransformPipeline.JarReport report : all) {
+                report.notes().forEach(note -> logNote(logger, note));
+            }
+            for (String line : pipeline.summaries(all)) {
+                logger.info(line);
+            }
+            totals.addAll(pipeline.totals(all));
         }
-        return pipeline.totals(all);
+        return totals;
+    }
+
+    private static void logNote(BuildLogger logger, String note) {
+        String[] fields = note.split("\t", 4);
+        logger.info("Kept " + fields[1] + " of " + fields[0] + " without " + fields[2] + ": " + fields[3]);
     }
 
     /**
@@ -214,7 +308,19 @@ final class ClassTransforms {
      * @return the content, or {@code null} when the archive carries no such entry
      */
     byte[] describe(String version) {
-        return pipeline == null ? null : pipeline.describe(version, reports());
+        if (pipeline == null && stripped == null) {
+            return null;
+        }
+        List<ClassTransformPipeline.JarReport> all = new ArrayList<>(described.size() + 1);
+        if (applicationReport != null) {
+            all.add(applicationReport);
+        }
+        for (ClassTransformPipeline.JarReport report : described) {
+            if (report != null) {
+                all.add(report);
+            }
+        }
+        return ClassTransformPipeline.describe(version, all);
     }
 
     /**
@@ -231,14 +337,15 @@ final class ClassTransforms {
         return all;
     }
 
-    private static ClassPathModel scan(RunnerJarSpec spec, List<Dependency> dependencies, ExecutorService pool,
-                                       ApplicationClasses application, boolean members) throws IOException {
+    private static ClassPathModel scan(RunnerJarSpec spec, List<Dependency> dependencies, List<Path> sources,
+                                       ExecutorService pool, ApplicationClasses application) throws IOException {
         ClassPathModel.Interner strings = new ClassPathModel.Interner();
         List<Callable<ClassPathModel.LayerScan>> tasks = new ArrayList<>(dependencies.size());
         for (int position = 0; position < dependencies.size(); position++) {
             Dependency dependency = dependencies.get(position);
+            Path source = sources.get(position);
             int layer = position + 1;
-            tasks.add(() -> scanDependency(layer, dependency, members, strings));
+            tasks.add(() -> scanDependency(layer, dependency, source, strings));
         }
         List<Future<ClassPathModel.LayerScan>> futures = null;
         if (pool != null) {
@@ -249,30 +356,31 @@ final class ClassTransforms {
         }
         List<ClassPathModel.LayerScan> scans = new ArrayList<>(tasks.size() + 1);
         ClassPathModel.LayerScan applicationScan = ClassPathModel.scan(0, APPLICATION_LAYER, spec.multiRelease(),
-                members, LocalVariableStripper::isKnownReader, strings);
+                true, strings);
         application.scan(applicationScan);
         scans.add(applicationScan);
         for (int position = 0; position < tasks.size(); position++) {
             if (futures == null) {
-                scans.add(scanDependency(position + 1, dependencies.get(position), members, strings));
+                scans.add(scanDependency(position + 1, dependencies.get(position), sources.get(position), strings));
             } else {
                 scans.add(RunnerJarBuilder.awaitStage(futures.get(position)));
             }
         }
-        return ClassPathModel.merge(scans, members);
+        return ClassPathModel.merge(scans, true);
     }
 
     /**
-     * Scans one dependency, through a {@link ZipReader} of its own, on whichever thread runs it.
+     * Scans one dependency, through a {@link ZipReader} of its own on the file its stage reads, on whichever
+     * thread runs it.
      */
-    private static ClassPathModel.LayerScan scanDependency(int layer, Dependency dependency, boolean members,
+    private static ClassPathModel.LayerScan scanDependency(int layer, Dependency dependency, Path source,
                                                            ClassPathModel.Interner strings) throws IOException {
-        try (ZipReader reader = ZipReader.open(dependency.path())) {
+        try (ZipReader reader = ZipReader.open(source)) {
             Manifest manifest = reader.manifest().orElse(null);
             Attributes main = manifest == null ? null : manifest.getMainAttributes();
             boolean multiRelease = main != null && "true".equalsIgnoreCase(main.getValue("Multi-Release"));
             ClassPathModel.LayerScan scan = ClassPathModel.scan(layer, "the dependency " + dependency.path(),
-                    multiRelease, members, LocalVariableStripper::isKnownReader, strings);
+                    multiRelease, true, strings);
             for (ZipEntryInfo entry : reader.entries()) {
                 if (!entry.directory() && scan.wants(entry.name(), entry.uncompressedSize())) {
                     scan.accept(entry.name(), reader.read(entry));
@@ -284,6 +392,15 @@ final class ClassTransforms {
             throw new IOException("The dependency " + dependency.path() + " cannot be packaged: "
                     + e.getMessage(), e);
         }
+    }
+
+    /**
+     * What stripping did.
+     *
+     * @param result  what Micronaut AOT returned
+     * @param entries what it did to each dependency, by position; {@code null} where it did not run over it
+     */
+    private record Stripped(ClassPathTransform.Result result, List<ClassPathTransform.Result.Entry> entries) {
     }
 
     /**

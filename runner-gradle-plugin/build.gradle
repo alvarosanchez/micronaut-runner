@@ -29,8 +29,9 @@ dependencies {
     pluginsUnderTest project(path: path, configuration: 'repository')
 }
 
-// The fixtures of the functional tests resolve the plugin from the aggregated test repository alone, so the one module
-// from outside this build that it needs, micronaut-aot-logback, is laid out there too, as a Maven repository holds it.
+// The fixtures of the functional tests resolve the plugin from the aggregated test repository alone, so the modules
+// from outside this build that it needs, micronaut-aot-bytecode and micronaut-aot-logback, are laid out there too, as a
+// Maven repository holds them.
 configurations {
     externalModulesUnderTest {
         canBeResolved = true
@@ -39,17 +40,22 @@ configurations {
     }
 }
 
-def aotLogback = libs.micronaut.aot.logback.get()
-def aotLogbackCoordinates = "${aotLogback.group}:${aotLogback.name}:${aotLogback.version}"
+def externalModules = [libs.micronaut.aot.bytecode, libs.micronaut.aot.logback].collect { it.get() }
 
 dependencies {
-    externalModulesUnderTest aotLogbackCoordinates
-    externalModulesUnderTest "${aotLogbackCoordinates}@pom"
+    externalModules.each { module ->
+        def coordinates = "${module.group}:${module.name}:${module.version}"
+        externalModulesUnderTest coordinates
+        externalModulesUnderTest "${coordinates}@pom"
+    }
 }
 
 tasks.named('prepareRepository', Sync) {
-    from(configurations.externalModulesUnderTest) {
-        into "${aotLogback.group.replace('.', '/')}/${aotLogback.name}/${aotLogback.version}"
-        rename { String file -> "${aotLogback.name}-${aotLogback.version}${file.substring(file.lastIndexOf('.'))}" }
+    externalModules.each { module ->
+        from(configurations.externalModulesUnderTest) {
+            include "${module.name}-*"
+            into "${module.group.replace('.', '/')}/${module.name}/${module.version}"
+            rename { String file -> "${module.name}-${module.version}${file.substring(file.lastIndexOf('.'))}" }
+        }
     }
 }
