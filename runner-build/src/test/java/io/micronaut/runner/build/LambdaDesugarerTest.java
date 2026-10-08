@@ -37,6 +37,7 @@ import java.lang.classfile.constantpool.ClassEntry;
 import java.lang.classfile.instruction.InvokeDynamicInstruction;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDesc;
+import java.lang.constant.ConstantDescs;
 import java.lang.constant.DirectMethodHandleDesc;
 import java.lang.constant.DynamicCallSiteDesc;
 import java.lang.constant.MethodHandleDesc;
@@ -1017,6 +1018,97 @@ class LambdaDesugarerTest {
             assertFalse(thread.isAlive(), initialized + ": the threads wait for each other");
         }
         assertNull(failure.get(), () -> String.valueOf(failure.get()));
+    }
+
+    /**
+     * The build proves an initializer quiet only for the copies that win on JDK 25. A newer runtime may load
+     * another copy of the interface, or of a class its initializer instantiates, and the launcher's loader may
+     * define its own copy of a class in the launcher's package; that copy may not be quiet, so the site stays. So
+     * does a site whose interface's initializer the build cannot parse. The same initializers, with copies the
+     * build can prove quiet, let their sites be rewritten.
+     */
+    @Test
+    void anInterfaceInitializerTheBuildCannotProveQuietKeepsItsSites() throws Exception {
+        String quiet = """
+                package %s;
+                public interface %s {
+                    Object NONE = new Object();
+                    Object get();
+                    default String name() {
+                        return "quiet";
+                    }
+                }
+                """;
+        String instantiating = """
+                package %s;
+                public interface %s {
+                    Object PART = new %s();
+                    Object get();
+                    default String name() {
+                        return "instantiating";
+                    }
+                }
+                """;
+        String part = "package %s; public class %s { }\n";
+        Map<String, byte[]> compiled = compile("interface-uncertain", 25, Map.ofEntries(
+                Map.entry("versioned/Greeter.java", quiet.formatted("versioned", "Greeter")),
+                Map.entry("versioned/Maker.java", instantiating.formatted("versioned", "Maker", "Part")),
+                Map.entry("versioned/Part.java", part.formatted("versioned", "Part")),
+                Map.entry("io/micronaut/runner/fixture/Launched.java",
+                        quiet.formatted("io.micronaut.runner.fixture", "Launched")),
+                Map.entry("io/micronaut/runner/fixture/Piece.java",
+                        part.formatted("io.micronaut.runner.fixture", "Piece")),
+                Map.entry("steady/Assembled.java",
+                        instantiating.formatted("steady", "Assembled", "io.micronaut.runner.fixture.Piece")),
+                Map.entry("steady/Steady.java", quiet.formatted("steady", "Steady")),
+                Map.entry("steady/Built.java", instantiating.formatted("steady", "Built", "Block")),
+                Map.entry("steady/Block.java", part.formatted("steady", "Block")),
+                Map.entry("corrupt/Broken.java", quiet.formatted("corrupt", "Broken")),
+                Map.entry("use/Users.java", """
+                        package use;
+                        public class Users {
+                            public static versioned.Greeter greeter() {
+                                return () -> "greeter";
+                            }
+                            public static versioned.Maker maker() {
+                                return () -> "maker";
+                            }
+                            public static io.micronaut.runner.fixture.Launched launched() {
+                                return () -> "launched";
+                            }
+                            public static steady.Assembled assembled() {
+                                return () -> "assembled";
+                            }
+                            public static corrupt.Broken broken() {
+                                return () -> "broken";
+                            }
+                            public static steady.Steady steady() {
+                                return () -> "steady";
+                            }
+                            public static steady.Built built() {
+                                return () -> "built";
+                            }
+                        }
+                        """)));
+        Map<String, byte[]> multiRelease = new LinkedHashMap<>(LambdaFixtures.select(compiled, "versioned/"));
+        multiRelease.put("META-INF/versions/26/versioned/Greeter.class", compiled.get("versioned/Greeter.class"));
+        multiRelease.put("META-INF/versions/26/versioned/Part.class", compiled.get("versioned/Part.class"));
+        Map<String, byte[]> others = new LinkedHashMap<>(LambdaFixtures.select(compiled, "io/"));
+        others.putAll(LambdaFixtures.select(compiled, "steady/"));
+        others.put("corrupt/Broken.class", ClassFixtures.withCorruptCode(compiled.get("corrupt/Broken.class"),
+                ConstantDescs.CLASS_INIT_NAME));
+        others.putAll(LambdaFixtures.select(compiled, "use/"));
+
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(List.of(
+                LambdaFixtures.Layer.multiRelease("MICRONAUT-INF/lib/versioned.jar", multiRelease),
+                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/others.jar", others)), false);
+
+        ClassTransformPipeline.Desugared desugared = outcome.reports().get(1).desugared();
+        assertEquals(Map.of(LambdaDesugarer.Reason.INTERFACE_INIT, 5), desugared.left(), "greeter and maker, whose"
+                + " interface or part a newer runtime replaces; launched and assembled, whose interface or part the"
+                + " launcher's loader may define; broken, whose initializer cannot be parsed");
+        assertEquals(2, desugared.sites(), "steady and built");
+        assertNotNull(outcome.outputs().get(1).get("use/Users$$Lambda$R0.class"));
     }
 
     private static LambdaFixtures.Outcome stripOnly(List<LambdaFixtures.Layer> layers, ClassPathModel model) {
