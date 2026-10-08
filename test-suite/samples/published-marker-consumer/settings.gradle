@@ -4,6 +4,14 @@ pluginManagement {
             url = uri(providers.gradleProperty('runner.repo').get())
             metadataSources { mavenPom() }
         }
+        // runner-build's micronaut-aot-logback 3.2.0-SNAPSHOT, until 3.2.0 is released (#248).
+        maven {
+            url = uri('https://central.sonatype.com/repository/maven-snapshots/')
+            mavenContent {
+                snapshotsOnly()
+                includeGroup 'io.micronaut.aot'
+            }
+        }
     }
     plugins {
         id 'io.micronaut.runner.standalone' version providers.gradleProperty('runner.version').get()
