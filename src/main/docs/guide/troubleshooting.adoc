@@ -23,7 +23,8 @@ startup, as without precompilation. The reason says what kept it from being comp
 (<<precompiledLogback,Precompiled Logback Configuration>>).
 `The packaged +...+ may enable Micronaut's distributed configuration client`:: Logback was precompiled, so a
 `logger.config` that distributed configuration supplies is not applied. Set the location with `-Dlogger.config` or
-`LOGGER_CONFIG`, or package with `precompileLogback=false` (the warning in
+`LOGGER_CONFIG`, or package with `precompileLogback=false` and, if you turned on the Micronaut plugins' Logback
+precompilation for other packagings, with that off too (the warning in
 <<precompiledLogback,Precompiled Logback Configuration>>).
 `The startup profile looks stale; re-record it +...+`:: The application changed since the profile was recorded. Record
 it again and commit it (<<startupProfile,Startup Profile>>).
