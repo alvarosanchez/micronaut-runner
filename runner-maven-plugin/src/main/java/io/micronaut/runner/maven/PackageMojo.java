@@ -136,9 +136,9 @@ public final class PackageMojo extends AbstractMojo {
 
     /**
      * How the entries of each dependency are stored: {@code STORED} re-packs them uncompressed so classes
-     * are defined straight from the memory-mapped archive, {@code PRESERVE} copies each dependency byte
-     * for byte, and {@code HYBRID} stores the startup classes uncompressed and keeps the others compressed.
-     * Unset, the packaging library's default applies ({@code STORED}).
+     * are defined straight from the memory-mapped archive, {@code PRESERVE} copies each dependency with its
+     * original compression, and {@code HYBRID} stores the startup classes uncompressed and keeps the others
+     * compressed. Unset, the packaging library's default applies ({@code STORED}).
      */
     @Parameter(property = "micronaut.runner.compression")
     private String compression;

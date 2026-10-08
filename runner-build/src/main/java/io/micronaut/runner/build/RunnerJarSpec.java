@@ -779,10 +779,10 @@ public final class RunnerJarSpec {
          * </ul>
          *
          * <p>The application's own classes, and a dependency marked {@link Dependency#projectModule()}, are
-         * never stripped: they are user code, whose locals users debug. A class of a signed jar, a class with
-         * an attribute the JDK does not know, and {@code module-info} are left alone too. It applies in every
-         * compression mode: with {@link Compression#PRESERVE}, a dependency with a stripped class is nested as
-         * its stripped copy.</p>
+         * never stripped: they are user code, whose locals users debug. Every class of a signed jar, or of a
+         * jar that holds an entry name more than once, is left alone too, and so are a class with an attribute
+         * the JDK does not know and {@code module-info}. It applies in every compression mode: with
+         * {@link Compression#PRESERVE}, a dependency with a stripped class is nested as its stripped copy.</p>
          *
          * <p>Defaults to {@code false}: dependency classes keep their local-variable tables unless a build asks
          * for them to be dropped.</p>
@@ -875,7 +875,7 @@ public final class RunnerJarSpec {
          *
          * <p>The step fails closed: every class it writes or rewrites is verified against the class path, and
          * a nest that verifies worse than before is packaged as it was. With {@link Compression#PRESERVE}, which
-         * nests every dependency byte for byte, the option has no effect.</p>
+         * does not repack the dependencies, the option has no effect.</p>
          *
          * <p>Defaults to {@code true}.</p>
          *

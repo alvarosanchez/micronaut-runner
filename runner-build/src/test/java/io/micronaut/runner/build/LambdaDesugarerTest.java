@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.aot.bytecode.ClassPathTransform;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -46,6 +47,7 @@ import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,17 +57,21 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.jar.Attributes.Name;
 import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The desugar step, run through the class transform pipeline over a model of fixture layers: what it rewrites
- * behaves as compiled, and what it must not touch keeps its bytes.
+ * behaves as compiled, also over the classes Micronaut AOT stripped first, and what it must not touch keeps its
+ * bytes.
  */
 class LambdaDesugarerTest {
 
@@ -227,6 +233,53 @@ class LambdaDesugarerTest {
                                     .startsWith(LambdaDesugarer.BRIDGE_PREFIX)),
                     "a serializable Java 8 host that declares serialVersionUID is bridged");
         }
+    }
+
+    @ParameterizedTest(name = "--release {0}")
+    @ValueSource(ints = {8, 25})
+    void strippedThenDesugaredClassesBehaveAsCompiled(int release) throws Exception {
+        Path directory = temp.resolve("stripped-" + release);
+        List<LambdaFixtures.Layer> layers = LambdaFixtures.scenario(directory, release);
+        List<String> expected = LambdaFixtures.run(LambdaFixtures.classPath(
+                layers.stream().map(LambdaFixtures.Layer::entries).toList()), LambdaFixtures.APPLICATION);
+        // As a build runs them: Micronaut AOT strips the dependencies against the whole class path, and the
+        // desugar step then reads the stripped copies.
+        List<Path> jars = new ArrayList<>();
+        for (int layer = 0; layer < layers.size(); layer++) {
+            jars.add(ClassFixtures.jar(directory.resolve("jars/layer-" + layer + ".jar"),
+                    layers.get(layer).entries()));
+        }
+
+        ClassPathTransform.Result stripped = ClassPathTransform.run(ClassPathTransform.Request.builder()
+                .classPath(jars)
+                .outputDirectory(directory.resolve("stripped"))
+                .stripLocalVariables(jars.subList(LIBRARY, jars.size()))
+                .build());
+        List<Path> copies = stripped.classPath();
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(List.of(layers.get(APPLICATION),
+                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/fix.jar", classes(copies.get(LIBRARY))),
+                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/other.jar", classes(copies.get(OTHER)))));
+        List<String> actual = LambdaFixtures.run(LambdaFixtures.classPath(outcome.outputs()),
+                LambdaFixtures.APPLICATION);
+
+        assertEquals(withoutHidden(expected), withoutHidden(actual), "the same results, line by line");
+        assertEquals(List.of(), stripped.warnings());
+        assertEquals(jars.get(APPLICATION), copies.get(APPLICATION), "the application is not stripped");
+        assertNotEquals(jars.get(LIBRARY), copies.get(LIBRARY), "the library is read from its copy");
+        ClassPathTransform.Result.Entry strip = stripped.entries().get(0);
+        assertEquals(List.of(), strip.notes());
+        assertTrue(strip.classesStripped() > 0, "stripped: " + strip);
+        ClassTransformPipeline.JarReport report = outcome.reports().get(LIBRARY);
+        assertEquals(List.of(), report.notes());
+        assertTrue(report.counts().get(0).rewritten() > 0, "desugared: " + report.counts());
+        byte[] scenario = outcome.outputs().get(LIBRARY).get("fix/Scenario.class");
+        assertTrue(code(scenario, "annotated").findAttribute(Attributes.localVariableTable()).isEmpty(),
+                "a desugared host keeps its stripped code");
+        assertEquals(0, LambdaFixtures.sites(scenario, METAFACTORY), "and links no lambda at run time");
+        // The application layer is user code: desugared, never stripped.
+        byte[] application = outcome.outputs().get(APPLICATION).get("app/Main.class");
+        assertTrue(code(application, "run").findAttribute(Attributes.localVariableTable()).isPresent());
+        assertEquals(0, LambdaFixtures.sites(application, METAFACTORY));
     }
 
     @Test
@@ -709,6 +762,21 @@ class LambdaDesugarerTest {
         Class<?> loaded = LambdaFixtures.loader(LambdaFixtures.classPath(List.of(entries))).loadClass(type);
         Object instance = loaded.getConstructor().newInstance();
         return ((Supplier<?>) loaded.getMethod("ref").invoke(instance)).get();
+    }
+
+    /**
+     * The classes of a jar, in entry order.
+     */
+    private static Map<String, byte[]> classes(Path jar) throws IOException {
+        Map<String, byte[]> classes = new LinkedHashMap<>();
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            for (ZipEntry entry : Collections.list(zip.entries())) {
+                if (entry.getName().endsWith(".class")) {
+                    classes.put(entry.getName(), zip.getInputStream(entry).readAllBytes());
+                }
+            }
+        }
+        return classes;
     }
 
     private static List<String> withoutHidden(List<String> lines) {

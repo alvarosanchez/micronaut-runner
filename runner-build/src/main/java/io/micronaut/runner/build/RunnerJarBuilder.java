@@ -79,10 +79,10 @@ import java.util.zip.CRC32;
  * <h2>Dependency staging</h2>
  * <p>Each dependency is staged on up to {@code min(availableProcessors(), 8)} daemon threads. In STORED and
  * HYBRID its stage repacks it into a nested jar in the work directory, with the startup classes of the build's
- * startup class list first, and in HYBRID with its cold classes compressed. In PRESERVE the dependency is nested
- * as it is: its stage writes nothing and only checksums the file, and the archive is written from the dependency
- * itself, through a read that fails the build if the file no longer matches that checksum. The threads are
- * created for each build and have stopped before {@code build} returns; with one processor, or at most one
+ * startup class list first, and in HYBRID with its cold classes compressed. In PRESERVE the dependency, or its
+ * stripped copy, is nested as it is: its stage writes nothing and only checksums the file, and the archive is
+ * written from that file, through a read that fails the build if it no longer matches that checksum. The threads
+ * are created for each build and have stopped before {@code build} returns; with one processor, or at most one
  * dependency, staging runs on the calling thread. A staging thread holds one open {@code ZipReader}: its
  * parsed central directory and manifest and, outside the heap, a read-only mapping of the dependency, which
  * is released when the stage closes the reader. It also holds at most one {@code Inflater} at a time and at
@@ -823,7 +823,7 @@ public final class RunnerJarBuilder {
      * attributes, its per-package sections, whether it was signed and where each of its entries ends up
      * inside it. In STORED and HYBRID a dependency is repacked into a nested jar in the work directory, through
      * the class transform pipeline when a transform, a startup class list or HYBRID needs it; in PRESERVE the
-     * dependency itself is the nested jar, and is only checksummed.
+     * dependency itself, or its stripped copy, is the nested jar, and is only checksummed.
      *
      * <p>When {@link #parallelism} and the number of dependencies are both above one, a pool is created for
      * this build and stopped before this method returns. The class path is scanned first, when a transform is
@@ -1249,12 +1249,12 @@ public final class RunnerJarBuilder {
      * contributor in its own right: it reserves the name just as an empty class-path resource does.
      *
      * <p>The entries come from {@link NestedJar#result}, which describes the nested jar as it was staged, the
-     * repacked copy in STORED and the dependency itself in PRESERVE, so the nested jar is not parsed again. A
-     * zero-length entry becomes the shared {@link #EMPTY_CONTENT} and costs no I/O. An entry with content is
-     * read into memory with {@link ZipReader#read(ZipEntryInfo)}, which inflates it when it is compressed and
-     * verifies its CRC-32; the reader is opened at the first such entry, at most once for the jar, and closed
-     * before this method returns. A jar whose metadata entries are all empty, or that has none, is never
-     * opened.</p>
+     * repacked copy in STORED and the dependency itself, or its stripped copy, in PRESERVE, so the nested jar is
+     * not parsed again. A zero-length entry becomes the shared {@link #EMPTY_CONTENT} and costs no I/O. An entry
+     * with content is read into memory with {@link ZipReader#read(ZipEntryInfo)}, which inflates it when it is
+     * compressed and verifies its CRC-32; the reader is opened at the first such entry, at most once for the jar,
+     * and closed before this method returns. A jar whose metadata entries are all empty, or that has none, is
+     * never opened.</p>
      *
      * @param jar      the dependency, already staged as a nested jar
      * @param contents the merged content so far, keyed by logical name, in class path order
@@ -1775,8 +1775,8 @@ public final class RunnerJarBuilder {
      *     <li>an entry of an application jar, read through that jar's {@link ZipReader}, which stays open until
      *     the archive has been written and inflates and verifies the entry each time it is read;</li>
      *     <li>a file, read through a {@link VerifiedFileInputStream} that fails unless it reads exactly the
-     *     bytes the CRC-32 describes: a file of an application directory, or, in PRESERVE, the dependency
-     *     that is nested as it is.</li>
+     *     bytes the CRC-32 describes: a file of an application directory, or, in PRESERVE, the dependency, or
+     *     its stripped copy, that is nested as it is.</li>
      * </ul>
      */
     private static final class ApplicationEntry {

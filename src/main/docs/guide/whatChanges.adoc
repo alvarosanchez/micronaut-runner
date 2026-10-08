@@ -67,7 +67,8 @@ micronaut {
 ----
 
 Maven also takes the property `micronaut.runner.<option>`, such as `-Dmicronaut.runner.desugarLambdas=false` on the
-command line. `PRESERVE` compression turns off only the class rewrites (<<compression,Compression Modes>>).
+command line. `PRESERVE` compression turns off only the lambdas generated at build time: dropping local-variable names
+still applies when you turn it on (<<compression,Compression Modes>>).
 
 Other differences from a shaded JAR do not come from these steps:
 

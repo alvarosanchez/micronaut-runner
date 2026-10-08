@@ -41,11 +41,13 @@ public enum Compression {
     STORED,
 
     /**
-     * Copy every dependency byte for byte, keeping its original compression.
+     * Copy every dependency as it is, keeping its original compression.
      *
      * <p>The artifact stays as small as the dependencies made it and their bytes are untouched, which is
-     * what a build that has to reproduce a published jar exactly needs. Classes then have to be inflated
-     * when they are loaded.</p>
+     * what a build that has to reproduce a published jar exactly needs. The only exception is the opt-in
+     * {@link RunnerJarOption#STRIP_LOCAL_VARIABLES}: a dependency whose classes it rewrites is copied as
+     * rewritten, keeping the compression of each entry. Classes then have to be inflated when they are
+     * loaded.</p>
      */
     PRESERVE,
 

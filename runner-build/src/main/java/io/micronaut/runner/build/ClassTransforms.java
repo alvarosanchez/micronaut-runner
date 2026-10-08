@@ -42,7 +42,9 @@ import java.util.jar.Manifest;
  *
  * <p>The {@code stripLocalVariables} option runs Micronaut AOT's {@link ClassPathTransform} before any dependency
  * is staged, in every compression mode: a stage then reads the dependency's rewritten copy ({@link #sources()}).
- * What it did is logged and written into {@code transforms.txt} with the pipeline's steps.</p>
+ * What it did is logged and written into {@code transforms.txt} with the pipeline's steps. The engine strips no
+ * class of a jar that is signed or that holds an entry name more than once, and writes no copy of it: its stage
+ * reads the dependency itself.</p>
  */
 final class ClassTransforms {
 
@@ -79,12 +81,12 @@ final class ClassTransforms {
      *
      * <p>Stripping runs first, in every compression mode, over the dependencies that are not
      * {@linkplain Dependency#projectModule() project modules}, on at most {@code parallelism} threads of its own;
-     * its warnings are reported at once. The pipeline's transforms run only in STORED and HYBRID: in PRESERVE every
-     * dependency is nested byte for byte, which is reported at info when lambdas would be desugared, and the
-     * application layer is left alone too. Without desugaring nothing is scanned, and the pipeline, if the
-     * options need one, has no step. Otherwise one scan task per dependency runs on the pool, each through a
-     * {@link ZipReader} of its own, while the calling thread scans the application layer, and the scans, which
-     * record the member tables of every class, are merged in class-path order.</p>
+     * its warnings are reported at once. The pipeline's transforms run only in STORED and HYBRID: in PRESERVE each
+     * dependency, or its stripped copy, is nested as it is, which is reported at info when lambdas would be
+     * desugared, and the application layer is left alone too. Without desugaring nothing is scanned, and the
+     * pipeline, if the options need one, has no step. Otherwise one scan task per dependency runs on the pool, each
+     * through a {@link ZipReader} of its own, while the calling thread scans the application layer, and the scans,
+     * which record the member tables of every class, are merged in class-path order.</p>
      *
      * @param spec         the build's spec
      * @param dependencies the dependencies that are nested, in class-path order
@@ -116,7 +118,7 @@ final class ClassTransforms {
         if (spec.compression() == Compression.PRESERVE) {
             if (desugar) {
                 logger.info("The " + LambdaDesugarer.NAME + " option has no effect with PRESERVE compression, which"
-                        + " nests every dependency byte for byte");
+                        + " does not repack the dependencies");
             }
             return new ClassTransforms(null, stripped, sources);
         }

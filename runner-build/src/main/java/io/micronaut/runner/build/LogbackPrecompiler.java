@@ -384,7 +384,8 @@ final class LogbackPrecompiler {
          * A staged dependency, read from its nested jar and named after the dependency itself.
          *
          * @param dependency the dependency, whose file goes on the front end's class path
-         * @param nested     its nested jar: the repacked copy in STORED, the dependency in PRESERVE
+         * @param nested     its nested jar: the repacked copy in STORED, the dependency or its stripped copy in
+         *                   PRESERVE
          * @param manifest   its manifest, or {@code null}
          * @param entries    the entries of its nested jar
          * @return the layer

@@ -1,8 +1,8 @@
 The `stripLocalVariables` option, off by default, drops the tables that name local variables from the classes of
-your dependencies when Runner packages the application, with Micronaut AOT's local-variable stripping, in every
-compression mode. You do not need Micronaut AOT's optimizer for it. Line numbers, source file names, reflective
-parameter names, generic signatures and annotations are kept. Your own classes, and the modules of your own build,
-keep everything.
+your dependencies when Runner packages the application. It works in every compression mode. Runner runs Micronaut
+AOT's local-variable stripping itself, so you do not need Micronaut AOT's optimizer. Line numbers, source file names,
+reflective parameter names, generic signatures and annotations are kept. Your own classes, and the modules of your own
+build, keep everything.
 
 The trade-off: the archive gets somewhat smaller, and a start without a <<jdkAotCache,JDK AOT cache>> slightly
 faster; with a cache, it makes no difference you would notice. In exchange, dependency code is harder to debug:
