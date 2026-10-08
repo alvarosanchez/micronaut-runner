@@ -28,3 +28,28 @@ dependencies {
     pluginsUnderTest project(path: ':micronaut-runner-build', configuration: 'repository')
     pluginsUnderTest project(path: path, configuration: 'repository')
 }
+
+// The fixtures of the functional tests resolve the plugin from the aggregated test repository alone, so the one module
+// from outside this build that it needs, micronaut-aot-logback, is laid out there too, as a Maven repository holds it.
+configurations {
+    externalModulesUnderTest {
+        canBeResolved = true
+        canBeConsumed = false
+        transitive = false
+    }
+}
+
+def aotLogback = libs.micronaut.aot.logback.get()
+def aotLogbackCoordinates = "${aotLogback.group}:${aotLogback.name}:${aotLogback.version}"
+
+dependencies {
+    externalModulesUnderTest aotLogbackCoordinates
+    externalModulesUnderTest "${aotLogbackCoordinates}@pom"
+}
+
+tasks.named('prepareRepository', Sync) {
+    from(configurations.externalModulesUnderTest) {
+        into "${aotLogback.group.replace('.', '/')}/${aotLogback.name}/${aotLogback.version}"
+        rename { String file -> "${aotLogback.name}-${aotLogback.version}${file.substring(file.lastIndexOf('.'))}" }
+    }
+}

@@ -1,6 +1,7 @@
 <configuration>
-    <!-- logback-classic is on this test class path for LogbackPrecompilerTest. This keeps the test JVM's own
-         logging quiet, and it is what Logback's default lookup finds when a test hands over to Joran. -->
+    <!-- logback-classic is on this test class path for the tests that package the real Logback jars. This keeps
+         the test JVM's own logging quiet, and it is what Logback's default lookup finds when a test hands over to
+         Joran. -->
     <appender name="RUNNER-BUILD-TESTS" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <pattern>%-5level %logger - %msg%n</pattern>

@@ -112,9 +112,8 @@ import java.util.zip.CRC32;
  * {@code MICRONAUT-INF/transforms.txt} right after the launcher classes; with every transform off there is no
  * scan and no such entry.</p>
  *
- * <p>The Logback precompiler ({@code precompileLogback}) runs after the stages, because the staged dependencies
- * decide whether it applies.
- * The two do not meet: its front end loads Logback from the dependencies' own files, not from the staged copies,
+ * <p>Logback precompilation ({@code precompileLogback}) runs after the stages. It calls Micronaut AOT's
+ * {@code micronaut-aot-logback} with the application output and the dependencies' own files, not the staged copies,
  * and the classes it generates join the application layer after the scan and after the application layer was
  * transformed, so no transform rewrites them.</p>
  *
@@ -367,7 +366,7 @@ public final class RunnerJarBuilder {
             generateEntryStub();
             readApplicationManifest();
             collectDependencies(work, startupClasses);
-            precompileLogback(work);
+            precompileLogback();
             loadLauncher(work);
             List<TransformReport> transformReports = transforms.report(logger);
             byte[] transformsText = transforms.describe(launcherVersion);
@@ -697,9 +696,10 @@ public final class RunnerJarBuilder {
      * application that generates classes into the runner's own package - the name already being taken.</p>
      *
      * <p>The base main class and every versioned variant the runner can select are <em>parsed</em>, never
-     * loaded: the packager never loads, initialises or runs application classes (it runs library code only in
-     * {@link LogbackPrecompiler}'s isolated front end). A versioned directory matters only when the application
-     * layer is multi-release, and it is recognised with the same rules the index writer uses to create aliases.</p>
+     * loaded: the packager never loads, initialises or runs application classes (it runs library code only through
+     * {@code micronaut-aot-logback}, which runs Logback and slf4j-api in an isolated loader). A versioned directory
+     * matters only when the application layer is multi-release, and it is recognised with the same rules the index
+     * writer uses to create aliases.</p>
      *
      * @throws IOException if the main class cannot be read back from the application output
      */
@@ -1075,15 +1075,14 @@ public final class RunnerJarBuilder {
         nested.add(staged.jar());
     }
 
-    /** Precompiles {@code logback.xml} once the dependencies, whose Logback decides, are staged. */
-    private void precompileLogback(Path work) {
-        List<LogbackPrecompiler.Layer> layers = new ArrayList<>(nested.size() + 1);
-        layers.add(LogbackPrecompiler.Layer.application(application.keySet(), n -> applicationBytes(application.get(n))));
+    /** Precompiles {@code logback.xml} once the dependencies are staged, so that no transform rewrites the result. */
+    private void precompileLogback() {
+        List<Path> classPath = new ArrayList<>(nested.size());
         for (NestedJar jar : nested) {
-            layers.add(LogbackPrecompiler.Layer.of(jar.dependency, jar.file, jar.manifest, jar.result.entries()));
+            classPath.add(jar.dependency.path());
         }
-        Map<String, byte[]> generated = LogbackPrecompiler.precompile(spec.precompileLogback(), layers,
-                application.keySet(), work, logger, this::warn);
+        Map<String, byte[]> generated = LogbackPrecompilation.precompile(spec, classPath, application.keySet(),
+                logger, this::warn);
         generated.forEach((name, bytes) -> application.putIfAbsent(name, ApplicationEntry.ofBytes(bytes)));
         logbackPrecompiled = !generated.isEmpty();
     }

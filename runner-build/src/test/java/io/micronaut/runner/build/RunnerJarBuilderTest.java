@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.aot.logback.LogbackPrecompiler;
 import io.micronaut.runner.Index;
 import io.micronaut.runner.IndexFormat;
 import io.micronaut.runner.RunnerBuildTestAccess;
@@ -58,6 +59,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -2862,23 +2864,25 @@ class RunnerJarBuilderTest {
             </configuration>
             """;
 
-    private static final List<String> GENERATED_LOGBACK_ENTRIES = List.of(LogbackPrecompiler.CONFIGURATOR_ENTRY,
-            LogbackPrecompiler.FALLBACK_ENTRY, LogbackPrecompiler.SERVICE_ENTRY);
+    private static final String CONFIGURATOR_SERVICE = ClassFixtures.LOGBACK_CONFIGURATOR_SERVICE;
 
     private static final String STAND_DOWN = "No Logback configuration was precompiled because ";
 
+    private static final String OPTION_OFF = STAND_DOWN + "the precompileLogback option is false; Logback will"
+            + " configure itself with Joran at startup";
+
     @Test
-    void withoutLogbackThePrecompileFlagChangesNoByte() throws IOException {
+    void withoutLogbackThePrecompileOptionChangesNoByte() throws IOException {
         Path on = output();
         Path off = output();
         LogbackBuild first = logbackBuild(spec(on));
-        RunnerJarResult second = RunnerJarBuilder.build(spec(off).option("precompileLogback", "false").build(),
-                BuildLogger.noOp());
+        LogbackBuild second = logbackBuild(spec(off).option("precompileLogback", "false"));
 
         assertFalse(first.result().logbackPrecompiled());
-        assertFalse(second.logbackPrecompiled());
+        assertFalse(second.result().logbackPrecompiled());
         assertEquals(List.of(STAND_DOWN + "logback-classic is not on the class path; Logback will configure itself"
                 + " with Joran at startup"), first.logback());
+        assertEquals(List.of(OPTION_OFF), second.logback());
         assertArrayEquals(Files.readAllBytes(on), Files.readAllBytes(off));
     }
 
@@ -2886,52 +2890,50 @@ class RunnerJarBuilderTest {
     void precompilesLogbackXmlIntoTheApplicationLayer() throws IOException {
         Path resources = logbackResources("precompiled", Map.of("logback.xml", LOGBACK_XML));
         Path output = output();
+        Path control = output();
 
         LogbackBuild build = logbackBuild(logbackSpec(output, resources, realLogback()));
+        logbackBuild(logbackSpec(control, resources, realLogback()).option("precompileLogback", "false"));
 
         assertTrue(build.result().logbackPrecompiled());
         assertEquals(List.of(), build.result().warnings());
+        String configurator = registeredConfigurator(output);
         assertEquals(1, build.logback().size(), build.logback()::toString);
-        assertTrue(build.logback().get(0).startsWith("Precompiled logback.xml (application layer) into "
-                + LogbackPrecompiler.CONFIGURATOR_CLASS + ": 1 appender, 1 pattern, "), build.logback()::toString);
+        assertTrue(build.logback().get(0).startsWith("Precompiled logback.xml (application output) into "
+                + configurator + ": 1 appender, 1 pattern, "), build.logback()::toString);
+        Set<String> added = new TreeSet<>(applicationLayer(output));
+        added.removeAll(applicationLayer(control));
+        assertEquals(3, added.size(), added::toString);
+        assertTrue(added.contains(CONFIGURATOR_SERVICE), added::toString);
+        String classes = configurator.substring(0, configurator.lastIndexOf('.') + 1).replace('.', '/');
+        assertTrue(added.contains(configurator.replace('.', '/') + ".class"), added::toString);
+        assertEquals(2, added.stream().filter(name -> name.startsWith(classes) && name.endsWith(".class")).count(),
+                () -> "the configurator and the class it falls back to Joran with: " + added);
         try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
-            for (String name : GENERATED_LOGBACK_ENTRIES) {
-                assertNotEquals(IndexFormat.NO_INDEX, index.find(name), name);
-            }
-            assertNotEquals(IndexFormat.NO_INDEX, index.findClass(LogbackPrecompiler.CONFIGURATOR_CLASS));
-            assertEquals(LogbackPrecompiler.CONFIGURATOR_CLASS + "\n", new String(
-                    reader.read(index.find(LogbackPrecompiler.SERVICE_ENTRY)), StandardCharsets.UTF_8));
+            assertNotEquals(IndexFormat.NO_INDEX, index.findClass(configurator));
             assertEquals(LOGBACK_XML, new String(reader.read(index.find("logback.xml")), StandardCharsets.UTF_8),
                     "logback.xml stays in the archive for the fallbacks");
         }
     }
 
-    @Test
-    void precompilingIsTheSameForBothCompressionModesAndReproducible() throws IOException {
-        Path resources = logbackResources("reproducible", Map.of("logback.xml", LOGBACK_XML));
+    @ParameterizedTest
+    @EnumSource(value = Compression.class, names = {"STORED", "PRESERVE"})
+    void precompilingIsReproducible(Compression compression) throws IOException {
+        Path resources = logbackResources("reproducible-" + compression, Map.of("logback.xml", LOGBACK_XML));
         Path first = output();
         Path second = output();
-        Path preserved = output();
-        logbackBuild(logbackSpec(first, resources, realLogback()));
-        logbackBuild(logbackSpec(second, resources, realLogback()));
-        LogbackBuild preserve = logbackBuild(logbackSpec(preserved, resources, realLogback())
-                .compression(Compression.PRESERVE));
 
+        LogbackBuild build = logbackBuild(logbackSpec(first, resources, realLogback()).compression(compression));
+        logbackBuild(logbackSpec(second, resources, realLogback()).compression(compression));
+
+        assertTrue(build.result().logbackPrecompiled());
         assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(second));
-        assertTrue(preserve.result().logbackPrecompiled());
-        try (RunnerJarArchive stored = RunnerJarArchive.open(first);
-             RunnerJarArchive nested = RunnerJarArchive.open(preserved)) {
-            for (String name : GENERATED_LOGBACK_ENTRIES) {
-                assertArrayEquals(stored.read(stored.index().find(name)), nested.read(nested.index().find(name)),
-                        name);
-            }
-        }
     }
 
     /**
-     * A {@code logback.xml} that only a dependency carries is read from that dependency's nested jar, which is a
-     * repacked copy in STORED and the dependency itself in PRESERVE, and the log names the dependency.
+     * A {@code logback.xml} that only a dependency carries is compiled, and stays in that dependency's nested jar,
+     * which is a repacked copy in STORED and the dependency itself in PRESERVE.
      */
     @ParameterizedTest
     @EnumSource(value = Compression.class, names = {"STORED", "PRESERVE"})
@@ -2949,16 +2951,13 @@ class RunnerJarBuilderTest {
         assertTrue(build.result().logbackPrecompiled(), build.logback()::toString);
         assertEquals(List.of(), build.result().warnings());
         assertEquals(1, build.logback().size(), build.logback()::toString);
-        assertTrue(build.logback().get(0).startsWith("Precompiled logback.xml (logging-configuration.jar) into "
-                + LogbackPrecompiler.CONFIGURATOR_CLASS + ": 1 appender, 1 pattern, "), build.logback()::toString);
+        assertTrue(build.logback().get(0).startsWith("Precompiled logback.xml (logging-configuration.jar) into "),
+                build.logback()::toString);
         try (RunnerJarArchive reader = RunnerJarArchive.open(output)) {
             Index index = reader.index();
-            for (String name : GENERATED_LOGBACK_ENTRIES) {
-                int entry = index.find(name);
-                assertNotEquals(IndexFormat.NO_INDEX, entry, name);
-                assertEquals(0, RunnerBuildTestAccess.entryJarId(index, entry),
-                        name + " belongs to the application layer");
-            }
+            int service = index.find(CONFIGURATOR_SERVICE);
+            assertNotEquals(IndexFormat.NO_INDEX, service);
+            assertEquals(0, RunnerBuildTestAccess.entryJarId(index, service), "the application layer registers it");
             int logbackXml = index.find("logback.xml");
             assertNotEquals(IndexFormat.NO_INDEX, logbackXml);
             assertNotEquals(0, RunnerBuildTestAccess.entryJarId(index, logbackXml),
@@ -2966,209 +2965,181 @@ class RunnerJarBuilderTest {
         }
     }
 
-    /**
-     * A packaged configuration that sets logger levels, as most do, does not stand the precompiler down: only a
-     * {@code config} key next to the word {@code logger} does.
-     */
     @Test
-    void aPackagedConfigurationWithoutAConfigKeyIsStillPrecompiled() throws IOException {
-        Path resources = logbackResources("logger-levels", Map.of("logback.xml", LOGBACK_XML,
-                "application.yml", """
-                        micronaut:
-                          application:
-                            name: demo
-                          config-client:
-                            enabled: false
-                        logger:
-                          levels:
-                            com.example: DEBUG
-                        """,
-                "application-test.toml", "[logger.levels]\n\"com.example\" = \"DEBUG\"\n",
-                "config/application.json", "{\"logger\":{\"levels\":{\"com.example\":\"DEBUG\"}}}\n"));
+    void theOptionOffDoesNotCallMicronautAot() throws IOException {
+        Path resources = logbackResources("option-off", Map.of("logback.xml", LOGBACK_XML));
         Path output = output();
+        LogbackPrecompilation.beforeCall = () -> {
+            throw new AssertionError("micronaut-aot-logback was called");
+        };
+        LogbackBuild build;
+        try {
+            build = logbackBuild(logbackSpec(output, resources, realLogback()).option("precompileLogback", "false"));
+        } finally {
+            LogbackPrecompilation.beforeCall = () -> { };
+        }
 
-        LogbackBuild build = logbackBuild(logbackSpec(output, resources, realLogback()));
-
-        assertTrue(build.result().logbackPrecompiled(), build.logback()::toString);
+        assertFalse(build.result().logbackPrecompiled());
+        assertEquals(List.of(OPTION_OFF), build.logback());
+        assertEquals(List.of(), build.result().warnings());
+        assertFalse(applicationLayer(output).contains(CONFIGURATOR_SERVICE));
     }
 
+    /**
+     * A Micronaut build plugin's own Logback step may have left its output in the application output, as the
+     * Maven goal does in {@code target/classes}. That output stays the only configurator: with the option on,
+     * Micronaut AOT refuses to compile again, which is a warning; with it off, it is not called.
+     */
     @ParameterizedTest
-    @ValueSource(strings = {"no logback.xml", "logback-test.xml", "logback.groovy", "versioned logback.xml",
-        "application Configurator", "dependency Configurator", "application.properties logger.config",
-        "application.yml logger config", "bootstrap.yml configurationFile", "application.toml logger table",
-        "application.toml inline table", "application.yml flow style", "application.json on one line",
-        "application.groovy closure", "application.yml merged anchor", "Logback outside the range",
-        "mismatched versions", "subset rejection", "flag off"})
-    void standsDownWithOneInformationalLine(String condition) throws IOException {
+    @ValueSource(booleans = {true, false})
+    void anEarlierPrecompilationStaysTheOnlyConfigurator(boolean precompile) throws IOException {
+        Path resources = logbackResources("earlier-" + precompile, Map.of("logback.xml", LOGBACK_XML));
+        LogbackPrecompiler.Result earlier = LogbackPrecompiler.precompile(LogbackPrecompiler.Request.builder()
+                .applicationOutput(List.of(resources))
+                .runtimeClasspath(ClassFixtures.realLogback())
+                .targetRelease(25)
+                .build());
+        assertEquals(LogbackPrecompiler.Status.GENERATED, earlier.status(), earlier::message);
+        for (Map.Entry<String, byte[]> entry : earlier.entries().entrySet()) {
+            Files.createDirectories(resources.resolve(entry.getKey()).getParent());
+            Files.write(resources.resolve(entry.getKey()), entry.getValue());
+        }
+        Path output = output();
+
+        LogbackBuild build = logbackBuild(logbackSpec(output, resources, realLogback())
+                .option("precompileLogback", Boolean.toString(precompile)));
+
+        assertFalse(build.result().logbackPrecompiled());
+        assertEquals(precompile ? 1 : 0, build.result().warnings().size(), build.result().warnings()::toString);
+        try (ZipFile archive = new ZipFile(output.toFile())) {
+            for (Map.Entry<String, byte[]> entry : earlier.entries().entrySet()) {
+                assertArrayEquals(entry.getValue(), entry(archive, IndexFormat.CLASSES_PREFIX + entry.getKey()),
+                        entry.getKey());
+            }
+            String service = new String(entry(archive, IndexFormat.CLASSES_PREFIX + CONFIGURATOR_SERVICE),
+                    StandardCharsets.UTF_8);
+            assertEquals(1, service.lines().filter(line -> !line.isBlank()).count(), service);
+        }
+    }
+
+    /**
+     * Joran would not configure from the packaged {@code logback.xml} alone: Micronaut's refresh applies a
+     * {@code logger.config} that a dependency's or an imported configuration file sets, and Logback reports a second
+     * {@code logback.xml}. So nothing is generated, which one line says.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"dependency logger.config", "config import", "second logback.xml"})
+    void standsDownWhenJoranWouldDoMore(String condition) throws IOException {
         Map<String, String> files = new LinkedHashMap<>();
         files.put("logback.xml", LOGBACK_XML);
         List<Dependency> dependencies = realLogback();
+        Path library = fixtures.resolve("libs/" + condition.replace(' ', '-') + ".jar");
         String reason;
         switch (condition) {
-            case "no logback.xml" -> {
-                files.remove("logback.xml");
-                reason = "there is no logback.xml";
+            case "dependency logger.config" -> {
+                writeJar(library, manifest(attributes -> { }), Map.of("application.properties",
+                        "logger.config=custom.xml\n".getBytes(StandardCharsets.UTF_8)));
+                dependencies.add(Dependency.of(library));
+                reason = "logger.config";
             }
-            case "logback-test.xml" -> {
-                files.put("logback-test.xml", LOGBACK_XML);
-                reason = "application layer has logback-test.xml";
+            case "config import" -> {
+                files.put("application.properties", "micronaut.config.import=classpath:extra.properties\n");
+                reason = "micronaut.config.import";
             }
-            case "logback.groovy" -> {
-                files.put("logback.groovy", "root(WARN)\n");
-                reason = "application layer has logback.groovy";
+            case "second logback.xml" -> {
+                writeJar(library, manifest(attributes -> { }),
+                        Map.of("logback.xml", LOGBACK_XML.getBytes(StandardCharsets.UTF_8)));
+                dependencies.add(Dependency.of(library));
+                reason = "both have a logback.xml";
             }
-            case "versioned logback.xml" -> {
-                files.put("META-INF/versions/21/logback.xml", LOGBACK_XML);
-                reason = "application layer has META-INF/versions/21/logback.xml";
-            }
-            case "application Configurator" -> {
-                files.put(LogbackPrecompiler.SERVICE_ENTRY, "com.example.MyConfigurator\n");
-                reason = "application layer already registers a Logback Configurator ("
-                        + LogbackPrecompiler.SERVICE_ENTRY + ")";
-            }
-            case "dependency Configurator" -> {
-                Path aot = fixtures.resolve("libs/aot-configurator.jar");
-                writeJar(aot, manifest(attributes -> { }), Map.of(LogbackPrecompiler.SERVICE_ENTRY,
-                        "io.micronaut.aot.StaticLogbackConfiguration\n".getBytes(StandardCharsets.UTF_8)));
-                dependencies.add(Dependency.of(aot));
-                reason = "aot-configurator.jar already registers a Logback Configurator";
-            }
-            case "application.properties logger.config" -> {
-                files.put("application.properties", "micronaut.application.name=demo\nlogger.config=custom.xml\n");
-                reason = "the packaged application.properties may set logger.config";
-            }
-            case "application.yml logger config" -> {
-                files.put("application.yml", "logger:\n  levels:\n    com.example: DEBUG\n  config: custom.xml\n");
-                reason = "the packaged application.yml may set logger.config";
-            }
-            case "bootstrap.yml configurationFile" -> {
-                files.put("config/bootstrap.yml", "logback:\n  configurationFile: custom.xml\n");
-                reason = "the packaged config/bootstrap.yml may set";
-            }
-            case "application.toml logger table" -> {
-                files.put("application.toml", "[micronaut.application]\nname = \"demo\"\n\n[logger]\n"
-                        + "config = \"custom.xml\"\n");
-                reason = "the packaged application.toml may set logger.config";
-            }
-            case "application.toml inline table" -> {
-                files.put("application-prod.toml", "logger = { config = \"custom.xml\" }\n");
-                reason = "the packaged application-prod.toml may set logger.config";
-            }
-            case "application.yml flow style" -> {
-                files.put("application.yml", "logger: {config: custom.xml}\n");
-                reason = "the packaged application.yml may set logger.config";
-            }
-            case "application.json on one line" -> {
-                files.put("application.json", "{\"logger\":{\"config\":\"custom.xml\"}}");
-                reason = "the packaged application.json may set logger.config";
-            }
-            case "application.groovy closure" -> {
-                files.put("application.groovy", "logger { config = 'custom.xml' }\n");
-                reason = "the packaged application.groovy may set logger.config";
-            }
-            case "application.yml merged anchor" -> {
-                // The config key stands before the logger key, and on another level.
-                files.put("application.yml", "shared: &shared\n  Config: custom.xml\nLogger:\n  <<: *shared\n");
-                reason = "the packaged application.yml may set logger.config";
-            }
-            case "Logback outside the range" -> {
-                dependencies = fakeLogback("1.4.14", "1.4.14");
-                reason = "Logback 1.4.14 is outside the tested range [1.5.37, 1.6)";
-            }
-            case "mismatched versions" -> {
-                dependencies = fakeLogback("1.5.37", "1.5.38");
-                reason = "logback-classic 1.5.37 and logback-core 1.5.38 differ";
-            }
-            case "subset rejection" -> {
-                files.put("logback.xml", LOGBACK_XML.replace("<configuration>",
-                        "<configuration>\n    <property name=\"APP\" value=\"demo\"/>"));
-                reason = "logback.xml (application layer) is outside what the precompiler can reproduce exactly:"
-                        + " <property> (line 2) is not supported";
-            }
-            case "flag off" -> reason = "the precompileLogback option is false";
             default -> throw new IllegalArgumentException(condition);
         }
         Path resources = logbackResources(condition.replace(' ', '-'), files);
         Path output = output();
-        RunnerJarSpec.Builder spec = logbackSpec(output, resources, dependencies);
-        if (condition.equals("flag off")) {
-            spec.option("precompileLogback", "false");
-        }
+        Path control = output();
 
-        LogbackBuild build = logbackBuild(spec);
+        LogbackBuild build = logbackBuild(logbackSpec(output, resources, dependencies));
+        logbackBuild(logbackSpec(control, resources, dependencies).option("precompileLogback", "false"));
 
         assertFalse(build.result().logbackPrecompiled());
         assertEquals(List.of(), build.result().warnings());
         assertEquals(1, build.logback().size(), build.logback()::toString);
         String line = build.logback().get(0);
-        assertTrue(line.startsWith(STAND_DOWN), line);
-        assertTrue(line.contains(reason), () -> line + "\ndoes not name: " + reason);
-        assertTrue(line.endsWith("; Logback will configure itself with Joran at startup"), line);
-        assertNoGeneratedLogbackEntries(output);
+        assertTrue(line.startsWith(STAND_DOWN) && line.contains(reason), () -> line + "\ndoes not name: " + reason);
+        assertEquals(applicationLayer(control), applicationLayer(output));
     }
 
     @Test
-    void aTakenGeneratedNameIsAWarning() throws IOException {
-        Path resources = logbackResources("taken", Map.of("logback.xml", LOGBACK_XML,
-                LogbackPrecompiler.CONFIGURATOR_ENTRY, "not ours"));
+    void aPackagedConfigurationClientIsAWarning() throws IOException {
+        Path resources = logbackResources("config-client", Map.of("logback.xml", LOGBACK_XML,
+                "bootstrap.yml", "micronaut:\n  config-client:\n    enabled: true\n"));
         Path output = output();
 
         LogbackBuild build = logbackBuild(logbackSpec(output, resources, realLogback()));
 
-        assertFalse(build.result().logbackPrecompiled());
-        assertEquals(List.of(), build.logback());
+        assertTrue(build.result().logbackPrecompiled(), build.logback()::toString);
         assertEquals(1, build.result().warnings().size(), build.result().warnings()::toString);
-        assertTrue(build.result().warnings().get(0).contains("already carries '"
-                + LogbackPrecompiler.CONFIGURATOR_ENTRY + "'"), build.result().warnings()::toString);
-        try (ZipReader archive = ZipReader.open(output)) {
-            assertFalse(archive.entry(IndexFormat.CLASSES_PREFIX + LogbackPrecompiler.FALLBACK_ENTRY).isPresent());
-            assertFalse(archive.entry(IndexFormat.CLASSES_PREFIX + LogbackPrecompiler.SERVICE_ENTRY).isPresent());
-        }
+        assertTrue(build.result().warnings().get(0).contains("distributed configuration client"),
+                build.result().warnings()::toString);
+        assertTrue(applicationLayer(output).contains(CONFIGURATOR_SERVICE));
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    void aFrontEndOrEmitterFailureIsOneWarningAndTheBuildSucceeds(boolean frontEnd) throws IOException {
-        Path resources = logbackResources("failure-" + frontEnd, Map.of("logback.xml", LOGBACK_XML));
+    @Test
+    void aMicronautAotThatDoesNotMatchIsOneWarningAndTheBuildSucceeds() throws IOException {
+        Path resources = logbackResources("linkage", Map.of("logback.xml", LOGBACK_XML));
         Path output = output();
-        LogbackPrecompiler.descriptionHook = description -> {
-            if (frontEnd) {
-                throw new IllegalStateException("forced front-end failure");
-            }
-            // An int setter handed a String: the emitted class no longer verifies.
-            Map<String, Object> broken = new LinkedHashMap<>(description);
-            List<Object> operations = new ArrayList<>((List<?>) broken.get("operations"));
-            @SuppressWarnings("unchecked")
-            Map<String, Object> appender = new LinkedHashMap<>((Map<String, Object>) operations.get(0));
-            appender.put("steps", List.of(Map.of("step", "property", "method", "setName",
-                    "descriptor", "(I)V", "value", "not an int")));
-            operations.set(0, appender);
-            broken.put("operations", operations);
-            return broken;
+        Path control = output();
+        LogbackPrecompilation.beforeCall = () -> {
+            throw new NoSuchMethodError("forced mismatch");
         };
         LogbackBuild build;
         try {
             build = logbackBuild(logbackSpec(output, resources, realLogback()));
         } finally {
-            LogbackPrecompiler.descriptionHook = java.util.function.UnaryOperator.identity();
+            LogbackPrecompilation.beforeCall = () -> { };
         }
+        logbackBuild(logbackSpec(control, resources, realLogback()).option("precompileLogback", "false"));
 
         assertTrue(Files.isRegularFile(output));
         assertFalse(build.result().logbackPrecompiled());
         assertEquals(List.of(), build.logback());
         assertEquals(1, build.result().warnings().size(), build.result().warnings()::toString);
         String warning = build.result().warnings().get(0);
-        assertTrue(warning.startsWith(STAND_DOWN + "it could not be compiled: "), warning);
-        assertTrue(warning.contains(frontEnd ? "forced front-end failure" : "does not verify"), warning);
-        assertNoGeneratedLogbackEntries(output);
+        assertTrue(warning.startsWith(STAND_DOWN + "the micronaut-aot-logback on the build's class path does not"
+                + " match the one this packager was built against: java.lang.NoSuchMethodError: forced mismatch"),
+                warning);
+        assertEquals(applicationLayer(control), applicationLayer(output));
     }
 
-    private static void assertNoGeneratedLogbackEntries(Path output) throws IOException {
+    /** The configurator the archive's application layer registers, which has to be the only one. */
+    private static String registeredConfigurator(Path output) throws IOException {
+        try (ZipFile archive = new ZipFile(output.toFile())) {
+            String service = new String(entry(archive, IndexFormat.CLASSES_PREFIX + CONFIGURATOR_SERVICE),
+                    StandardCharsets.UTF_8);
+            List<String> lines = service.lines().filter(line -> !line.isBlank()).toList();
+            assertEquals(1, lines.size(), service);
+            return lines.get(0).trim();
+        }
+    }
+
+    /** The names of the archive's application layer. */
+    private static Set<String> applicationLayer(Path output) throws IOException {
+        Set<String> names = new TreeSet<>();
         try (ZipReader archive = ZipReader.open(output)) {
             for (ZipEntryInfo entry : archive.entries()) {
-                assertFalse(entry.name().startsWith(IndexFormat.CLASSES_PREFIX + LogbackPrecompiler.PACKAGE_PATH),
-                        entry.name());
+                if (entry.name().startsWith(IndexFormat.CLASSES_PREFIX)) {
+                    names.add(entry.name().substring(IndexFormat.CLASSES_PREFIX.length()));
+                }
             }
+        }
+        return names;
+    }
+
+    private static byte[] entry(ZipFile archive, String name) throws IOException {
+        ZipEntry entry = archive.getEntry(name);
+        assertNotNull(entry, name);
+        try (InputStream in = archive.getInputStream(entry)) {
+            return in.readAllBytes();
         }
     }
 
@@ -3185,27 +3156,13 @@ class RunnerJarBuilderTest {
         return directory;
     }
 
-    /** The logback-classic, logback-core and slf4j-api jars of this test class path. */
+    /** The logback-classic, logback-core and slf4j-api jars of this test class path, as dependencies. */
     private static List<Dependency> realLogback() {
         List<Dependency> dependencies = new ArrayList<>();
-        for (Class<?> type : List.of(ch.qos.logback.classic.LoggerContext.class, ch.qos.logback.core.Context.class,
-                org.slf4j.ILoggerFactory.class)) {
-            dependencies.add(Dependency.of(LogbackPrecompilerTest.jarOf(type)));
+        for (Path jar : ClassFixtures.realLogback()) {
+            dependencies.add(Dependency.of(jar));
         }
         return dependencies;
-    }
-
-    /** Jars that look like Logback to the precompiler's survey, at the given versions, and hold nothing else. */
-    private static List<Dependency> fakeLogback(String classicVersion, String coreVersion) throws IOException {
-        Path classic = fixtures.resolve("libs/fake-logback-classic-" + classicVersion + ".jar");
-        Path core = fixtures.resolve("libs/fake-logback-core-" + coreVersion + ".jar");
-        Path slf4j = fixtures.resolve("libs/fake-slf4j-api.jar");
-        writeJar(classic, manifest(attributes -> attributes.put(Attributes.Name.IMPLEMENTATION_VERSION,
-                classicVersion)), Map.of("ch/qos/logback/classic/LoggerContext.class", new byte[] {1}));
-        writeJar(core, manifest(attributes -> attributes.put(Attributes.Name.IMPLEMENTATION_VERSION, coreVersion)),
-                Map.of("ch/qos/logback/core/Context.class", new byte[] {1}));
-        writeJar(slf4j, manifest(attributes -> { }), Map.of("org/slf4j/ILoggerFactory.class", new byte[] {1}));
-        return new ArrayList<>(List.of(Dependency.of(classic), Dependency.of(core), Dependency.of(slf4j)));
     }
 
     /** Builds, keeping the informational lines about Logback. */

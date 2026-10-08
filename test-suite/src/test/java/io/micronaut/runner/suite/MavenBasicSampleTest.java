@@ -157,9 +157,15 @@ class MavenBasicSampleTest {
         try (JarFile jar = new JarFile(archive.toFile())) {
             assertNotNull(jar.getEntry("MICRONAUT-INF/classes/io/micronaut/runner/generated/AppEntry.class"),
                     () -> "the default configuration did not generate the entry stub:\n" + log);
-            assertNotNull(jar.getEntry(
-                    "MICRONAUT-INF/classes/io/micronaut/runner/generated/logback/LogbackConfigurator.class"),
-                    () -> "the default configuration did not precompile logback.xml:\n" + log);
+            // Micronaut AOT's generated names are not its API: the service file names the configurator.
+            var service = jar.getEntry("MICRONAUT-INF/classes/META-INF/services/ch.qos.logback.classic.spi.Configurator");
+            assertNotNull(service, () -> "the default configuration did not precompile logback.xml:\n" + log);
+            String configurator;
+            try (InputStream in = jar.getInputStream(service)) {
+                configurator = new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();
+            }
+            assertNotNull(jar.getEntry("MICRONAUT-INF/classes/" + configurator.replace('.', '/') + ".class"),
+                    () -> "the service file names a class the archive does not hold: " + configurator);
         }
         assertManifestVersion(original, null, "v1");
         assertManifestVersion(original, "com/example/", "package-v1");

@@ -30,15 +30,9 @@ configurations {
     }
 }
 
-// The Logback front end of LogbackPrecompiler, and the JoranFallback class it copies into runner jars. It is
-// compiled against Logback but never put on this library's class path: it ships as a jar resource, like the
-// launcher, and runs only in an isolated class loader next to the application's own Logback jars. So the main
-// code has no Logback dependency and the published POM does not change.
-//
-// The same goes for the classes StaticServiceTableGenerator copies into an application that gets a static
-// service table: compiled against micronaut-core, shipped as a jar resource, never on this library's class path.
+// The classes StaticServiceTableGenerator copies into an application that gets a static service table: compiled
+// against micronaut-core, shipped as a jar resource, never on this library's class path.
 sourceSets {
-    logbackFrontend
     staticServices
 }
 
@@ -54,7 +48,10 @@ dependencies {
     compileOnly platform(libs.micronaut.core)
     compileOnly 'io.micronaut:micronaut-core'
 
-    logbackFrontendCompileOnly libs.logback.classic
+    // Precompiles logback.xml (LogbackPrecompilation). It has no dependencies of its own, and no public
+    // signature of this library names one of its types (PublicApiTest checks it).
+    implementation libs.micronaut.aot.logback
+
     // The line of micronaut-core the table serves.
     staticServicesCompileOnly "io.micronaut:micronaut-core:${libs.versions.micronaut.core51.get()}"
     micronautCore51 "io.micronaut:micronaut-inject:${libs.versions.micronaut.core51.get()}"
@@ -62,7 +59,7 @@ dependencies {
     // micronaut-core is only needed by the service-discovery tests, never at packaging runtime.
     testImplementation platform(libs.micronaut.core)
     testImplementation 'io.micronaut:micronaut-inject'
-    // The differential tests of LogbackPrecompiler configure Logback with Joran and with the generated classes.
+    // LocalVariableStripperTest and RunnerJarBuilderTest package the real Logback jars of this class path.
     testImplementation libs.logback.classic
 }
 
@@ -72,21 +69,6 @@ tasks.withType(Test).configureEach {
     jvmArgumentProviders.add({ ->
         ["-Drunner.test.micronautCore51=${micronautCore51.asPath}".toString()]
     } as CommandLineArgumentProvider)
-}
-
-tasks.named('compileLogbackFrontendJava', JavaCompile) {
-    options.release = 25
-    // JoranFallback is copied into applications verbatim: no invokedynamic string concatenation in it.
-    options.compilerArgs.addAll(['-XDstringConcat=inline'])
-    // Line numbers for stack traces, no local variable tables: every application carries JoranFallback.
-    options.debugOptions.debugLevel = 'source,lines'
-}
-
-def logbackFrontendJar = tasks.register('logbackFrontendJar', Jar) {
-    description = 'Packages the Logback front end that runner-build carries as a resource'
-    archiveFileName = 'logback-frontend.jar'
-    destinationDirectory = layout.buildDirectory.dir('logback-frontend')
-    from sourceSets.logbackFrontend.output
 }
 
 // The transform corpus runs the class transform pipeline over the class paths of real applications, which
@@ -141,9 +123,6 @@ tasks.named('processResources', ProcessResources) {
     from(configurations.launcherJar) {
         into 'META-INF/micronaut-runner'
         rename { 'launcher.jar' }
-    }
-    from(logbackFrontendJar) {
-        into 'META-INF/micronaut-runner'
     }
     from(staticServicesJar) {
         into 'META-INF/micronaut-runner'

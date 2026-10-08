@@ -294,23 +294,16 @@ public final class RunnerJarSpec {
      * Whether to compile the application's {@code logback.xml} into a Logback {@code Configurator} when it is
      * packaged, so that the application does not parse XML and run Joran on its main thread at every start.
      *
-     * <p>The packager generates {@code io.micronaut.runner.generated.logback.LogbackConfigurator} into the
-     * application layer and registers it as a {@code ch.qos.logback.classic.spi.Configurator} service. It applies to
-     * STORED and PRESERVE alike, since it touches only the application layer. It fails closed: it generates nothing,
-     * and logs why, when it cannot prove that the generated code reproduces Joran's result exactly. That is the
-     * case unless logback-classic and logback-core are both at the same version from 1.5.37 up to, but excluding,
-     * 1.6; when there is no {@code logback.xml}, or a {@code logback-test.xml}, {@code logback.groovy} or versioned
-     * Logback file; when any layer already registers a {@code Configurator}, as Micronaut AOT's
-     * {@code logback.xml.to.java} output does; when a packaged {@code application*} or {@code bootstrap*} file may
-     * set {@code logger.config} or {@code logback.configurationFile}; and when the file uses anything beyond
-     * literal appenders with simple properties and a {@code PatternLayoutEncoder}, loggers, the root logger and
-     * appender references.</p>
+     * <p>The packager calls Micronaut AOT's {@code micronaut-aot-logback} with the class path closed, since a runner
+     * jar is the whole class path, and adds what it generates to the application layer: the configurator, the class
+     * it falls back to Joran with, and the {@code ch.qos.logback.classic.spi.Configurator} service file. It applies to
+     * STORED and PRESERVE alike, since it touches only the application layer. The module decides what is compiled
+     * and documents its rules: it fails closed, generating nothing when it cannot prove that the generated code
+     * reproduces Joran's result exactly, and the build logs why. {@code logback.xml} stays in the archive, and
+     * {@code -Dmicronaut.logback.precompiled=false} hands it to Joran at run time.</p>
      *
-     * <p>What changes at runtime when it applies: Joran's INFO status messages about reading {@code logback.xml} are
-     * not recorded, and every way to see them ({@code logback.debug}, a status listener) falls back to Joran;
-     * {@code logback.xml} is still packaged but read only on the fallback paths, which are
-     * {@code -Dlogback.configurationFile}, a {@code logger.config} location on Micronaut's refresh, and
-     * {@code -Dmicronaut.runner.logback.precompiled=false}.</p>
+     * <p>{@code false} does not call the module. The archive then carries whatever configurator the application
+     * output already registers, or none.</p>
      *
      * @return whether to precompile {@code logback.xml}
      */
@@ -741,9 +734,9 @@ public final class RunnerJarSpec {
 
         /**
          * Requests that the application's {@code logback.xml} be compiled into a Logback {@code Configurator} when
-         * it is packaged. The packager generates nothing, and logs why, whenever it cannot prove that the result
-         * matches Joran's; see {@link RunnerJarSpec#precompileLogback()}. Setting this to {@code false} leaves
-         * {@code logback.xml} to Joran at startup.
+         * it is packaged, with Micronaut AOT's {@code micronaut-aot-logback}. Nothing is generated, and the build
+         * logs why, whenever the module cannot prove that the result matches Joran's; see
+         * {@link RunnerJarSpec#precompileLogback()}. Setting this to {@code false} does not call the module.
          *
          * <p>Defaults to {@code true}.</p>
          *

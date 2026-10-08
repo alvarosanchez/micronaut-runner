@@ -140,11 +140,11 @@ class ToolsTest {
     private static final String CONFIGURATION = "application.yml";
     private static final String STUB_ENTRY = "io/micronaut/runner/generated/AppEntry.class";
     private static final String STUB_NESTED_ENTRY = "io/micronaut/runner/generated/AppEntry$Helper.class";
-    /** Generated support that is not part of the format, such as a precompiled Logback configurator. */
+    /** Generated support that is not part of the format, such as the static service table's loader. */
     private static final String GENERATED_SUPPORT_ENTRY =
-            "io/micronaut/runner/generated/logback/LogbackConfigurator.class";
+            "io/micronaut/runner/generated/services/RunnerStaticServices.class";
     private static final String GENERATED_SERVICE_ENTRY =
-            "META-INF/services/ch.qos.logback.classic.spi.Configurator";
+            "META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader";
     private static final long DOS_TIME = 0x00210000L;
     private static final String TRANSFORMS_COUNTS = DEPENDENCY_ONE + "\tstripLocalVariables\t1\t0\t0\t120";
 
@@ -154,9 +154,9 @@ class ToolsTest {
     private static final byte[] EMPTY = new byte[0];
     private static final byte[] CONFIGURATION_BYTES = bytes("greeting: hello\n");
     private static final byte[] STUB_BYTES = bytes("not a real class file");
-    private static final byte[] SUPPORT_BYTES = bytes("not a real configurator");
+    private static final byte[] SUPPORT_BYTES = bytes("not a real loader");
     private static final byte[] SERVICE_BYTES =
-            bytes("io.micronaut.runner.generated.logback.LogbackConfigurator\n");
+            bytes("io.micronaut.runner.generated.services.RunnerStaticServices\n");
     private static final byte[] BASE_DATA = bytes("base");
     private static final byte[] VERSIONED_DATA = bytes("v21");
     private static final byte[] RUNNER_MANIFEST = bytes("Manifest-Version: 1.0\r\n"

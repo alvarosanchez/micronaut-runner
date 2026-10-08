@@ -68,9 +68,10 @@ import java.util.function.Consumer;
  * when it is packaged, and the launcher's reflective fallback would have started the same application
  * without complaint. {@link #ineligibilityReason(String, byte[])} is therefore deliberately narrow, and it
  * answers by <em>parsing</em> the main class rather than loading it: the packager never loads, initialises or runs
- * application classes. The one exception to running no library code either is {@link LogbackPrecompiler}'s front
- * end, which runs only Logback and slf4j-api classes, in an isolated loader whose parent is the platform loader,
- * instantiating only {@code ch.qos.logback.*} classes the configuration names.</p>
+ * application classes. The one exception to running no library code either is Micronaut AOT's
+ * {@code micronaut-aot-logback}, which {@code precompileLogback} calls: it runs only Logback and slf4j-api classes,
+ * in an isolated loader whose parent is the platform loader, instantiating only {@code ch.qos.logback.*} classes
+ * the configuration names.</p>
  *
  * @since 1.0
  */

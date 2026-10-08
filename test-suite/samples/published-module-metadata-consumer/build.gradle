@@ -24,7 +24,10 @@ tasks.register('verifyMetadata') {
     doLast {
         def names = files.collect { it.name }.sort()
         def version = providers.gradleProperty('runner.version').get()
-        assert names == [
+        // micronaut-aot-logback's version is the catalog's, not Runner's.
+        def (aot, runnerJars) = names.split { it.startsWith('micronaut-aot-logback-') }
+        assert aot.size() == 1 && aot[0].endsWith('.jar')
+        assert runnerJars == [
                 "micronaut-runner-build-${version}.jar",
                 "micronaut-runner-gradle-plugin-${version}.jar",
                 "micronaut-runner-launcher-${version}.jar"

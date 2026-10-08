@@ -130,10 +130,10 @@ public enum RunnerJarOption {
 
     /**
      * Whether to compile the application's {@code logback.xml} into a Logback {@code Configurator} when it is
-     * packaged, so that the application does not parse XML and run Joran at every start. On by default. The
-     * packager generates nothing, and logs why, whenever it cannot prove that the generated configurator reproduces
-     * Joran's result; {@code -Dmicronaut.runner.logback.precompiled=false} leaves {@code logback.xml} to Joran at
-     * run time.
+     * packaged, with Micronaut AOT's {@code micronaut-aot-logback}, so that the application does not parse XML and
+     * run Joran at every start. On by default. The module generates nothing, and the build logs why, whenever it
+     * cannot prove that the generated configurator reproduces Joran's result; {@code false} does not call it, and
+     * {@code -Dmicronaut.logback.precompiled=false} leaves {@code logback.xml} to Joran at run time.
      */
     PRECOMPILE_LOGBACK("precompileLogback", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
 

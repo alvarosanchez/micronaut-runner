@@ -30,6 +30,7 @@ import java.lang.classfile.ClassTransform;
 import java.lang.classfile.CodeModel;
 import java.lang.classfile.CustomAttribute;
 import java.lang.classfile.MethodModel;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,10 +58,40 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 final class ClassFixtures {
 
+    /**
+     * The service file that registers a Logback configurator. The names of the classes Micronaut AOT generates are
+     * not its API, so the tests find them through this file.
+     */
+    static final String LOGBACK_CONFIGURATOR_SERVICE = "META-INF/services/ch.qos.logback.classic.spi.Configurator";
+
     /** A fixed timestamp for fixture jars, so a rebuilt fixture changes nothing. */
     private static final long FIXTURE_TIME = 1_000_000_000_000L;
 
     private ClassFixtures() {
+    }
+
+    /**
+     * The jar or directory of this test class path that a class was loaded from.
+     *
+     * @param type the class
+     * @return where it was loaded from
+     */
+    static Path jarOf(Class<?> type) {
+        try {
+            return Path.of(type.getProtectionDomain().getCodeSource().getLocation().toURI());
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * The logback-classic, logback-core and slf4j-api jars of this test class path, in that order.
+     *
+     * @return the jars
+     */
+    static List<Path> realLogback() {
+        return List.of(jarOf(ch.qos.logback.classic.LoggerContext.class), jarOf(ch.qos.logback.core.Context.class),
+                jarOf(org.slf4j.ILoggerFactory.class));
     }
 
     /**

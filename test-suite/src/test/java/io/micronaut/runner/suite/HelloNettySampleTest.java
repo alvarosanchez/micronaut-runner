@@ -105,8 +105,14 @@ class HelloNettySampleTest {
     /** The application layer of a runner jar. */
     private static final String CLASSES = "MICRONAUT-INF/classes/";
 
-    /** The configurator runner-build compiles logback.xml into. */
-    private static final String LOGBACK_CONFIGURATOR = "io/micronaut/runner/generated/logback/LogbackConfigurator.class";
+    /**
+     * The service file that registers a Logback configurator. The names of the classes Micronaut AOT's
+     * micronaut-aot-logback generates are not its API, so the tests find them through this file.
+     */
+    private static final String LOGBACK_SERVICE = "META-INF/services/ch.qos.logback.classic.spi.Configurator";
+
+    /** The configurator Micronaut AOT's logback.xml.to.java optimizer generates into the sample's package. */
+    private static final String LOGBACK_XML_TO_JAVA = "com.example.StaticLogbackConfiguration";
 
     /** Loaded whenever Logback reads an XML file with Joran. */
     private static final String JORAN_CONFIGURATOR = "ch.qos.logback.classic.joran.JoranConfigurator";
@@ -210,9 +216,9 @@ class HelloNettySampleTest {
                 () -> optimized + " does not hold Micronaut AOT's generated classes");
         assertFalse(hasEntry(optimized, CLASSES + "logback.xml"),
                 () -> optimized + " holds the logback.xml that Micronaut AOT replaces");
-        // Micronaut AOT registers its own Logback configurator, so runner-build generates none.
-        assertFalse(hasEntry(optimized, CLASSES + LOGBACK_CONFIGURATOR),
-                () -> optimized + " holds a Runner-generated Logback configurator beside Micronaut AOT's");
+        // Micronaut AOT's logback.xml.to.java registers its own Logback configurator, so none is precompiled.
+        assertEquals(List.of(LOGBACK_XML_TO_JAVA), configurators(optimized),
+                () -> optimized + " does not register Micronaut AOT's configurator alone");
         assertStartsTheApplication(optimized);
         assertEquals("hello from RunnerClassLoader", run(optimized, sample, Map.of(), List.of()).body());
     }
@@ -235,19 +241,26 @@ class HelloNettySampleTest {
         gradle(sample, "clean", TASK, "--init-script", init.toString());
         Path joran = copy(archive, work.resolve("joran/hello-netty.jar"));
 
-        assertTrue(hasEntry(precompiled, CLASSES + LOGBACK_CONFIGURATOR), () -> precompiled + " has no configurator");
-        assertFalse(hasEntry(joran, CLASSES + LOGBACK_CONFIGURATOR), () -> joran + " has a configurator");
+        List<String> generated = generatedLogbackEntries(precompiled);
+        String configurator = configurators(precompiled).get(0);
+        assertEquals(3, generated.size(), () -> precompiled + ": " + generated);
+        assertTrue(generated.contains(configurator.replace('.', '/') + ".class"), generated::toString);
+        assertEquals(List.of(), configurators(joran), () -> joran + " registers a configurator");
 
-        // The fast path verifies, and neither links Joran nor loads its fallback.
+        // The fast path verifies, and neither links Joran nor loads the class that falls back to it.
         Path classLoads = sample.resolve("build/logback-precompiled-classload.log");
         Run fast = run(precompiled, sample, Map.of(), List.of("-Xverify:all",
                 "-Xlog:class+load=info:file=build/logback-precompiled-classload.log"));
         assertEquals("hello from RunnerClassLoader", fast.body(), fast.output());
         String loaded = Files.readString(classLoads, StandardCharsets.ISO_8859_1);
-        assertTrue(loaded.contains(" io.micronaut.runner.generated.logback.LogbackConfigurator "), fast.output());
-        assertFalse(loaded.contains(" " + JORAN_CONFIGURATOR + " "), "the fast path loaded Joran");
-        assertFalse(loaded.contains(" io.micronaut.runner.generated.logback.JoranFallback "),
-                "the fast path loaded JoranFallback");
+        assertTrue(loaded.contains(" " + configurator + " "), fast.output());
+        assertFalse(loaded.contains(" ch.qos.logback.classic.joran."), "the fast path loaded Joran");
+        String configuratorPackage = configurator.substring(0, configurator.lastIndexOf('.') + 1);
+        assertEquals(List.of(configurator), loaded.lines()
+                        .filter(line -> line.contains(CLASS_LOAD_TAG + configuratorPackage))
+                        .map(line -> line.substring(line.indexOf(CLASS_LOAD_TAG) + CLASS_LOAD_TAG.length()).split(" ")[0])
+                        .toList(),
+                "the fast path loaded a generated class besides the configurator");
         assertEquals("hello from RunnerClassLoader", run(joran, sample, Map.of(), List.of()).body());
 
         Path configurationFile = work.resolve("configuration-file.xml");
@@ -281,7 +294,7 @@ class HelloNettySampleTest {
                         Map.of("logback.configurationFile", configurationFile.toString()),
                         List.of("-Dlogger.config=" + loggerConfig), "CONFIGURATION-FILE INFO"),
                 new Scenario("the opt-out with -Dlogger.config", Map.of(),
-                        List.of("-Dmicronaut.runner.logback.precompiled=false", "-Dlogger.config=" + loggerConfig),
+                        List.of("-Dmicronaut.logback.precompiled=false", "-Dlogger.config=" + loggerConfig),
                         "LOGGER-CONFIG INFO"));
         for (Scenario scenario : scenarios) {
             Run expected = run(joran, sample, scenario.environment(), scenario.jvmArguments());
@@ -294,7 +307,7 @@ class HelloNettySampleTest {
 
         // The runtime opt-out hands the configuration to Joran.
         Path optOutLoads = sample.resolve("build/logback-opt-out-classload.log");
-        run(precompiled, sample, Map.of(), List.of("-Dmicronaut.runner.logback.precompiled=false",
+        run(precompiled, sample, Map.of(), List.of("-Dmicronaut.logback.precompiled=false",
                 "-Xlog:class+load=info:file=build/logback-opt-out-classload.log"));
         assertTrue(Files.readString(optOutLoads, StandardCharsets.ISO_8859_1).contains(" " + JORAN_CONFIGURATOR + " "),
                 "the opt-out did not reach Joran");
@@ -307,8 +320,9 @@ class HelloNettySampleTest {
         String extractOutput = new String(extract.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         assertEquals(0, extract.waitFor(), extractOutput);
         Path applicationJar = extracted.resolve("hello-netty.jar");
-        assertTrue(hasEntry(applicationJar, LOGBACK_CONFIGURATOR), extractOutput);
-        assertTrue(hasEntry(applicationJar, "META-INF/services/ch.qos.logback.classic.spi.Configurator"));
+        for (String name : generated) {
+            assertTrue(hasEntry(applicationJar, name), () -> applicationJar + " lacks " + name + ":\n" + extractOutput);
+        }
         Run fromExtracted = run(applicationJar, sample, Map.of(), List.of());
         assertTrue(fromExtracted.body().startsWith("hello from "), fromExtracted.output());
     }
@@ -428,6 +442,37 @@ class HelloNettySampleTest {
     private static Path copy(Path source, Path target) throws IOException {
         Files.createDirectories(target.getParent());
         return Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /** The configurators an archive's application layer registers, in the order its service file names them. */
+    private static List<String> configurators(Path archive) throws IOException {
+        try (JarFile file = new JarFile(archive.toFile())) {
+            JarEntry service = file.getJarEntry(CLASSES + LOGBACK_SERVICE);
+            if (service == null) {
+                return List.of();
+            }
+            try (InputStream in = file.getInputStream(service)) {
+                return new String(in.readAllBytes(), StandardCharsets.UTF_8).lines().map(String::trim)
+                        .filter(line -> !line.isEmpty()).toList();
+            }
+        }
+    }
+
+    /**
+     * What Logback precompilation added to an archive's application layer, by name in that layer: the service file
+     * and every entry of its configurator's package.
+     */
+    private static List<String> generatedLogbackEntries(Path archive) throws IOException {
+        List<String> configurators = configurators(archive);
+        assertEquals(1, configurators.size(), () -> archive + " registers " + configurators);
+        String configurator = configurators.get(0);
+        String directory = CLASSES + configurator.substring(0, configurator.lastIndexOf('.') + 1).replace('.', '/');
+        List<String> generated = new ArrayList<>(List.of(LOGBACK_SERVICE));
+        try (JarFile file = new JarFile(archive.toFile())) {
+            file.stream().map(JarEntry::getName).filter(name -> name.startsWith(directory) && !name.endsWith("/"))
+                    .map(name -> name.substring(CLASSES.length())).forEach(generated::add);
+        }
+        return generated;
     }
 
     private static boolean hasEntry(Path jar, String name) throws IOException {
