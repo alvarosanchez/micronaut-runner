@@ -3111,6 +3111,48 @@ class RunnerJarBuilderTest {
         assertEquals(applicationLayer(control), applicationLayer(output));
     }
 
+    /**
+     * A generated name that the in-memory application layer already holds gives no entry and one warning. Micronaut
+     * AOT checks only the application output it reads, so no build input reaches this check: it guards against a
+     * name that this packager added to the layer itself, and the step is called directly.
+     */
+    @Test
+    void aGeneratedNameTheApplicationLayerAlreadyHoldsIsOneWarning() throws IOException {
+        Path resources = logbackResources("taken", Map.of("logback.xml", LOGBACK_XML));
+        RunnerJarSpec spec = logbackSpec(output(), resources, realLogback()).build();
+        List<Path> classPath = ClassFixtures.realLogback();
+        List<String> info = new ArrayList<>();
+        BuildLogger logger = new BuildLogger() {
+            @Override
+            public void info(String message) {
+                info.add(message);
+            }
+
+            @Override
+            public void warn(String message) {
+                throw new AssertionError("warned through the logger: " + message);
+            }
+        };
+        Map<String, byte[]> generated = LogbackPrecompilation.precompile(spec, classPath, Set.of(), logger,
+                warning -> fail("unexpected warning: " + warning));
+        assertEquals(3, generated.size(), generated.keySet()::toString);
+        List<String> registered = new String(generated.get(CONFIGURATOR_SERVICE), StandardCharsets.UTF_8).lines()
+                .filter(line -> !line.isBlank()).toList();
+        assertEquals(1, registered.size(), registered::toString);
+        String configurator = registered.get(0).trim().replace('.', '/') + ".class";
+        assertTrue(generated.containsKey(configurator), generated.keySet()::toString);
+        info.clear();
+        List<String> warnings = new ArrayList<>();
+
+        Map<String, byte[]> taken = LogbackPrecompilation.precompile(spec, classPath, Set.of(configurator), logger,
+                warnings::add);
+
+        assertEquals(Map.of(), taken);
+        assertEquals(List.of(), info);
+        assertEquals(List.of("The application output already carries '" + configurator + "'; no Logback configuration"
+                + " was precompiled and Logback will configure itself with Joran at startup"), warnings);
+    }
+
     /** The configurator the archive's application layer registers, which has to be the only one. */
     private static String registeredConfigurator(Path output) throws IOException {
         try (ZipFile archive = new ZipFile(output.toFile())) {
