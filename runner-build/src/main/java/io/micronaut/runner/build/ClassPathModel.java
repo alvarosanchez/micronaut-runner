@@ -46,7 +46,8 @@ import java.util.function.Predicate;
  * layer when it is declared multi-release, and only under the rules {@code IndexWriter.versionOf} and
  * {@code pathOf} apply to the index. For the winning copy it records the access flags, the superclass and the
  * interfaces, and, when a step asks for them, its nest host, the name, descriptor and flags of every field
- * and method, and whether its bytes pass the desugar step's pre-filter.</p>
+ * and method, whether its bytes pass the desugar step's pre-filter, and what {@link InterfaceInitializers}
+ * finds: whether a class is inert, and what an interface's quiet static initializer depends on.</p>
  *
  * <p>A name whose chain holds a variant for a version above {@value #RUNTIME_FEATURE}, ahead of its winner, is
  * {@linkplain #uncertain(String) uncertain}: a newer runtime would load another copy.</p>
@@ -323,9 +324,12 @@ final class ClassPathModel implements ClassHierarchyResolver {
         private final List<Member> members;
         private final String nestHost;
         private final boolean lambdas;
+        private final boolean inert;
+        private final InterfaceInitializers.Initializer initializer;
 
         private Copy(String name, int layer, int version, int flags, String superName, List<String> interfaces,
-                     List<Member> members, String nestHost, boolean lambdas) {
+                     List<Member> members, String nestHost, boolean lambdas, boolean inert,
+                     InterfaceInitializers.Initializer initializer) {
             this.name = name;
             this.layer = layer;
             this.version = version;
@@ -335,6 +339,8 @@ final class ClassPathModel implements ClassHierarchyResolver {
             this.members = members;
             this.nestHost = nestHost;
             this.lambdas = lambdas;
+            this.inert = inert;
+            this.initializer = initializer;
         }
 
         /**
@@ -440,6 +446,47 @@ final class ClassPathModel implements ClassHierarchyResolver {
                 }
             }
             return null;
+        }
+
+        /**
+         * Whether the class is inert: creating an instance of it runs no code of the class path besides the
+         * initialization of its interfaces ({@link InterfaceInitializers#inert}).
+         *
+         * @return whether it is inert; {@code false} when the model was built without member tables, or the
+         * class's code cannot be parsed
+         */
+        boolean inert() {
+            return inert;
+        }
+
+        /**
+         * What the quiet static initializer of an interface depends on ({@link InterfaceInitializers#summarize}).
+         *
+         * @return the summary; {@code null} when the class has no static initializer, has one that is not quiet
+         * or cannot be parsed, is not an interface, or the model was built without member tables
+         */
+        InterfaceInitializers.Initializer initializer() {
+            return initializer;
+        }
+
+        /**
+         * Whether the class declares a method that is neither abstract nor static, other than a constructor:
+         * for an interface, what makes the JVM initialize it before a class that implements it.
+         *
+         * @return whether such a method is declared; {@code false} when the model was built without member
+         * tables
+         */
+        boolean declaresConcreteInstanceMethod() {
+            if (members == null) {
+                return false;
+            }
+            for (Member member : members) {
+                if (member.descriptor.charAt(0) == '(' && member.name.charAt(0) != '<'
+                        && (member.flags & (ClassFile.ACC_ABSTRACT | ClassFile.ACC_STATIC)) == 0) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -553,6 +600,8 @@ final class ClassPathModel implements ClassHierarchyResolver {
             }
             List<Member> table = null;
             String nestHost = null;
+            boolean inert = false;
+            InterfaceInitializers.Initializer initializer = null;
             if (members) {
                 nestHost = model.findAttribute(Attributes.nestHost())
                         .map(attribute -> strings.intern(attribute.nestHost().asInternalName())).orElse(null);
@@ -566,12 +615,23 @@ final class ClassPathModel implements ClassHierarchyResolver {
                             strings.intern(method.methodType().stringValue()), method.flags().flagsMask()));
                 }
                 table = List.copyOf(table);
+                try {
+                    if ((model.flags().flagsMask() & ClassFile.ACC_INTERFACE) != 0) {
+                        initializer = InterfaceInitializers.summarize(internalName, model);
+                    } else {
+                        inert = InterfaceInitializers.inert(model);
+                    }
+                } catch (IllegalArgumentException e) {
+                    // Code the ClassFile API cannot parse proves nothing quiet; the class stays in the model.
+                    inert = false;
+                    initializer = null;
+                }
             }
             String superName = model.superclass().map(ClassEntry::asInternalName).map(strings::intern)
                     .orElse(null);
             return new Copy(strings.intern(internalName), layer, version, model.flags().flagsMask(),
                     superName, interfaces.isEmpty() ? List.of() : Collections.unmodifiableList(interfaces),
-                    table, nestHost, lambdas);
+                    table, nestHost, lambdas, inert, initializer);
         }
 
         /**

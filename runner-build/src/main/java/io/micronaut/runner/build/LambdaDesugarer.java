@@ -87,6 +87,12 @@ import java.util.Set;
  * the rest keep their call sites. The sites of a signed jar's classes and of the versioned variants the runtime
  * loads are still counted, so the report covers every lambda call site the runtime may link.</p>
  *
+ * <p>A site also stays when its functional interface, or a superinterface, declares a non-abstract instance
+ * method and a static initializer that is not provably quiet ({@link InterfaceInitializers}). Initializing the
+ * generated class runs that initializer first (JVMS 5.5), and should it reach the site again, on the same thread
+ * or another, the class is still being initialized: a capture-free site would return {@code null}, and two
+ * threads could wait for each other. {@code LambdaMetafactory} links the site again instead.</p>
+ *
  * <h2>The nest is the unit</h2>
  * <p>{@link #plan(ClassTransformPipeline.Layer, ClassTransformPipeline.JarClasses)} plans a whole jar before
  * any of it is written, because a nest host may come before its members. The pipeline then rewrites, verifies
@@ -133,6 +139,10 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
     private static final String INSTANCE_FIELD = "INSTANCE";
 
     private static final String CONSTRUCTOR = ConstantDescs.INIT_NAME;
+
+    private static final String CLASS_INIT = ConstantDescs.CLASS_INIT_NAME;
+
+    private static final String NO_ARGUMENTS = "()V";
 
     /** The launcher's own package, whose classes the launcher's loader defines when it has them. */
     private static final String LAUNCHER_PREFIX = "io/micronaut/runner/";
@@ -418,6 +428,91 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
     }
 
     /**
+     * Whether initializing a class that implements an interface may run a static initializer that could reach a
+     * lambda call site again: the JVM initializes every superinterface that declares a non-abstract instance
+     * method before the class (JVMS 5.5), and such an interface may also have a static initializer that is not
+     * quiet ({@link InterfaceInitializers}). An interface that cannot be found, that a newer runtime or the
+     * launcher may load another copy of, or that is the JDK's, whose initializers are not read, counts as such.
+     *
+     * @param internalName the interface, or a superinterface
+     * @param seen         the interfaces of this walk visited so far
+     * @param initializing an interface whose initialization is in progress on the thread, which counts as quiet,
+     *                     or {@code null}
+     * @param checking     the interfaces whose quietness is being decided, to stop at a cycle
+     */
+    private boolean initializesLoudly(String internalName, Set<String> seen, String initializing,
+                                      Set<String> checking) {
+        if (!seen.add(internalName)) {
+            return false;
+        }
+        List<String> interfaces = quietlyInitialized(internalName, initializing, checking);
+        if (interfaces == null) {
+            return true;
+        }
+        for (String superinterface : interfaces) {
+            if (initializesLoudly(superinterface, seen, initializing, checking)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The superinterfaces of an interface whose own initialization, if the JVM runs it for a class that
+     * implements the interface, is quiet; {@code null} when it may not be.
+     */
+    private List<String> quietlyInitialized(String internalName, String initializing, Set<String> checking) {
+        if (JdkClasses.owns(packageOf(internalName))) {
+            JdkClasses.JdkClass jdk = JdkClasses.find(internalName);
+            boolean loud = jdk == null
+                    || jdk.method(CLASS_INIT, NO_ARGUMENTS) != null && jdk.declaresConcreteInstanceMethod();
+            return loud ? null : jdk.interfaces();
+        }
+        Optional<ClassPathModel.Copy> copy = model.winner(internalName);
+        if (copy.isEmpty() || model.uncertain(internalName) || preempted(internalName)) {
+            return null;
+        }
+        boolean initialized = copy.get().member(CLASS_INIT, NO_ARGUMENTS) != null
+                && copy.get().declaresConcreteInstanceMethod() && !internalName.equals(initializing);
+        return initialized && !quiet(copy.get(), checking) ? null : copy.get().interfaces();
+    }
+
+    /**
+     * Whether an interface's static initializer is quiet: the scan found it quiet on its own, every class it
+     * instantiates is inert, and linking its lambdas, or initializing those classes, initializes no other
+     * interface loudly. A cycle counts as loud.
+     */
+    private boolean quiet(ClassPathModel.Copy copy, Set<String> checking) {
+        InterfaceInitializers.Initializer initializer = copy.initializer();
+        if (initializer == null || !checking.add(copy.name())) {
+            return false;
+        }
+        try {
+            for (String instantiated : initializer.instantiated()) {
+                Optional<ClassPathModel.Copy> type = model.winner(instantiated);
+                if (type.isEmpty() || model.uncertain(instantiated) || preempted(instantiated)
+                        || !type.get().inert()) {
+                    return false;
+                }
+                Set<String> seen = new HashSet<>();
+                for (String implemented : type.get().interfaces()) {
+                    if (initializesLoudly(implemented, seen, copy.name(), checking)) {
+                        return false;
+                    }
+                }
+            }
+            for (String functionalInterface : initializer.lambdaInterfaces()) {
+                if (initializesLoudly(functionalInterface, new HashSet<>(), copy.name(), checking)) {
+                    return false;
+                }
+            }
+            return true;
+        } finally {
+            checking.remove(copy.name());
+        }
+    }
+
+    /**
      * Whether any {@code invokedynamic} constant of a class is bootstrapped by {@code LambdaMetafactory}: the
      * marker alone may be a string the class merely mentions.
      */
@@ -515,6 +610,13 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
          * whose default would change with a bridge.
          */
         SERIAL_VERSION_UID("serialVersionUid"),
+
+        /**
+         * The functional interface, or one of its superinterfaces, declares a non-abstract instance method and a
+         * static initializer that is not quiet ({@link InterfaceInitializers}): initializing the generated class
+         * would run it first, and it may reach the site again.
+         */
+        INTERFACE_INIT("interfaceInit"),
 
         /** The site has a shape {@code LambdaMetafactory} would reject, or one this step does not generate. */
         SHAPE("shape"),
@@ -1620,6 +1722,9 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
                 }
                 if (!resolves(factoryType, samType, instantiatedType, implType, owner, instance)) {
                     return Reason.UNRESOLVED_TYPE;
+                }
+                if (initializesLoudly(internalName(functionalInterface), new HashSet<>(), null, new HashSet<>())) {
+                    return Reason.INTERFACE_INIT;
                 }
 
                 int number = next++;
