@@ -1,7 +1,8 @@
 The `stripLocalVariables` option, off by default, drops the tables that name local variables from the classes of
-your dependencies when Runner packages the application. Line numbers, source file names, reflective parameter names,
-generic signatures and annotations are kept. Your own classes, and the modules of your own build, keep everything.
-With `PRESERVE` compression, the option does nothing (<<compression,Compression Modes>>).
+your dependencies when Runner packages the application, with Micronaut AOT's local-variable stripping, in every
+compression mode. You do not need Micronaut AOT's optimizer for it. Line numbers, source file names, reflective
+parameter names, generic signatures and annotations are kept. Your own classes, and the modules of your own build,
+keep everything.
 
 The trade-off: the archive gets somewhat smaller, and a start without a <<jdkAotCache,JDK AOT cache>> slightly
 faster; with a cache, it makes no difference you would notice. In exchange, dependency code is harder to debug:
@@ -15,8 +16,8 @@ relies on it can notice, such as a JSON mapper that orders a dependency's proper
 * The archive is byte-for-byte reproducible only when it is built with the same JDK build.
 
 Paranamer's `BytecodeReadingParanamer`, AspectJ's weaver and Spring's `LocalVariableTableParameterNameDiscoverer`
-(before Spring 6.1) read these tables at run time. When one of them is on the class path, Runner keeps every table
-and warns in the build log.
+(before Spring 6.1) read these tables at run time. When one of them is on the class path, every table is kept and the
+build log warns.
 
 To turn it on, add it to `options` in Gradle. In Maven, set the property `micronaut.runner.stripLocalVariables` to
 `true`, or add `<stripLocalVariables>true</stripLocalVariables>` to `<runnerOptions>`

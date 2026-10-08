@@ -18,6 +18,17 @@ micronautBuild {
     javaVersion = 25
 }
 
+repositories {
+    // micronaut-aot 3.2.0-SNAPSHOT, until 3.2.0 is released (#251).
+    maven {
+        url = 'https://central.sonatype.com/repository/maven-snapshots/'
+        mavenContent {
+            snapshotsOnly()
+            includeGroup 'io.micronaut.aot'
+        }
+    }
+}
+
 dependencies {
     // MicronautBuildCommonPlugin adds a version-less 'org.junit.platform:junit-platform-launcher' to
     // testRuntimeOnly; with enableBom=false nothing manages that version, hence the JUnit BOM here.

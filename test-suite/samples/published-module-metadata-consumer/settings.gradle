@@ -4,6 +4,20 @@ dependencyResolutionManagement {
             url = uri(providers.gradleProperty('runner.repo').get())
             metadataSources { gradleMetadata() }
         }
+        // runner-build's micronaut-aot-bytecode, which Maven Central serves.
+        mavenCentral {
+            content {
+                includeGroup 'io.micronaut.aot'
+            }
+        }
+        // runner-build's micronaut-aot-bytecode 3.2.0-SNAPSHOT, until 3.2.0 is released (#251).
+        maven {
+            url = uri('https://central.sonatype.com/repository/maven-snapshots/')
+            mavenContent {
+                snapshotsOnly()
+                includeGroup 'io.micronaut.aot'
+            }
+        }
     }
 }
 

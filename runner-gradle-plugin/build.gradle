@@ -28,3 +28,28 @@ dependencies {
     pluginsUnderTest project(path: ':micronaut-runner-build', configuration: 'repository')
     pluginsUnderTest project(path: path, configuration: 'repository')
 }
+
+// The fixtures of the functional tests resolve the plugin from the aggregated test repository alone, so the one module
+// from outside this build that it needs, micronaut-aot-bytecode, is laid out there too, as a Maven repository holds it.
+configurations {
+    externalModulesUnderTest {
+        canBeResolved = true
+        canBeConsumed = false
+        transitive = false
+    }
+}
+
+def aotBytecode = libs.micronaut.aot.bytecode.get()
+def aotBytecodeCoordinates = "${aotBytecode.group}:${aotBytecode.name}:${aotBytecode.version}"
+
+dependencies {
+    externalModulesUnderTest aotBytecodeCoordinates
+    externalModulesUnderTest "${aotBytecodeCoordinates}@pom"
+}
+
+tasks.named('prepareRepository', Sync) {
+    from(configurations.externalModulesUnderTest) {
+        into "${aotBytecode.group.replace('.', '/')}/${aotBytecode.name}/${aotBytecode.version}"
+        rename { String file -> "${aotBytecode.name}-${aotBytecode.version}${file.substring(file.lastIndexOf('.'))}" }
+    }
+}

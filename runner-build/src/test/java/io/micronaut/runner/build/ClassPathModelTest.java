@@ -25,7 +25,6 @@ import java.lang.constant.MethodTypeDesc;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -171,15 +170,11 @@ class ClassPathModelTest {
     }
 
     @Test
-    void theFirstWatchedClassIsReportedAndAClassWhoseNameDoesNotMatchItsEntryIsLeftOut() {
-        Predicate<String> watch = name -> name.startsWith("com/watched/");
-        ClassPathModel model = model(false, watch,
+    void aClassWhoseNameDoesNotMatchItsEntryIsLeftOut() {
+        ClassPathModel model = model(false,
                 layer(0, "application", false, Map.of(entry("com/example/Wrong"), type("com/example/Right",
-                        "java/lang/Object"))),
-                layer(1, "first", false, Map.of("com/watched/First.class", new byte[0])),
-                layer(2, "second", false, Map.of("com/watched/Second.class", new byte[0])));
+                        "java/lang/Object"))));
 
-        assertEquals(new ClassPathModel.Watched("first", "com/watched/First.class"), model.watched().orElseThrow());
         assertTrue(model.winner("com/example/Wrong").isEmpty());
         assertTrue(model.winner("com/example/Right").isEmpty());
     }
@@ -226,7 +221,7 @@ class ClassPathModelTest {
         }
 
         for (boolean members : List.of(false, true)) {
-            ClassPathModel.LayerScan scan = ClassPathModel.scan(1, "dependency", false, members, name -> false,
+            ClassPathModel.LayerScan scan = ClassPathModel.scan(1, "dependency", false, members,
                     new ClassPathModel.Interner());
             for (byte[] bytes : damaged) {
                 scan.accept(entry("com/example/Impl"), bytes);
@@ -275,7 +270,7 @@ class ClassPathModelTest {
 
     @Test
     void aClassAboveTheSizeLimitIsNotRead() {
-        ClassPathModel.LayerScan scan = ClassPathModel.scan(1, "dependency", false, false, name -> false,
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(1, "dependency", false, false,
                 new ClassPathModel.Interner());
 
         assertTrue(scan.wants(entry("com/example/Large"), ClassPathModel.MAX_CLASS_SIZE));
@@ -283,15 +278,11 @@ class ClassPathModelTest {
     }
 
     private static ClassPathModel model(boolean members, Layer... layers) {
-        return model(members, name -> false, layers);
-    }
-
-    private static ClassPathModel model(boolean members, Predicate<String> watch, Layer... layers) {
         ClassPathModel.Interner strings = new ClassPathModel.Interner();
         List<ClassPathModel.LayerScan> scans = new ArrayList<>();
         for (Layer layer : layers) {
             ClassPathModel.LayerScan scan = ClassPathModel.scan(layer.position, layer.name, layer.multiRelease,
-                    members, watch, strings);
+                    members, strings);
             for (Map.Entry<String, byte[]> entry : new java.util.TreeMap<>(layer.entries).entrySet()) {
                 if (scan.wants(entry.getKey(), entry.getValue().length)) {
                     scan.accept(entry.getKey(), entry.getValue());

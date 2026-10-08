@@ -594,8 +594,7 @@ class RunnerJarBuilderTest {
         try (ZipWriter writer = ZipWriter.create(large, ZipWriter.DEFAULT_TIMESTAMP)) {
             writer.writeEntry("large/payload.bin", payload);
         }
-        // Compiled with -g, so the strip step, which the builds below turn on, rewrites its classes and the
-        // pipeline runs inside the stages.
+        // Compiled with -g, so stripping, which the builds below turn on, rewrites its classes.
         Path debug = ClassFixtures.jar(directory.resolve("debug-lib.jar"), ClassFixtures.classes(
                 ClassFixtures.compile(directory.resolve("debug-src"), directory.resolve("debug-classes"),
                         List.of("-g", "--release", "25"), Map.of(
@@ -681,13 +680,13 @@ class RunnerJarBuilderTest {
                 assertTrue(inspectHeader(parallel, "Nested compression").matches("\\d+ stored, [1-9]\\d* deflated"),
                         "HYBRID compressed the cold classes");
             }
+            for (TransformReport report : parallelResult.transforms()) {
+                assertTrue(report.rewritten() > 0, parallelResult.transforms()::toString);
+            }
             if (compression != Compression.PRESERVE) {
-                assertEquals(List.of(LambdaDesugarer.NAME, LocalVariableStripper.NAME),
+                assertEquals(List.of(RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName(), LambdaDesugarer.NAME),
                         parallelResult.transforms().stream().map(TransformReport::step).toList(),
                         "the steps in the order they run");
-                for (TransformReport report : parallelResult.transforms()) {
-                    assertTrue(report.rewritten() > 0, parallelResult.transforms()::toString);
-                }
                 try (RunnerJarArchive reader = RunnerJarArchive.open(parallel)) {
                     assertTrue(reader.index().findClass("com.example.caller.Caller$$Lambda$R0")
                             != IndexFormat.NO_INDEX, "the call site into the other dependency is desugared");
@@ -695,7 +694,9 @@ class RunnerJarBuilderTest {
                             != IndexFormat.NO_INDEX);
                 }
             } else {
-                assertEquals(List.of(), parallelResult.transforms());
+                assertEquals(List.of(RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName()),
+                        parallelResult.transforms().stream().map(TransformReport::step).toList(),
+                        "PRESERVE nests the stripped copies, and desugars nothing");
             }
             List<String> warnings = parallelResult.warnings();
             assertEquals(sequentialResult.warnings(), warnings, compression + ": the same warnings");
@@ -3450,6 +3451,78 @@ class RunnerJarBuilderTest {
         }
     }
 
+    @ParameterizedTest
+    @EnumSource(Compression.class)
+    void stripsEveryDependencyButAProjectModuleInEveryMode(Compression compression) throws Exception {
+        HybridFixture fixture = hybridFixture();
+        Path module = Files.copy(fixture.dependency(), fixtures.resolve("strip-" + compression + "-module.jar"),
+                StandardCopyOption.REPLACE_EXISTING);
+        Path debugged = ClassFixtures.compile(fixtures.resolve("strip-" + compression + "-src"),
+                fixtures.resolve("strip-" + compression + "-classes"), List.of("-g"), Map.of("hyapp/Debugged.java", """
+                        package hyapp;
+                        public class Debugged {
+                            public static int twice(int value) {
+                                int doubled = value * 2;
+                                return doubled;
+                            }
+                        }
+                        """));
+        Path output = output();
+        RecordingLogger logger = new RecordingLogger();
+
+        RunnerJarResult result = RunnerJarBuilder.build(fixture.spec(output, compression)
+                .applicationOutput(List.of(fixture.application(), debugged))
+                .dependencies(List.of(Dependency.of(fixture.dependency()), Dependency.of(module).projectModule(true)))
+                .startupClasses(startupClasses("hyapp.Main\nhy.Listed\n")).stripLocalVariables(true).build(), logger);
+
+        assertEquals(List.of(), logger.warnings);
+        assertFalse(hasLocalVariableTable(nestedEntry(output, "hy-lib.jar", "hy/Debug.class")), "stripped");
+        assertTrue(hasLocalVariableTable(nestedEntry(output, module.getFileName().toString(), "hy/Debug.class")),
+                "a project module keeps its tables");
+        try (ZipFile zip = new ZipFile(output.toFile())) {
+            assertTrue(hasLocalVariableTable(zip.getInputStream(zip.getEntry(IndexFormat.CLASSES_PREFIX
+                    + "hyapp/Debugged.class")).readAllBytes()), "the application layer keeps its tables");
+        }
+        TransformReport strip = result.transforms().get(0);
+        assertEquals(RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName(), strip.step());
+        assertEquals(2, strip.rewritten(), strip::toString);
+        assertEquals(5, strip.classes(), "the classes of hy-lib.jar only: " + strip);
+        assertTrue(logger.infos.contains("Stripped local-variable tables from 2 of 5 dependency classes in 1 jars ("
+                + strip.bytesSaved() + " bytes saved, 0 fallbacks)"), logger.infos::toString);
+        try (ZipFile zip = new ZipFile(output.toFile())) {
+            String transforms = new String(zip.getInputStream(zip.getEntry(IndexFormat.TRANSFORMS_ENTRY_NAME))
+                    .readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(transforms.contains("MICRONAUT-INF/lib/hy-lib.jar\tstripLocalVariables\t2\t3\t0\t"
+                    + strip.bytesSaved() + "\n"), transforms);
+            assertFalse(transforms.contains(module.getFileName() + "\tstripLocalVariables"), transforms);
+        }
+        if (compression == Compression.PRESERVE) {
+            assertArrayEquals(Files.readAllBytes(module), nestedJar(output, module.getFileName().toString()),
+                    "PRESERVE nests the project module byte for byte");
+        }
+    }
+
+    @Test
+    void stripsNothingAndWarnsWhenALibraryReadsTheTables() throws Exception {
+        HybridFixture fixture = hybridFixture();
+        Path reader = fixtures.resolve("paranamer.jar");
+        writeJar(reader, manifest(attributes -> { }), Map.of(
+                "com/thoughtworks/paranamer/BytecodeReadingParanamer.class", fixture.classes().get("hy/Plain.class")));
+        Path output = output();
+        RecordingLogger logger = new RecordingLogger();
+
+        RunnerJarResult result = RunnerJarBuilder.build(fixture.spec(output, Compression.STORED)
+                .dependencies(List.of(Dependency.of(fixture.dependency()), Dependency.of(reader)))
+                .stripLocalVariables(true).build(), logger);
+
+        assertEquals(1, logger.warnings.size(), logger.warnings::toString);
+        assertTrue(logger.warnings.get(0).contains("com/thoughtworks/paranamer/BytecodeReadingParanamer.class, which"
+                + " reads local-variable tables at run time"), logger.warnings.get(0));
+        assertTrue(hasLocalVariableTable(nestedEntry(output, "hy-lib.jar", "hy/Debug.class")), "nothing stripped");
+        assertTrue(result.transforms().stream().noneMatch(report -> report.step().equals(
+                RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName())), result.transforms()::toString);
+    }
+
     @Test
     void hybridStoresTheListedClassesAndCompressesTheOthers() throws Exception {
         HybridFixture fixture = hybridFixture();
@@ -3631,6 +3704,25 @@ class RunnerJarBuilderTest {
             }
         }
         return regions;
+    }
+
+    /** The bytes of a nested jar of an archive. */
+    private static byte[] nestedJar(Path archive, String jar) throws IOException {
+        try (ZipFile zip = new ZipFile(archive.toFile())) {
+            return zip.getInputStream(zip.getEntry(IndexFormat.LIB_PREFIX + jar)).readAllBytes();
+        }
+    }
+
+    /** The content of one entry of a nested jar of an archive. */
+    private static byte[] nestedEntry(Path archive, String jar, String entry) throws IOException {
+        try (ZipInputStream nested = new ZipInputStream(new java.io.ByteArrayInputStream(nestedJar(archive, jar)))) {
+            for (ZipEntry candidate = nested.getNextEntry(); candidate != null; candidate = nested.getNextEntry()) {
+                if (candidate.getName().equals(entry)) {
+                    return nested.readAllBytes();
+                }
+            }
+        }
+        throw new AssertionError(jar + " holds no " + entry);
     }
 
     private static boolean hasLocalVariableTable(byte[] bytes) {

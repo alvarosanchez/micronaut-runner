@@ -35,8 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Runs the class transform pipeline, with every step enabled, over the class paths of real applications,
- * and verifies both sides of every class it rewrites.
+ * Runs the class transform pipeline, with lambda desugaring, over the class paths of real applications, and
+ * verifies both sides of every class it rewrites. Micronaut AOT's own corpus test covers local-variable stripping.
  *
  * <p>The class paths come from {@code -Prunner.transformCorpus=<directory>}: one text file per application,
  * one jar per line in class-path order, as {@code test-suite/corpus/classpath.init.gradle} writes them. The
@@ -85,12 +85,7 @@ class TransformCorpusTest {
         }
         assertFalse(dependencies.isEmpty(), name + " names no jar");
         ClassPathModel model = scan(dependencies);
-        model.watched().ifPresent(watched -> System.out.println(classPathFile.getFileName() + ": "
-                + watched.layer() + " contains " + watched.entry()
-                + ", which reads local-variable tables; a build would not strip this class path"));
-        // Every step, in the order a build runs them: desugaring lambdas, then stripping (when it is turned on).
-        ClassTransformPipeline pipeline = new ClassTransformPipeline(
-                List.of(new LambdaDesugarer(model), new LocalVariableStripper()), model);
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LambdaDesugarer(model)), model);
         Function<byte[], List<String>> verifier = ClassTransformPipeline.verifierOf(model);
 
         List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
@@ -99,8 +94,7 @@ class TransformCorpusTest {
             Path dependency = dependencies.get(position);
             try (ZipReader reader = ZipReader.open(dependency)) {
                 ClassTransformPipeline.JarRun run = pipeline.start(new ClassTransformPipeline.Layer(
-                        dependency.getFileName().toString(), position + 1, false, reader.hasSignatureFiles(),
-                        false));
+                        dependency.getFileName().toString(), position + 1, false, reader.hasSignatureFiles()));
                 // As a repack does: the nests are planned, rewritten and gated before the entry loop.
                 run.plan(new ZipRepacker.SourceClasses(reader));
                 for (ZipEntryInfo entry : reader.entries()) {
@@ -128,8 +122,7 @@ class TransformCorpusTest {
                         output = run.process(entry.name(), original);
                     }
                     if (output != original) {
-                        // The gate's own comparison, which ignores the bytecode offset an error names: a
-                        // rebuilt pool moves the errors a class already had.
+                        // The gate's own comparison, which ignores the bytecode offset an error names.
                         String error = ClassTransformPipeline.grown(verifier.apply(output),
                                 verifier.apply(original));
                         if (error != null) {
@@ -163,8 +156,7 @@ class TransformCorpusTest {
     private static ClassPathModel scan(List<Path> dependencies) throws IOException {
         ClassPathModel.Interner strings = new ClassPathModel.Interner();
         List<ClassPathModel.LayerScan> scans = new ArrayList<>();
-        scans.add(ClassPathModel.scan(0, "the application output", false, true,
-                LocalVariableStripper::isKnownReader, strings));
+        scans.add(ClassPathModel.scan(0, "the application output", false, true, strings));
         int layer = 1;
         for (Path dependency : dependencies) {
             try (ZipReader reader = ZipReader.open(dependency)) {
@@ -172,7 +164,7 @@ class TransformCorpusTest {
                 boolean multiRelease = manifest != null
                         && "true".equalsIgnoreCase(manifest.getMainAttributes().getValue("Multi-Release"));
                 ClassPathModel.LayerScan scan = ClassPathModel.scan(layer++, "the dependency " + dependency,
-                        multiRelease, true, LocalVariableStripper::isKnownReader, strings);
+                        multiRelease, true, strings);
                 for (ZipEntryInfo entry : reader.entries()) {
                     if (!entry.directory() && scan.wants(entry.name(), entry.uncompressedSize())) {
                         scan.accept(entry.name(), reader.read(entry));

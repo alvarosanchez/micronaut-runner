@@ -33,7 +33,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Predicate;
 
 /**
  * A read-only, header-only model of every class on the runtime class path of a runner jar: the application
@@ -86,14 +85,11 @@ final class ClassPathModel implements ClassHierarchyResolver {
 
     private final List<String> layers;
 
-    private final Watched watched;
-
     private final boolean members;
 
-    private ClassPathModel(Map<String, Resolution> classes, List<String> layers, Watched watched, boolean members) {
+    private ClassPathModel(Map<String, Resolution> classes, List<String> layers, boolean members) {
         this.classes = classes;
         this.layers = layers;
-        this.watched = watched;
         this.members = members;
     }
 
@@ -104,13 +100,11 @@ final class ClassPathModel implements ClassHierarchyResolver {
      * @param name         what messages call the layer
      * @param multiRelease whether the layer's versioned directories count
      * @param members      whether to record member tables
-     * @param watch        the class entries worth reporting, such as a library that reads what a step drops
      * @param strings      the interner every scan of one build shares
      * @return the scan
      */
-    static LayerScan scan(int layer, String name, boolean multiRelease, boolean members, Predicate<String> watch,
-                          Interner strings) {
-        return new LayerScan(layer, name, multiRelease, members, watch, strings);
+    static LayerScan scan(int layer, String name, boolean multiRelease, boolean members, Interner strings) {
+        return new LayerScan(layer, name, multiRelease, members, strings);
     }
 
     /**
@@ -123,12 +117,8 @@ final class ClassPathModel implements ClassHierarchyResolver {
     static ClassPathModel merge(List<LayerScan> scans, boolean members) {
         Map<String, Resolution> classes = new HashMap<>();
         List<String> layers = new ArrayList<>(scans.size());
-        Watched watched = null;
         for (LayerScan scan : scans) {
             layers.add(scan.name);
-            if (watched == null && scan.watched != null) {
-                watched = new Watched(scan.name, scan.watched);
-            }
             // Within one layer, variants in descending version before the base entry; the sort is stable, so
             // a name a jar carries twice resolves to its first copy, as the index does.
             Map<String, List<Copy>> byName = new LinkedHashMap<>();
@@ -152,7 +142,7 @@ final class ClassPathModel implements ClassHierarchyResolver {
                 }
             }
         }
-        return new ClassPathModel(classes, List.copyOf(layers), watched, members);
+        return new ClassPathModel(classes, List.copyOf(layers), members);
     }
 
     /**
@@ -206,15 +196,6 @@ final class ClassPathModel implements ClassHierarchyResolver {
      */
     String layerName(int layer) {
         return layers.get(layer);
-    }
-
-    /**
-     * The first watched class the scans found, in class-path order.
-     *
-     * @return the layer and entry of the class, or empty when no layer holds one
-     */
-    Optional<Watched> watched() {
-        return Optional.ofNullable(watched);
     }
 
     /**
@@ -288,15 +269,6 @@ final class ClassPathModel implements ClassHierarchyResolver {
     private static String packageOf(String internalName) {
         int slash = internalName.lastIndexOf('/');
         return slash < 0 ? "" : internalName.substring(0, slash);
-    }
-
-    /**
-     * The class entry a scan found that a caller asked to be told about.
-     *
-     * @param layer the name of the layer that holds it
-     * @param entry the class's entry name, relative to its layer
-     */
-    record Watched(String layer, String entry) {
     }
 
     /**
@@ -474,18 +446,14 @@ final class ClassPathModel implements ClassHierarchyResolver {
         private final String name;
         private final boolean multiRelease;
         private final boolean members;
-        private final Predicate<String> watch;
         private final Interner strings;
         private final List<Copy> copies = new ArrayList<>();
-        private String watched;
 
-        private LayerScan(int layer, String name, boolean multiRelease, boolean members, Predicate<String> watch,
-                          Interner strings) {
+        private LayerScan(int layer, String name, boolean multiRelease, boolean members, Interner strings) {
             this.layer = layer;
             this.name = Objects.requireNonNull(name, "name");
             this.multiRelease = multiRelease;
             this.members = members;
-            this.watch = Objects.requireNonNull(watch, "watch");
             this.strings = Objects.requireNonNull(strings, "strings");
         }
 
@@ -501,10 +469,7 @@ final class ClassPathModel implements ClassHierarchyResolver {
             if (path == null) {
                 return false;
             }
-            if (watched == null && watch.test(path)) {
-                watched = path;
-            }
-            return size <= MAX_CLASS_SIZE && !LocalVariableStripper.isModuleInfo(path);
+            return size <= MAX_CLASS_SIZE && !LambdaDesugarer.isModuleInfo(path);
         }
 
         /**

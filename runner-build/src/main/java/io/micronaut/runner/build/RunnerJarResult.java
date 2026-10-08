@@ -219,10 +219,11 @@ public final class RunnerJarResult {
 
     /**
      * What each build-time class transform did to the classes it ran over, one report per transform that
-     * ran, in the order they ran: {@code desugarLambdas}, which runs over the dependencies and the application
-     * layer, then {@code stripLocalVariables}, which runs over the dependencies. It is empty when none ran:
-     * every transform is turned off, the dependencies are nested with {@link Compression#PRESERVE}, or a
-     * transform was turned off for the build because the class path needs what it would remove.
+     * ran, in the order they ran: {@code stripLocalVariables}, which Micronaut AOT runs over the dependencies that
+     * are not project modules, then {@code desugarLambdas}, which runs over the dependencies and the application
+     * layer. It is empty when none ran: every transform is turned off, the dependencies are nested with
+     * {@link Compression#PRESERVE} and not stripped, or stripping stood down because the class path needs what it
+     * would remove.
      *
      * @return the reports, unmodifiable
      */

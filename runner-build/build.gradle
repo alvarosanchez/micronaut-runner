@@ -49,6 +49,10 @@ dependencies {
     implementation projects.micronautRunnerLauncher
     launcher projects.micronautRunnerLauncher
 
+    // Micronaut AOT's class path rewrite, which the stripLocalVariables option runs. It depends on nothing but the
+    // JDK at run time, and no public signature of this library names one of its types.
+    implementation libs.micronaut.aot.bytecode
+
     // Only for io.micronaut.core.annotation.Internal, which japicmp's rules read from the class files. It is
     // compileOnly, so neither micronaut-core nor its BOM reaches the published POM.
     compileOnly platform(libs.micronaut.core)

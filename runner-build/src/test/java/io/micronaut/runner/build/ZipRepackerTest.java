@@ -398,7 +398,7 @@ class ZipRepackerTest {
                                 public class Debug {
                                     public static int twice(int value) {
                                         int doubled = value * 2;
-                                        return doubled;
+                                        return doubled + "a".length();
                                     }
                                 }
                                 """,
@@ -410,17 +410,17 @@ class ZipRepackerTest {
             parentCommitEntry(zip, "org/example/data.txt", "data".getBytes(StandardCharsets.UTF_8), true, 2);
             parentCommitEntry(zip, "org/example/Plain.class", compiled.get("org/example/Plain.class"), false, 3);
         }
-        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "classes", false, false, name -> false,
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "classes", false, false,
                 new ClassPathModel.Interner());
         compiled.forEach(scan::accept);
-        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LocalVariableStripper()),
-                ClassPathModel.merge(List.of(scan), false));
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new RewriteStep(
+                Set.of("org/example/Debug.class"), Set.of())), ClassPathModel.merge(List.of(scan), false));
 
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         ZipRepacker.RepackResult result;
         ZipRepacker.RepackResult plain;
         ClassTransformPipeline.JarRun run = pipeline.start(
-                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/with-classes.jar", 0, false, false, false));
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/with-classes.jar", 0, false, false));
         try (ZipReader reader = ZipReader.open(source)) {
             result = ZipRepacker.repack(reader, bytes, run);
             plain = ZipRepacker.repack(reader, new ByteArrayOutputStream());
@@ -439,8 +439,7 @@ class ZipRepackerTest {
             assertEquals(crc.getValue(), rewritten.crc32(), rewritten.name() + " carries the CRC of its bytes");
             assertEquals(content.length, rewritten.uncompressedSize(), rewritten.name());
             if (rewritten.name().equals("org/example/Debug.class")) {
-                assertTrue(rewritten.uncompressedSize() < original.uncompressedSize(), "the class was stripped");
-                assertNotEquals(original.crc32(), rewritten.crc32());
+                assertNotEquals(original.crc32(), rewritten.crc32(), "the class was rewritten");
             } else {
                 assertEquals(original.crc32(), rewritten.crc32(), rewritten.name() + " is unchanged");
                 assertEquals(original.uncompressedSize(), rewritten.uncompressedSize(), rewritten.name());
@@ -451,7 +450,7 @@ class ZipRepackerTest {
         try (ZipReader reader = ZipReader.open(nested)) {
             assertEquals(result.entries(), reader.entries(), "the reported entries describe the nested jar");
         }
-        assertEquals(new ClassTransformPipeline.StepCount(LocalVariableStripper.NAME, 1, 1, 0,
+        assertEquals(new ClassTransformPipeline.StepCount("rewrite", 1, 1, 0,
                 compiled.get("org/example/Debug.class").length - result.entries().get(1).uncompressedSize()),
                 run.report().counts().get(0));
     }
@@ -466,14 +465,13 @@ class ZipRepackerTest {
         ordered.put("fix/Scenario.class", nestHost);
         Path source = ClassFixtures.jar(temp.resolve("desugared/fix.jar"), ordered);
         ClassPathModel model = LambdaFixtures.model(layers);
-        ClassTransformPipeline pipeline = new ClassTransformPipeline(
-                List.of(new LambdaDesugarer(model), new LocalVariableStripper()), model);
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LambdaDesugarer(model)), model);
 
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         ZipRepacker.RepackResult result;
         ZipRepacker.RepackResult plain;
         ClassTransformPipeline.JarRun run = pipeline.start(
-                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fix.jar", 1, false, false, false));
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fix.jar", 1, false, false));
         try (ZipReader reader = ZipReader.open(source)) {
             result = ZipRepacker.repack(reader, bytes, run);
             plain = ZipRepacker.repack(reader, new ByteArrayOutputStream());
@@ -528,7 +526,7 @@ class ZipRepackerTest {
 
     /** The layer every run of these tests stages. */
     private static final ClassTransformPipeline.Layer LAYER =
-            new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fixture.jar", 1, false, false, false);
+            new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/fixture.jar", 1, false, false);
 
     @Test
     void ordersAJarHotFirstAndKeepsEveryEntrysBytes() throws IOException {
@@ -613,10 +611,10 @@ class ZipRepackerTest {
                         """)));
         Path source = ClassFixtures.jar(temp.resolve("empty-options.jar"), compiled);
         ClassPathModel model = modelOf(compiled);
-        byte[] none = repackBytes(source, new ClassTransformPipeline(List.of(new LocalVariableStripper()), model)
-                .start(LAYER));
-        byte[] unrelated = repackBytes(source, new ClassTransformPipeline(List.of(new LocalVariableStripper()),
-                model, ClassTransformPipeline.Options.of(List.of("x.Absent"), false)).start(LAYER));
+        RewriteStep rewrite = new RewriteStep(Set.of("org/example/Debug.class"), Set.of());
+        byte[] none = repackBytes(source, new ClassTransformPipeline(List.of(rewrite), model).start(LAYER));
+        byte[] unrelated = repackBytes(source, new ClassTransformPipeline(List.of(rewrite), model,
+                ClassTransformPipeline.Options.of(List.of("x.Absent"), false)).start(LAYER));
         assertArrayEquals(none, unrelated, "a list without a class of the jar changes nothing");
     }
 
@@ -777,18 +775,16 @@ class ZipRepackerTest {
         // would be counted as a fallback with a note. Deflated, it is a highly compressible entry one byte past
         // a multiple of the transfer buffer, which the streaming path has to inflate to its last byte.
         byte[] large = new byte[ClassTransformPipeline.MAX_CLASS_SIZE + 1];
-        byte[] marker = "LocalVariableTable".getBytes(StandardCharsets.UTF_8);
-        System.arraycopy(marker, 0, large, 16, marker.length);
         Path source = temp.resolve("large-class-" + deflated + ".jar");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(source))) {
             parentCommitEntry(zip, "org/example/Large.class", large, deflated, 0);
         }
-        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "classes", false, false, name -> false,
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "classes", false, false,
                 new ClassPathModel.Interner());
-        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LocalVariableStripper()),
-                ClassPathModel.merge(List.of(scan), false));
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new RewriteStep(
+                Set.of("org/example/Large.class"), Set.of())), ClassPathModel.merge(List.of(scan), false));
         ClassTransformPipeline.JarRun run = pipeline.start(
-                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/large-class.jar", 0, false, false, false));
+                new ClassTransformPipeline.Layer("MICRONAUT-INF/lib/large-class.jar", 0, false, false));
         assertFalse(run.reads(large.length));
         assertTrue(run.reads(large.length - 1));
 
@@ -804,7 +800,7 @@ class ZipRepackerTest {
         assertEquals(large.length, entry.uncompressedSize());
         assertEquals(crc, entry.crc32());
         assertArrayEquals(large, slice(bytes.toByteArray(), entry));
-        assertEquals(List.of(new ClassTransformPipeline.StepCount(LocalVariableStripper.NAME, 0, 1, 0, 0)),
+        assertEquals(List.of(new ClassTransformPipeline.StepCount("rewrite", 0, 1, 0, 0)),
                 run.report().counts());
         assertEquals(List.of(), run.report().notes());
     }
@@ -869,7 +865,7 @@ class ZipRepackerTest {
     }
 
     private static ClassPathModel modelOf(Map<String, byte[]> classes) {
-        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "classes", false, false, name -> false,
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "classes", false, false,
                 new ClassPathModel.Interner());
         classes.forEach((name, bytes) -> {
             if (name.endsWith(".class")) {
@@ -881,8 +877,7 @@ class ZipRepackerTest {
 
     private static ClassTransformPipeline.JarRun desugaring(ClassPathModel model,
                                                             ClassTransformPipeline.Options options) {
-        return new ClassTransformPipeline(List.of(new LambdaDesugarer(model), new LocalVariableStripper()), model,
-                options).start(LAYER);
+        return new ClassTransformPipeline(List.of(new LambdaDesugarer(model)), model, options).start(LAYER);
     }
 
     private static ZipRepacker.RepackResult repack(Path source, ClassTransformPipeline.JarRun run)

@@ -319,10 +319,9 @@ public final class RunnerJarSpec {
     }
 
     /**
-     * Whether the local-variable tables of dependency classes are dropped when they are re-packed.
+     * Whether the local-variable tables of dependency classes are dropped before they are packaged.
      *
-     * <p>See {@link Builder#stripLocalVariables(boolean)} for what is dropped, what is kept and what changes
-     * as a result.</p>
+     * <p>See {@link Builder#stripLocalVariables(boolean)} for what is kept and what changes as a result.</p>
      *
      * @return whether local-variable tables are stripped, {@code false} unless configured otherwise
      */
@@ -756,25 +755,14 @@ public final class RunnerJarSpec {
         }
 
         /**
-         * Drops the local-variable tables of dependency classes when they are re-packed.
+         * Drops the local-variable tables of dependency classes, with Micronaut AOT's local-variable stripping
+         * ({@code micronaut-aot-bytecode}), before the dependencies are packaged.
          *
          * <p>Without a JDK AOT cache, parsing and defining classes is the largest single startup cost, and it
          * grows with class bytes and with the symbols the JVM interns. The names and signatures of local
-         * variables are neither needed to run a class nor visible to reflection, so a re-packed dependency
-         * class is rewritten without them, with a rebuilt constant pool. On the benchmark sample that makes the
-         * dependency classes about 15% smaller, and a start without a JDK AOT cache a few percent shorter.</p>
-         *
-         * <p>What is dropped from a dependency class:</p>
-         * <ul>
-         *     <li>{@code LocalVariableTable}, {@code LocalVariableTypeTable} and {@code CharacterRangeTable};</li>
-         *     <li>the type annotations of code, {@code RuntimeVisibleTypeAnnotations} and
-         *     {@code RuntimeInvisibleTypeAnnotations} inside {@code Code}, which carry bytecode offsets;</li>
-         *     <li>{@code RuntimeInvisibleTypeAnnotations} on the class, its fields and its methods.</li>
-         * </ul>
-         *
-         * <p>What is kept: {@code LineNumberTable} and {@code SourceFile}, so stack traces keep their
-         * {@code (File.java:N)} frames; {@code SourceDebugExtension}; {@code MethodParameters}, so reflective
-         * parameter names survive; {@code Signature}; and every annotation reflection can see.</p>
+         * variables are neither needed to run a class nor visible to reflection, so a dependency class is rewritten
+         * without them, with a rebuilt constant pool. Line numbers, source file names, parameter names, signatures
+         * and every annotation reflection can see are kept.</p>
          *
          * <p>What changes observably, in dependency classes only:</p>
          * <ul>
@@ -785,15 +773,16 @@ public final class RunnerJarSpec {
          *     <li>libraries that read {@code LocalVariableTable} at run time, such as Paranamer's
          *     {@code BytecodeReadingParanamer}, AspectJ load-time weaving and Spring's pre-6.1
          *     {@code LocalVariableTableParameterNameDiscoverer}, find no names. When one of them is on the
-         *     class path, stripping is turned off for the build, with a warning;</li>
+         *     class path, nothing is stripped, with a warning;</li>
          *     <li>a rewritten class has new bytes and a new CRC-32, and the archive is reproducible byte for
          *     byte only when it is built with the same JDK build.</li>
          * </ul>
          *
          * <p>The application's own classes, and a dependency marked {@link Dependency#projectModule()}, are
          * never stripped: they are user code, whose locals users debug. A class of a signed jar, a class with
-         * an attribute the JDK does not know, and {@code module-info} are left alone too. With
-         * {@link Compression#PRESERVE}, which nests every dependency byte for byte, the option has no effect.</p>
+         * an attribute the JDK does not know, and {@code module-info} are left alone too. It applies in every
+         * compression mode: with {@link Compression#PRESERVE}, a dependency with a stripped class is nested as
+         * its stripped copy.</p>
          *
          * <p>Defaults to {@code false}: dependency classes keep their local-variable tables unless a build asks
          * for them to be dropped.</p>

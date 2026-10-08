@@ -24,10 +24,12 @@ tasks.register('verifyMetadata') {
     doLast {
         def names = files.collect { it.name }.sort()
         def version = providers.gradleProperty('runner.version').get()
-        assert names == [
+        assert names.findAll { it.startsWith('micronaut-runner-') } == [
                 "micronaut-runner-build-${version}.jar",
                 "micronaut-runner-gradle-plugin-${version}.jar",
                 "micronaut-runner-launcher-${version}.jar"
         ]
+        assert names.findAll { !it.startsWith('micronaut-runner-') }.collect { it.replaceFirst(/-\d.*/, '') } ==
+                ['micronaut-aot-bytecode']
     }
 }

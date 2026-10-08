@@ -138,13 +138,12 @@ public enum RunnerJarOption {
     PRECOMPILE_LOGBACK("precompileLogback", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
 
     /**
-     * Whether to drop the local-variable tables of dependency classes when they are re-packed, which makes them
-     * smaller to read and define. Off unless a build asks for it, because debuggers and helpful
-     * {@code NullPointerException} messages then lose the local-variable names of dependency code. It has no
-     * effect with {@link Compression#PRESERVE} and never touches the application's own classes or a project
-     * module. Line numbers, parameter names and every annotation reflection sees are kept, and stripping is turned
-     * off for the build, with a warning, when a library that reads local-variable tables at run time is on the
-     * class path.
+     * Whether to drop the local-variable tables of dependency classes, with Micronaut AOT's local-variable
+     * stripping, which makes them smaller to read and define. Off unless a build asks for it, because debuggers
+     * and helpful {@code NullPointerException} messages then lose the local-variable names of dependency code. It
+     * applies in every compression mode and never touches the application's own classes or a project module.
+     * Line numbers, parameter names and every annotation reflection sees are kept, and stripping stands down for
+     * the build, with a warning, when a library that reads local-variable tables at run time is on the class path.
      */
     STRIP_LOCAL_VARIABLES("stripLocalVariables", Boolean.class, "false", Exposure.PASSTHROUGH, "1.0"),
 

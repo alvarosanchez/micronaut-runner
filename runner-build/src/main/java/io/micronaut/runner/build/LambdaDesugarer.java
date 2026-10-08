@@ -205,7 +205,33 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
      */
     static boolean matchesBytes(byte[] bytes) {
         return bytes.length > 8 && u4(bytes, 0) == CLASS_MAGIC && u2(bytes, 6) >= INDY_MAJOR
-                && LocalVariableStripper.contains(bytes, MARKER);
+                && contains(bytes, MARKER);
+    }
+
+    /**
+     * Whether a class's bytes hold a marker, which is how a pre-filter finds a constant pool string without
+     * parsing the class.
+     *
+     * @param bytes  the class bytes
+     * @param marker the bytes to look for, at least one
+     * @return whether {@code bytes} contains {@code marker}
+     */
+    private static boolean contains(byte[] bytes, byte[] marker) {
+        byte first = marker[0];
+        int last = bytes.length - marker.length;
+        for (int i = 0; i <= last; i++) {
+            if (bytes[i] != first) {
+                continue;
+            }
+            int j = 1;
+            while (j < marker.length && bytes[i + j] == marker[j]) {
+                j++;
+            }
+            if (j == marker.length) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -263,7 +289,17 @@ final class LambdaDesugarer implements ClassTransformPipeline.Step {
      */
     static boolean isCandidate(String entryName) {
         return entryName.endsWith(CLASS_SUFFIX) && !entryName.startsWith(META_INF)
-                && !LocalVariableStripper.isModuleInfo(entryName);
+                && !isModuleInfo(entryName);
+    }
+
+    /**
+     * Whether an entry is a {@code module-info} class, including a versioned copy.
+     *
+     * @param entryName the entry name
+     * @return whether it is a module descriptor
+     */
+    static boolean isModuleInfo(String entryName) {
+        return entryName.equals("module-info.class") || entryName.endsWith("/module-info.class");
     }
 
     /**
