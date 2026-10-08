@@ -30,10 +30,12 @@ import java.lang.classfile.ClassTransform;
 import java.lang.classfile.CodeModel;
 import java.lang.classfile.CustomAttribute;
 import java.lang.classfile.MethodModel;
+import java.lang.classfile.attribute.CodeAttribute;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +61,9 @@ final class ClassFixtures {
 
     /** A fixed timestamp for fixture jars, so a rebuilt fixture changes nothing. */
     private static final long FIXTURE_TIME = 1_000_000_000_000L;
+
+    /** An opcode the JVM reserves and the ClassFile API rejects. */
+    private static final int UNDEFINED_OPCODE = 0xFF;
 
     private ClassFixtures() {
     }
@@ -213,6 +218,44 @@ final class ClassFixtures {
      */
     static byte[] withCorruptInterface(byte[] bytes) {
         return withHeaderIndex(bytes, 8);
+    }
+
+    /**
+     * Overwrites the first opcode of a method's code with one the JVM does not define. The class and its member
+     * tables still parse; only reading that code fails.
+     *
+     * @param bytes  the class
+     * @param method the name of the method, which must have code
+     * @return a copy with the corrupt code
+     */
+    static byte[] withCorruptCode(byte[] bytes, String method) {
+        CodeAttribute code = ClassFile.of().parse(bytes).methods().stream()
+                .filter(candidate -> candidate.methodName().equalsString(method))
+                .flatMap(candidate -> candidate.findAttribute(java.lang.classfile.Attributes.code()).stream())
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("No code for " + method));
+        byte[] array = code.codeArray();
+        // The code array follows its u4 length; the pair must occur once, so that it is this method's.
+        byte[] expected = new byte[4 + array.length];
+        expected[0] = (byte) (array.length >>> 24);
+        expected[1] = (byte) (array.length >>> 16);
+        expected[2] = (byte) (array.length >>> 8);
+        expected[3] = (byte) array.length;
+        System.arraycopy(array, 0, expected, 4, array.length);
+        int found = -1;
+        for (int position = 0; position + expected.length <= bytes.length; position++) {
+            if (Arrays.equals(bytes, position, position + expected.length, expected, 0, expected.length)) {
+                if (found >= 0) {
+                    throw new IllegalArgumentException("The code of " + method + " is not unique");
+                }
+                found = position;
+            }
+        }
+        if (found < 0) {
+            throw new IllegalArgumentException("The code of " + method + " was not found");
+        }
+        byte[] corrupt = bytes.clone();
+        corrupt[found + 4] = (byte) UNDEFINED_OPCODE;
+        return corrupt;
     }
 
     /**

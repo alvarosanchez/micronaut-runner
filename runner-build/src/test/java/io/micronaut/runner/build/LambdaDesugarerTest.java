@@ -37,6 +37,7 @@ import java.lang.classfile.constantpool.ClassEntry;
 import java.lang.classfile.instruction.InvokeDynamicInstruction;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDesc;
+import java.lang.constant.ConstantDescs;
 import java.lang.constant.DirectMethodHandleDesc;
 import java.lang.constant.DynamicCallSiteDesc;
 import java.lang.constant.MethodHandleDesc;
@@ -51,6 +52,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.jar.Attributes.Name;
@@ -723,6 +726,391 @@ class LambdaDesugarerTest {
         assertEquals(withoutHidden(expected), withoutHidden(actual), "and the application still behaves as compiled");
     }
 
+    /**
+     * The JVM initializes every superinterface that declares a non-abstract instance method before a class that
+     * implements it. When such an interface's static initializer reaches the site, {@code LambdaMetafactory}
+     * links the site again; a generated class, being initialized, would hand out a {@code null} instance, or
+     * fail the initializer that uses it.
+     */
+    @Test
+    void aFunctionalInterfaceWhoseInitializerMayReachTheSiteKeepsItsSites() throws Exception {
+        Map<String, byte[]> compiled = compile("interface-init", 25, INTERFACE_INIT_SOURCES);
+
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
+                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/init.jar", compiled)), false);
+
+        Map<String, byte[]> output = outcome.outputs().get(0);
+        // regFirst: the interface's constant is the lambda, the same instance; namedFirst: the initializer that
+        // uses it completes. A generated class would give "null false" and an ExceptionInInitializerError.
+        List<String> expected = List.of("made true", "false true", "named named", "plain constant");
+        assertEquals(expected, probes(compiled), "the classes as compiled");
+        assertEquals(expected, probes(output), "the classes as rewritten");
+        ClassTransformPipeline.Desugared desugared = outcome.reports().get(0).desugared();
+        assertEquals(Map.of(LambdaDesugarer.Reason.INTERFACE_INIT, 6), desugared.left(), "make, capturing, sub,"
+                + " alwaysTrue, alwaysFalse and named: their interface, or a superinterface, has a default method"
+                + " and a static initializer");
+        assertEquals(2, desugared.sites(), "an interface with only one of the two is no risk");
+        for (String host : List.of("init/Regs.class", "init/Preds.class", "init/Names.class")) {
+            assertArrayEquals(compiled.get(host), output.get(host), host + " keeps its bytes");
+        }
+    }
+
+    /**
+     * Runs each probe of {@code init.Probe} in a loader of its own, since each starts from uninitialized
+     * classes.
+     */
+    private static List<String> probes(Map<String, byte[]> entries) throws Exception {
+        List<String> results = new ArrayList<>();
+        for (String probe : List.of("regFirst", "predFirst", "namedFirst", "others")) {
+            results.add((String) LambdaFixtures.loader(LambdaFixtures.classPath(List.of(entries)))
+                    .loadClass("init.Probe").getMethod(probe).invoke(null));
+        }
+        return results;
+    }
+
+    /**
+     * An interface whose static initializer only creates its own lambdas and inert anonymous instances cannot
+     * reach a site elsewhere, so the sites of its lambdas are rewritten. One may when it calls a method, even the
+     * JDK's, creates an instance whose constructor runs code, creates a lambda or an inert instance of an
+     * interface that may, or reads a field it inherits, which initializes the interface that declares it.
+     */
+    @Test
+    void aQuietInterfaceInitializerLetsItsSitesBeRewritten() throws Exception {
+        Map<String, byte[]> compiled = compile("interface-quiet", 25, Map.of(
+                "quiet/Quiet.java", """
+                        package quiet;
+                        public interface Quiet {
+                            Quiet NONE = () -> "none";
+                            Quiet ANON = new Quiet() {
+                                @Override
+                                public Object get() {
+                                    return "anon";
+                                }
+                            };
+                            Object get();
+                            default String name() {
+                                return "quiet";
+                            }
+                        }
+                        """,
+                "quiet/Compiled.java", """
+                        package quiet;
+                        public interface Compiled {
+                            java.util.regex.Pattern PATTERN = java.util.regex.Pattern.compile("x");
+                            Object get();
+                            default String name() {
+                                return "compiled";
+                            }
+                        }
+                        """,
+                "quiet/Busy.java", """
+                        package quiet;
+                        public interface Busy {
+                            Busy NONE = new Busy() {
+                                {
+                                    System.getProperty("busy");
+                                }
+                                @Override
+                                public Object get() {
+                                    return "busy";
+                                }
+                            };
+                            Object get();
+                            default String name() {
+                                return "busy";
+                            }
+                        }
+                        """,
+                "quiet/Relay.java", """
+                        package quiet;
+                        public interface Relay {
+                            Busy B = () -> "relay";
+                            Object get();
+                            default String name() {
+                                return "relay";
+                            }
+                        }
+                        """,
+                "quiet/Wrapper.java", """
+                        package quiet;
+                        public interface Wrapper {
+                            Compiled C = new Compiled() {
+                                @Override
+                                public Object get() {
+                                    return "wc";
+                                }
+                            };
+                            Object get();
+                            default String name() {
+                                return "wrapper";
+                            }
+                        }
+                        """,
+                "quiet/Holder.java", """
+                        package quiet;
+                        public interface Holder {
+                            Object VALUE = System.getProperty("holder", "held");
+                        }
+                        """,
+                "quiet/Reader.java", """
+                        package quiet;
+                        public interface Reader extends Holder {
+                            Object COPY = Reader.VALUE;
+                            Object get();
+                            default String name() {
+                                return "reader";
+                            }
+                        }
+                        """,
+                "quiet/Users.java", """
+                        package quiet;
+                        public class Users {
+                            public static Quiet quiet() {
+                                return () -> "q";
+                            }
+                            public static Quiet capturing(String value) {
+                                return () -> value;
+                            }
+                            public static Compiled compiled() {
+                                return () -> "c";
+                            }
+                            public static Busy busy() {
+                                return () -> "b";
+                            }
+                            public static Relay relay() {
+                                return () -> "rl";
+                            }
+                            public static Wrapper wrapper() {
+                                return () -> "w";
+                            }
+                            public static Reader reader() {
+                                return () -> "rd";
+                            }
+                            public static String run() {
+                                Quiet first = quiet();
+                                return first.get() + " " + Quiet.NONE.get() + " " + Quiet.ANON.get() + " "
+                                        + capturing("v").get() + " " + compiled().get() + " " + busy().get() + " "
+                                        + Busy.NONE.get() + " " + relay().get() + " " + Relay.B.get() + " "
+                                        + wrapper().get() + " " + Wrapper.C.get() + " " + reader().get() + " "
+                                        + Reader.COPY;
+                            }
+                        }
+                        """));
+
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
+                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/quiet.jar", compiled)), false);
+
+        Map<String, byte[]> output = outcome.outputs().get(0);
+        ClassTransformPipeline.Desugared desugared = outcome.reports().get(0).desugared();
+        assertEquals(Map.of(LambdaDesugarer.Reason.INTERFACE_INIT, 6), desugared.left(),
+                "compiled, busy, relay, wrapper, reader, and the lambda of Relay's own initializer, a Busy");
+        assertEquals(3, desugared.sites(), "quiet, capturing, and the lambda of Quiet's own initializer");
+        assertNotNull(output.get("quiet/Quiet$$Lambda$R0.class"));
+        Object expected = LambdaFixtures.loader(LambdaFixtures.classPath(List.of(compiled))).loadClass("quiet.Users")
+                .getMethod("run").invoke(null);
+        assertEquals("q none anon v c b busy rl relay w wc rd held", expected);
+        assertEquals(expected, LambdaFixtures.loader(LambdaFixtures.classPath(List.of(output)))
+                .loadClass("quiet.Users").getMethod("run").invoke(null), "the first site initializes Quiet");
+    }
+
+    /**
+     * One thread initializes the interface, whose initializer waits and then reaches the site; another reaches
+     * the site meanwhile. A generated class would make each wait for the other, capturing or not;
+     * {@code LambdaMetafactory} links the site on each thread.
+     */
+    @Test
+    void twoThreadsThatInitializeTheInterfaceAndReachTheSiteFinish() throws Exception {
+        Map<String, byte[]> compiled = compile("interface-lock", 25, Map.of(
+                "lock/Slow.java", """
+                        package lock;
+                        public interface Slow {
+                            Slow DEFAULT = Gate.slow();
+                            Object get();
+                            default String name() {
+                                return "slow";
+                            }
+                        }
+                        """,
+                "lock/SlowCapturing.java", """
+                        package lock;
+                        public interface SlowCapturing {
+                            SlowCapturing DEFAULT = Gate.slowCapturing();
+                            Object get();
+                            default String name() {
+                                return "slow";
+                            }
+                        }
+                        """,
+                "lock/Gate.java", """
+                        package lock;
+                        import java.util.concurrent.CountDownLatch;
+                        public class Gate {
+                            public static final CountDownLatch STARTED = new CountDownLatch(1);
+                            static Slow slow() {
+                                pause();
+                                return make();
+                            }
+                            static SlowCapturing slowCapturing() {
+                                pause();
+                                return capturing("initializer");
+                            }
+                            private static void pause() {
+                                STARTED.countDown();
+                                try {
+                                    Thread.sleep(500);
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }
+                            public static Slow make() {
+                                return () -> "made";
+                            }
+                            public static SlowCapturing capturing(String value) {
+                                return () -> value;
+                            }
+                        }
+                        """));
+
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
+                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/lock.jar", compiled)), false);
+
+        for (Map<String, byte[]> classes : List.of(compiled, outcome.outputs().get(0))) {
+            assertFinishes(classes, "lock.Slow", "make");
+            assertFinishes(classes, "lock.SlowCapturing", "capturing");
+        }
+        assertEquals(Map.of(LambdaDesugarer.Reason.INTERFACE_INIT, 2), outcome.reports().get(0).desugared().left());
+    }
+
+    /**
+     * Initializes an interface on one thread while another calls a site of {@code lock.Gate}, in a loader of its
+     * own, and asserts that both finish.
+     */
+    private static void assertFinishes(Map<String, byte[]> classes, String initialized, String site)
+            throws Exception {
+        ClassLoader loader = LambdaFixtures.loader(LambdaFixtures.classPath(List.of(classes)));
+        Class<?> gate = loader.loadClass("lock.Gate");
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread initializer = new Thread(() -> {
+            try {
+                Class.forName(initialized, true, loader);
+            } catch (Throwable e) {
+                failure.compareAndSet(null, e);
+            }
+        });
+        Thread caller = new Thread(() -> {
+            try {
+                ((CountDownLatch) gate.getField("STARTED").get(null)).await();
+                if (site.equals("make")) {
+                    gate.getMethod(site).invoke(null);
+                } else {
+                    gate.getMethod(site, String.class).invoke(null, "caller");
+                }
+            } catch (Throwable e) {
+                failure.compareAndSet(null, e);
+            }
+        });
+        for (Thread thread : List.of(initializer, caller)) {
+            thread.setDaemon(true);
+            thread.start();
+        }
+        for (Thread thread : List.of(initializer, caller)) {
+            thread.join(10_000);
+            assertFalse(thread.isAlive(), initialized + ": the threads wait for each other");
+        }
+        assertNull(failure.get(), () -> String.valueOf(failure.get()));
+    }
+
+    /**
+     * The build proves an initializer quiet only for the copies that win on JDK 25. A newer runtime may load
+     * another copy of the interface, or of a class its initializer instantiates, and the launcher's loader may
+     * define its own copy of a class in the launcher's package; that copy may not be quiet, so the site stays. So
+     * does a site whose interface's initializer the build cannot parse. The same initializers, with copies the
+     * build can prove quiet, let their sites be rewritten.
+     */
+    @Test
+    void anInterfaceInitializerTheBuildCannotProveQuietKeepsItsSites() throws Exception {
+        String quiet = """
+                package %s;
+                public interface %s {
+                    Object NONE = new Object();
+                    Object get();
+                    default String name() {
+                        return "quiet";
+                    }
+                }
+                """;
+        String instantiating = """
+                package %s;
+                public interface %s {
+                    Object PART = new %s();
+                    Object get();
+                    default String name() {
+                        return "instantiating";
+                    }
+                }
+                """;
+        String part = "package %s; public class %s { }\n";
+        Map<String, byte[]> compiled = compile("interface-uncertain", 25, Map.ofEntries(
+                Map.entry("versioned/Greeter.java", quiet.formatted("versioned", "Greeter")),
+                Map.entry("versioned/Maker.java", instantiating.formatted("versioned", "Maker", "Part")),
+                Map.entry("versioned/Part.java", part.formatted("versioned", "Part")),
+                Map.entry("io/micronaut/runner/fixture/Launched.java",
+                        quiet.formatted("io.micronaut.runner.fixture", "Launched")),
+                Map.entry("io/micronaut/runner/fixture/Piece.java",
+                        part.formatted("io.micronaut.runner.fixture", "Piece")),
+                Map.entry("steady/Assembled.java",
+                        instantiating.formatted("steady", "Assembled", "io.micronaut.runner.fixture.Piece")),
+                Map.entry("steady/Steady.java", quiet.formatted("steady", "Steady")),
+                Map.entry("steady/Built.java", instantiating.formatted("steady", "Built", "Block")),
+                Map.entry("steady/Block.java", part.formatted("steady", "Block")),
+                Map.entry("corrupt/Broken.java", quiet.formatted("corrupt", "Broken")),
+                Map.entry("use/Users.java", """
+                        package use;
+                        public class Users {
+                            public static versioned.Greeter greeter() {
+                                return () -> "greeter";
+                            }
+                            public static versioned.Maker maker() {
+                                return () -> "maker";
+                            }
+                            public static io.micronaut.runner.fixture.Launched launched() {
+                                return () -> "launched";
+                            }
+                            public static steady.Assembled assembled() {
+                                return () -> "assembled";
+                            }
+                            public static corrupt.Broken broken() {
+                                return () -> "broken";
+                            }
+                            public static steady.Steady steady() {
+                                return () -> "steady";
+                            }
+                            public static steady.Built built() {
+                                return () -> "built";
+                            }
+                        }
+                        """)));
+        Map<String, byte[]> multiRelease = new LinkedHashMap<>(LambdaFixtures.select(compiled, "versioned/"));
+        multiRelease.put("META-INF/versions/26/versioned/Greeter.class", compiled.get("versioned/Greeter.class"));
+        multiRelease.put("META-INF/versions/26/versioned/Part.class", compiled.get("versioned/Part.class"));
+        Map<String, byte[]> others = new LinkedHashMap<>(LambdaFixtures.select(compiled, "io/"));
+        others.putAll(LambdaFixtures.select(compiled, "steady/"));
+        others.put("corrupt/Broken.class", ClassFixtures.withCorruptCode(compiled.get("corrupt/Broken.class"),
+                ConstantDescs.CLASS_INIT_NAME));
+        others.putAll(LambdaFixtures.select(compiled, "use/"));
+
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(List.of(
+                LambdaFixtures.Layer.multiRelease("MICRONAUT-INF/lib/versioned.jar", multiRelease),
+                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/others.jar", others)), false);
+
+        ClassTransformPipeline.Desugared desugared = outcome.reports().get(1).desugared();
+        assertEquals(Map.of(LambdaDesugarer.Reason.INTERFACE_INIT, 5), desugared.left(), "greeter and maker, whose"
+                + " interface or part a newer runtime replaces; launched and assembled, whose interface or part the"
+                + " launcher's loader may define; broken, whose initializer cannot be parsed");
+        assertEquals(2, desugared.sites(), "steady and built");
+        assertNotNull(outcome.outputs().get(1).get("use/Users$$Lambda$R0.class"));
+    }
+
     private static LambdaFixtures.Outcome stripOnly(List<LambdaFixtures.Layer> layers, ClassPathModel model) {
         ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LocalVariableStripper()), model);
         List<Map<String, byte[]>> outputs = new ArrayList<>();
@@ -746,6 +1134,126 @@ class LambdaDesugarerTest {
         assertEquals(List.copyOf(input.keySet()), List.copyOf(output.keySet()), "no entry is added");
         input.forEach((name, bytes) -> assertArrayEquals(bytes, output.get(name), name + " keeps its bytes"));
     }
+
+    private static final Map<String, String> INTERFACE_INIT_SOURCES = Map.ofEntries(
+            Map.entry("init/Reg.java", """
+                    package init;
+                    public interface Reg {
+                        Reg DEFAULT = Regs.make();
+                        Object get();
+                        default String name() {
+                            return "reg";
+                        }
+                    }
+                    """),
+            Map.entry("init/SubReg.java", "package init; public interface SubReg extends Reg { }\n"),
+            Map.entry("init/Regs.java", """
+                    package init;
+                    public class Regs {
+                        public static Reg make() {
+                            return () -> "made";
+                        }
+                        public static Reg capturing(String value) {
+                            return () -> value;
+                        }
+                        public static SubReg sub() {
+                            return () -> "sub";
+                        }
+                    }
+                    """),
+            Map.entry("init/Pred.java", """
+                    package init;
+                    public interface Pred {
+                        Pred TRUE = Preds.alwaysTrue();
+                        boolean test(Object value);
+                        default String name() {
+                            return "pred";
+                        }
+                    }
+                    """),
+            Map.entry("init/Preds.java", """
+                    package init;
+                    public class Preds {
+                        public static Pred alwaysTrue() {
+                            return value -> true;
+                        }
+                        public static Pred alwaysFalse() {
+                            return value -> false;
+                        }
+                    }
+                    """),
+            Map.entry("init/Named.java", """
+                    package init;
+                    public interface Named {
+                        Named DEFAULT = Names.make();
+                        String LABEL = DEFAULT.name();
+                        Object get();
+                        default String name() {
+                            return "named";
+                        }
+                    }
+                    """),
+            Map.entry("init/Names.java", """
+                    package init;
+                    public class Names {
+                        public static Named make() {
+                            return () -> "named";
+                        }
+                    }
+                    """),
+            Map.entry("init/Plain.java", """
+                    package init;
+                    public interface Plain {
+                        Object get();
+                        default String name() {
+                            return "plain";
+                        }
+                    }
+                    """),
+            Map.entry("init/Constant.java", """
+                    package init;
+                    public interface Constant {
+                        Object NONE = new Object();
+                        Object get();
+                    }
+                    """),
+            Map.entry("init/Others.java", """
+                    package init;
+                    public class Others {
+                        public static Plain plain() {
+                            return () -> "plain";
+                        }
+                        public static Constant constant() {
+                            return () -> "constant";
+                        }
+                    }
+                    """),
+            Map.entry("init/Probe.java", """
+                    package init;
+                    public class Probe {
+                        public static String regFirst() {
+                            Reg made = Regs.make();
+                            return (Reg.DEFAULT == null ? "null" : Reg.DEFAULT.get()) + " " + (made == Reg.DEFAULT);
+                        }
+                        public static String predFirst() {
+                            try {
+                                return Preds.alwaysFalse().test("x") + " " + Pred.TRUE.test("x");
+                            } catch (Throwable e) {
+                                return e.toString();
+                            }
+                        }
+                        public static String namedFirst() {
+                            try {
+                                return Names.make().get() + " " + Named.LABEL;
+                            } catch (Throwable e) {
+                                return e.toString();
+                            }
+                        }
+                        public static String others() {
+                            return Others.plain().get() + " " + Others.constant().get();
+                        }
+                    }
+                    """));
 
     /**
      * Calls {@code ref().get()} on a new instance of a class, loaded with the given entries.

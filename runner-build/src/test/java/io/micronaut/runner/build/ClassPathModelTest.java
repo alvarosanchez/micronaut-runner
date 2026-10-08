@@ -237,6 +237,51 @@ class ClassPathModelTest {
         }
     }
 
+    /**
+     * The ClassFile API parses code only when asked. A class whose static initializer or constructor code it
+     * cannot parse is still a class the runtime may find, so it stays in the model with its interfaces and member
+     * tables; only what {@link InterfaceInitializers} would prove of that code is unknown: the class is not inert,
+     * and the interface's initializer is not quiet.
+     */
+    @Test
+    void aClassWhoseInitializerOrConstructorCodeCannotBeParsedStaysInTheModel() {
+        byte[] broken = ClassFixtures.withCorruptCode(initializedInterface("com/example/Broken"),
+                ConstantDescs.CLASS_INIT_NAME);
+        byte[] fragile = ClassFixtures.withCorruptCode(inertClass("com/example/Fragile"), ConstantDescs.INIT_NAME);
+        for (byte[] bytes : List.of(broken, fragile)) {
+            assertThrows(IllegalArgumentException.class, () -> ClassFile.of().parse(bytes).methods()
+                    .forEach(method -> method.code().orElseThrow().forEach(element -> { })), "the fixture is corrupt");
+        }
+        Map<String, byte[]> entries = Map.of(
+                entry("com/example/Broken"), broken,
+                entry("com/example/Fragile"), fragile,
+                entry("com/example/Sound"), initializedInterface("com/example/Sound"),
+                entry("com/example/Plain"), inertClass("com/example/Plain"));
+
+        for (boolean members : List.of(false, true)) {
+            ClassPathModel model = model(members, layer(0, "application", false, Map.of()),
+                    layer(1, "dependency", false, entries));
+
+            assertEquals(4, model.size(), "members: " + members);
+            assertEquals(List.of("java/util/function/Supplier"),
+                    model.winner("com/example/Broken").orElseThrow().interfaces(), "members: " + members);
+            assertEquals(List.of("java/lang/Runnable"), model.winner("com/example/Fragile").orElseThrow().interfaces(),
+                    "members: " + members);
+        }
+        ClassPathModel model = model(true, layer(0, "application", false, Map.of()),
+                layer(1, "dependency", false, entries));
+        ClassPathModel.Copy interfaceCopy = model.winner("com/example/Broken").orElseThrow();
+        assertEquals(ClassFile.ACC_STATIC, interfaceCopy.member(ConstantDescs.CLASS_INIT_NAME, "()V").flags());
+        assertTrue(interfaceCopy.declaresConcreteInstanceMethod(), "its default method is recorded");
+        assertNull(interfaceCopy.initializer(), "an initializer that cannot be read is not quiet");
+        ClassPathModel.Copy classCopy = model.winner("com/example/Fragile").orElseThrow();
+        assertEquals(ClassFile.ACC_PUBLIC, classCopy.member(ConstantDescs.INIT_NAME, "()V").flags());
+        assertFalse(classCopy.inert(), "a constructor that cannot be read is not inert");
+        assertEquals(new InterfaceInitializers.Initializer(List.of(), List.of()),
+                model.winner("com/example/Sound").orElseThrow().initializer(), "the same initializer, readable");
+        assertTrue(model.winner("com/example/Plain").orElseThrow().inert(), "the same constructor, readable");
+    }
+
     @Test
     void aNameIsKnownWhicheverCopyWinsAndTheNestHostIsRecordedWithTheMembers(@org.junit.jupiter.api.io.TempDir
             java.nio.file.Path temp) throws Exception {
@@ -330,6 +375,35 @@ class ClassPathModelTest {
     private static byte[] iface(String internalName) {
         return ClassFile.of().build(ClassDesc.ofInternalName(internalName), builder -> builder
                 .withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_INTERFACE | ClassFile.ACC_ABSTRACT));
+    }
+
+    /** An interface with a default method and a static initializer that stores a new {@code Object}. */
+    private static byte[] initializedInterface(String internalName) {
+        ClassDesc self = ClassDesc.ofInternalName(internalName);
+        return ClassFile.of().build(self, builder -> builder
+                .withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_INTERFACE | ClassFile.ACC_ABSTRACT)
+                .withSuperclass(ConstantDescs.CD_Object)
+                .withInterfaceSymbols(ClassDesc.of("java.util.function.Supplier"))
+                .withField("NONE", ConstantDescs.CD_Object,
+                        ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC | ClassFile.ACC_FINAL)
+                .withMethod("name", MethodTypeDesc.of(ConstantDescs.CD_String), ClassFile.ACC_PUBLIC,
+                        method -> method.withCode(code -> code.ldc("name").areturn()))
+                .withMethod(ConstantDescs.CLASS_INIT_NAME, ConstantDescs.MTD_void, ClassFile.ACC_STATIC,
+                        method -> method.withCode(code -> code.new_(ConstantDescs.CD_Object).dup()
+                                .invokespecial(ConstantDescs.CD_Object, ConstantDescs.INIT_NAME,
+                                        ConstantDescs.MTD_void)
+                                .putstatic(self, "NONE", ConstantDescs.CD_Object).return_())));
+    }
+
+    /** A class whose constructor only calls {@code Object}'s. */
+    private static byte[] inertClass(String internalName) {
+        return ClassFile.of().build(ClassDesc.ofInternalName(internalName), builder -> builder
+                .withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER | ClassFile.ACC_ABSTRACT)
+                .withSuperclass(ConstantDescs.CD_Object)
+                .withInterfaceSymbols(ClassDesc.of("java.lang.Runnable"))
+                .withMethod(ConstantDescs.INIT_NAME, ConstantDescs.MTD_void, ClassFile.ACC_PUBLIC,
+                        method -> method.withCode(code -> code.aload(0).invokespecial(ConstantDescs.CD_Object,
+                                ConstantDescs.INIT_NAME, ConstantDescs.MTD_void).return_())));
     }
 
     private record Layer(int position, String name, boolean multiRelease, Map<String, byte[]> entries) {
