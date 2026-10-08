@@ -11,12 +11,10 @@ plugin of the Micronaut Gradle plugin
 (https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1720[micronaut-maven-plugin#1720]). Meanwhile,
 build Runner JARs with Runner's own interim plugins, as
 https://github.com/{githubSlug}/blob/master/docs/interim-plugins.md[the interim plugins page] describes.
-* Logback precompilation from Micronaut AOT
-(https://github.com/micronaut-projects/micronaut-aot/pull/517[micronaut-aot#517]), applied by the Micronaut plugins
+* Logback precompilation in the Micronaut plugins
 (https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1380[micronaut-gradle-plugin#1380],
-https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1722[micronaut-maven-plugin#1722]). Meanwhile, a
-Runner JAR precompiles `logback.xml` with Runner's own copy of the same engine, and its run-time switch is
-`-Dmicronaut.runner.logback.precompiled=false`.
+https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1722[micronaut-maven-plugin#1722]), which turns it
+on for packagings other than a Runner JAR.
 * A JDK AOT cache trained by `./gradlew dockerBuild` and `mvn package -Dpackaging=docker`
 (https://github.com/micronaut-projects/micronaut-gradle-plugin/pull/1381[micronaut-gradle-plugin#1381],
 https://github.com/micronaut-projects/micronaut-maven-plugin/pull/1723[micronaut-maven-plugin#1723]). Meanwhile, train

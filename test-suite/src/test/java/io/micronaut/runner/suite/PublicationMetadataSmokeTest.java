@@ -49,6 +49,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -83,6 +84,8 @@ class PublicationMetadataSmokeTest {
     private static final String BUILD = "micronaut-runner-build";
     private static final String LAUNCHER = "micronaut-runner-launcher";
     private static final String BOM = "micronaut-runner-bom";
+    /** The one dependency of runner-build from outside this build, at the version of the catalog. */
+    private static final String AOT_LOGBACK = "io.micronaut.aot:micronaut-aot-logback";
     private static final Map<String, String> CHECKSUMS = Map.of(
             "md5", "MD5",
             "sha1", "SHA-1",
@@ -138,9 +141,14 @@ class PublicationMetadataSmokeTest {
         assertEquals("maven-plugin", childText(mavenPluginPom.getDocumentElement(), "packaging"));
         assertDependencyScope(mavenPluginPom, BUILD, "runtime");
         assertDependencyScope(parseXml(artifact(GROUP, GRADLE_PLUGIN, "pom")), BUILD, "runtime");
-        // No public signature of runner-build names a launcher type, so the launcher is a runtime dependency and
-        // stays off the compile class path of the build plugins.
-        assertDependencyScope(parseXml(artifact(GROUP, BUILD, "pom")), LAUNCHER, "runtime");
+        // No public signature of runner-build names a launcher or Micronaut AOT type, so both are runtime
+        // dependencies and stay off the compile class path of the build plugins.
+        Document buildPom = parseXml(artifact(GROUP, BUILD, "pom"));
+        assertEquals(Set.of(GROUP + ":" + LAUNCHER, AOT_LOGBACK), directDependencies(buildPom).stream()
+                .map(dependency -> dependency.substring(0, dependency.lastIndexOf(':')))
+                .collect(Collectors.toSet()), "runner-build's POM dependencies");
+        assertDependencyScope(buildPom, LAUNCHER, "runtime");
+        assertDependencyScope(buildPom, AOT_LOGBACK.substring(AOT_LOGBACK.indexOf(':') + 1), "runtime");
 
         Document bom = parseXml(artifact(GROUP, BOM, "pom"));
         assertCoordinates(bom, GROUP, BOM, VERSION);
@@ -157,7 +165,7 @@ class PublicationMetadataSmokeTest {
         // maven-archiver, as maven-jar-plugin does.
         Map<String, Set<String>> moduleDependencies = Map.of(
                 LAUNCHER, Set.of(),
-                BUILD, Set.of(coordinate(LAUNCHER)),
+                BUILD, Set.of(coordinate(LAUNCHER), AOT_LOGBACK),
                 GRADLE_PLUGIN, Set.of(coordinate(BUILD)),
                 MAVEN_PLUGIN, Set.of(coordinate(BUILD), "org.apache.maven:maven-archiver"));
         for (Map.Entry<String, Set<String>> entry : moduleDependencies.entrySet()) {

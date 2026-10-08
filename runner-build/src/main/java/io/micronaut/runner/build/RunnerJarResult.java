@@ -207,9 +207,9 @@ public final class RunnerJarResult {
     }
 
     /**
-     * Whether the build compiled the application's {@code logback.xml} into a Logback {@code Configurator}, which
-     * {@link RunnerJarSpec#precompileLogback()} requests. It is {@code false} whenever nothing was generated; the
-     * build log names the reason.
+     * Whether the build compiled the application's {@code logback.xml} into a Logback {@code Configurator} with
+     * Micronaut AOT's {@code micronaut-aot-logback}, which {@link RunnerJarSpec#precompileLogback()} requests. It is
+     * {@code false} whenever nothing was generated; the build log names the reason.
      *
      * @return whether the archive carries a precompiled Logback configuration
      */

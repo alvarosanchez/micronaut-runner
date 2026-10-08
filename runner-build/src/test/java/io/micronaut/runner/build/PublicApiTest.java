@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.aot.logback.LogbackPrecompiler;
 import io.micronaut.runner.Launcher;
 import org.junit.jupiter.api.Test;
 
@@ -52,6 +53,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Matcher;
@@ -65,8 +67,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * Pins runner-build's public API to {@code src/test/resources/public-api.txt}, and keeps the launcher's types out
- * of every public signature.
+ * Pins runner-build's public API to {@code src/test/resources/public-api.txt}, and keeps the launcher's and Micronaut
+ * AOT's types out of every public signature.
  *
  * <p>The list is what micronaut-build's binary compatibility check, enabled after 1.0.0, would report as an
  * error when it changes: every public type whose enclosing types are public, with its public members, and its
@@ -83,9 +85,9 @@ import static org.junit.jupiter.api.Assertions.fail;
  * is package-private, or public only because another package or module calls it, and then {@code @Internal}. From
  * 1.0.0, a change to the list is a 1.x binary-compatibility decision.</p>
  *
- * <p>The launcher is a runtime dependency of this library, never a compile-time one of its users: no public or
- * protected signature names one of its types, {@code @Internal} ones included. That covers descriptors, generic
- * signatures, {@code throws} clauses, and the supertypes of a public type.</p>
+ * <p>The launcher and {@code micronaut-aot-logback} are runtime dependencies of this library, never compile-time
+ * ones of its users: no public or protected signature names one of their types, {@code @Internal} ones included.
+ * That covers descriptors, generic signatures, {@code throws} clauses, and the supertypes of a public type.</p>
  *
  * <p>The checks duplicate the launcher's {@code PublicApiTest} on purpose: a shared helper would be public API of
  * its own.</p>
@@ -97,6 +99,10 @@ class PublicApiTest {
 
     /** The descriptor of the annotation that turns japicmp's errors into warnings. */
     private static final String INTERNAL = "Lio/micronaut/core/annotation/Internal;";
+
+    /** Whether a package, as an internal name, is one of Micronaut AOT's. */
+    private static final Predicate<String> MICRONAUT_AOT = name -> name.equals("io/micronaut/aot")
+            || name.startsWith("io/micronaut/aot/");
 
     /** A class type in a descriptor or a generic signature: the internal name after {@code L}. */
     private static final Pattern CLASS_TYPE = Pattern.compile("L([\\w$/]+)");
@@ -132,10 +138,39 @@ class PublicApiTest {
         assertTrue(launcherPackages.contains("io/micronaut/runner"), launcherPackages::toString);
         assertFalse(launcherPackages.contains("io/micronaut/runner/build"), launcherPackages::toString);
 
-        List<String> offenders = launcherTypesInSignatures(classFiles(RunnerJarSpec.class), launcherPackages);
+        List<String> offenders = foreignTypesInSignatures(classFiles(RunnerJarSpec.class),
+                launcherPackages::contains);
 
         assertTrue(offenders.isEmpty(), () -> "public signatures name launcher types, which would put the launcher"
                 + " on the compile class path of every build plugin: " + offenders);
+    }
+
+    @Test
+    void noPublicSignatureNamesAMicronautAotType() throws IOException {
+        Set<String> logbackPackages = packages(classFiles(LogbackPrecompiler.class).keySet());
+        assertTrue(logbackPackages.stream().allMatch(MICRONAUT_AOT), logbackPackages::toString);
+
+        List<String> offenders = foreignTypesInSignatures(classFiles(RunnerJarSpec.class), MICRONAUT_AOT);
+
+        assertTrue(offenders.isEmpty(), () -> "public signatures name Micronaut AOT types, whose API is internal to"
+                + " its callers and which would join the compile class path of every build plugin: " + offenders);
+    }
+
+    @Test
+    void findsMicronautAotTypesInPublicSignatures() {
+        ClassDesc result = ClassDesc.of("io.micronaut.aot.logback.LogbackPrecompiler$Result");
+        byte[] type = ClassFile.of().build(ClassDesc.of("io.example.Api"), builder -> builder
+                .withFlags(AccessFlag.PUBLIC, AccessFlag.FINAL)
+                .withMethodBody("result", MethodTypeDesc.of(result), ClassFile.ACC_PUBLIC, code -> code
+                        .aconst_null().areturn())
+                .withMethodBody("aotLookalike", MethodTypeDesc.of(ClassDesc.of("io.micronaut.aotx.Type")),
+                        ClassFile.ACC_PUBLIC, code -> code.aconst_null().areturn())
+                .withMethodBody("hidden", MethodTypeDesc.of(result), ClassFile.ACC_PRIVATE, code -> code
+                        .aconst_null().areturn()));
+
+        assertEquals(List.of("io.example.Api#result()Lio/micronaut/aot/logback/LogbackPrecompiler$Result; names"
+                        + " io.micronaut.aot.logback.LogbackPrecompiler$Result"),
+                foreignTypesInSignatures(Map.of("io.example.Api", type), MICRONAUT_AOT));
     }
 
     @Test
@@ -177,7 +212,7 @@ class PublicApiTest {
                         "io.example.Open#index()Lio/example/launcher/Index;", "io.example.Open#shared:I"),
                 publicApi(Map.of("io.example.Open", type)));
         assertEquals(List.of("io.example.Open#index()Lio/example/launcher/Index; names io.example.launcher.Index"),
-                launcherTypesInSignatures(Map.of("io.example.Open", type), Set.of("io/example/launcher")));
+                foreignTypesInSignatures(Map.of("io.example.Open", type), Set.of("io/example/launcher")::contains));
     }
 
     @Test
@@ -281,8 +316,8 @@ class PublicApiTest {
                         "io.example.Api#indexes:Ljava/util/List; names io.example.launcher.Index",
                         "io.example.Api#read()V names io.example.launcher.Failure",
                         "io.example.Sub names io.example.launcher.Base"),
-                launcherTypesInSignatures(Map.of("io.example.Api", type, "io.example.Sub", subtype,
-                        "io.example.Reader", packagePrivate), Set.of("io/example/launcher")));
+                foreignTypesInSignatures(Map.of("io.example.Api", type, "io.example.Sub", subtype,
+                        "io.example.Reader", packagePrivate), Set.of("io/example/launcher")::contains));
     }
 
     /**
@@ -320,15 +355,15 @@ class PublicApiTest {
     }
 
     /**
-     * Lists every launcher type that a public or protected signature names, {@code @Internal} types and members
-     * included: the supertypes and generic signature of an exported type, and the descriptor, generic signature
-     * and {@code throws} clause of each of its visible members.
+     * Lists every type of another library that a public or protected signature names, {@code @Internal} types and
+     * members included: the supertypes and generic signature of an exported type, and the descriptor, generic
+     * signature and {@code throws} clause of each of its visible members.
      *
-     * @param classFiles       the class files, by binary name
-     * @param launcherPackages the launcher's packages, as internal names
-     * @return one {@code <member> names <type>} line per launcher type a signature names, sorted
+     * @param classFiles     the class files, by binary name
+     * @param foreignPackage whether a package, as an internal name, is the other library's
+     * @return one {@code <member> names <type>} line per such type a signature names, sorted
      */
-    static List<String> launcherTypesInSignatures(Map<String, byte[]> classFiles, Set<String> launcherPackages) {
+    static List<String> foreignTypesInSignatures(Map<String, byte[]> classFiles, Predicate<String> foreignPackage) {
         Map<String, ClassModel> models = parse(classFiles);
         TreeSet<String> offenders = new TreeSet<>();
         for (ClassModel model : models.values()) {
@@ -341,7 +376,7 @@ class PublicApiTest {
             model.interfaces().forEach(type -> typeSignature.add("L" + type.asInternalName() + ";"));
             model.findAttribute(Attributes.signature()).ifPresent(signature -> typeSignature.add(signature
                     .signature().stringValue()));
-            report(name, typeSignature, launcherPackages, offenders);
+            report(name, typeSignature, foreignPackage, offenders);
             boolean open = !model.flags().has(AccessFlag.FINAL);
             for (FieldModel field : model.fields()) {
                 if (visible(field.flags(), open)) {
@@ -349,7 +384,7 @@ class PublicApiTest {
                     field.findAttribute(Attributes.signature()).ifPresent(generic -> signature.add(generic
                             .signature().stringValue()));
                     report(name + "#" + field.fieldName().stringValue() + ":" + field.fieldType().stringValue(),
-                            signature, launcherPackages, offenders);
+                            signature, foreignPackage, offenders);
                 }
             }
             for (MethodModel method : model.methods()) {
@@ -360,21 +395,21 @@ class PublicApiTest {
                     method.findAttribute(Attributes.exceptions()).ifPresent(exceptions -> exceptions.exceptions()
                             .forEach(type -> signature.add("L" + type.asInternalName() + ";")));
                     report(name + "#" + method.methodName().stringValue() + method.methodType().stringValue(),
-                            signature, launcherPackages, offenders);
+                            signature, foreignPackage, offenders);
                 }
             }
         }
         return new ArrayList<>(offenders);
     }
 
-    private static void report(String member, List<String> signatures, Set<String> launcherPackages,
+    private static void report(String member, List<String> signatures, Predicate<String> foreignPackage,
                                Set<String> offenders) {
         for (String signature : signatures) {
             Matcher type = CLASS_TYPE.matcher(signature);
             while (type.find()) {
                 String internalName = type.group(1);
                 int slash = internalName.lastIndexOf('/');
-                if (slash > 0 && launcherPackages.contains(internalName.substring(0, slash))) {
+                if (slash > 0 && foreignPackage.test(internalName.substring(0, slash))) {
                     offenders.add(member + " names " + internalName.replace('/', '.'));
                 }
             }

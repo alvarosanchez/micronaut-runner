@@ -21,6 +21,10 @@ A Maven module that depends on the application fails to build:: A Runner JAR is 
 The build log says that no Logback configuration was precompiled:: Only a notice: Logback reads `logback.xml` at
 startup, as without precompilation. The reason says what kept it from being compiled
 (<<precompiledLogback,Precompiled Logback Configuration>>).
+`The packaged +...+ may enable Micronaut's distributed configuration client`:: Logback was precompiled, so a
+`logger.config` that distributed configuration supplies is not applied. Set the location with `-Dlogger.config` or
+`LOGGER_CONFIG`, or package with `precompileLogback=false` (the warning in
+<<precompiledLogback,Precompiled Logback Configuration>>).
 `The startup profile looks stale; re-record it +...+`:: The application changed since the profile was recorded. Record
 it again and commit it (<<startupProfile,Startup Profile>>).
 `No local-variable table was stripped, because +...+ reads local-variable tables at run time`:: You turned on
