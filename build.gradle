@@ -2,6 +2,17 @@ plugins {
     id "io.micronaut.build.internal.parent"
 }
 
+repositories {
+    // micronaut-aot 3.2.0-SNAPSHOT for the aggregated Javadoc, until 3.2.0 is released (#248).
+    maven {
+        url = 'https://central.sonatype.com/repository/maven-snapshots/'
+        mavenContent {
+            snapshotsOnly()
+            includeGroup 'io.micronaut.aot'
+        }
+    }
+}
+
 // The production publications, published on demand for :test-suite:publicationSmokeTest. Registered here
 // rather than in runner-test-repo because runner-bom does not apply that convention; its onlyIf already keeps
 // the -DUMMY twins out of every repository but testRepo.
