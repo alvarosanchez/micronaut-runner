@@ -55,6 +55,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -303,6 +304,11 @@ class PublicationMetadataSmokeTest {
     }
 
     private static void assertJarDescriptors() throws Exception {
+        try (JarFile jar = new JarFile(artifact(GROUP, BUILD, "jar").toFile())) {
+            assertNull(jar.getEntry("META-INF/micronaut-runner/logback-frontend.jar"),
+                    "runner-build still ships its own Logback front end");
+        }
+
         Path gradleJar = artifact(GROUP, GRADLE_PLUGIN, "jar");
         try (JarFile jar = new JarFile(gradleJar.toFile())) {
             Properties descriptor = new Properties();
