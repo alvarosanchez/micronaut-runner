@@ -21,22 +21,22 @@ import java.lang.classfile.ClassModel;
 import java.lang.classfile.CodeElement;
 import java.lang.classfile.MethodModel;
 import java.lang.classfile.instruction.InvokeDynamicInstruction;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
 
 /**
- * The lambda fixtures of the desugaring tests, and the harness that runs the class transform pipeline over
- * fixture layers the way a build does: the class path is scanned into a model, each layer is planned, and its
- * entries are then written in order, a host's generated classes right after it.
+ * The lambda fixtures of the desugaring tests, and the harness that runs Micronaut AOT's engine over fixture layers
+ * the way a build does: each layer is written into a jar, and the engine desugars them all in one run, writing a
+ * copy of each layer it rewrites with the classes it generated right after their hosts.
  */
 final class LambdaFixtures {
-
-    /** The class whose static {@code run()} exercises every lambda shape of the library fixture. */
-    static final String SCENARIO = "fix.Scenario";
 
     /** The application class whose static {@code run()} runs the scenario and its own lambdas. */
     static final String APPLICATION = "app.Main";
@@ -320,8 +320,8 @@ final class LambdaFixtures {
                 directory.resolve("classes"), List.of("-g", "--release", Integer.toString(release)), sources));
         return List.of(
                 Layer.application(select(compiled, "app/")),
-                Layer.dependency("MICRONAUT-INF/lib/fix.jar", select(compiled, "fix/")),
-                Layer.dependency("MICRONAUT-INF/lib/other.jar", select(compiled, "other/")));
+                Layer.dependency(select(compiled, "fix/")),
+                Layer.dependency(select(compiled, "other/")));
     }
 
     /**
@@ -342,86 +342,48 @@ final class LambdaFixtures {
     }
 
     /**
-     * Runs the pipeline over fixture layers.
+     * Desugars the lambdas of fixture layers with {@link ClassPathRewrite}, the first layer first on the class path.
      *
-     * @param layers the layers, in class-path order; the model numbers them from zero
-     * @return what each layer became and what the pipeline reports
-     * @throws IOException never, from in-memory layers
+     * @param directory where the layers' jars and the transform's copies go
+     * @param layers    the layers, in class-path order
+     * @return what each layer became and what the transform reports
+     * @throws IOException if a jar cannot be written or read
      */
-    static Outcome transform(List<Layer> layers) throws IOException {
-        ClassPathModel model = model(layers);
-        return transform(layers, model, ClassTransformPipeline.verifierOf(model));
+    static Outcome desugar(Path directory, List<Layer> layers) throws IOException {
+        return rewrite(directory, layers, false);
     }
 
     /**
-     * Runs the pipeline over fixture layers with a verifier of the test's own.
+     * Desugars the lambdas of fixture layers with {@link ClassPathRewrite}, the first layer first on the class path,
+     * and strips every layer after the first when asked to, in the same run.
      *
-     * @param layers   the layers, in class-path order
-     * @param model    the class path model of the layers
-     * @param verifier returns the verification errors of a class
-     * @return what each layer became and what the pipeline reports
-     * @throws IOException never, from in-memory layers
+     * @param directory where the layers' jars and the transform's copies go
+     * @param layers    the layers, in class-path order
+     * @param strip     whether the layers after the first are stripped
+     * @return what each layer became and what the transform reports
+     * @throws IOException if a jar cannot be written or read
      */
-    static Outcome transform(List<Layer> layers, ClassPathModel model, Function<byte[], List<String>> verifier)
-            throws IOException {
-        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LambdaDesugarer(model)), model,
-                verifier);
-        List<Map<String, byte[]>> outputs = new ArrayList<>();
-        List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
+    static Outcome rewrite(Path directory, List<Layer> layers, boolean strip) throws IOException {
+        List<Path> jars = new ArrayList<>(layers.size());
         for (int index = 0; index < layers.size(); index++) {
-            Layer layer = layers.get(index);
-            ClassTransformPipeline.JarRun run = pipeline.start(new ClassTransformPipeline.Layer(layer.name, index,
-                    layer.application, layer.signed));
-            if (run.plans()) {
-                run.plan(new InMemory(layer.entries));
-            }
-            Map<String, byte[]> output = new LinkedHashMap<>();
-            for (Map.Entry<String, byte[]> entry : layer.entries.entrySet()) {
-                String name = entry.getKey();
-                if (!name.endsWith(".class")) {
-                    output.put(name, entry.getValue());
-                    continue;
-                }
-                ClassTransformPipeline.Planned planned = run.planned(name);
-                if (planned != null) {
-                    output.put(name, planned.bytes());
-                    for (ClassTransformPipeline.Generated generated : planned.generated()) {
-                        output.put(generated.name(), generated.bytes());
+            jars.add(layers.get(index).write(directory.resolve("layers").resolve(index + ".jar")));
+        }
+        List<Path> dependencies = jars.subList(1, jars.size());
+        ClassPathRewrite.Result result = ClassPathRewrite.run(jars.get(0), dependencies, true,
+                strip ? dependencies : List.of(), directory.resolve("rewritten"), 1);
+        List<Map<String, byte[]>> outputs = new ArrayList<>(layers.size());
+        for (Path source : result.classPath()) {
+            Map<String, byte[]> entries = new LinkedHashMap<>();
+            try (ZipReader reader = ZipReader.open(source)) {
+                for (ZipEntryInfo entry : reader.entries()) {
+                    if (!entry.directory() && !entry.name().equals("META-INF/MANIFEST.MF")) {
+                        entries.put(entry.name(), reader.read(entry));
                     }
-                } else if (run.reads(entry.getValue().length)) {
-                    output.put(name, run.process(name, entry.getValue()));
-                } else {
-                    run.pass(name);
-                    output.put(name, entry.getValue());
                 }
             }
-            outputs.add(output);
-            reports.add(run.report());
+            outputs.add(entries);
         }
-        return new Outcome(outputs, reports, pipeline);
-    }
-
-    /**
-     * Scans fixture layers into a class path model with member tables.
-     *
-     * @param layers the layers, in class-path order
-     * @return the model
-     */
-    static ClassPathModel model(List<Layer> layers) {
-        ClassPathModel.Interner strings = new ClassPathModel.Interner();
-        List<ClassPathModel.LayerScan> scans = new ArrayList<>();
-        for (int index = 0; index < layers.size(); index++) {
-            Layer layer = layers.get(index);
-            ClassPathModel.LayerScan scan = ClassPathModel.scan(index, layer.name, layer.multiRelease, true,
-                    strings);
-            layer.entries.forEach((name, bytes) -> {
-                if (scan.wants(name, bytes.length)) {
-                    scan.accept(name, bytes);
-                }
-            });
-            scans.add(scan);
-        }
-        return ClassPathModel.merge(scans, true);
+        return new Outcome(outputs, result.counts(), jars, result.classPath());
     }
 
     /**
@@ -504,89 +466,61 @@ final class LambdaFixtures {
      */
     static final class Layer {
 
-        private final String name;
         private final Map<String, byte[]> entries;
-        private final boolean application;
-        private final boolean multiRelease;
         private final boolean signed;
 
-        private Layer(String name, Map<String, byte[]> entries, boolean application, boolean multiRelease,
-                      boolean signed) {
-            this.name = name;
+        private Layer(Map<String, byte[]> entries, boolean signed) {
             this.entries = entries;
-            this.application = application;
-            this.multiRelease = multiRelease;
             this.signed = signed;
         }
 
         static Layer application(Map<String, byte[]> entries) {
-            return new Layer("MICRONAUT-INF/classes", entries, true, false, false);
+            return new Layer(entries, false);
         }
 
-        static Layer dependency(String name, Map<String, byte[]> entries) {
-            return new Layer(name, entries, false, false, false);
+        static Layer dependency(Map<String, byte[]> entries) {
+            return new Layer(entries, false);
         }
 
-        static Layer multiRelease(String name, Map<String, byte[]> entries) {
-            return new Layer(name, entries, false, true, false);
-        }
-
-        static Layer signed(String name, Map<String, byte[]> entries) {
-            return new Layer(name, entries, false, false, true);
+        static Layer signed(Map<String, byte[]> entries) {
+            return new Layer(entries, true);
         }
 
         Map<String, byte[]> entries() {
             return entries;
         }
+
+        /**
+         * Writes the layer into a jar. A signed layer carries the signature files of a signer, which the engine
+         * does not verify.
+         *
+         * @param jar the jar to write
+         * @return the jar
+         * @throws IOException if it cannot be written
+         */
+        Path write(Path jar) throws IOException {
+            Manifest manifest = new Manifest();
+            manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+            Map<String, byte[]> written = new LinkedHashMap<>();
+            if (signed) {
+                written.put("META-INF/SIGNER.SF", "Signature-Version: 1.0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+                written.put("META-INF/SIGNER.RSA", new byte[] {1, 2, 3});
+            }
+            written.putAll(entries);
+            Files.createDirectories(jar.getParent());
+            return ClassFixtures.jar(jar, manifest, written);
+        }
     }
 
     /**
-     * What a pipeline run produced.
+     * What a run of the transform produced.
      *
-     * @param outputs  the entries of each layer, in the order they would be written
-     * @param reports  the pipeline's report on each layer
-     * @param pipeline the pipeline that ran
+     * @param outputs the entries of what each layer became, in the order the jar holds them, without its manifest
+     * @param counts  what the transform did to each layer, {@code null} for a layer it did not run over
+     * @param jars    the jar each layer was written into
+     * @param sources what a build nests for each layer: the transform's copy, or the layer's own jar
      */
-    record Outcome(List<Map<String, byte[]>> outputs, List<ClassTransformPipeline.JarReport> reports,
-                   ClassTransformPipeline pipeline) {
-    }
-
-    /**
-     * A layer's classes, as a planning step reads them.
-     */
-    private static final class InMemory implements ClassTransformPipeline.JarClasses {
-
-        private final Map<String, byte[]> entries;
-
-        private InMemory(Map<String, byte[]> entries) {
-            this.entries = entries;
-        }
-
-        @Override
-        public List<ClassTransformPipeline.ClassEntry> classes() {
-            List<ClassTransformPipeline.ClassEntry> classes = new ArrayList<>();
-            entries.forEach((name, bytes) -> {
-                if (name.endsWith(".class")) {
-                    classes.add(new ClassTransformPipeline.ClassEntry(name, bytes.length));
-                }
-            });
-            return classes;
-        }
-
-        @Override
-        public long size(String entryName) {
-            byte[] bytes = entries.get(entryName);
-            return bytes == null ? -1 : bytes.length;
-        }
-
-        @Override
-        public boolean repeated(String entryName) {
-            return false;
-        }
-
-        @Override
-        public byte[] read(String entryName) {
-            return entries.get(entryName);
-        }
+    record Outcome(List<Map<String, byte[]>> outputs, List<ClassPathRewrite.Counts> counts, List<Path> jars,
+                   List<Path> sources) {
     }
 }

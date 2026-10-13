@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -34,6 +35,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -97,28 +99,21 @@ import java.util.zip.CRC32;
  * starts, warnings are emitted in that order afterwards, and the outer archive is written on one thread.</p>
  *
  * <h2>Class transforms</h2>
- * <p>The opt-in {@code stripLocalVariables} runs Micronaut AOT's local-variable stripping over the dependencies
- * before they are staged, in every mode, on threads of its own: it writes a copy of each jar whose classes it
- * rewrites into the work directory, and that copy is staged instead.</p>
- *
- * <p>In STORED and HYBRID, each stage also runs {@code desugarLambdas} over its dependency's classes. Before
- * staging, one scan task per dependency runs on the same threads, with its own {@code ZipReader}, into a read-only
- * model of the class path that every stage shares and that is discarded when {@code build} returns. A staging thread
- * then also holds the original and the rewritten bytes of one class, at most 8 MiB each. A stage plans its
- * dependency's nests before it writes the first entry, so the thread also holds the planned nests of the jar
- * it is staging: the original and the accepted bytes of each class with a rewritten lambda call site, of its
- * nest host and of the classes generated for it, each released when the entry loop has written it. One jar's
- * output then depends on other jars' classes, whose members decide what a generated class may call, but only
- * through the model, which is complete before the first stage starts: the archive's bytes still do not depend
- * on the thread count. The application layer's lambdas are desugared on the calling thread, while the stages
- * run. What the transforms did is logged on the calling thread in class-path order and written into
- * {@code MICRONAUT-INF/transforms.txt} right after the launcher classes; with every transform off there is no
- * scan and no such entry.</p>
+ * <p>Micronaut AOT's class path transform runs before staging, on the calling thread and threads of its own, in
+ * one run over the application layer, written into a jar in the work directory, and every dependency: in STORED and
+ * HYBRID {@code desugarLambdas} rewrites the lambda call sites of every layer, and in every mode the opt-in
+ * {@code stripLocalVariables} strips the classes of the dependencies that are not project modules. It writes a copy
+ * of each layer whose classes it rewrote into the work directory, with the classes it generated right after their
+ * hosts, and its output does not depend on the number of its threads. The application layer then takes the
+ * rewritten and generated classes, and each stage nests the transform's copy of its dependency instead of the
+ * dependency; no stage rewrites a class. What the transforms did is logged on the calling thread in class-path
+ * order and written into {@code MICRONAUT-INF/transforms.txt} right after the launcher classes; with every transform
+ * off there is no such run and no such entry.</p>
  *
  * <p>Logback precompilation ({@code precompileLogback}) runs after the stages. It calls Micronaut AOT's
  * {@code micronaut-aot-logback} with the application output and the dependencies' own files, not the staged copies,
- * and the classes it generates join the application layer after the scan and after the application layer was
- * transformed, so no transform rewrites them.</p>
+ * and the classes it generates join the application layer after the class path transform ran, so no transform
+ * rewrites them.</p>
  *
  * <h2>Application jars</h2>
  * <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
@@ -821,21 +816,21 @@ public final class RunnerJarBuilder {
     /**
      * Prepares every dependency as a nested jar and reads what the index has to know about it: its manifest
      * attributes, its per-package sections, whether it was signed and where each of its entries ends up
-     * inside it. In STORED and HYBRID a dependency is repacked into a nested jar in the work directory, through
-     * the class transform pipeline when a transform, a startup class list or HYBRID needs it; in PRESERVE the
-     * dependency itself, or its stripped copy, is the nested jar, and is only checksummed.
+     * inside it. In STORED and HYBRID a dependency, or the copy Micronaut AOT's class path transform wrote of it,
+     * is repacked into a nested jar in the work directory, in the order and with the compression a startup class
+     * list or HYBRID asks for; in PRESERVE the dependency itself, or its stripped copy, is the nested jar, and is
+     * only checksummed.
      *
      * <p>When {@link #parallelism} and the number of dependencies are both above one, a pool is created for
-     * this build and stopped before this method returns. The class path is scanned first, when a transform is
-     * enabled: one scan task per dependency on the pool, while the calling thread scans the application layer.
-     * Every nested jar's entry name and work file are then fixed in class-path order, so neither depends on
-     * which dependency is staged first, and the stages run on the pool, largest dependency first, or on the
-     * calling thread one after the other. Either way the stages are collected in class-path order on the calling
+     * this build and stopped before this method returns. Micronaut AOT's class path transform runs first, when an
+     * option asks for it, with at most {@link #parallelism} threads of its own. Every nested jar's entry name and
+     * work file are then fixed in class-path order, so neither depends on which dependency is staged first, and
+     * the stages run on the pool, largest dependency first, or on the calling thread one after the other. Either way the stages are collected in class-path order on the calling
      * thread, and joined once every one has finished: the calling thread is the only thread that emits a warning
      * or touches the builder.</p>
      *
      * <p>The startup class list's rank map is built here, once, on the calling thread, and reaches every stage
-     * through the pipeline's options: in STORED and HYBRID each nested jar holds its startup classes first. HYBRID
+     * through its repack options: in STORED and HYBRID each nested jar holds its startup classes first. HYBRID
      * needs the list: without one, the dependencies are staged as STORED, with one warning. A HYBRID staging that
      * found no startup class in any dependency is staged again as STORED, with one warning, so a list that names
      * none of them compresses nothing by accident; the output is then the STORED output with the same list.</p>
@@ -847,30 +842,28 @@ public final class RunnerJarBuilder {
      */
     private void collectDependencies(Path work, StartupClassList startupClasses) throws IOException {
         Compression compression = spec.compression();
-        ClassTransformPipeline.Options options = ClassTransformPipeline.Options.NONE;
+        RepackOptions options = RepackOptions.NONE;
         if (compression != Compression.PRESERVE) {
             List<String> classes = startupClasses.classes();
             if (compression == Compression.HYBRID && classes.isEmpty()) {
                 warn(DependencyStage.HYBRID_WITHOUT_LIST);
                 compression = Compression.STORED;
             }
-            options = ClassTransformPipeline.Options.of(classes, compression == Compression.HYBRID);
+            options = RepackOptions.of(classes, compression == Compression.HYBRID);
         }
         int threads = Math.min(parallelism, dependencies.size());
         StageThreads factory = threads > 1 ? new StageThreads() : null;
         ExecutorService pool = factory == null ? null : Executors.newFixedThreadPool(threads, factory);
         Throwable failure = null;
         try {
-            transforms = ClassTransforms.prepare(spec, dependencies, work, parallelism, pool, this::scanApplication,
-                    logger, this::warn, options);
-            // The application layer is transformed on this thread while the pool stages the dependencies.
-            List<DependencyStage.Staged> staged = DependencyStage.stageAll(DependencyStage.of(dependencies,
-                    transforms.sources(), work, compression, transforms.pipeline()), pool, this::transformApplication);
+            transforms = ClassTransforms.prepare(spec, dependencies, parallelism, work, new ApplicationLayer(),
+                    logger, this::warn);
+            List<DependencyStage.Staged> staged = DependencyStage.stageAll(
+                    DependencyStage.of(dependencies, transforms.sources(), work, compression, options), pool);
             if (compression == Compression.HYBRID && DependencyStage.hotEntries(staged) == 0) {
                 warn(DependencyStage.HYBRID_WITHOUT_HOT_ENTRY);
-                transforms.storeColdClasses();
                 staged = DependencyStage.stageAll(DependencyStage.of(dependencies, transforms.sources(), work,
-                        Compression.STORED, transforms.pipeline()), pool, () -> { });
+                        Compression.STORED, options.stored()), pool);
             }
             staged.forEach(this::join);
         } catch (Throwable e) {
@@ -881,78 +874,6 @@ public final class RunnerJarBuilder {
                 stopStaging(pool, factory, failure, STAGE_SHUTDOWN_TIMEOUT);
             }
         }
-    }
-
-    /**
-     * Hands the application layer's classes to the class path scan. Only the calling thread may call it: it
-     * reads the application jars through readers that belong to it.
-     *
-     * @param scan the application layer's scan
-     * @throws IOException if a class cannot be read
-     */
-    private void scanApplication(ClassPathModel.LayerScan scan) throws IOException {
-        for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
-            if (scan.wants(item.getKey(), item.getValue().size)) {
-                scan.accept(item.getKey(), applicationBytes(item.getValue()));
-            }
-        }
-    }
-
-    /**
-     * Runs the class transforms that apply to the application layer, on the calling thread: it replaces each
-     * rewritten class and puts the classes generated for a host right after it, in the layer's entry order.
-     * The class path model is complete before this runs, and nothing here depends on the stages.
-     *
-     * @throws IOException if an application class cannot be read
-     */
-    private void transformApplication() throws IOException {
-        Map<String, ClassTransformPipeline.Planned> rewritten = transforms.application(
-                new ClassTransformPipeline.JarClasses() {
-                    @Override
-                    public List<ClassTransformPipeline.ClassEntry> classes() {
-                        List<ClassTransformPipeline.ClassEntry> classes = new ArrayList<>();
-                        for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
-                            if (item.getKey().endsWith(".class")) {
-                                classes.add(new ClassTransformPipeline.ClassEntry(item.getKey(), item.getValue().size));
-                            }
-                        }
-                        return classes;
-                    }
-
-                    @Override
-                    public long size(String entryName) {
-                        ApplicationEntry entry = application.get(entryName);
-                        return entry == null ? -1 : entry.size;
-                    }
-
-                    @Override
-                    public boolean repeated(String entryName) {
-                        // The first application output that carries a name wins, so the layer holds it once.
-                        return false;
-                    }
-
-                    @Override
-                    public byte[] read(String entryName) throws IOException {
-                        return applicationBytes(application.get(entryName));
-                    }
-                });
-        if (rewritten.isEmpty()) {
-            return;
-        }
-        Map<String, ApplicationEntry> rebuilt = new LinkedHashMap<>();
-        for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
-            ClassTransformPipeline.Planned planned = rewritten.get(item.getKey());
-            if (planned == null) {
-                rebuilt.put(item.getKey(), item.getValue());
-                continue;
-            }
-            rebuilt.put(item.getKey(), ApplicationEntry.ofBytes(planned.bytes()));
-            for (ClassTransformPipeline.Generated generated : planned.generated()) {
-                rebuilt.put(generated.name(), ApplicationEntry.ofBytes(generated.bytes()));
-            }
-        }
-        application.clear();
-        application.putAll(rebuilt);
     }
 
     /**
@@ -1073,7 +994,7 @@ public final class RunnerJarBuilder {
         if (staged.signatureWarning() != null) {
             warn(staged.signatureWarning());
         }
-        transforms.add(staged.jar().entryName, staged.transforms());
+        transforms.add(staged);
         nested.add(staged.jar());
     }
 
@@ -1863,6 +1784,15 @@ public final class RunnerJarBuilder {
             this.hasManifest = hasManifest;
             this.crc32 = crc32;
         }
+
+        /**
+         * The nested jar's entry name in the runner jar.
+         *
+         * @return the name, such as {@code MICRONAUT-INF/lib/a.jar}
+         */
+        String entryName() {
+            return entryName;
+        }
     }
 
     /**
@@ -1904,4 +1834,75 @@ public final class RunnerJarBuilder {
         }
     }
 
+    /**
+     * The application layer, as the class transforms read and change it, on the calling thread: it reads the
+     * application jars through readers that belong to that thread.
+     */
+    private final class ApplicationLayer implements ClassTransforms.ApplicationLayer {
+
+        @Override
+        public ClassTransforms.Written write(Path jar, boolean multiRelease) throws IOException {
+            int count = 0;
+            long size = 0;
+            try (ZipWriter writer = ZipWriter.create(jar, ZipWriter.DEFAULT_TIMESTAMP)) {
+                if (multiRelease) {
+                    writer.writeEntry("META-INF/MANIFEST.MF",
+                            "Manifest-Version: 1.0\r\nMulti-Release: true\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+                }
+                for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
+                    if (!item.getKey().endsWith(".class")) {
+                        continue;
+                    }
+                    ApplicationEntry entry = item.getValue();
+                    try (InputStream in = entry.open()) {
+                        writer.writeEntry(item.getKey(), in, entry.size, entry.crc32, writer.dosTime());
+                    }
+                    count++;
+                    size += entry.size;
+                }
+            }
+            return new ClassTransforms.Written(count, size);
+        }
+
+        @Override
+        public long replace(Path copy) throws IOException {
+            Map<String, ApplicationEntry> rewritten = new HashMap<>();
+            Map<String, List<Map.Entry<String, byte[]>>> generated = new HashMap<>();
+            long size = 0;
+            try (ZipReader reader = ZipReader.open(copy)) {
+                String host = null;
+                for (ZipEntryInfo entry : reader.entries()) {
+                    if (!entry.isClass()) {
+                        continue;
+                    }
+                    size += entry.uncompressedSize();
+                    ApplicationEntry own = application.get(entry.name());
+                    byte[] bytes = reader.read(entry);
+                    if (own != null) {
+                        host = entry.name();
+                        if (own.size != bytes.length || own.crc32 != entry.crc32()
+                                || !Arrays.equals(bytes, applicationBytes(own))) {
+                            rewritten.put(entry.name(), ApplicationEntry.ofBytes(bytes, entry.crc32()));
+                        }
+                    } else if (host != null) {
+                        // The transform writes the classes it generates right after their host.
+                        generated.computeIfAbsent(host, key -> new ArrayList<>()).add(Map.entry(entry.name(), bytes));
+                    } else {
+                        throw new IOException("The lambda desugaring generated " + entry.name()
+                                + " before any class of the application layer");
+                    }
+                }
+            }
+            Map<String, ApplicationEntry> rebuilt = new LinkedHashMap<>();
+            for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
+                rebuilt.put(item.getKey(), rewritten.getOrDefault(item.getKey(), item.getValue()));
+                for (Map.Entry<String, byte[]> added : generated.getOrDefault(item.getKey(), List.of())) {
+                    rebuilt.put(added.getKey(), ApplicationEntry.ofBytes(added.getValue()));
+                }
+            }
+            application.clear();
+            application.putAll(rebuilt);
+            return size;
+        }
+    }
 }

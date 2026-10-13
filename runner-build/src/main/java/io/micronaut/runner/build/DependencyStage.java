@@ -43,10 +43,10 @@ import java.util.zip.CheckedOutputStream;
  *
  * <p>A stage may run on a worker thread, so it reads nothing but its own fields and touches no builder
  * state. It opens, uses and closes its {@link ZipReader}, streams, {@link CRC32} and buffers on the
- * thread that runs it, and in HYBRID the one {@link java.util.zip.Deflater} its repack creates and ends; only
- * the {@link Staged} result it returns reaches another thread. When lambdas are desugared, the repack plans the
- * dependency's nests before it writes the first entry, and the stage holds their accepted classes until the
- * entry loop has written them.</p>
+ * thread that runs it; only the {@link Staged} result it returns reaches another thread. When Micronaut AOT's class
+ * path transform rewrote the dependency's classes, the stage nests the transform's copy instead of the dependency,
+ * and reads the dependency's central directory to tell the classes the transform generated from the dependency's
+ * own.</p>
  */
 final class DependencyStage implements Callable<DependencyStage.Staged> {
 
@@ -66,29 +66,23 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
     private static final int BUFFER_SIZE = 64 * 1024;
 
     private final Dependency dependency;
-    /** The file the stage reads: the dependency, or the copy that stripping wrote. */
+    /** What is nested: the dependency itself, or the copy Micronaut AOT's class path transform wrote of it. */
     private final Path source;
-    /** The dependency's layer in the class path model: its class-path position plus one. */
-    private final int layer;
     private final String entryName;
     /** The work file a repacked nested jar is written to; a preserved dependency leaves it unused. */
     private final Path target;
     private final Compression compression;
-    /**
-     * The class transforms a repack runs, with the startup class ranks and the HYBRID flag it applies, shared and
-     * read-only; {@code null} when there is nothing to transform, order or compress.
-     */
-    private final ClassTransformPipeline pipeline;
+    /** The startup class ranks and the HYBRID flag a repack applies, shared and read-only. */
+    private final RepackOptions options;
 
-    DependencyStage(Dependency dependency, Path source, int layer, String entryName, Path target,
-                    Compression compression, ClassTransformPipeline pipeline) {
+    DependencyStage(Dependency dependency, Path source, String entryName, Path target, Compression compression,
+                    RepackOptions options) {
         this.dependency = dependency;
         this.source = source;
-        this.layer = layer;
         this.entryName = entryName;
         this.target = target;
         this.compression = compression;
-        this.pipeline = pipeline;
+        this.options = options;
     }
 
     /**
@@ -97,42 +91,38 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
      * file name, made unique in the archive ignoring case.
      *
      * @param dependencies the dependencies that are nested, in class-path order
-     * @param sources      the file each stage reads, in class-path order
+     * @param sources      what to nest for each dependency, in the same order: the dependency itself, or the copy
+     *                     Micronaut AOT's class path transform wrote of it
      * @param work         the directory the repacked nested jars are built in
      * @param compression  how the stages nest their dependencies
-     * @param pipeline     the class transforms, startup class ranks and HYBRID flag a repack applies, or {@code null}
+     * @param options      the startup class ranks and HYBRID flag a repack applies
      * @return the stages, in class-path order
      */
     static List<DependencyStage> of(List<Dependency> dependencies, List<Path> sources, Path work,
-                                    Compression compression, ClassTransformPipeline pipeline) {
+                                    Compression compression, RepackOptions options) {
         List<DependencyStage> stages = new ArrayList<>(dependencies.size());
         Set<String> taken = new HashSet<>();
         for (int position = 0; position < dependencies.size(); position++) {
             Dependency dependency = dependencies.get(position);
-            stages.add(new DependencyStage(dependency, sources.get(position), position + 1,
+            stages.add(new DependencyStage(dependency, sources.get(position),
                     IndexFormat.LIB_PREFIX + uniqueName(taken, dependency.fileName()),
-                    work.resolve("lib-" + position + ".jar"), compression, pipeline));
+                    work.resolve("lib-" + position + ".jar"), compression, options));
         }
         return stages;
     }
 
     /**
      * Runs every stage once, on the build's pool, largest dependency first, or on the calling thread one after the
-     * other, and collects the results in class-path order. The calling thread runs {@code alongside} first: while
-     * the pool stages, or before the first stage without a pool.
+     * other, and collects the results in class-path order.
      *
-     * @param stages    the stages, in class-path order
-     * @param pool      the build's pool, or {@code null} to stage on the calling thread
-     * @param alongside what the calling thread does meanwhile
+     * @param stages the stages, in class-path order
+     * @param pool   the build's pool, or {@code null} to stage on the calling thread
      * @return what each stage produced, in class-path order
-     * @throws IOException if a dependency cannot be staged: the failure of the first one on the class path; or what
-     *                     {@code alongside} threw
+     * @throws IOException if a dependency cannot be staged: the failure of the first one on the class path
      */
-    static List<Staged> stageAll(List<DependencyStage> stages, ExecutorService pool, Alongside alongside)
-            throws IOException {
+    static List<Staged> stageAll(List<DependencyStage> stages, ExecutorService pool) throws IOException {
         List<Staged> staged = new ArrayList<>(stages.size());
         if (pool == null) {
-            alongside.run();
             for (DependencyStage stage : stages) {
                 staged.add(stage.call());
             }
@@ -146,7 +136,6 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
         for (int position : RunnerJarBuilder.largestFirst(dependencies)) {
             futures.set(position, pool.submit(stages.get(position)));
         }
-        alongside.run();
         for (Future<Staged> future : futures) {
             staged.add(RunnerJarBuilder.awaitStage(future));
         }
@@ -187,10 +176,21 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
         ZipRepacker.RepackResult result;
         Manifest manifest;
         boolean hasManifest;
-        ClassTransformPipeline.JarReport transforms = null;
+        Classes classes;
         try (ZipReader reader = ZipReader.open(source)) {
             manifest = reader.manifest().orElse(null);
             hasManifest = reader.entry("META-INF/MANIFEST.MF").isPresent();
+            Set<String> generated = Set.of();
+            if (source.equals(dependency.path())) {
+                classes = new Classes(Classes.count(reader.entries()), 0);
+            } else {
+                // The transform's copy: a class the dependency does not hold is one the transform generated.
+                try (ZipReader original = ZipReader.open(dependency.path())) {
+                    generated = generated(reader.entries(), original.entries());
+                    classes = new Classes(Classes.count(original.entries()),
+                            Classes.size(original.entries()) - Classes.size(reader.entries()));
+                }
+            }
             if (compression == Compression.PRESERVE) {
                 // Nested as it is, so nothing is written: the reader has already resolved every offset
                 // relative to the source's first byte, and the source is the nested jar.
@@ -201,16 +201,11 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
             } else {
                 file = target;
                 CRC32 crc = new CRC32();
-                // The run is decided before any entry is read: a signed jar keeps every class as it is.
-                ClassTransformPipeline.JarRun run = pipeline == null ? null
-                        : pipeline.start(new ClassTransformPipeline.Layer(entryName, layer, false,
-                                reader.hasSignatureFiles()));
                 try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(target), BUFFER_SIZE);
                      CheckedOutputStream checked = new CheckedOutputStream(out, crc)) {
-                    result = ZipRepacker.repack(reader, checked, run);
+                    result = ZipRepacker.repack(reader, checked, options, generated);
                 }
                 crc32 = crc.getValue();
-                transforms = run == null ? null : run.report();
             }
         } catch (IOException e) {
             // Without this the message names only the entry, and a build with dozens of dependencies
@@ -227,8 +222,25 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
                 new RunnerJarBuilder.NestedJar(dependency, entryName, file, result, manifest, hasManifest, crc32),
                 classPathWarning(dependency, manifest),
                 signatureWarning(dependency, compression, result),
-                transforms,
-                result.hotEntries());
+                result.hotEntries(),
+                classes);
+    }
+
+    /**
+     * The class entries of the transform's copy that the dependency does not hold.
+     */
+    private static Set<String> generated(List<ZipEntryInfo> copy, List<ZipEntryInfo> original) {
+        Set<String> own = new HashSet<>(original.size() * 2);
+        for (ZipEntryInfo entry : original) {
+            own.add(entry.name());
+        }
+        Set<String> generated = new HashSet<>();
+        for (ZipEntryInfo entry : copy) {
+            if (entry.isClass() && !own.contains(entry.name())) {
+                generated.add(entry.name());
+            }
+        }
+        return generated;
     }
 
     /**
@@ -305,22 +317,40 @@ final class DependencyStage implements Callable<DependencyStage.Staged> {
      * @param jar              the dependency, written as a nested jar
      * @param classPathWarning the {@code Class-Path} warning, or {@code null}
      * @param signatureWarning the signed-dependency warning, or {@code null}
-     * @param transforms       what the class transform pipeline did to it, or {@code null} when none ran
      * @param hotEntries       how many startup classes, and versioned variants of them, its nested jar holds first
+     * @param classes          the dependency's own class entries, which the report of {@code desugarLambdas} counts
      */
-    record Staged(RunnerJarBuilder.NestedJar jar, String classPathWarning, String signatureWarning,
-                  ClassTransformPipeline.JarReport transforms, int hotEntries) {
+    record Staged(RunnerJarBuilder.NestedJar jar, String classPathWarning, String signatureWarning, int hotEntries,
+                  Classes classes) {
     }
 
-    /** What the calling thread does while the stages run. */
-    @FunctionalInterface
-    interface Alongside {
+    /**
+     * The class entries of a dependency, as the report of {@code desugarLambdas} counts them.
+     *
+     * @param count      how many class entries the dependency holds
+     * @param bytesSaved how many bytes smaller the class entries of the transform's copy are, together, than the
+     *                   dependency's: negative when they grew, {@code 0} without a copy
+     */
+    record Classes(int count, long bytesSaved) {
 
-        /**
-         * Does it.
-         *
-         * @throws IOException if it fails
-         */
-        void run() throws IOException;
+        private static int count(List<ZipEntryInfo> entries) {
+            int count = 0;
+            for (ZipEntryInfo entry : entries) {
+                if (entry.isClass()) {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        private static long size(List<ZipEntryInfo> entries) {
+            long size = 0;
+            for (ZipEntryInfo entry : entries) {
+                if (entry.isClass()) {
+                    size += entry.uncompressedSize();
+                }
+            }
+            return size;
+        }
     }
 }

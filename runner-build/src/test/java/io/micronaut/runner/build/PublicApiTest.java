@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.aot.bytecode.ClassPathTransform;
 import io.micronaut.aot.logback.LogbackPrecompiler;
 import io.micronaut.runner.Launcher;
 import org.junit.jupiter.api.Test;
@@ -85,9 +86,10 @@ import static org.junit.jupiter.api.Assertions.fail;
  * is package-private, or public only because another package or module calls it, and then {@code @Internal}. From
  * 1.0.0, a change to the list is a 1.x binary-compatibility decision.</p>
  *
- * <p>The launcher and {@code micronaut-aot-logback} are runtime dependencies of this library, never compile-time
- * ones of its users: no public or protected signature names one of their types, {@code @Internal} ones included.
- * That covers descriptors, generic signatures, {@code throws} clauses, and the supertypes of a public type.</p>
+ * <p>The launcher, {@code micronaut-aot-bytecode} and {@code micronaut-aot-logback} are runtime dependencies of this
+ * library, never compile-time ones of its users: no public or protected signature names one of their types,
+ * {@code @Internal} ones included. That covers descriptors, generic signatures, {@code throws} clauses, and the
+ * supertypes of a public type.</p>
  *
  * <p>The checks duplicate the launcher's {@code PublicApiTest} on purpose: a shared helper would be public API of
  * its own.</p>
@@ -147,8 +149,9 @@ class PublicApiTest {
 
     @Test
     void noPublicSignatureNamesAMicronautAotType() throws IOException {
-        Set<String> logbackPackages = packages(classFiles(LogbackPrecompiler.class).keySet());
-        assertTrue(logbackPackages.stream().allMatch(MICRONAUT_AOT), logbackPackages::toString);
+        Set<String> aotPackages = packages(classFiles(ClassPathTransform.class).keySet());
+        aotPackages.addAll(packages(classFiles(LogbackPrecompiler.class).keySet()));
+        assertTrue(aotPackages.stream().allMatch(MICRONAUT_AOT), aotPackages::toString);
 
         List<String> offenders = foreignTypesInSignatures(classFiles(RunnerJarSpec.class), MICRONAUT_AOT);
 

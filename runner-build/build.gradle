@@ -48,9 +48,9 @@ dependencies {
     compileOnly platform(libs.micronaut.core)
     compileOnly 'io.micronaut:micronaut-core'
 
-    // Micronaut AOT's class path rewrite, which the stripLocalVariables option runs (ClassTransforms), and its
-    // logback.xml precompiler (LogbackPrecompilation). Neither has dependencies of its own, and no public signature of
-    // this library names one of their types (PublicApiTest checks it).
+    // Micronaut AOT's class path rewrite, which the desugarLambdas and stripLocalVariables options run
+    // (ClassPathRewrite), and its logback.xml precompiler (LogbackPrecompilation). Neither has dependencies of its own,
+    // and no public signature of this library names one of their types (PublicApiTest checks it).
     implementation libs.micronaut.aot.bytecode
     implementation libs.micronaut.aot.logback
 
@@ -73,7 +73,7 @@ tasks.withType(Test).configureEach {
     } as CommandLineArgumentProvider)
 }
 
-// The transform corpus runs the class transform pipeline over the class paths of real applications, which
+// The transform corpus runs Micronaut AOT's class path transform over the class paths of real applications, which
 // only the "Transform corpus" workflow resolves: it is not part of check.
 tasks.named('test', Test) {
     useJUnitPlatform { excludeTags 'transform-corpus' }
@@ -92,7 +92,7 @@ abstract class TransformCorpusArguments implements CommandLineArgumentProvider {
 
 tasks.register('transformCorpusTest', Test) {
     group = 'verification'
-    description = 'Runs the class transform pipeline over the class paths named by -Prunner.transformCorpus=<dir>'
+    description = 'Runs the class path transform over the class paths named by -Prunner.transformCorpus=<dir>'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform { includeTags 'transform-corpus' }

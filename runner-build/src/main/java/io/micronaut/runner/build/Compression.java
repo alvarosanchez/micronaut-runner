@@ -56,12 +56,12 @@ public enum Compression {
      * startup compressed.
      *
      * <p>The startup classes come from the recorded startup class list ({@link RunnerJarSpec#startupClasses()}).
-     * A listed class stays stored, so it is still defined straight from the mapped archive. An unlisted class that
-     * no build-time class transform changed keeps its original DEFLATE bytes when the dependency had it deflated
-     * and smaller than the class; an unlisted class that a transform rewrote or generated, such as a stripped or
-     * desugared class, is deflated afresh, because its original compressed bytes would ship the class before the
-     * transform. Everything else stays stored: an unlisted class the dependency stored or could not compress, one
-     * whose fresh deflate is not smaller, a class above the transforms' size limit, resources and directories.
+     * A listed class stays stored, so it is still defined straight from the mapped archive. An unlisted class keeps
+     * its DEFLATE bytes when the dependency had it deflated and smaller than the class. A dependency whose classes
+     * a build-time class transform rewrote is repacked from the copy Micronaut AOT's class path transform wrote,
+     * which deflates afresh every entry the dependency deflated, rewritten, generated or not, so a rewritten class
+     * never ships its original compressed bytes. Everything else stays stored: an unlisted class the dependency
+     * stored or could not compress, a class above 8 MiB, resources and directories.
      * Signature files and {@code META-INF/INDEX.LIST} are dropped as {@link #STORED} drops them, and the
      * build-time transforms run as they do for {@link #STORED}.</p>
      *

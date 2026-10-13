@@ -104,6 +104,15 @@ record ZipEntryInfo(
     }
 
     /**
+     * Whether the entry is a class: not a directory, and named {@code *.class}.
+     *
+     * @return whether it is a class
+     */
+    boolean isClass() {
+        return !directory && name.endsWith(".class");
+    }
+
+    /**
      * Returns a copy of this entry with both offsets moved by {@code delta} bytes.
      *
      * <p>{@link ZipRepacker} reports offsets relative to the start of the nested jar it produced. The

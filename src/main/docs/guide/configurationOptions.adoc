@@ -124,7 +124,8 @@ time.
 |`true`
 |`options.put('desugarLambdas', 'false')`
 |`micronaut.runner.desugarLambdas`, or `<desugarLambdas>` in `<runnerOptions>`
-|Generates the classes of lambdas at build time (<<desugaredLambdas,Lambdas Generated at Build Time>>).
+|Generates the classes of lambdas at build time, with Micronaut AOT's class path transform
+(<<desugaredLambdas,Lambdas Generated at Build Time>>).
 
 |`stripLocalVariables`
 |`false`

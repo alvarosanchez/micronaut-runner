@@ -15,408 +15,409 @@
  */
 package io.micronaut.runner.build;
 
-import io.micronaut.aot.bytecode.ClassPathTransform;
 import io.micronaut.runner.IndexFormat;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.function.Consumer;
-import java.util.jar.Attributes;
-import java.util.jar.Manifest;
 
 /**
- * The class transforms of one build: which steps run, the {@link ClassPathModel} they share, and, once every
- * dependency is staged, what they did.
+ * The class transforms of one build: what Micronaut AOT's class path transform rewrote, what each stage nests, and,
+ * once every dependency is staged, what the transforms did.
  *
- * <p>It belongs to the calling thread of {@link RunnerJarBuilder}. Only its {@link #pipeline()} reaches the stage
- * tasks, which share it read-only and hand their {@link ClassTransformPipeline.JarReport} back with their result;
- * the calling thread adds the reports in class-path order and logs them.</p>
+ * <p>The transform runs once, on the calling thread, before any stage is submitted ({@link ClassPathRewrite}): one
+ * run over the application layer and every dependency, which desugars lambdas in STORED and HYBRID and, with the
+ * opt-in {@code stripLocalVariables}, strips the dependencies that are not project modules, in every mode. The
+ * application layer takes the rewritten and generated classes at once, and each stage then nests the transform's
+ * copy of its dependency, when it wrote one. No stage rewrites a class.</p>
  *
- * <p>The {@code stripLocalVariables} option runs Micronaut AOT's {@link ClassPathTransform} before any dependency
- * is staged, in every compression mode: a stage then reads the dependency's rewritten copy ({@link #sources()}).
- * What it did is logged and written into {@code transforms.txt} with the pipeline's steps. The engine strips no
- * class of a jar that is signed or that holds an entry name more than once, and writes no copy of it: its stage
- * reads the dependency itself.</p>
+ * <p>It belongs to the calling thread of {@link RunnerJarBuilder}. Only its {@link #sources()} reach the stage
+ * tasks; the calling thread adds their results in class-path order and reports them.</p>
  */
 final class ClassTransforms {
-
-    /** The name of the stripping step in reports: the option's. */
-    private static final String STRIP = RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName();
-
-    /** What warnings and the class path model call the application layer. */
-    private static final String APPLICATION_LAYER = "the application output";
 
     /** What notes and {@code transforms.txt} call the application layer: its directory in the archive. */
     private static final String APPLICATION_NAME =
             IndexFormat.CLASSES_PREFIX.substring(0, IndexFormat.CLASSES_PREFIX.length() - 1);
 
-    private ClassTransformPipeline pipeline;
-    private final List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
-    /** What every step did to each dependency, in class-path order, for {@code transforms.txt}. */
-    private final List<ClassTransformPipeline.JarReport> described = new ArrayList<>();
-    /** What the pipeline did to the application layer, first on the class path; {@code null} if it did not run. */
-    private ClassTransformPipeline.JarReport applicationReport;
-    /** What stripping did; {@code null} when it did not run. */
-    private final Stripped stripped;
-    /** The file each stage reads, by dependency position. */
-    private final List<Path> sources;
+    /** The jar the application layer is written into for the transform, in the build's work directory. */
+    private static final String APPLICATION_JAR = "application-layer.jar";
 
-    private ClassTransforms(ClassTransformPipeline pipeline, Stripped stripped, List<Path> sources) {
-        this.pipeline = pipeline;
-        this.stripped = stripped;
-        this.sources = sources;
+    /** The directory the transform writes its copies into, in the build's work directory. */
+    private static final String REWRITTEN = "rewritten";
+
+    /** What each stage nests, in class-path order: the dependency, or the transform's copy of it. */
+    private final List<Path> sources;
+    /** Whether lambdas were desugared. */
+    private final boolean desugared;
+    /**
+     * What the transform did to each layer, the application layer first, then each dependency; an element is
+     * {@code null} for a layer it did not run over, and the list is {@code null} when it did not run.
+     */
+    private final List<ClassPathRewrite.Counts> counts;
+    /** The lines the transform logs about stripping; empty when stripping was not asked for. */
+    private final List<String> summary;
+    /** The application layer's class entries, as the transform saw them; {@code null} when it did not run. */
+    private final DependencyStage.Classes applicationClasses;
+    /** What each stage reported, in class-path order. */
+    private final List<DependencyStage.Staged> staged = new ArrayList<>();
+
+    private ClassTransforms(List<Path> sources, boolean desugared, List<ClassPathRewrite.Counts> counts,
+                            List<String> summary, DependencyStage.Classes applicationClasses) {
+        this.sources = List.copyOf(sources);
+        this.desugared = desugared;
+        this.counts = counts;
+        this.summary = summary;
+        this.applicationClasses = applicationClasses;
     }
 
     /**
-     * Decides which class transforms run, runs Micronaut AOT's local-variable stripping when it is on, and scans
-     * the class path that desugaring needs when it is on.
+     * Runs Micronaut AOT's class path transform when an option asks for it, and lets the application layer take
+     * what it rewrote.
      *
-     * <p>Stripping runs first, in every compression mode, over the dependencies that are not
-     * {@linkplain Dependency#projectModule() project modules}, on at most {@code parallelism} threads of its own;
-     * its warnings are reported at once. The pipeline's transforms run only in STORED and HYBRID: in PRESERVE each
-     * dependency, or its stripped copy, is nested as it is, which is reported at info when lambdas would be
-     * desugared, and the application layer is left alone too. Without desugaring nothing is scanned, and the
-     * pipeline, if the options need one, has no step. Otherwise one scan task per dependency runs on the pool, each
-     * through a {@link ZipReader} of its own, while the calling thread scans the application layer, and the scans,
-     * which record the member tables of every class, are merged in class-path order.</p>
+     * <p>Lambdas are desugared only in STORED and HYBRID: in PRESERVE every dependency, or its stripped copy, is
+     * nested as it is, which is reported once at info when the option is on, and the application layer is left
+     * alone too. Stripping runs in every mode, over the dependencies that are not
+     * {@linkplain Dependency#projectModule() project modules}; the transform turns it off for the whole build, with
+     * one warning, when the class path holds a library that reads local-variable tables at run time. Without a step
+     * to run, the transform does not run.</p>
      *
      * @param spec         the build's spec
      * @param dependencies the dependencies that are nested, in class-path order
-     * @param work         the build's work directory, which holds the stripped copies until it is deleted
-     * @param parallelism  the most threads stripping runs on; {@code 1} runs it on the calling thread
-     * @param pool         the staging pool, or {@code null} to scan on the calling thread
-     * @param application  scans the application layer, on the calling thread
+     * @param parallelism  the number of threads the transform may use
+     * @param work         the build's work directory, which the build deletes
+     * @param application  the application layer, which only the calling thread may read
      * @param logger       where to report that an option has no effect
-     * @param warn         where to report what stripping warns about
-     * @param options      the startup class ranks and the HYBRID flag every stage applies; ignored in PRESERVE
+     * @param warn         where to report what the transform warns about
      * @return the build's transforms
-     * @throws IOException if a dependency or an application class cannot be read, or a stripped copy cannot be
-     *                     written; when several dependencies cannot be read, the failure of the first one on the
-     *                     class path
+     * @throws IOException if a dependency or an application class cannot be read, or a copy cannot be written
      */
-    static ClassTransforms prepare(RunnerJarSpec spec, List<Dependency> dependencies, Path work, int parallelism,
-                                   ExecutorService pool, ApplicationClasses application, BuildLogger logger,
-                                   Consumer<String> warn, ClassTransformPipeline.Options options)
+    static ClassTransforms prepare(RunnerJarSpec spec, List<Dependency> dependencies, int parallelism, Path work,
+                                   ApplicationLayer application, BuildLogger logger, Consumer<String> warn)
             throws IOException {
-        List<Path> sources = new ArrayList<>(dependencies.size());
+        boolean preserve = spec.compression() == Compression.PRESERVE;
+        boolean desugar = spec.desugarLambdas() && !preserve;
+        List<Path> paths = new ArrayList<>(dependencies.size());
+        List<Path> strip = new ArrayList<>(dependencies.size());
         for (Dependency dependency : dependencies) {
-            sources.add(dependency.path());
-        }
-        Stripped stripped = spec.stripLocalVariables() ? strip(spec, dependencies, work, parallelism, sources) : null;
-        if (stripped != null) {
-            stripped.result.warnings().forEach(warn);
-        }
-        boolean desugar = spec.desugarLambdas();
-        if (spec.compression() == Compression.PRESERVE) {
-            if (desugar) {
-                logger.info("The " + LambdaDesugarer.NAME + " option has no effect with PRESERVE compression, which"
-                        + " does not repack the dependencies");
-            }
-            return new ClassTransforms(null, stripped, sources);
-        }
-        if (!desugar) {
-            return new ClassTransforms(options.any() ? ClassTransformPipeline.ordering(options) : null, stripped,
-                    sources);
-        }
-        ClassPathModel model = scan(spec, dependencies, sources, pool, application);
-        return new ClassTransforms(new ClassTransformPipeline(List.of(new LambdaDesugarer(model)), model, options),
-                stripped, sources);
-    }
-
-    /**
-     * Runs Micronaut AOT's local-variable stripping over the dependencies that are not project modules, against
-     * the whole class path, and points {@code sources} at the copies it wrote.
-     *
-     * @return what it did, or {@code null} when every dependency is a project module
-     */
-    private static Stripped strip(RunnerJarSpec spec, List<Dependency> dependencies, Path work, int parallelism,
-                                  List<Path> sources) throws IOException {
-        List<Path> thirdParty = new ArrayList<>(dependencies.size());
-        for (Dependency dependency : dependencies) {
-            if (!dependency.projectModule()) {
-                thirdParty.add(dependency.path());
+            paths.add(dependency.path());
+            if (spec.stripLocalVariables() && !dependency.projectModule()) {
+                strip.add(dependency.path());
             }
         }
-        if (thirdParty.isEmpty()) {
-            return null;
+        ClassTransforms transforms = new ClassTransforms(paths, false, null, List.of(), null);
+        if (desugar || !strip.isEmpty()) {
+            transforms = rewrite(spec, paths, desugar, strip, parallelism, work, application, warn);
         }
-        List<Path> classPath = new ArrayList<>(spec.applicationOutput());
-        int first = classPath.size();
-        classPath.addAll(sources);
-        ClassPathTransform.Result result = ClassPathTransform.run(ClassPathTransform.Request.builder()
-                .classPath(classPath)
-                .outputDirectory(work.resolve("stripped"))
-                .stripLocalVariables(thirdParty)
-                .parallelism(parallelism)
-                .build());
-        List<ClassPathTransform.Result.Entry> entries = new ArrayList<>(Collections.nCopies(sources.size(), null));
-        int next = 0;
-        for (int position = 0; position < sources.size(); position++) {
-            sources.set(position, result.classPath().get(first + position));
-            // One entry per jar named to strip, in class-path order; none when a library reads the tables.
-            if (!dependencies.get(position).projectModule() && next < result.entries().size()) {
-                entries.set(position, result.entries().get(next++));
-            }
+        if (preserve && spec.desugarLambdas()) {
+            logger.info("The " + ClassPathRewrite.DESUGAR + " option has no effect with PRESERVE compression,"
+                    + " which does not repack the dependencies");
         }
-        return new Stripped(result, entries);
+        return transforms;
     }
 
     /**
-     * Turns HYBRID off for the stages that follow, keeping every step and the startup class ranks, so that they
-     * write the nested jars as STORED does with the same list. The builder calls it when a HYBRID staging found
-     * no startup class in any dependency.
+     * Runs the transform over the application layer, written into a jar, and every dependency, and replaces the
+     * application layer's classes with the ones it rewrote.
      */
-    void storeColdClasses() {
-        if (pipeline != null && pipeline.options().hybrid()) {
-            pipeline = pipeline.withOptions(new ClassTransformPipeline.Options(pipeline.options().ranks(), false));
+    private static ClassTransforms rewrite(RunnerJarSpec spec, List<Path> paths, boolean desugar, List<Path> strip,
+                                           int parallelism, Path work, ApplicationLayer application,
+                                           Consumer<String> warn) throws IOException {
+        Path jar = work.resolve(APPLICATION_JAR);
+        Written written = application.write(jar, spec.multiRelease());
+        ClassPathRewrite.Result result = ClassPathRewrite.run(jar, paths, desugar, strip, work.resolve(REWRITTEN),
+                parallelism);
+        result.warnings().forEach(warn);
+        Path copy = result.classPath().get(0);
+        long saved = 0;
+        if (!copy.equals(jar)) {
+            saved = written.size() - application.replace(copy);
+            Files.delete(copy);
+            Files.delete(copy.getParent());
         }
+        // The application layer has taken what it needs: only the dependencies' copies stay until staging.
+        Files.delete(jar);
+        return new ClassTransforms(result.classPath().subList(1, result.classPath().size()), desugar,
+                result.counts(), result.summary(), new DependencyStage.Classes(written.classes(), saved));
     }
 
     /**
-     * Runs the transforms that apply to the application layer, which no stage repacks: today desugaring
-     * lambdas, whose nests are planned, rewritten and gated here, on the calling thread.
+     * What each stage nests.
      *
-     * @param classes the application layer's classes
-     * @return what to write for each rewritten class, keyed by entry name, with the classes generated for it;
-     * empty when no transform runs over the application layer
-     * @throws IOException if an application class cannot be read
-     */
-    Map<String, ClassTransformPipeline.Planned> application(ClassTransformPipeline.JarClasses classes)
-            throws IOException {
-        if (pipeline == null || !pipeline.plansApplication()) {
-            return Map.of();
-        }
-        ClassTransformPipeline.JarRun run = pipeline.start(
-                new ClassTransformPipeline.Layer(APPLICATION_NAME, 0, true, false));
-        run.plan(classes);
-        Map<String, ClassTransformPipeline.Planned> rewritten = new HashMap<>();
-        for (ClassTransformPipeline.ClassEntry entry : classes.classes()) {
-            ClassTransformPipeline.Planned planned = run.planned(entry.name());
-            if (planned == null) {
-                run.pass(entry.name());
-            } else {
-                rewritten.put(entry.name(), planned);
-            }
-        }
-        applicationReport = run.report();
-        return rewritten;
-    }
-
-    /**
-     * The pipeline the stages run.
-     *
-     * @return the pipeline, or {@code null} when no class transform runs
-     */
-    ClassTransformPipeline pipeline() {
-        return pipeline;
-    }
-
-    /**
-     * The file each stage reads: the dependency's stripped copy, or the dependency itself.
-     *
-     * @return one path per dependency, in class-path order
+     * @return one path per dependency, in class-path order: the dependency, or the copy the transform wrote of it
      */
     List<Path> sources() {
         return sources;
     }
 
     /**
-     * Adds what the transforms did to one dependency, in class-path order.
+     * Adds what one dependency's stage did, in class-path order.
      *
-     * @param entryName the dependency's nested entry name
-     * @param report    what the pipeline did to it, or {@code null} when its stage ran no pipeline
+     * @param result the dependency's stage result
      */
-    void add(String entryName, ClassTransformPipeline.JarReport report) {
-        ClassPathTransform.Result.Entry entry = stripped == null ? null : stripped.entries.get(described.size());
-        if (report != null) {
-            reports.add(report);
-        }
-        if (entry == null) {
-            described.add(report);
-            return;
-        }
-        List<ClassTransformPipeline.StepCount> counts = new ArrayList<>();
-        counts.add(new ClassTransformPipeline.StepCount(STRIP, entry.classesStripped(),
-                entry.classesUnchanged(), entry.fallbacks(), entry.bytesSaved()));
-        List<String> notes = new ArrayList<>();
-        for (String note : entry.notes()) {
-            // The note names the jar by its path; transforms.txt names it by its entry.
-            notes.add(entryName + note.substring(note.indexOf('\t')));
-        }
-        if (report != null) {
-            counts.addAll(report.counts());
-            notes.addAll(report.notes());
-        }
-        described.add(new ClassTransformPipeline.JarReport(entryName, false, counts, notes,
-                report == null ? null : report.desugared()));
+    void add(DependencyStage.Staged result) {
+        staged.add(result);
     }
 
     /**
      * Reports what the transforms did once every dependency is staged: each fallback note at info, in
-     * class-path order, then one info line per step, stripping first.
+     * class-path order, then the lines of each transform, desugaring first.
      *
      * @param logger where to report
-     * @return one report per step that ran, empty when none ran
+     * @return one report per transform that ran, in the order they ran; empty when none ran
      */
     List<TransformReport> report(BuildLogger logger) {
-        List<TransformReport> totals = new ArrayList<>();
-        if (stripped != null) {
-            int rewritten = 0;
-            int unchanged = 0;
-            int fallbacks = 0;
-            long saved = 0;
-            for (ClassPathTransform.Result.Entry entry : stripped.result.entries()) {
-                entry.notes().forEach(note -> logNote(logger, note));
-                rewritten += entry.classesStripped();
-                unchanged += entry.classesUnchanged();
-                fallbacks += entry.fallbacks();
-                saved += entry.bytesSaved();
-            }
-            logger.info(stripped.result.summary());
-            if (!stripped.result.entries().isEmpty()) {
-                totals.add(new TransformReport(STRIP, rewritten, unchanged, fallbacks, saved));
+        List<Layer> layers = layers();
+        for (Layer layer : layers) {
+            for (String note : layer.notes()) {
+                String[] fields = note.split("\t", 4);
+                logger.info("Kept " + fields[1] + " of " + fields[0] + " without " + fields[2] + ": " + fields[3]);
             }
         }
-        if (pipeline != null) {
-            List<ClassTransformPipeline.JarReport> all = reports();
-            for (ClassTransformPipeline.JarReport report : all) {
-                report.notes().forEach(note -> logNote(logger, note));
+        List<TransformReport> totals = new ArrayList<>(2);
+        if (desugared) {
+            TransformReport total = total(ClassPathRewrite.DESUGAR, layers);
+            if (total == null) {
+                // No layer holds a class.
+                total = new TransformReport(ClassPathRewrite.DESUGAR, 0, 0, 0, 0);
             }
-            for (String line : pipeline.summaries(all)) {
-                logger.info(line);
-            }
-            totals.addAll(pipeline.totals(all));
+            totals.add(total);
+            logger.info(desugarSummary(total, layers));
+        }
+        summary.forEach(logger::info);
+        TransformReport stripped = total(ClassPathRewrite.STRIP, layers);
+        if (stripped != null) {
+            totals.add(stripped);
         }
         return totals;
     }
 
-    private static void logNote(BuildLogger logger, String note) {
-        String[] fields = note.split("\t", 4);
-        logger.info("Kept " + fields[1] + " of " + fields[0] + " without " + fields[2] + ": " + fields[3]);
-    }
-
     /**
-     * The content of {@code MICRONAUT-INF/transforms.txt}.
+     * Writes {@code MICRONAUT-INF/transforms.txt}: tab-separated lines in class-path order, with nested entry
+     * names and no absolute path or timestamp. The first line names the Runner version, the second the columns,
+     * then one line per jar and transform with its counts, then one {@code lambdas} line per jar with a lambda
+     * call site, which gives the sites rewritten, the classes generated, the bridges added, the nests that fell
+     * back and the sites left as {@code invokedynamic}, in total and by reason, and last one line per note. The
+     * application layer has a line only for desugaring, the one transform that runs over it.
      *
      * @param version the Runner version, or {@code null} when it is unknown
-     * @return the content, or {@code null} when the archive carries no such entry
+     * @return the content, or {@code null} when no transform changed any class and nothing was noted
      */
     byte[] describe(String version) {
-        if (pipeline == null && stripped == null) {
+        List<Layer> layers = layers();
+        boolean anything = false;
+        for (Layer layer : layers) {
+            anything |= !layer.notes().isEmpty();
+            for (TransformReport count : layer.counts()) {
+                anything |= count.rewritten() > 0 || count.fallbacks() > 0;
+            }
+        }
+        if (!anything) {
             return null;
         }
-        List<ClassTransformPipeline.JarReport> all = new ArrayList<>(described.size() + 1);
-        if (applicationReport != null) {
-            all.add(applicationReport);
-        }
-        for (ClassTransformPipeline.JarReport report : described) {
-            if (report != null) {
-                all.add(report);
+        StringBuilder text = new StringBuilder();
+        text.append("Micronaut-Runner-Version\t").append(version == null ? "unknown" : version).append('\n');
+        text.append("jar\tstep\trewritten\tunchanged\tfallbacks\tbytesSaved\n");
+        for (Layer layer : layers) {
+            for (TransformReport count : layer.counts()) {
+                text.append(layer.name()).append('\t').append(count.step()).append('\t')
+                        .append(count.rewritten()).append('\t').append(count.unchanged()).append('\t')
+                        .append(count.fallbacks()).append('\t').append(count.bytesSaved()).append('\n');
             }
         }
-        return ClassTransformPipeline.describe(version, all);
+        for (Layer layer : layers) {
+            ClassPathRewrite.Counts counts = layer.lambdas();
+            if (counts == null || counts.sites() + counts.leftTotal() == 0) {
+                continue;
+            }
+            text.append("lambdas\t").append(layer.name())
+                    .append("\trewritten=").append(counts.sites())
+                    .append("\tgenerated=").append(counts.generated())
+                    .append("\tbridges=").append(counts.bridges())
+                    .append("\tnestFallbacks=").append(counts.nestFallbacks())
+                    .append("\tleft=").append(counts.leftTotal());
+            for (Map.Entry<String, Integer> left : counts.left().entrySet()) {
+                text.append("\tleft.").append(left.getKey()).append('=').append(left.getValue());
+            }
+            text.append('\n');
+        }
+        for (Layer layer : layers) {
+            for (String note : layer.notes()) {
+                text.append("fallback\t").append(note).append('\n');
+            }
+        }
+        return text.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     /**
-     * Every layer's report, in class-path order: the application layer, when a transform ran over it, then the
-     * dependencies.
+     * Every layer's counts and notes, in class-path order: the application layer, when lambdas were desugared,
+     * then the dependencies; none when the transform did not run.
      */
-    private List<ClassTransformPipeline.JarReport> reports() {
-        if (applicationReport == null) {
-            return reports;
+    private List<Layer> layers() {
+        if (counts == null) {
+            return List.of();
         }
-        List<ClassTransformPipeline.JarReport> all = new ArrayList<>(reports.size() + 1);
-        all.add(applicationReport);
-        all.addAll(reports);
-        return all;
-    }
-
-    private static ClassPathModel scan(RunnerJarSpec spec, List<Dependency> dependencies, List<Path> sources,
-                                       ExecutorService pool, ApplicationClasses application) throws IOException {
-        ClassPathModel.Interner strings = new ClassPathModel.Interner();
-        List<Callable<ClassPathModel.LayerScan>> tasks = new ArrayList<>(dependencies.size());
-        for (int position = 0; position < dependencies.size(); position++) {
-            Dependency dependency = dependencies.get(position);
-            Path source = sources.get(position);
-            int layer = position + 1;
-            tasks.add(() -> scanDependency(layer, dependency, source, strings));
+        List<Layer> layers = new ArrayList<>(staged.size() + 1);
+        if (desugared && applicationClasses.count() > 0) {
+            ClassPathRewrite.Counts application = counts.get(0);
+            layers.add(new Layer(APPLICATION_NAME, List.of(desugarCount(application, applicationClasses)),
+                    application, notes(APPLICATION_NAME, application)));
         }
-        List<Future<ClassPathModel.LayerScan>> futures = null;
-        if (pool != null) {
-            futures = new ArrayList<>(Collections.nCopies(tasks.size(), null));
-            for (int position : RunnerJarBuilder.largestFirst(dependencies)) {
-                futures.set(position, pool.submit(tasks.get(position)));
+        for (int position = 0; position < staged.size(); position++) {
+            DependencyStage.Staged result = staged.get(position);
+            String name = result.jar().entryName();
+            ClassPathRewrite.Counts entry = counts.get(position + 1);
+            List<TransformReport> lines = new ArrayList<>(2);
+            if (desugared) {
+                lines.add(desugarCount(entry, result.classes()));
             }
-        }
-        List<ClassPathModel.LayerScan> scans = new ArrayList<>(tasks.size() + 1);
-        ClassPathModel.LayerScan applicationScan = ClassPathModel.scan(0, APPLICATION_LAYER, spec.multiRelease(),
-                true, strings);
-        application.scan(applicationScan);
-        scans.add(applicationScan);
-        for (int position = 0; position < tasks.size(); position++) {
-            if (futures == null) {
-                scans.add(scanDependency(position + 1, dependencies.get(position), sources.get(position), strings));
-            } else {
-                scans.add(RunnerJarBuilder.awaitStage(futures.get(position)));
+            if (entry != null && entry.stripped() != null) {
+                lines.add(entry.stripped());
             }
+            layers.add(new Layer(name, lines, desugared ? entry : null, notes(name, entry)));
         }
-        return ClassPathModel.merge(scans, true);
+        return layers;
     }
 
     /**
-     * Scans one dependency, through a {@link ZipReader} of its own on the file its stage reads, on whichever
-     * thread runs it.
+     * The count line of desugaring for one layer. A nest that fell back counts once, as a fallback; every other
+     * class the transform did not rewrite counts as unchanged. The bytes saved are the change of the layer's
+     * classes that stripping does not count already.
+     *
+     * @param counts  what the transform did to the layer, or {@code null} when it did not run over it
+     * @param classes the layer's class entries
      */
-    private static ClassPathModel.LayerScan scanDependency(int layer, Dependency dependency, Path source,
-                                                           ClassPathModel.Interner strings) throws IOException {
-        try (ZipReader reader = ZipReader.open(source)) {
-            Manifest manifest = reader.manifest().orElse(null);
-            Attributes main = manifest == null ? null : manifest.getMainAttributes();
-            boolean multiRelease = main != null && "true".equalsIgnoreCase(main.getValue("Multi-Release"));
-            ClassPathModel.LayerScan scan = ClassPathModel.scan(layer, "the dependency " + dependency.path(),
-                    multiRelease, true, strings);
-            for (ZipEntryInfo entry : reader.entries()) {
-                if (!entry.directory() && scan.wants(entry.name(), entry.uncompressedSize())) {
-                    scan.accept(entry.name(), reader.read(entry));
+    private static TransformReport desugarCount(ClassPathRewrite.Counts counts, DependencyStage.Classes classes) {
+        int rewritten = counts == null ? 0 : counts.classesDesugared();
+        int fallbacks = counts == null ? 0 : counts.nestFallbacks();
+        long stripped = counts == null || counts.stripped() == null ? 0 : counts.stripped().bytesSaved();
+        return new TransformReport(ClassPathRewrite.DESUGAR, rewritten,
+                Math.max(0, classes.count() - rewritten - fallbacks), fallbacks, classes.bytesSaved() - stripped);
+    }
+
+    /**
+     * The transform's fallback notes of one layer, with the layer's name in the archive instead of the path the
+     * transform read.
+     */
+    private static List<String> notes(String name, ClassPathRewrite.Counts counts) {
+        if (counts == null || counts.notes().isEmpty()) {
+            return List.of();
+        }
+        List<String> notes = new ArrayList<>(counts.notes().size());
+        for (String note : counts.notes()) {
+            int tab = note.indexOf('\t');
+            notes.add(tab < 0 ? name + '\t' + note : name + note.substring(tab));
+        }
+        return notes;
+    }
+
+    /**
+     * The total of one transform over every layer.
+     *
+     * @return the total, or {@code null} when no layer has a line of the transform
+     */
+    private static TransformReport total(String step, List<Layer> layers) {
+        boolean ran = false;
+        int rewritten = 0;
+        int unchanged = 0;
+        int fallbacks = 0;
+        long saved = 0;
+        for (Layer layer : layers) {
+            for (TransformReport count : layer.counts()) {
+                if (count.step().equals(step)) {
+                    ran = true;
+                    rewritten += count.rewritten();
+                    unchanged += count.unchanged();
+                    fallbacks += count.fallbacks();
+                    saved += count.bytesSaved();
                 }
             }
-            return scan;
-        } catch (IOException e) {
-            // Named as a stage names it, so the first failing dependency reads the same either way.
-            throw new IOException("The dependency " + dependency.path() + " cannot be packaged: "
-                    + e.getMessage(), e);
         }
+        return ran ? new TransformReport(step, rewritten, unchanged, fallbacks, saved) : null;
+    }
+
+    private static String desugarSummary(TransformReport report, List<Layer> layers) {
+        int sites = 0;
+        int generated = 0;
+        int bridges = 0;
+        int left = 0;
+        int nestFallbacks = 0;
+        int involved = 0;
+        boolean application = false;
+        for (Layer layer : layers) {
+            ClassPathRewrite.Counts counts = layer.lambdas();
+            if (counts == null) {
+                continue;
+            }
+            sites += counts.sites();
+            generated += counts.generated();
+            bridges += counts.bridges();
+            left += counts.leftTotal();
+            nestFallbacks += counts.nestFallbacks();
+            if (counts.sites() > 0) {
+                if (layer.name().equals(APPLICATION_NAME)) {
+                    application = true;
+                } else {
+                    involved++;
+                }
+            }
+        }
+        return "Desugared " + sites + " lambda call sites into " + generated + " generated classes in " + involved
+                + " dependencies" + (application ? " and the application layer" : "") + " (" + report.rewritten()
+                + " classes rewritten, " + bridges + " bridges, " + left + " sites left as invokedynamic, "
+                + nestFallbacks + " nest fallbacks, " + report.fallbacks() + " fallbacks)";
     }
 
     /**
-     * What stripping did.
+     * What the transforms did to one layer.
      *
-     * @param result  what Micronaut AOT returned
-     * @param entries what it did to each dependency, by position; {@code null} where it did not run over it
+     * @param name    the layer's name in the archive
+     * @param counts  one count per transform that ran over it, desugaring first
+     * @param lambdas what desugaring did to its lambda call sites, or {@code null}
+     * @param notes   its fallback notes
      */
-    private record Stripped(ClassPathTransform.Result result, List<ClassPathTransform.Result.Entry> entries) {
+    private record Layer(String name, List<TransformReport> counts, ClassPathRewrite.Counts lambdas,
+                         List<String> notes) {
     }
 
     /**
-     * Scans the application layer, whose readers belong to the calling thread.
+     * The classes {@link ApplicationLayer#write(Path, boolean)} wrote.
+     *
+     * @param classes how many classes it wrote
+     * @param size    their uncompressed size together
      */
-    @FunctionalInterface
-    interface ApplicationClasses {
+    record Written(int classes, long size) {
+    }
+
+    /**
+     * The application layer, as the transforms read and change it. Only the calling thread may use it: it reads
+     * the application jars through readers that belong to it.
+     */
+    interface ApplicationLayer {
 
         /**
-         * Hands every class of the application layer the scan wants to it.
+         * Writes every class of the application layer into a jar, in the layer's order, for the transform to read.
          *
-         * @param scan the application layer's scan
-         * @throws IOException if a class cannot be read
+         * @param jar          the jar to write
+         * @param multiRelease whether the jar's manifest says {@code Multi-Release: true}, as the layer is declared
+         * @return what it wrote
+         * @throws IOException if a class cannot be read or the jar cannot be written
          */
-        void scan(ClassPathModel.LayerScan scan) throws IOException;
+        Written write(Path jar, boolean multiRelease) throws IOException;
+
+        /**
+         * Takes the transform's copy of the jar {@link #write(Path, boolean)} wrote: each class it rewrote
+         * replaces the layer's, and the classes it generated follow their hosts.
+         *
+         * @param copy the transform's copy
+         * @return the uncompressed size of the copy's classes together
+         * @throws IOException if the copy cannot be read
+         */
+        long replace(Path copy) throws IOException;
     }
 }

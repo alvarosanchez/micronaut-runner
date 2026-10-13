@@ -52,6 +52,9 @@ final class LogbackPrecompilation {
 
     private static final String JORAN_AT_STARTUP = "; Logback will configure itself with Joran at startup";
 
+    /** The Java feature release the generated classes target: the lowest one Runner runs on. */
+    private static final int TARGET_RELEASE = 25;
+
     private LogbackPrecompilation() {
     }
 
@@ -78,7 +81,7 @@ final class LogbackPrecompilation {
             LogbackPrecompiler.Result result = LogbackPrecompiler.precompile(LogbackPrecompiler.Request.builder()
                     .applicationOutput(spec.applicationOutput())
                     .runtimeClasspath(classPath)
-                    .targetRelease(ClassPathModel.RUNTIME_FEATURE)
+                    .targetRelease(TARGET_RELEASE)
                     .closedClassPath(true)
                     .build());
             LogbackPrecompiler.Status status = result.status();

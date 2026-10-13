@@ -921,7 +921,7 @@ class EndToEndTest {
                 "the application prints what its classes print as compiled");
         assertTrue(printed.contains("hidden=falsefalse"), run::output);
         TransformReport desugared = result.transforms().get(0);
-        assertEquals(LambdaDesugarer.NAME, desugared.step());
+        assertEquals(ClassPathRewrite.DESUGAR, desugared.step());
         assertEquals(0, desugared.fallbacks(), desugared::toString);
         assertTrue(desugared.rewritten() >= 4, desugared::toString);
         try (RunnerJarArchive reader = RunnerJarArchive.open(archive)) {

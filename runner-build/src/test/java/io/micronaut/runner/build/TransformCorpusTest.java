@@ -20,14 +20,23 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.TestFactory;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassHierarchyResolver;
+import java.lang.constant.ClassDesc;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
-import java.util.function.Function;
-import java.util.jar.Manifest;
+import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,8 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Runs the class transform pipeline, with lambda desugaring, over the class paths of real applications, and
- * verifies both sides of every class it rewrites. Micronaut AOT's own corpus test covers local-variable stripping.
+ * Runs Micronaut AOT's class path transform over the class paths of real applications, as a build runs it
+ * ({@link ClassPathRewrite}), and verifies both sides of every class it rewrites: once with lambda desugaring
+ * alone, as a build with the default options does, and once with local-variable stripping too, as a build with
+ * {@code stripLocalVariables} does.
  *
  * <p>The class paths come from {@code -Prunner.transformCorpus=<directory>}: one text file per application,
  * one jar per line in class-path order, as {@code test-suite/corpus/classpath.init.gradle} writes them. The
@@ -44,16 +55,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code test-suite/corpus}, and runs this test through {@code :micronaut-runner-build:transformCorpusTest},
  * which is not part of {@code check}.</p>
  *
- * <p>An application fails when any class verifies worse after a step than before it: whether the pipeline's
- * gate caught it, which the fallback notes record, or not. Every other fallback, and the counts of every step,
- * are printed. It also fails when its class path file names a jar that does not exist, holds no jar at all, or
- * when no class of it was rewritten: a run that transformed nothing has verified nothing.</p>
+ * <p>An application fails when any class verifies worse after the transform than before it, against the
+ * rewritten class path: whether the transform's gate caught it, which the fallback notes record, or not; when a
+ * class the transform generated does not verify cleanly; and when a nest fell back. Every other fallback, and the
+ * counts of each run, are printed. It also fails when its class path file names a jar that does not exist, holds no
+ * jar at all, or when no class of it was rewritten: a run that transformed nothing has verified nothing.</p>
  */
 @Tag("transform-corpus")
 class TransformCorpusTest {
 
     /** The system property the {@code transformCorpusTest} task sets from {@code -Prunner.transformCorpus}. */
     private static final String CORPUS_PROPERTY = "runner.transformCorpus";
+
+    /** The bytecode offset in a verifier message, such as the {@code @41} of {@code in Foo::bar() @41}. */
+    private static final Pattern BYTECODE_OFFSET = Pattern.compile("@\\d+");
 
     @TestFactory
     Stream<DynamicTest> everyRewrittenClassVerifiesNoWorseThanItsOriginal() throws IOException {
@@ -84,95 +99,186 @@ class TransformCorpusTest {
             }
         }
         assertFalse(dependencies.isEmpty(), name + " names no jar");
-        ClassPathModel model = scan(dependencies);
-        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LambdaDesugarer(model)), model);
-        Function<byte[], List<String>> verifier = ClassTransformPipeline.verifierOf(model);
-
-        List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
-        List<String> grown = new ArrayList<>();
-        for (int position = 0; position < dependencies.size(); position++) {
-            Path dependency = dependencies.get(position);
-            try (ZipReader reader = ZipReader.open(dependency)) {
-                ClassTransformPipeline.JarRun run = pipeline.start(new ClassTransformPipeline.Layer(
-                        dependency.getFileName().toString(), position + 1, false, reader.hasSignatureFiles()));
-                // As a repack does: the nests are planned, rewritten and gated before the entry loop.
-                run.plan(new ZipRepacker.SourceClasses(reader));
-                for (ZipEntryInfo entry : reader.entries()) {
-                    if (!ClassTransformPipeline.isClass(entry)) {
-                        continue;
-                    }
-                    ClassTransformPipeline.Planned planned = run.planned(entry.name());
-                    byte[] original;
-                    byte[] output;
-                    if (planned != null) {
-                        original = reader.read(entry);
-                        output = planned.bytes();
-                        for (ClassTransformPipeline.Generated generated : planned.generated()) {
-                            // A generated class has no original: it must verify cleanly.
-                            List<String> errors = verifier.apply(generated.bytes());
-                            if (!errors.isEmpty()) {
-                                grown.add(dependency.getFileName() + " " + generated.name() + ": " + errors.get(0));
-                            }
-                        }
-                    } else if (!run.reads(entry.uncompressedSize())) {
-                        run.pass(entry.name());
-                        continue;
-                    } else {
-                        original = reader.read(entry);
-                        output = run.process(entry.name(), original);
-                    }
-                    if (output != original) {
-                        // The gate's own comparison, which ignores the bytecode offset an error names.
-                        String error = ClassTransformPipeline.grown(verifier.apply(output),
-                                verifier.apply(original));
-                        if (error != null) {
-                            grown.add(dependency.getFileName() + " " + entry.name() + ": " + error);
-                        }
-                    }
-                }
-                reports.add(run.report());
+        for (boolean strip : new boolean[] {false, true}) {
+            Path work = Files.createTempDirectory("transform-corpus-");
+            try {
+                verify(name + (strip ? " (stripLocalVariables)" : ""), dependencies, strip, work);
+            } finally {
+                deleteRecursively(work);
             }
-        }
-
-        List<TransformReport> totals = pipeline.totals(reports);
-        for (String summary : pipeline.summaries(reports)) {
-            System.out.println(name + ": " + summary);
-        }
-        for (ClassTransformPipeline.JarReport report : reports) {
-            for (String note : report.notes()) {
-                System.out.println(name + ": fallback " + note.replace('\t', ' '));
-                if (note.split("\t", 4)[3].startsWith("verification: ")) {
-                    grown.add(note.replace('\t', ' '));
-                }
-            }
-        }
-        assertEquals(List.of(), grown, name + ": classes whose verification errors grew");
-        for (TransformReport total : totals) {
-            assertTrue(total.rewritten() > 0, () -> name + ": " + total.step() + " rewrote no class of "
-                    + dependencies.size() + " jars");
         }
     }
 
-    private static ClassPathModel scan(List<Path> dependencies) throws IOException {
-        ClassPathModel.Interner strings = new ClassPathModel.Interner();
-        List<ClassPathModel.LayerScan> scans = new ArrayList<>();
-        scans.add(ClassPathModel.scan(0, "the application output", false, true, strings));
-        int layer = 1;
-        for (Path dependency : dependencies) {
-            try (ZipReader reader = ZipReader.open(dependency)) {
-                Manifest manifest = reader.manifest().orElse(null);
-                boolean multiRelease = manifest != null
-                        && "true".equalsIgnoreCase(manifest.getMainAttributes().getValue("Multi-Release"));
-                ClassPathModel.LayerScan scan = ClassPathModel.scan(layer++, "the dependency " + dependency,
-                        multiRelease, true, strings);
-                for (ZipEntryInfo entry : reader.entries()) {
-                    if (!entry.directory() && scan.wants(entry.name(), entry.uncompressedSize())) {
-                        scan.accept(entry.name(), reader.read(entry));
+    private static void verify(String name, List<Path> dependencies, boolean strip, Path work) throws IOException {
+        Path application = ClassFixtures.jar(work.resolve("application.jar"), Map.of());
+        ClassPathRewrite.Result result = ClassPathRewrite.run(application, dependencies, true,
+                strip ? dependencies : List.of(), work.resolve("rewritten"),
+                Runtime.getRuntime().availableProcessors());
+        result.warnings().forEach(warning -> System.out.println(name + ": " + warning));
+        List<Path> sources = result.classPath().subList(1, result.classPath().size());
+        List<String> grown = new ArrayList<>();
+        int sites = 0;
+        int desugared = 0;
+        int[] verified = new int[2];
+        TransformReport stripped = null;
+        try (Verifier verifier = new Verifier(sources)) {
+            for (int position = 0; position < dependencies.size(); position++) {
+                ClassPathRewrite.Counts counts = result.counts().get(position + 1);
+                if (counts == null) {
+                    continue;
+                }
+                sites += counts.sites();
+                desugared += counts.classesDesugared();
+                if (counts.stripped() != null) {
+                    stripped = add(stripped, counts.stripped());
+                }
+                for (String note : counts.notes()) {
+                    System.out.println(name + ": fallback " + note.replace('\t', ' '));
+                    String[] fields = note.split("\t", 4);
+                    if (fields[2].equals(ClassPathRewrite.DESUGAR) || fields[3].startsWith("verification: ")) {
+                        grown.add(note.replace('\t', ' '));
                     }
                 }
-                scans.add(scan);
+                Path dependency = dependencies.get(position);
+                Path source = sources.get(position);
+                if (!source.equals(dependency)) {
+                    compare(dependency, source, verifier, grown, verified);
+                }
             }
         }
-        return ClassPathModel.merge(scans, true);
+        System.out.println(name + ": desugared " + sites + " lambda call sites in " + desugared + " classes; verified "
+                + verified[0] + " rewritten classes against their originals and " + verified[1] + " generated ones");
+        result.summary().forEach(line -> System.out.println(name + ": " + line));
+        assertEquals(List.of(), grown, name + ": classes whose verification errors grew, or that fell back");
+        int rewritten = desugared;
+        assertTrue(rewritten > 0, () -> name + ": desugarLambdas rewrote no class of " + dependencies.size()
+                + " jars");
+        if (strip && result.warnings().isEmpty()) {
+            TransformReport total = stripped;
+            assertTrue(total != null && total.rewritten() > 0, () -> name + ": stripLocalVariables rewrote no class"
+                    + " of " + dependencies.size() + " jars");
+        }
+    }
+
+    /**
+     * Verifies every class the transform rewrote in one dependency against its original, and every class it
+     * generated on its own, and counts them: rewritten ones first, generated ones second.
+     */
+    private static void compare(Path dependency, Path copy, Verifier verifier, List<String> grown, int[] verified)
+            throws IOException {
+        try (ZipReader original = ZipReader.open(dependency); ZipReader rewritten = ZipReader.open(copy)) {
+            for (ZipEntryInfo entry : rewritten.entries()) {
+                if (!entry.isClass()) {
+                    continue;
+                }
+                Optional<ZipEntryInfo> before = original.entry(entry.name());
+                if (before.isPresent() && before.get().crc32() == entry.crc32()) {
+                    continue;
+                }
+                List<String> errors = verifier.verify(rewritten.read(entry));
+                verified[before.isEmpty() ? 1 : 0]++;
+                String error;
+                if (before.isEmpty()) {
+                    error = errors.isEmpty() ? null : errors.get(0);
+                } else {
+                    error = errors.isEmpty() ? null : grown(errors, verifier.verify(original.read(before.get())));
+                }
+                if (error != null) {
+                    grown.add(dependency.getFileName() + " " + entry.name() + ": " + error);
+                }
+            }
+        }
+    }
+
+    /**
+     * The first verification error of a rewritten class that its original does not have, as the transform's gate
+     * compares them: two messages are the same error when they are equal without the bytecode offset they name,
+     * which a rebuilt constant pool moves, and each error of the original accounts for one of the rewrite.
+     */
+    private static String grown(List<String> rewritten, List<String> original) {
+        Map<String, Integer> known = new HashMap<>();
+        for (String error : original) {
+            known.merge(BYTECODE_OFFSET.matcher(error).replaceAll("@"), 1, Integer::sum);
+        }
+        for (String error : rewritten) {
+            String key = BYTECODE_OFFSET.matcher(error).replaceAll("@");
+            Integer left = known.get(key);
+            if (left == null || left == 0) {
+                return error;
+            }
+            known.put(key, left - 1);
+        }
+        return null;
+    }
+
+    private static TransformReport add(TransformReport total, TransformReport report) {
+        if (total == null) {
+            return report;
+        }
+        return new TransformReport(report.step(), total.rewritten() + report.rewritten(),
+                total.unchanged() + report.unchanged(), total.fallbacks() + report.fallbacks(),
+                total.bytesSaved() + report.bytesSaved());
+    }
+
+    private static void deleteRecursively(Path directory) throws IOException {
+        try (Stream<Path> paths = Files.walk(directory)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.delete(path);
+            }
+        }
+    }
+
+    /**
+     * Verifies classes against a class path: the first copy of each class in class-path order, then the JDK's.
+     */
+    private static final class Verifier implements AutoCloseable {
+
+        private final List<ZipReader> readers = new ArrayList<>();
+        private final Map<String, ZipReader> owners = new HashMap<>();
+        private final ClassFile context;
+
+        Verifier(List<Path> classPath) throws IOException {
+            for (Path jar : classPath) {
+                ZipReader reader = ZipReader.open(jar);
+                readers.add(reader);
+                for (ZipEntryInfo entry : reader.entries()) {
+                    if (entry.isClass() && !entry.name().startsWith("META-INF/")) {
+                        owners.putIfAbsent(entry.name(), reader);
+                    }
+                }
+            }
+            ClassHierarchyResolver jars = ClassHierarchyResolver.ofResourceParsing(this::open);
+            context = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(
+                    jars.orElse(ClassHierarchyResolver.defaultResolver()).cached()));
+        }
+
+        private InputStream open(ClassDesc type) {
+            String descriptor = type.descriptorString();
+            String entryName = descriptor.substring(1, descriptor.length() - 1) + ".class";
+            ZipReader reader = owners.get(entryName);
+            if (reader == null) {
+                return null;
+            }
+            try {
+                return new ByteArrayInputStream(reader.read(reader.entry(entryName).orElseThrow()));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+
+        List<String> verify(byte[] type) {
+            List<String> messages = new ArrayList<>();
+            for (VerifyError error : context.verify(type)) {
+                messages.add(String.valueOf(error.getMessage()));
+            }
+            return messages;
+        }
+
+        @Override
+        public void close() throws IOException {
+            for (ZipReader reader : readers) {
+                reader.close();
+            }
+        }
     }
 }
