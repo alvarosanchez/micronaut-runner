@@ -141,19 +141,19 @@ class HelloNettySampleTest {
             "io.micronaut.runner.protocol.jar.Handler",
             "io.micronaut.runner.protocol.jar.RunnerJarURLConnection");
 
-    /** Compares the static service table with Micronaut's scan on the first lookup. */
-    private static final String VERIFY_STATIC_SERVICES = "-Dmicronaut.runner.static-services.verify=true";
+    /** Compares micronaut-core's service index with a scan of the class path on the first lookup. */
+    private static final String VALIDATE_INDEX = "-Dmicronaut.service.index.validate=true";
 
-    /** Makes a packaged table stand down, so that Micronaut scans as it does without one. */
-    private static final String NO_STATIC_SERVICES = "-Dmicronaut.runner.static-services=false";
+    /** Switches the service index off, so that micronaut-core scans as it does without one. */
+    private static final String NO_INDEX = "-Dmicronaut.service.index.enabled=false";
 
-    /** What a launch prints once the table matched the scan; the counts sit between the two. */
-    private static final String VERIFIED = "[micronaut-runner] static services verified: ";
-    private static final String NO_MISMATCH = " entries, 0 mismatches";
+    /** What micronaut-core logs once a validated index is in use; the class loader follows the first part. */
+    private static final String USING_INDEX = "Using the service index registered for class loader ";
+    private static final String VALIDATED = ", names validated against a scan)";
 
-    /** The classes of the static service table inside an application layer or an extracted application jar. */
-    private static final String STATIC_SERVICES_PACKAGE = "io/micronaut/runner/generated/services/";
-    private static final String STATIC_SERVICES_REGISTRATION =
+    /** The service index Micronaut AOT generates, inside an application layer or an extracted application jar. */
+    private static final String INDEX_LOADER = "io/micronaut/aot/serviceindex/generated/ServiceIndexLoader.class";
+    private static final String LOADER_REGISTRATION =
             "META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader";
 
     @BeforeAll
@@ -491,59 +491,59 @@ class HelloNettySampleTest {
     }
 
     /**
-     * Starts the sample four ways: the runner jar and the layout extracted from it, each once with the static
-     * service table checked against Micronaut's own scan and once with the table switched off.
+     * Starts the sample four ways: the runner jar and the layout extracted from it, each once with micronaut-core's
+     * service index validated against a scan of the class path and once with the index switched off.
      *
-     * <p>The sample records the order of its bean definitions in every launch. The table must not change it,
-     * and an extracted application must register its beans in the order the jar it came from does.</p>
+     * <p>The sample records the order of its bean definitions in every launch. The index must not change it, and an
+     * extracted application must register its beans in the order the jar it came from does.</p>
      */
     @Test
-    void theStaticServiceTableAnswersAsTheScanInTheJarAndExtracted() throws Exception {
+    void theServiceIndexAnswersAsTheScanInTheJarAndExtracted() throws Exception {
         Path sample = Samples.sample("hello-netty");
         Path archive = sample.resolve(ARCHIVE);
         BuildResult result = gradle(sample, TASK);
         assertTrue(Files.isRegularFile(archive),
                 () -> "the plugin did not write " + archive + ":\n" + result.getOutput());
+        assertTrue(result.getOutput().contains("Generated a service index of "), result::getOutput);
         try (JarFile jar = new JarFile(archive.toFile())) {
-            assertNotNull(jar.getEntry("MICRONAUT-INF/classes/" + STATIC_SERVICES_PACKAGE + "RunnerServiceTable.class"),
-                    () -> "the default configuration did not generate the static service table:\n"
-                            + result.getOutput());
+            assertNotNull(jar.getEntry(CLASSES + INDEX_LOADER),
+                    () -> "the default configuration did not generate the service index:\n" + result.getOutput());
         }
 
-        List<String> table = beanOrder(archive, sample, "build/bean-order-table.txt", VERIFY_STATIC_SERVICES, true);
-        List<String> scan = beanOrder(archive, sample, "build/bean-order-scan.txt", NO_STATIC_SERVICES, false);
+        List<String> indexed = beanOrder(archive, sample, "build/bean-order-index.txt", VALIDATE_INDEX,
+                "io.micronaut.runner.RunnerClassLoader@");
+        List<String> scan = beanOrder(archive, sample, "build/bean-order-scan.txt", NO_INDEX, null);
         assertFalse(scan.isEmpty(), "the sample recorded no bean definitions");
-        assertEquals(scan, table, "the table must register the bean definitions in the order the scan does");
+        assertEquals(scan, indexed, "the index must register the bean definitions in the order the scan does");
 
-        Path extracted = sample.resolve("build/extracted-static-services");
+        Path extracted = sample.resolve("build/extracted-service-index");
         extract(archive, extracted, sample);
         Path applicationJar = extracted.resolve(archive.getFileName());
         try (JarFile jar = new JarFile(applicationJar.toFile())) {
-            assertNotNull(jar.getEntry(STATIC_SERVICES_PACKAGE + "RunnerStaticServices.class"),
-                    "the extracted application keeps the table's classes");
-            assertNotNull(jar.getEntry(STATIC_SERVICES_PACKAGE + "RunnerServiceTable.class"));
-            assertNotNull(jar.getEntry(STATIC_SERVICES_REGISTRATION), "and the line that registers them");
+            assertNotNull(jar.getEntry(INDEX_LOADER), "the extracted application keeps the index");
+            assertNotNull(jar.getEntry(LOADER_REGISTRATION), "and the line that registers it");
             assertNull(jar.getEntry("io/micronaut/runner/generated/AppEntry.class"),
                     "the entry stub belongs to the runner format");
         }
-        List<String> extractedTable = beanOrder(applicationJar, sample, "build/bean-order-extracted-table.txt",
-                VERIFY_STATIC_SERVICES, true);
-        beanOrder(applicationJar, sample, "build/bean-order-extracted-scan.txt", NO_STATIC_SERVICES, false);
-        assertEquals(table, extractedTable,
+        List<String> extractedIndex = beanOrder(applicationJar, sample, "build/bean-order-extracted-index.txt",
+                VALIDATE_INDEX, "jdk.internal.loader.ClassLoaders$AppClassLoader@");
+        beanOrder(applicationJar, sample, "build/bean-order-extracted-scan.txt", NO_INDEX, null);
+        assertEquals(indexed, extractedIndex,
                 "an extracted application registers its beans in the order its runner jar does");
     }
 
     /**
      * Starts an application, waits for {@code /hello} and reads back the bean order it recorded.
      *
-     * @param jar      the runner jar, or the application jar of an extracted layout
-     * @param sample   the working directory
-     * @param file     where the sample writes its bean order, relative to the working directory
-     * @param option   the static service switch to start with
-     * @param verified whether the launch must report that the table matched the scan
+     * @param jar         the runner jar, or the application jar of an extracted layout
+     * @param sample      the working directory
+     * @param file        where the sample writes its bean order, relative to the working directory
+     * @param option      the service index switch to start with
+     * @param classLoader the start of the class loader the validated index must be in use for, or {@code null} when
+     *                    the launch must not use an index
      * @return the names of the bean definitions, in registration order
      */
-    private static List<String> beanOrder(Path jar, Path sample, String file, String option, boolean verified)
+    private static List<String> beanOrder(Path jar, Path sample, String file, String option, String classLoader)
             throws IOException {
         Path order = sample.resolve(file);
         Files.deleteIfExists(order);
@@ -554,8 +554,12 @@ class HelloNettySampleTest {
             String body = application.awaitBody(URI.create(Samples.loopback(port) + "/hello"), STARTUP_TIMEOUT);
             assertTrue(body.startsWith("hello from "), () -> "unexpected answer " + body + application.describe());
             String output = application.output();
-            assertEquals(verified, output.contains(VERIFIED) && output.contains(NO_MISMATCH),
-                    () -> "with " + option + application.describe());
+            if (classLoader == null) {
+                assertFalse(output.contains(USING_INDEX), () -> "with " + option + application.describe());
+            } else {
+                assertTrue(output.contains(USING_INDEX + classLoader) && output.contains(VALIDATED),
+                        () -> "with " + option + application.describe());
+            }
         } finally {
             application.close();
         }
@@ -564,7 +568,7 @@ class HelloNettySampleTest {
     }
 
     private static void extract(Path archive, Path destination, Path workingDirectory) throws Exception {
-        Path log = workingDirectory.resolve("build/extract-static-services.log");
+        Path log = workingDirectory.resolve("build/extract-service-index.log");
         Process process = new ProcessBuilder(Samples.javaExecutable().toString(), "-Dmicronaut.runner.mode=extract",
                 "-jar", archive.toAbsolutePath().toString(), "--destination", destination.toAbsolutePath().toString(),
                 "--force")

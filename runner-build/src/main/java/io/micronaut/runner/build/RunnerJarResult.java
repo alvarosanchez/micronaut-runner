@@ -49,7 +49,6 @@ public final class RunnerJarResult {
     private final Map<String, String> effectiveOptions;
     private final boolean logbackPrecompiled;
     private final List<TransformReport> transforms;
-    private final int staticServiceSlots;
     private final String staticServicesCoreVersion;
 
     /**
@@ -72,7 +71,7 @@ public final class RunnerJarResult {
             int mergedServiceEntryCount, long archiveSize, List<String> warnings,
             Map<String, String> effectiveOptions, boolean logbackPrecompiled) {
         this(output, jarCount, entryCount, applicationEntryCount, mergedServiceEntryCount, archiveSize, warnings,
-                effectiveOptions, logbackPrecompiled, List.of(), 0, null);
+                effectiveOptions, logbackPrecompiled, List.of(), null);
     }
 
     /**
@@ -88,9 +87,8 @@ public final class RunnerJarResult {
      * @param effectiveOptions        the options the archive was built with
      * @param logbackPrecompiled      whether a Logback configurator was generated
      * @param transforms              what each build-time class transform did, in the order they ran
-     * @param staticServiceSlots      the number of names the static service table lists
-     * @param staticServicesCoreVersion the micronaut-core the static service table was generated for, or
-     *                                  {@code null} when there is no table
+     * @param staticServicesCoreVersion the micronaut-core the service index was generated for, or {@code null}
+     *                                  when there is no index
      * @throws NullPointerException     if a reference argument other than {@code staticServicesCoreVersion} is
      *                                  {@code null}
      * @throws IllegalArgumentException if a count or the size is negative
@@ -98,14 +96,14 @@ public final class RunnerJarResult {
     RunnerJarResult(Path output, int jarCount, int entryCount, int applicationEntryCount,
             int mergedServiceEntryCount, long archiveSize, List<String> warnings,
             Map<String, String> effectiveOptions, boolean logbackPrecompiled, List<TransformReport> transforms,
-            int staticServiceSlots, String staticServicesCoreVersion) {
+            String staticServicesCoreVersion) {
         this.output = Objects.requireNonNull(output, "output");
         this.transforms = List.copyOf(Objects.requireNonNull(transforms, "transforms"));
         this.warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));
         this.effectiveOptions = Collections.unmodifiableMap(
                 new LinkedHashMap<>(Objects.requireNonNull(effectiveOptions, "effectiveOptions")));
         if (jarCount < 0 || entryCount < 0 || applicationEntryCount < 0 || mergedServiceEntryCount < 0
-                || archiveSize < 0 || staticServiceSlots < 0) {
+                || archiveSize < 0) {
             throw new IllegalArgumentException("Negative count in the result of packaging " + output);
         }
         this.jarCount = jarCount;
@@ -114,7 +112,6 @@ public final class RunnerJarResult {
         this.mergedServiceEntryCount = mergedServiceEntryCount;
         this.archiveSize = archiveSize;
         this.logbackPrecompiled = logbackPrecompiled;
-        this.staticServiceSlots = staticServiceSlots;
         this.staticServicesCoreVersion = staticServicesCoreVersion;
     }
 
@@ -233,28 +230,14 @@ public final class RunnerJarResult {
     }
 
     /**
-     * The number of implementation names the static service table lists, which the {@code staticServices}
-     * option requests. It is {@code 0} when no table was generated; the build log names the reason.
+     * The micronaut-core version the service index was generated for, which the {@code staticServices} option
+     * requests, as that JAR's manifest states it.
      *
-     * <p>Internal: it is public only for the build note of Runner's own benchmarks,
-     * {@code static services: N slots (core V)}, and may change in any release. A packaging option gets a public
-     * result accessor of its own when it becomes {@link RunnerJarOption.Exposure#TYPED TYPED}.</p>
+     * <p>Internal: it is public only for the build note of Runner's own benchmarks, {@code service index (core V)},
+     * and may change in any release. A packaging option gets a public result accessor of its own when it becomes
+     * {@link RunnerJarOption.Exposure#TYPED TYPED}.</p>
      *
-     * @return the slot count of the static service table
-     */
-    @Internal
-    public int staticServiceSlots() {
-        return staticServiceSlots;
-    }
-
-    /**
-     * The micronaut-core version the static service table was generated for, as that JAR's manifest states
-     * it.
-     *
-     * <p>Internal: it is public only for the build note of Runner's own benchmarks,
-     * {@code static services: N slots (core V)}, and may change in any release.</p>
-     *
-     * @return the version, or empty when no table was generated
+     * @return the version, or empty when no index was generated; the build log names the reason
      */
     @Internal
     public Optional<String> staticServicesCoreVersion() {

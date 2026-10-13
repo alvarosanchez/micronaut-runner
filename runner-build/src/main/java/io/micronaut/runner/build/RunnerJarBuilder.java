@@ -56,6 +56,8 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Turns an application's own output and its resolved dependencies into a runner jar.
@@ -115,6 +117,11 @@ import java.util.zip.CRC32;
  * and the classes it generates join the application layer after the class path transform ran, so no transform
  * rewrites them.</p>
  *
+ * <p>micronaut-core's service index ({@code staticServices}) is generated last, once the merged
+ * {@code META-INF/micronaut} copy is planned and every step that adds a service file to the application layer has
+ * run, so that it lists them. Micronaut AOT's generator reads a small view jar of the application layer, written to
+ * the work directory and deleted after the call, and the staged nested jars.</p>
+ *
  * <h2>Application jars</h2>
  * <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
  * archive has been written. Its entries are streamed from it into the archive, each inflated and checked
@@ -172,6 +179,15 @@ public final class RunnerJarBuilder {
     /** The content of every zero-length entry, which is written without opening anything. */
     private static final byte[] EMPTY_BYTES = new byte[0];
 
+    /** The prefix of every service file of a jar. */
+    private static final String SERVICES_PREFIX = "META-INF/services/";
+
+    /** The prefix of the versioned entries of a multi-release jar. */
+    private static final String VERSIONS_PREFIX = "META-INF/versions/";
+
+    /** A class that every micronaut-core has, which tells which nested jar is micronaut-core. */
+    private static final String MICRONAUT_CORE_CLASS = "io/micronaut/core/io/service/SoftServiceLoader.class";
+
     /** The content every zero-length dependency contributor to the merged Micronaut metadata shares. */
     private static final ApplicationEntry EMPTY_CONTENT = ApplicationEntry.ofBytes(EMPTY_BYTES, 0);
 
@@ -198,8 +214,11 @@ public final class RunnerJarBuilder {
     private final List<NestedJar> nested = new ArrayList<>();
     private final Map<String, ApplicationEntry> application = new LinkedHashMap<>();
     private final Set<String> serviceNames = new TreeSet<>();
-    /** The size of every merged {@code META-INF/micronaut/} file, by entry name, in the order it is stored. */
-    private final Map<String, Long> mergedServiceSizes = new LinkedHashMap<>();
+    /**
+     * Every entry of the merged {@code META-INF/micronaut/} copy, by name, in the order it is stored: a file's
+     * content, or {@code null} for a directory.
+     */
+    private final Map<String, ApplicationEntry> mergedServices = new LinkedHashMap<>();
     private final IndexWriter writer = new IndexWriter();
     /**
      * The buffer {@link #crc32(Path)} reads every application file through. It belongs to the calling
@@ -225,7 +244,8 @@ public final class RunnerJarBuilder {
     private int mergedServiceEntryCount;
     /** The build's class transforms, decided before any dependency is staged. */
     private ClassTransforms transforms;
-    private StaticServiceTableGenerator.Result staticServices;
+    /** The micronaut-core the service index was generated for, or {@code null} when there is no index. */
+    private String serviceIndexCoreVersion;
 
     private RunnerJarBuilder(RunnerJarSpec spec, BuildLogger logger, int parallelism, Runnable beforeWrite) {
         this.spec = spec;
@@ -379,7 +399,7 @@ public final class RunnerJarBuilder {
             }
             describeApplicationJar();
             planMergedServices();
-            generateStaticServices();
+            generateServiceIndex(work);
             planApplicationEntries();
             planNestedJars();
 
@@ -407,8 +427,7 @@ public final class RunnerJarBuilder {
             // The caller reports the build with the result's summary(), so the builder logs no line of its own.
             return new RunnerJarResult(output, writer.jars().size(), layout.entryCount(),
                     application.size(), mergedServiceEntryCount, archiveSize, warnings, spec.effectiveOptions(),
-                    logbackPrecompiled, transformReports, staticServices.slotCount(),
-                    staticServices.coreVersion());
+                    logbackPrecompiled, transformReports, serviceIndexCoreVersion);
         } catch (Throwable e) {
             failure = e;
             throw e;
@@ -1141,9 +1160,7 @@ public final class RunnerJarBuilder {
                     .crc32(entry.crc32)
                     .dosTime(dosTime);
             plan.add(entry);
-            if (!directory) {
-                mergedServiceSizes.put(name, entry.size);
-            }
+            mergedServices.put(name, directory ? null : contents.get(name));
         }
         StringBuilder message = new StringBuilder();
         message.append("Merged ").append(mergedServiceEntryCount)
@@ -1274,13 +1291,134 @@ public final class RunnerJarBuilder {
         return total;
     }
 
-    /** Adds the static service table to the application layer, when it can have one; see {@link StaticServices}. */
-    private void generateStaticServices() throws IOException {
-        staticServices = StaticServices.generate(spec, logger, this::warn, mergedServiceSizes,
-                List.copyOf(application.keySet()), name -> applicationBytes(application.get(name)),
-                nested.stream().map(jar -> new StaticServices.NestedLayer(jar.dependency.path(), jar.file,
-                        jar.result.entries(), jar.manifest)).toList());
-        staticServices.entries().forEach((name, bytes) -> application.put(name, ApplicationEntry.ofBytes(bytes)));
+    /**
+     * Generates micronaut-core's service index into the application layer, unless the {@code staticServices}
+     * option is off; see {@link ServiceIndexing}. It runs once the merged metadata is planned, which fixes the
+     * order of the {@code META-INF/micronaut} names, and after every other step that adds service files to the
+     * application layer, so that the index lists them.
+     *
+     * @param work the work directory, which holds the view jar while the module reads it
+     * @throws IOException if the view jar cannot be written
+     */
+    private void generateServiceIndex(Path work) throws IOException {
+        if (!spec.staticServices()) {
+            ServiceIndexing.notRequested(logger);
+            return;
+        }
+        Path view = work.resolve("service-index-view.jar");
+        writeServiceIndexView(view);
+        List<Path> classPath = new ArrayList<>(nested.size() + 1);
+        classPath.add(view);
+        Set<Path> files = new HashSet<>();
+        List<Path> copies = new ArrayList<>();
+        Map<String, String> dependencyNames = new LinkedHashMap<>();
+        String carriedIndex = null;
+        for (NestedJar jar : nested) {
+            Path file = jar.file;
+            if (!files.add(file.toAbsolutePath().normalize())) {
+                // In PRESERVE a dependency listed twice is nested twice from one file, and both copies are on the
+                // class path the archive gives the application: the module takes each entry once, so it gets a copy.
+                file = Files.copy(file, work.resolve("service-index-duplicate-" + classPath.size() + ".jar"));
+                copies.add(file);
+            }
+            classPath.add(file);
+            String staged = fileName(file);
+            if (!staged.equals(fileName(jar.dependency.path()))) {
+                dependencyNames.put(staged, "the dependency " + jar.dependency.path());
+            }
+            for (ZipEntryInfo entry : jar.result.entries()) {
+                if (carriedIndex == null && entry.name().equals(ServiceIndexing.GENERATED_LOADER)) {
+                    carriedIndex = jar.dependency.path().toString();
+                }
+            }
+        }
+        ServiceIndexing.Outcome outcome = ServiceIndexing.generate(view, classPath, dependencyNames, carriedIndex,
+                logger, this::warn);
+        Files.delete(view);
+        for (Path copy : copies) {
+            Files.delete(copy);
+        }
+        outcome.removals().forEach(application::remove);
+        outcome.entries().forEach((name, bytes) -> application.put(name, ApplicationEntry.ofBytes(bytes)));
+        if (outcome.generated()) {
+            serviceIndexCoreVersion = micronautCoreVersion();
+        }
+    }
+
+    /**
+     * Writes the jar that stands for the application layer on the class path the service index is generated
+     * for. {@code RunnerClassLoader} answers a lookup under {@code META-INF/micronaut/} from the merged copy only,
+     * and any other one from the application layer first, then from each nested jar. So the view holds the merged
+     * copy, as the archive stores it, directory entries included, and the application layer's service files and
+     * the output of an earlier generation, which the module replaces; the nested jars follow it on that class
+     * path. It holds no other class: the index holds names only.
+     *
+     * @param view the file to write
+     * @throws IOException if an entry cannot be read or the file cannot be written
+     */
+    private void writeServiceIndexView(Path view) throws IOException {
+        try (ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(view)))) {
+            if (spec.multiRelease()) {
+                Manifest manifest = new Manifest();
+                manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+                manifest.getMainAttributes().put(Attributes.Name.MULTI_RELEASE, "true");
+                out.putNextEntry(viewEntry("META-INF/MANIFEST.MF"));
+                manifest.write(out);
+                out.closeEntry();
+            }
+            for (Map.Entry<String, ApplicationEntry> item : mergedServices.entrySet()) {
+                out.putNextEntry(viewEntry(item.getKey()));
+                if (item.getValue() != null) {
+                    out.write(applicationBytes(item.getValue()));
+                }
+                out.closeEntry();
+            }
+            for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
+                String name = item.getKey();
+                if (isServiceFile(name) || name.startsWith(ServiceIndexing.GENERATED_PREFIX)) {
+                    out.putNextEntry(viewEntry(name));
+                    out.write(applicationBytes(item.getValue()));
+                    out.closeEntry();
+                }
+            }
+        }
+    }
+
+    private static ZipEntry viewEntry(String name) {
+        ZipEntry entry = new ZipEntry(name);
+        entry.setTime(0);
+        return entry;
+    }
+
+    /**
+     * Whether an application entry is a service file that a lookup can find: {@code META-INF/services/<type>}, or
+     * its versioned copy in a multi-release application layer.
+     */
+    private boolean isServiceFile(String name) {
+        String base = name;
+        if (spec.multiRelease() && name.startsWith(VERSIONS_PREFIX)) {
+            int slash = name.indexOf('/', VERSIONS_PREFIX.length());
+            base = slash < 0 ? name : name.substring(slash + 1);
+        }
+        return base.startsWith(SERVICES_PREFIX) && base.length() > SERVICES_PREFIX.length()
+                && base.indexOf('/', SERVICES_PREFIX.length()) < 0;
+    }
+
+    /**
+     * The micronaut-core the application runs on, as the manifest of the nested jar that holds it states it.
+     *
+     * @return the version, or {@code null} when no nested jar holds micronaut-core or its manifest names none
+     */
+    private String micronautCoreVersion() {
+        for (NestedJar jar : nested) {
+            for (ZipEntryInfo entry : jar.result.entries()) {
+                if (MICRONAUT_CORE_CLASS.equals(entry.name())) {
+                    return attribute(jar.manifest == null ? null : jar.manifest.getMainAttributes(),
+                            Attributes.Name.IMPLEMENTATION_VERSION);
+                }
+            }
+        }
+        return null;
     }
 
     private void planApplicationEntries() {

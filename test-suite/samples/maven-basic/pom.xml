@@ -95,6 +95,15 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- First, so that it wins over the platform's: micronaut-core at micronaut.core.version. No platform
+                 release has micronaut-core 5.3 yet, which the service index needs. -->
+            <dependency>
+                <groupId>io.micronaut</groupId>
+                <artifactId>micronaut-core-bom</artifactId>
+                <version>${micronaut.core.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>io.micronaut.platform</groupId>
                 <artifactId>micronaut-platform</artifactId>

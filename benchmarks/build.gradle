@@ -26,10 +26,17 @@ configurations {
         canBeResolved = true
         canBeConsumed = false
     }
+    // micronaut-inject, micronaut-core and what they link against, which BenchmarkEntryModeTest packages so that a
+    // Runner row gets micronaut-core's service index. They reach the test as files too.
+    micronautCoreFixture {
+        canBeResolved = true
+        canBeConsumed = false
+    }
 }
 
 dependencies {
     logbackFixture libs.logback.classic
+    micronautCoreFixture "io.micronaut:micronaut-inject:${libs.versions.micronaut.asProvider().get()}"
 }
 
 // ReadinessSnapshot reads macOS memory through an FFM downcall (proc_pid_rusage), and page-cache eviction calls
@@ -38,9 +45,12 @@ dependencies {
 tasks.withType(Test).configureEach {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
     def logbackFixture = configurations.logbackFixture
+    def micronautCoreFixture = configurations.micronautCoreFixture
     inputs.files(logbackFixture).withPropertyName('logbackFixture').withNormalizer(ClasspathNormalizer)
+    inputs.files(micronautCoreFixture).withPropertyName('micronautCoreFixture').withNormalizer(ClasspathNormalizer)
     jvmArgumentProviders.add({ ->
-        ["-Drunner.benchmark.logbackFixture=${logbackFixture.asPath}".toString()]
+        ["-Drunner.benchmark.logbackFixture=${logbackFixture.asPath}".toString(),
+         "-Drunner.benchmark.micronautCoreFixture=${micronautCoreFixture.asPath}".toString()]
     } as CommandLineArgumentProvider)
 }
 

@@ -82,6 +82,12 @@ public final class Launcher {
      */
     private static final String TIMING_PROPERTY = "micronaut.runner.timing";
 
+    /**
+     * micronaut-core's switch for its service index, which a runner jar carries when it was packaged with the
+     * {@code staticServices} option.
+     */
+    private static final String SERVICE_INDEX_PROPERTY = "micronaut.service.index.enabled";
+
     /** Exit status for a launcher level failure, as opposed to an exception out of the application. */
     private static final int EXIT_LAUNCHER_ERROR = 2;
 
@@ -101,6 +107,17 @@ public final class Launcher {
     private static volatile Entry entry;
 
     private Launcher() {
+    }
+
+    /**
+     * Turns micronaut-core's service index off, unless the property is set. The index lists the services the
+     * archive holds; with the system class loader as the parent, the application also sees the real class path,
+     * whose providers the index would miss.
+     */
+    private static void turnTheServiceIndexOff() {
+        if (System.getProperty(SERVICE_INDEX_PROPERTY) == null) {
+            System.setProperty(SERVICE_INDEX_PROPERTY, "false");
+        }
     }
 
     /**
@@ -161,7 +178,11 @@ public final class Launcher {
         // loading classes long after main returns, and closing the mapping would pull the bytes out from
         // under them. Nothing else holds a reference, so the process exit is what releases it.
         Handlers.register(archive, index, source);
-        RunnerClassLoader loader = new RunnerClassLoader(index, source, RunnerClassLoader.defaultParent());
+        ClassLoader parent = RunnerClassLoader.defaultParent();
+        if (parent == ClassLoader.getSystemClassLoader()) {
+            turnTheServiceIndexOff();
+        }
+        RunnerClassLoader loader = new RunnerClassLoader(index, source, parent);
         Thread.currentThread().setContextClassLoader(loader);
         // Only here, and only with a list, so that a JAR without one never loads the preloader.
         if (index.preloadCount() > 0 || index.jdkPreloadCount() > 0) {
