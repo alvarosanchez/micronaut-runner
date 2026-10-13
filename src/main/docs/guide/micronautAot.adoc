@@ -3,7 +3,7 @@ every packaging can use, so that a shaded JAR, a container image and a native im
 Runner JAR. Its optimizer generates optimized application code when you build. Logback precompilation needs no
 optimizer run: the Micronaut Gradle and Maven plugins apply it themselves, and a Runner JAR gets it by default
 (<<precompiledLogback,Precompiled Logback Configuration>>). Neither does
-https://micronaut-projects.github.io/micronaut-aot/latest/guide/#classPathTransformStrip[Micronaut AOT's local-variable
+https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#classPathTransformStrip[Micronaut AOT's local-variable
 stripping], which Runner runs on the dependencies when you turn it on
 (<<localVariableTables,Opt-in: Dependency Local-Variable Names>>).
 
