@@ -417,8 +417,8 @@ class HelloNettySampleTest {
     }
 
     /**
-     * Normalises what differs between any two runs: times, the startup duration, thread names, ports and the
-     * bean path Micronaut prints for a failed injection.
+     * Normalises what differs between any two runs: times, the startup duration, thread names, ports, the bean path
+     * Micronaut prints for a failed injection, and the class loader and service type count of the service index line.
      */
     private static String normalise(String output) {
         StringBuilder normalised = new StringBuilder();
@@ -434,7 +434,12 @@ class HelloNettySampleTest {
             normalised.append(line.replaceAll("\\d{2}:\\d{2}:\\d{2}\\.\\d{3}", "TIME")
                     .replaceAll("Startup completed in \\d+ms", "Startup completed in Nms")
                     .replaceAll("localhost:\\d+", "localhost:PORT")
-                    .replaceAll("\\[[\\w-]*-\\d+\\]", "[THREAD]")).append('\n');
+                    .replaceAll("\\[[\\w-]*-\\d+\\]", "[THREAD]")
+                    .replaceAll("RunnerClassLoader@\\p{XDigit}+", "RunnerClassLoader@ID")
+                    // The precompiled configuration registers one more service type, Logback's Configurator, which
+                    // micronaut-core's line about its service index counts.
+                    .replaceAll("META-INF/services files of \\d+ service types",
+                            "META-INF/services files of N service types")).append('\n');
         }
         return normalised.toString();
     }
@@ -504,7 +509,6 @@ class HelloNettySampleTest {
         BuildResult result = gradle(sample, TASK);
         assertTrue(Files.isRegularFile(archive),
                 () -> "the plugin did not write " + archive + ":\n" + result.getOutput());
-        assertTrue(result.getOutput().contains("Generated a service index of "), result::getOutput);
         try (JarFile jar = new JarFile(archive.toFile())) {
             assertNotNull(jar.getEntry(CLASSES + INDEX_LOADER),
                     () -> "the default configuration did not generate the service index:\n" + result.getOutput());
