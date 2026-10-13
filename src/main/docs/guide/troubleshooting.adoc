@@ -55,7 +55,9 @@ A service provider added after packaging is not found:: If an agent or tool adds
 `-Dmicronaut.runner.parent=system` (<<javaAgents,Java agents>>); otherwise, start with
 `-Dmicronaut.service.index.enabled=false` (<<staticServices,Precomputed Service Lookups>>).
 `micronaut.service.index.validate` reports a mismatch:: Start with `-Dmicronaut.service.index.enabled=false`, package
-with `staticServices=false`, and please report it.
+with `staticServices=false`, and please report it. In an <<extract,extracted layout>>, it can also name bean
+definitions of a dependency JAR that stores no directory entries, which the extracted layout's own scan cannot find
+and the index includes: keep the index on there.
 The build warns that a dependency already carries a service index:: Micronaut uses that index, which was built for
 another class path. Start with `-Dmicronaut.service.index.enabled=false`, or package without the dependency's index.
 An agent or tool cannot see the application's classes, or the application cannot see the agent's:: Start with

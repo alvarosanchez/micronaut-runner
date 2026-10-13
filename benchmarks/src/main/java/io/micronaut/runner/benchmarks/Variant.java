@@ -33,8 +33,8 @@ import java.util.List;
  * @param artifact           the file (or directory) the variant launches from
  * @param deploymentSize     the measured complete deployment, or {@code null}
  * @param effectiveEntryMode how the built artifact enters the application, or {@code null} when unavailable
- * @param buildNote          what the packaging reported about the built bytes, such as the static service
- *                           table, appended to the description; {@code null} for nothing
+ * @param buildNote          what the packaging reported about the built bytes, such as micronaut-core's service
+ *                           index, appended to the description; {@code null} for nothing
  * @param launchInputs       ordered files/directories whose bytes define the launched application
  * @param cache              the trained JDK AOT cache, or {@code null}
  * @param unavailableReason  why the variant could not be built, or {@code null} when it could

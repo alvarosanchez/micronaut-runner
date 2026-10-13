@@ -1094,7 +1094,7 @@ final class SampleBuild implements SampleSteps {
         /**
          * These options with micronaut-core's service index requested or not.
          *
-         * @param value whether to generate the table
+         * @param value whether to generate the index
          * @return the new options
          */
         RunnerJarOptions withStaticServices(boolean value) {
