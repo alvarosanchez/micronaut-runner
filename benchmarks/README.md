@@ -397,7 +397,7 @@ interleaved method):
 | `PRESERVE` slower than `STORED` but faster than Shadow; slightly larger than Shadow on disk, about the same gzipped | Compression Modes | `runner-preserve` − `runner-stored`, `runner-preserve` − `shadow` | +13…+17% (JDK 25; +15…+16% on JDK 27 with stripping); −14…−17%; 1.20× raw, 1.04× gzip |
 | `HYBRID` starts like `STORED`, smaller on disk, larger compressed | Compression Modes | `runner-stored-hybrid` − `runner-stored` | −1…+3% (n.s.); 0.74× raw, 1.35× gzip (stripping on) |
 | `POSITIONAL`: lower RSS, slightly slower, same private memory | Mapped or Positional Reads | `runner-stored-positional` − `runner-stored` | +1…+3% time; RSS −13…−16% |
-| Opt-in local-variable stripping: somewhat smaller, slightly faster without a cache, no difference with one | Opt-in: Dependency Local-Variable Names | `runner-stored-stripdebug` − `runner-stored`, and their `-aot` twins | 0.88× raw; −2…−3% uncached; −1…0% cached (n.s.) |
+| Opt-in local-variable stripping: somewhat smaller, slightly faster without a cache, no difference with one | Opt-in: Dependency Local-Variable Names | `runner-stored-stripdebug` − `runner-stored`, and their `-aot` twins | 0.87× raw; −2…−3% uncached; −1…0% cached (n.s.) |
 | Dynamic CDS starts more slowly than the AOT cache | The JDK AOT Cache | manual: `-XX:ArchiveClassesAtExit` and `-XX:+AutoCreateSharedArchive` against the AOT cache | AOT −11…−12% |
 | With the default settings, building a Runner JAR takes less time than building a Shadow JAR | Introduction | manual: `packagingComparison`, `runner-stored` − `shadow`, `--rerun` and edit-then-build; plus an up-to-date check | packaging task −59…−61%, whole build −30…−35%; no difference when up to date |
 
@@ -407,13 +407,14 @@ still stripped dependency local-variable tables by default. The JDK 25 figures f
 from its `runner-stored-keepdebug` rows, which are byte for byte today's default; the JDK 27 figures marked
 "stripping on" do not. The opt-in stripping row was measured again on 2026-10-08, after stripping moved to Micronaut
 AOT's engine (#251): three sessions of 40 interleaved, paired rounds of the sample's own Runner JARs, with and without
-`stripLocalVariables`, JDK 25.0.4.1. Comparisons within Runner (the startup profile, the extracted layout,
-`-all-optimized.jar` against `-all.jar`, `HYBRID` and `POSITIONAL`) were measured with stripping on for both rows, so
-they are not yet measured on today's default. The packaging claim comes from three manual sessions of the packaging
-comparison, on JDK 25.0.4.1 with a warm Gradle daemon, with stripping on: today's default skips that step, so it does
-less work than was measured. The claim names only Shadow, because Maven Shade was not measured. The advantage comes
-from not compressing entries: against a Shadow JAR whose entries are stored uncompressed, the two take about the same
-time.
+`stripLocalVariables`, JDK 25.0.4.1, and once more on 2026-10-14, after one engine run took over desugaring too
+(#250): 0.87× raw (0.88× before), −3.2% uncached, +0.1% cached (n.s.). Comparisons within Runner (the startup profile,
+the extracted layout, `-all-optimized.jar` against `-all.jar`, `HYBRID` and `POSITIONAL`) were measured with stripping
+on for both rows, so they are not yet measured on today's default. The packaging claim comes from three manual
+sessions of the packaging comparison, on JDK 25.0.4.1 with a warm Gradle daemon, with stripping on: today's default
+skips that step, so it does less work than was measured. The claim names only Shadow, because Maven Shade was not
+measured. The advantage comes from not compressing entries: against a Shadow JAR whose entries are stored
+uncompressed, the two take about the same time.
 
 The `packagingComparison` task has since been removed from this module. To refresh the packaging claim, run
 `./gradlew :benchmarks:packagingComparison` from `2035468`, the base of #245, which still has the task and today's
