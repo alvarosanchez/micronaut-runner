@@ -16,7 +16,7 @@ example, when:
 * a packaged `+application*+` or `+bootstrap*+` file may set `logger.config`;
 * Logback is not from 1.5.37 up to, but not including, 1.6.
 
-https://micronaut-projects.github.io/micronaut-aot/latest/guide/#logbackPrecompiler[The Micronaut AOT guide] lists
+https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#logbackPrecompiler[The Micronaut AOT guide] lists
 every rule.
 
 At run time, Joran takes over when you set `-Dlogback.configurationFile`, `-Dlogback.debug` or
