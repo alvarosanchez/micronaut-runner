@@ -56,8 +56,6 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 /**
  * Turns an application's own output and its resolved dependencies into a runner jar.
@@ -178,12 +176,6 @@ public final class RunnerJarBuilder {
 
     /** The content of every zero-length entry, which is written without opening anything. */
     private static final byte[] EMPTY_BYTES = new byte[0];
-
-    /** The prefix of every service file of a jar. */
-    private static final String SERVICES_PREFIX = "META-INF/services/";
-
-    /** The prefix of the versioned entries of a multi-release jar. */
-    private static final String VERSIONS_PREFIX = "META-INF/versions/";
 
     /** A class that every micronaut-core has, which tells which nested jar is micronaut-core. */
     private static final String MICRONAUT_CORE_CLASS = "io/micronaut/core/io/service/SoftServiceLoader.class";
@@ -1298,110 +1290,38 @@ public final class RunnerJarBuilder {
      * application layer, so that the index lists them.
      *
      * @param work the work directory, which holds the view jar while the module reads it
-     * @throws IOException if the view jar cannot be written
+     * @throws IOException if an entry of the view jar cannot be read, or the view jar cannot be written
      */
     private void generateServiceIndex(Path work) throws IOException {
         if (!spec.staticServices()) {
             ServiceIndexing.notRequested(logger);
             return;
         }
-        Path view = work.resolve("service-index-view.jar");
-        writeServiceIndexView(view);
-        List<Path> classPath = new ArrayList<>(nested.size() + 1);
-        classPath.add(view);
-        Set<Path> files = new HashSet<>();
-        List<Path> copies = new ArrayList<>();
-        Map<String, String> dependencyNames = new LinkedHashMap<>();
-        String carriedIndex = null;
+        List<ServiceIndexing.ViewEntry> view = new ArrayList<>();
+        for (Map.Entry<String, ApplicationEntry> item : mergedServices.entrySet()) {
+            view.add(new ServiceIndexing.ViewEntry(item.getKey(),
+                    item.getValue() == null ? null : applicationBytes(item.getValue())));
+        }
+        for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
+            if (ServiceIndexing.inView(item.getKey(), spec.multiRelease())) {
+                view.add(new ServiceIndexing.ViewEntry(item.getKey(), applicationBytes(item.getValue())));
+            }
+        }
+        List<ServiceIndexing.NestedLayer> layers = new ArrayList<>(nested.size());
         for (NestedJar jar : nested) {
-            Path file = jar.file;
-            if (!files.add(file.toAbsolutePath().normalize())) {
-                // In PRESERVE a dependency listed twice is nested twice from one file, and both copies are on the
-                // class path the archive gives the application: the module takes each entry once, so it gets a copy.
-                file = Files.copy(file, work.resolve("service-index-duplicate-" + classPath.size() + ".jar"));
-                copies.add(file);
-            }
-            classPath.add(file);
-            String staged = fileName(file);
-            if (!staged.equals(fileName(jar.dependency.path()))) {
-                dependencyNames.put(staged, "the dependency " + jar.dependency.path());
-            }
+            boolean carriesAnIndex = false;
             for (ZipEntryInfo entry : jar.result.entries()) {
-                if (carriedIndex == null && entry.name().equals(ServiceIndexing.GENERATED_LOADER)) {
-                    carriedIndex = jar.dependency.path().toString();
-                }
+                carriesAnIndex |= entry.name().equals(ServiceIndexing.GENERATED_LOADER);
             }
+            layers.add(new ServiceIndexing.NestedLayer(jar.file, jar.dependency.path(), carriesAnIndex));
         }
-        ServiceIndexing.Outcome outcome = ServiceIndexing.generate(view, classPath, dependencyNames, carriedIndex,
-                logger, this::warn);
-        Files.delete(view);
-        for (Path copy : copies) {
-            Files.delete(copy);
-        }
+        ServiceIndexing.Outcome outcome = ServiceIndexing.generate(work, view, spec.multiRelease(), layers, logger,
+                this::warn);
         outcome.removals().forEach(application::remove);
         outcome.entries().forEach((name, bytes) -> application.put(name, ApplicationEntry.ofBytes(bytes)));
         if (outcome.generated()) {
             serviceIndexCoreVersion = micronautCoreVersion();
         }
-    }
-
-    /**
-     * Writes the jar that stands for the application layer on the class path the service index is generated
-     * for. {@code RunnerClassLoader} answers a lookup under {@code META-INF/micronaut/} from the merged copy only,
-     * and any other one from the application layer first, then from each nested jar. So the view holds the merged
-     * copy, as the archive stores it, directory entries included, and the application layer's service files and
-     * the output of an earlier generation, which the module replaces; the nested jars follow it on that class
-     * path. It holds no other class: the index holds names only.
-     *
-     * @param view the file to write
-     * @throws IOException if an entry cannot be read or the file cannot be written
-     */
-    private void writeServiceIndexView(Path view) throws IOException {
-        try (ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(view)))) {
-            if (spec.multiRelease()) {
-                Manifest manifest = new Manifest();
-                manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-                manifest.getMainAttributes().put(Attributes.Name.MULTI_RELEASE, "true");
-                out.putNextEntry(viewEntry("META-INF/MANIFEST.MF"));
-                manifest.write(out);
-                out.closeEntry();
-            }
-            for (Map.Entry<String, ApplicationEntry> item : mergedServices.entrySet()) {
-                out.putNextEntry(viewEntry(item.getKey()));
-                if (item.getValue() != null) {
-                    out.write(applicationBytes(item.getValue()));
-                }
-                out.closeEntry();
-            }
-            for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
-                String name = item.getKey();
-                if (isServiceFile(name) || name.startsWith(ServiceIndexing.GENERATED_PREFIX)) {
-                    out.putNextEntry(viewEntry(name));
-                    out.write(applicationBytes(item.getValue()));
-                    out.closeEntry();
-                }
-            }
-        }
-    }
-
-    private static ZipEntry viewEntry(String name) {
-        ZipEntry entry = new ZipEntry(name);
-        entry.setTime(0);
-        return entry;
-    }
-
-    /**
-     * Whether an application entry is a service file that a lookup can find: {@code META-INF/services/<type>}, or
-     * its versioned copy in a multi-release application layer.
-     */
-    private boolean isServiceFile(String name) {
-        String base = name;
-        if (spec.multiRelease() && name.startsWith(VERSIONS_PREFIX)) {
-            int slash = name.indexOf('/', VERSIONS_PREFIX.length());
-            base = slash < 0 ? name : name.substring(slash + 1);
-        }
-        return base.startsWith(SERVICES_PREFIX) && base.length() > SERVICES_PREFIX.length()
-                && base.indexOf('/', SERVICES_PREFIX.length()) < 0;
     }
 
     /**

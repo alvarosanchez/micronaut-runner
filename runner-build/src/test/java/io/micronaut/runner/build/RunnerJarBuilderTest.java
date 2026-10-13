@@ -4243,6 +4243,27 @@ class RunnerJarBuilderTest {
         assertNoServiceIndex(output);
     }
 
+    @ParameterizedTest
+    @EnumSource(value = Compression.class, names = {"STORED", "PRESERVE"})
+    void aMessageOfTheModuleNamesTheDependencyNotItsStagedCopy(Compression compression) throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put(INDEX_PACKAGE + "Other.class", new byte[] {1, 2, 3});
+        Path squatter = fixtures.resolve("libs/squatter-" + compression + ".jar");
+        writeJar(squatter, manifest(attributes -> { }), entries);
+        List<Dependency> dependencies = new ArrayList<>(specWithMicronautCore(output()).build().dependencies());
+        dependencies.add(Dependency.of(squatter));
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output).compression(compression)
+                .dependencies(dependencies).build(), BuildLogger.noOp());
+
+        String expected = compression == Compression.PRESERVE ? squatter.getFileName().toString()
+                : "the dependency " + squatter;
+        assertEquals(List.of("No service index was generated because " + expected + " holds " + INDEX_PACKAGE
+                + "Other.class, in the package of the generated index" + SCAN), result.warnings());
+        assertNoServiceIndex(output);
+    }
+
     @Test
     void theServiceIndexIsReproducible() throws IOException {
         Path first = output();
