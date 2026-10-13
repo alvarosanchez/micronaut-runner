@@ -50,8 +50,8 @@ import java.util.regex.Pattern;
  *     {@code TrainingDriver}, reaches readiness and serves the workload.</li>
  *     <li><b>Coverage.</b> From that launch's class-load log, up to the end of its workload: at least
  *     {@link AotCacheSettings#minCoverage()} of the classes come from the cache, and every {@code io.micronaut}
- *     class that does not is a lambda proxy or one the recording named as skipped because it failed
- *     verification or is a JFR event class. With the settings' {@code enforceCoverage} off, the numbers are only
+ *     class that does not is a lambda proxy, the class of a pattern {@code switch} over types, or one the
+ *     recording named as skipped because it failed verification or is a JFR event class. With the settings' {@code enforceCoverage} off, the numbers are only
  *     reported.</li>
  * </ol>
  *
@@ -83,6 +83,12 @@ public final class AotCacheGate {
 
     /** What marks a hidden lambda proxy class. */
     private static final String LAMBDA = "$$Lambda";
+
+    /**
+     * What marks the hidden class a pattern {@code switch} over types spins when it is first linked, which the cache
+     * does not hold either; micronaut-core 5.3 links one while the context starts.
+     */
+    private static final String TYPE_SWITCH = "$$TypeSwitch";
 
     /** What precedes the class name on a {@code -Xlog:class+load} line. */
     private static final String CLASS_LOAD_TAG = "[class,load] ";
@@ -246,7 +252,7 @@ public final class AotCacheGate {
                     micronautFromCache++;
                 } else {
                     notFromCache.add(name);
-                    if (!lambda && !allowed.contains(name)) {
+                    if (!lambda && !name.contains(TYPE_SWITCH) && !allowed.contains(name)) {
                         unexpected.add(name);
                     }
                 }
@@ -258,7 +264,8 @@ public final class AotCacheGate {
 
     /**
      * What check 3 finds wrong with a coverage: too few classes from the cache, and every {@code io.micronaut}
-     * class that neither is a lambda proxy nor was skipped by the recording.
+     * class that is neither a lambda proxy nor the class of a pattern {@code switch}, and was not skipped by the
+     * recording.
      *
      * @param coverage    the coverage
      * @param minCoverage the minimum share of classes from the cache
@@ -441,7 +448,8 @@ public final class AotCacheGate {
          * @param micronautLoaded       the {@code io.micronaut} classes it loaded
          * @param micronautFromCache    how many of them came from the cache
          * @param micronautNotFromCache the names of the others, in load order
-         * @param unexpected            those of them that are neither lambda proxies nor skipped by the recording
+         * @param unexpected            those of them that are neither lambda proxies nor the classes of pattern
+         *                              {@code switch}es, and were not skipped by the recording
          * @param runtimeLambdas        the lambda proxy classes it spun instead of loading them from the cache
          */
         Coverage(int classesLoaded, int classesFromCache, int micronautLoaded, int micronautFromCache,

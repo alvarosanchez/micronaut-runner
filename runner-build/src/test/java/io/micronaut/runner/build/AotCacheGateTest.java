@@ -78,6 +78,20 @@ class AotCacheGateTest {
     }
 
     @Test
+    void theClassOfAPatternSwitchIsAllowedLikeALambdaProxy() {
+        List<String> log = new java.util.ArrayList<>(CLASS_LOAD);
+        log.add("[0.160s][info][class,load] io.micronaut.context.DefaultBeanDependencies$$TypeSwitch/0x0000180003004360"
+                + " source: io.micronaut.context.DefaultBeanDependencies");
+
+        AotCacheGate.Coverage coverage = AotCacheGate.coverage(log, RECORD_LOG);
+
+        assertTrue(coverage.micronautNotFromCache().contains(
+                "io.micronaut.context.DefaultBeanDependencies$$TypeSwitch/0x0000180003004360"));
+        assertEquals(List.of(), coverage.unexpected(), "the JDK spins it at run time, and the cache cannot hold it");
+        assertEquals(1, coverage.runtimeLambdas(), "it is not a lambda proxy");
+    }
+
+    @Test
     void theAllowlistReadsVerificationAndJfrSkipsAtEveryLevel() {
         assertEquals(Set.of("io.micronaut.http.netty.EpollEventLoopGroupFactory",
                 "io.micronaut.http.server.netty.HttpRequestEvent"), AotCacheGate.allowlist(RECORD_LOG));
