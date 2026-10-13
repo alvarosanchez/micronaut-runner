@@ -22,14 +22,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.jar.Attributes;
-import java.util.jar.Manifest;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -60,25 +62,23 @@ import java.util.zip.ZipOutputStream;
  */
 final class ServiceIndexing {
 
-    /** The package of the module's generated classes, which its {@code Result} documents. */
-    static final String GENERATED_PREFIX = "io/micronaut/aot/serviceindex/generated/";
-
-    /** The loader the module generates, which registers an index. */
-    static final String GENERATED_LOADER = GENERATED_PREFIX + "ServiceIndexLoader.class";
-
     /**
      * Runs just before the module is called. Tests replace it to force the {@link LinkageError} of a module
      * version that does not match; it does nothing in production.
      */
     static volatile Runnable beforeCall = () -> { };
 
+    /** The package of the module's generated classes, which its {@code Result} documents. */
+    private static final String GENERATED_PREFIX = "io/micronaut/aot/serviceindex/generated/";
+
+    /** The loader the module generates, which registers an index. */
+    private static final String GENERATED_LOADER = GENERATED_PREFIX + "ServiceIndexLoader.class";
+
     private static final String NOT_GENERATED = "No service index was generated because ";
 
     private static final String SCAN = "; the application scans its class path for services at run time";
 
     private static final String SERVICES_PREFIX = "META-INF/services/";
-
-    private static final String VERSIONS_PREFIX = "META-INF/versions/";
 
     private ServiceIndexing() {
     }
@@ -94,47 +94,54 @@ final class ServiceIndexing {
 
     /**
      * Whether an entry of the application layer goes into the view jar besides the merged copy: a service file that
-     * a lookup can find, {@code META-INF/services/<type>} or its versioned copy in a multi-release application
-     * layer, or the output of an earlier generation.
+     * a lookup can find, {@code META-INF/services/<type>}, or the output of an earlier generation.
      *
-     * @param name         the entry's logical name
-     * @param multiRelease whether the application layer is multi-release
+     * @param name the entry's logical name
      * @return whether the view holds it
      */
-    static boolean inView(String name, boolean multiRelease) {
+    static boolean inView(String name) {
         if (name.startsWith(GENERATED_PREFIX)) {
             return true;
         }
-        String base = name;
-        if (multiRelease && name.startsWith(VERSIONS_PREFIX)) {
-            int slash = name.indexOf('/', VERSIONS_PREFIX.length());
-            base = slash < 0 ? name : name.substring(slash + 1);
+        return name.startsWith(SERVICES_PREFIX) && name.length() > SERVICES_PREFIX.length()
+                && name.indexOf('/', SERVICES_PREFIX.length()) < 0;
+    }
+
+    /**
+     * Whether a nested jar holds the module's index loader, which makes the module stand down.
+     *
+     * @param entries the nested jar's entries
+     * @return whether one of them is the loader
+     */
+    static boolean carriesAnIndex(List<ZipEntryInfo> entries) {
+        for (ZipEntryInfo entry : entries) {
+            if (entry.name().equals(GENERATED_LOADER)) {
+                return true;
+            }
         }
-        return base.startsWith(SERVICES_PREFIX) && base.length() > SERVICES_PREFIX.length()
-                && base.indexOf('/', SERVICES_PREFIX.length()) < 0;
+        return false;
     }
 
     /**
      * Writes the view jar, calls the module and logs what it did: one informational line, or one warning.
      *
-     * @param work         the work directory, which holds the view jar and the copies the call needs
-     * @param view         the entries of the view jar, in order: the merged copy, then the application layer's
-     * @param multiRelease whether the application layer is multi-release
-     * @param nested       the nested jars, in index order
-     * @param logger       where the informational line goes
-     * @param warnings     where a warning goes
+     * @param work     the work directory, which holds the view jar and the copies the call needs
+     * @param view     the entries of the view jar, in order: the merged copy, then the application layer's
+     * @param nested   the nested jars, in index order
+     * @param logger   where the informational line goes
+     * @param warnings where a warning goes
      * @return what to write into the application layer and delete from it, whatever the module decided
      * @throws IOException if the view jar or a copy cannot be written or deleted
      */
-    static Outcome generate(Path work, List<ViewEntry> view, boolean multiRelease, List<NestedLayer> nested,
-                            BuildLogger logger, Consumer<String> warnings) throws IOException {
+    static Outcome generate(Path work, List<ViewEntry> view, List<NestedLayer> nested, BuildLogger logger,
+                            Consumer<String> warnings) throws IOException {
         Path holder = work.resolve("service-index-view.jar");
-        writeView(holder, view, multiRelease);
+        writeView(holder, view);
         List<Path> classPath = new ArrayList<>(nested.size() + 1);
         classPath.add(holder);
         Set<Path> files = new HashSet<>();
         List<Path> copies = new ArrayList<>();
-        Map<String, String> dependencies = new LinkedHashMap<>();
+        List<Path> dependencies = new ArrayList<>(nested.size());
         Path carriedIndex = null;
         for (NestedLayer layer : nested) {
             Path file = layer.file();
@@ -145,15 +152,13 @@ final class ServiceIndexing {
                 copies.add(file);
             }
             classPath.add(file);
-            String staged = RunnerJarBuilder.fileName(file);
-            if (!staged.equals(RunnerJarBuilder.fileName(layer.dependency()))) {
-                dependencies.put(staged, "the dependency " + layer.dependency());
-            }
+            dependencies.add(layer.dependency());
             if (carriedIndex == null && layer.carriesAnIndex()) {
                 carriedIndex = layer.dependency();
             }
         }
-        Outcome outcome = call(holder, classPath, dependencies, carriedIndex, logger, warnings);
+        Map<String, String> names = names(classPath.subList(1, classPath.size()), dependencies);
+        Outcome outcome = call(holder, classPath, names, carriedIndex, logger, warnings);
         Files.delete(holder);
         for (Path copy : copies) {
             Files.delete(copy);
@@ -161,16 +166,8 @@ final class ServiceIndexing {
         return outcome;
     }
 
-    private static void writeView(Path file, List<ViewEntry> view, boolean multiRelease) throws IOException {
+    private static void writeView(Path file, List<ViewEntry> view) throws IOException {
         try (ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(file)))) {
-            if (multiRelease) {
-                Manifest manifest = new Manifest();
-                manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-                manifest.getMainAttributes().put(Attributes.Name.MULTI_RELEASE, "true");
-                out.putNextEntry(entry("META-INF/MANIFEST.MF"));
-                manifest.write(out);
-                out.closeEntry();
-            }
             for (ViewEntry item : view) {
                 out.putNextEntry(entry(item.name()));
                 if (item.content() != null) {
@@ -187,7 +184,7 @@ final class ServiceIndexing {
         return entry;
     }
 
-    private static Outcome call(Path holder, List<Path> classPath, Map<String, String> dependencies,
+    private static Outcome call(Path holder, List<Path> classPath, Map<String, String> names,
                                 Path carriedIndex, BuildLogger logger, Consumer<String> warnings) {
         try {
             beforeCall.run();
@@ -203,9 +200,9 @@ final class ServiceIndexing {
                         + " path, so it can miss services of this application; start the application with"
                         + " -Dmicronaut.service.index.enabled=false to scan for them instead");
             } else if (status == ServiceIndexGenerator.Status.FAILED) {
-                warnings.accept(named(result.message(), dependencies));
+                warnings.accept(named(result.message(), names));
             } else {
-                logger.info(named(result.message(), dependencies));
+                logger.info(named(result.message(), names));
             }
             return new Outcome(status == ServiceIndexGenerator.Status.GENERATED, result.entries(), result.removals());
         } catch (LinkageError e) {
@@ -218,15 +215,59 @@ final class ServiceIndexing {
     }
 
     /**
-     * A message of the module with each staged nested jar it names replaced by its dependency, which is what the
-     * user knows: in STORED and HYBRID a nested jar is a copy in the work directory.
+     * What a message of the module may name a nested jar by, and what it names instead: the dependency, which is
+     * what the user knows. In STORED and HYBRID a nested jar is a copy in the work directory, and so is a dependency
+     * PRESERVE nests twice. A copy's path becomes the dependency's path, and a file name becomes
+     * {@code the dependency <path>}; a file name two dependencies share stays as it is.
+     *
+     * @param files        the nested jars as the module is shown them, in order
+     * @param dependencies the dependency of each
+     * @return what to replace, by what
      */
-    private static String named(String message, Map<String, String> dependencies) {
-        String named = message;
-        for (Map.Entry<String, String> dependency : dependencies.entrySet()) {
-            named = named.replace(dependency.getKey(), dependency.getValue());
+    static Map<String, String> names(List<Path> files, List<Path> dependencies) {
+        Map<String, String> names = new HashMap<>();
+        Set<String> shared = new HashSet<>();
+        for (int i = 0; i < files.size(); i++) {
+            Path file = files.get(i);
+            Path dependency = dependencies.get(i);
+            if (!file.equals(dependency)) {
+                names.put(file.toString(), dependency.toString());
+            }
+            String name = RunnerJarBuilder.fileName(file);
+            String replacement = "the dependency " + dependency;
+            String earlier = names.putIfAbsent(name, replacement);
+            if (earlier != null && !earlier.equals(replacement)) {
+                shared.add(name);
+            }
         }
-        return named;
+        names.keySet().removeAll(shared);
+        return names;
+    }
+
+    /**
+     * A message of the module with each name of {@link #names(List, List)} replaced, in one pass, so that a
+     * replacement is never read again, and only where the name stands alone: not inside a longer file name or path.
+     *
+     * @param message the module's message
+     * @param names   what to replace, by what
+     * @return the message for the user
+     */
+    static String named(String message, Map<String, String> names) {
+        if (names.isEmpty()) {
+            return message;
+        }
+        String alternatives = names.keySet().stream()
+                .sorted(Comparator.comparingInt(String::length).reversed())
+                .map(Pattern::quote)
+                .collect(Collectors.joining("|"));
+        Matcher matcher = Pattern.compile("(?<![\\w.\\-/\\\\])(?:" + alternatives + ")(?![\\w-]|\\.\\w)")
+                .matcher(message);
+        StringBuilder named = new StringBuilder(message.length());
+        while (matcher.find()) {
+            matcher.appendReplacement(named, Matcher.quoteReplacement(names.get(matcher.group())));
+        }
+        matcher.appendTail(named);
+        return named.toString();
     }
 
     /**

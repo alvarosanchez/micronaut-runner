@@ -180,6 +180,9 @@ public final class RunnerJarBuilder {
     /** A class that every micronaut-core has, which tells which nested jar is micronaut-core. */
     private static final String MICRONAUT_CORE_CLASS = "io/micronaut/core/io/service/SoftServiceLoader.class";
 
+    /** The micronaut-core version a generated service index reports when no manifest states one. */
+    private static final String UNKNOWN_CORE_VERSION = "unknown";
+
     /** The content every zero-length dependency contributor to the merged Micronaut metadata shares. */
     private static final ApplicationEntry EMPTY_CONTENT = ApplicationEntry.ofBytes(EMPTY_BYTES, 0);
 
@@ -1303,24 +1306,20 @@ public final class RunnerJarBuilder {
                     item.getValue() == null ? null : applicationBytes(item.getValue())));
         }
         for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
-            if (ServiceIndexing.inView(item.getKey(), spec.multiRelease())) {
+            if (ServiceIndexing.inView(item.getKey())) {
                 view.add(new ServiceIndexing.ViewEntry(item.getKey(), applicationBytes(item.getValue())));
             }
         }
         List<ServiceIndexing.NestedLayer> layers = new ArrayList<>(nested.size());
         for (NestedJar jar : nested) {
-            boolean carriesAnIndex = false;
-            for (ZipEntryInfo entry : jar.result.entries()) {
-                carriesAnIndex |= entry.name().equals(ServiceIndexing.GENERATED_LOADER);
-            }
-            layers.add(new ServiceIndexing.NestedLayer(jar.file, jar.dependency.path(), carriesAnIndex));
+            layers.add(new ServiceIndexing.NestedLayer(jar.file, jar.dependency.path(),
+                    ServiceIndexing.carriesAnIndex(jar.result.entries())));
         }
-        ServiceIndexing.Outcome outcome = ServiceIndexing.generate(work, view, spec.multiRelease(), layers, logger,
-                this::warn);
+        ServiceIndexing.Outcome outcome = ServiceIndexing.generate(work, view, layers, logger, this::warn);
         outcome.removals().forEach(application::remove);
         outcome.entries().forEach((name, bytes) -> application.put(name, ApplicationEntry.ofBytes(bytes)));
         if (outcome.generated()) {
-            serviceIndexCoreVersion = micronautCoreVersion();
+            serviceIndexCoreVersion = Objects.requireNonNullElse(micronautCoreVersion(), UNKNOWN_CORE_VERSION);
         }
     }
 

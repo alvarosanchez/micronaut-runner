@@ -55,6 +55,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -4257,11 +4258,59 @@ class RunnerJarBuilderTest {
         RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output).compression(compression)
                 .dependencies(dependencies).build(), BuildLogger.noOp());
 
-        String expected = compression == Compression.PRESERVE ? squatter.getFileName().toString()
-                : "the dependency " + squatter;
-        assertEquals(List.of("No service index was generated because " + expected + " holds " + INDEX_PACKAGE
-                + "Other.class, in the package of the generated index" + SCAN), result.warnings());
+        assertEquals(List.of("No service index was generated because the dependency " + squatter + " holds "
+                + INDEX_PACKAGE + "Other.class, in the package of the generated index" + SCAN), result.warnings());
         assertNoServiceIndex(output);
+    }
+
+    @Test
+    void aDependencyNamedLikeTheStagedCopyOfAnotherIsNamedOnce() throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put(INDEX_PACKAGE + "Other.class", new byte[] {1, 2, 3});
+        // Staged first, as lib-0.jar; lib-1.jar is the staged copy of micronaut-core, which follows it.
+        Path squatter = fixtures.resolve("libs/squatter-lib-1.jar");
+        writeJar(squatter, manifest(attributes -> { }), entries);
+        List<Dependency> dependencies = new ArrayList<>(List.of(Dependency.of(squatter)));
+        dependencies.addAll(specWithMicronautCore(output()).build().dependencies());
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output).compression(Compression.STORED)
+                .dependencies(dependencies).build(), BuildLogger.noOp());
+
+        assertEquals(List.of("No service index was generated because the dependency " + squatter + " holds "
+                + INDEX_PACKAGE + "Other.class, in the package of the generated index" + SCAN), result.warnings());
+    }
+
+    @Test
+    void anIndexForAMicronautCoreWhoseManifestStatesNoVersionReportsItAsUnknown() throws IOException {
+        Path core = MicronautCoreJars.jar("micronaut-core-");
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        try (ZipFile jar = new ZipFile(core.toFile())) {
+            for (ZipEntry entry : Collections.list(jar.entries())) {
+                if (!entry.getName().equals(JarFile.MANIFEST_NAME)) {
+                    try (InputStream in = jar.getInputStream(entry)) {
+                        entries.put(entry.getName(), in.readAllBytes());
+                    }
+                }
+            }
+        }
+        Path unversioned = fixtures.resolve("libs/micronaut-core-unversioned.jar");
+        writeJar(unversioned, manifest(attributes -> { }), entries);
+        List<Dependency> dependencies = new ArrayList<>();
+        for (Dependency dependency : specWithMicronautCore(output()).build().dependencies()) {
+            dependencies.add(dependency.path().equals(core) ? Dependency.of(unversioned) : dependency);
+        }
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output).dependencies(dependencies)
+                .build(), BuildLogger.noOp());
+
+        try (ZipReader archive = ZipReader.open(output)) {
+            assertTrue(archive.entry(IndexFormat.CLASSES_PREFIX + INDEX_PACKAGE + "ServiceIndexLoader.class")
+                    .isPresent(), "the index is generated");
+        }
+        assertEquals(Optional.of("unknown"), result.staticServicesCoreVersion(),
+                "an index is reported even when micronaut-core's version is not known");
     }
 
     @Test

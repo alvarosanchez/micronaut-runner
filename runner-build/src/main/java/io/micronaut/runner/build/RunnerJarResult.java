@@ -231,13 +231,13 @@ public final class RunnerJarResult {
 
     /**
      * The micronaut-core version the service index was generated for, which the {@code staticServices} option
-     * requests, as that JAR's manifest states it.
+     * requests, as that JAR's manifest states it, or {@code unknown} when it states none.
      *
      * <p>Internal: it is public only for the build note of Runner's own benchmarks, {@code service index (core V)},
      * and may change in any release. A packaging option gets a public result accessor of its own when it becomes
      * {@link RunnerJarOption.Exposure#TYPED TYPED}.</p>
      *
-     * @return the version, or empty when no index was generated; the build log names the reason
+     * @return the version, or empty only when no index was generated; the build log names the reason
      */
     @Internal
     public Optional<String> staticServicesCoreVersion() {
