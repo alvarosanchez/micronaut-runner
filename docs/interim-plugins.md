@@ -9,7 +9,7 @@ once its support in Micronaut Launch and in the Micronaut build plugins has ship
 | The `runner` feature in Micronaut Launch | micronaut-projects/micronaut-starter#3134 |
 | The `io.micronaut.runner` plugin of the Micronaut Gradle plugin | micronaut-projects/micronaut-gradle-plugin#1378 |
 | The `runner` packaging of the Micronaut Maven plugin | micronaut-projects/micronaut-maven-plugin#1720 |
-| Logback precompilation in Micronaut AOT, and the plugins that apply it | micronaut-projects/micronaut-aot#517, micronaut-projects/micronaut-gradle-plugin#1380, micronaut-projects/micronaut-maven-plugin#1722 |
+| Logback precompilation in the Micronaut plugins | micronaut-projects/micronaut-gradle-plugin#1380, micronaut-projects/micronaut-maven-plugin#1722 |
 | A JDK AOT cache trained in the plugins' Docker images | micronaut-projects/micronaut-gradle-plugin#1381, micronaut-projects/micronaut-maven-plugin#1723 |
 
 Until then, Runner ships two interim plugins of its own. They call the same packaging library, `micronaut-runner-build`,
@@ -142,19 +142,6 @@ To move to the Micronaut Maven plugin:
    Micronaut AOT read the first; with `runner` packaging, it reads the second.
 5. Change command lines from `mn-runner:package` to plain `package`, and from `mn-runner:record-startup-profile` to
    `mn:runner-startup-profile`. `mn-runner:layout` and `mn-runner:jdk-aot-cache` have no counterpart.
-
-## Logback precompilation
-
-Until Runner uses Micronaut AOT's Logback precompilation (micronaut-projects/micronaut-aot#517), a Runner JAR
-precompiles `logback.xml` with Runner's own copy of the same engine, whatever plugin builds it:
-
-- the run-time switch is `-Dmicronaut.runner.logback.precompiled=false`, not `-Dmicronaut.logback.precompiled=false`;
-- the build log says `Precompiled logback.xml (application layer) into
-  io.micronaut.runner.generated.logback.LogbackConfigurator`, or `No Logback configuration was precompiled because
-  ...`;
-- the precompiler reads only the application's own `application*` and `bootstrap*` files, and does not follow
-  `micronaut.config.import`. A `logger.config` set in a dependency JAR's configuration file, or in imported
-  configuration, is not applied either, so add those to the guide's list of locations that only Micronaut sees.
 
 ## Container images
 

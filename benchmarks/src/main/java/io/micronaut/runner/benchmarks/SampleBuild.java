@@ -46,6 +46,7 @@ import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * Turns the sample application into every packaging the benchmark compares.
@@ -123,9 +124,12 @@ final class SampleBuild implements SampleSteps {
 
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
-    /** The configurator runner-build generates from logback.xml when it precompiles it. */
-    private static final String GENERATED_LOGBACK_CONFIGURATOR =
-            "io.micronaut.runner.generated.logback.LogbackConfigurator";
+    /**
+     * The service file that registers the configurator Micronaut AOT's micronaut-aot-logback generates from
+     * logback.xml. The generated names are not its API.
+     */
+    private static final String LOGBACK_CONFIGURATOR_SERVICE =
+            IndexFormat.CLASSES_PREFIX + "META-INF/services/ch.qos.logback.classic.spi.Configurator";
 
     /** The startup profile the preload, ordered and hybrid rows share, recorded once per run in the artifacts. */
     private static final String STARTUP_PROFILE = "startup-classes.txt";
@@ -842,27 +846,28 @@ final class SampleBuild implements SampleSteps {
     @Override
     public Variant joranControl(Variant stored, VariantSpec spec) throws IOException {
         if (!stored.available() || !logbackPrecompiled(stored.artifact())) {
-            throw new IOException("runner-stored carries no " + GENERATED_LOGBACK_CONFIGURATOR
-                    + ", so there is no precompiled Logback configuration to compare Joran with");
+            throw new IOException("runner-stored registers no Logback configurator in its application layer, so"
+                    + " there is no precompiled Logback configuration to compare Joran with");
         }
         Variant joran = runnerJar(spec, Compression.STORED, RunnerJarOptions.DEFAULTS.withPrecompileLogback(false));
         if (logbackPrecompiled(joran.artifact())) {
-            throw new IOException(joran.artifact() + " carries " + GENERATED_LOGBACK_CONFIGURATOR
+            throw new IOException(joran.artifact() + " registers a Logback configurator in its application layer"
                     + " although precompileLogback=false");
         }
         return joran;
     }
 
     /**
-     * Whether a runner jar carries the Logback configurator runner-build generates.
+     * Whether a runner jar's application layer registers a Logback configurator, which it does when
+     * {@code logback.xml} was precompiled.
      *
      * @param archive the runner jar
-     * @return whether its index knows the generated configurator
+     * @return whether its application layer has the configurator's service file
      * @throws IOException if the archive cannot be read
      */
     static boolean logbackPrecompiled(Path archive) throws IOException {
-        try (RunnerJarIndex reader = RunnerJarIndex.open(archive)) {
-            return reader.index().findClass(GENERATED_LOGBACK_CONFIGURATOR) != IndexFormat.NO_INDEX;
+        try (ZipFile zip = new ZipFile(archive.toFile())) {
+            return zip.getEntry(LOGBACK_CONFIGURATOR_SERVICE) != null;
         }
     }
 

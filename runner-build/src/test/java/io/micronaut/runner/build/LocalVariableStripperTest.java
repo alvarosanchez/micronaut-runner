@@ -45,6 +45,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -271,9 +272,10 @@ class LocalVariableStripperTest {
 
     /**
      * Logback precompilation at its default and stripping turned on, on the real Logback jars. The transform pass
-     * runs while the dependencies are staged; the Logback precompiler runs after it, reads the dependencies as
-     * published and adds its classes to the application layer, which no step rewrites. So the generated classes are
-     * the ones a build without stripping carries, and they configure a Logback whose classes have been stripped.
+     * runs while the dependencies are staged; Logback precompilation runs after it, reads the dependencies as
+     * published and adds the classes Micronaut AOT generates to the application layer, which no step rewrites. So the
+     * generated classes are the ones a build without stripping carries, and they configure a Logback whose classes
+     * have been stripped.
      */
     @Test
     void thePrecompiledLogbackClassesAreNotRewrittenAndConfigureAStrippedLogback() throws Exception {
@@ -290,9 +292,7 @@ class LocalVariableStripperTest {
                     </root>
                 </configuration>
                 """);
-        List<Path> logback = List.of(LogbackPrecompilerTest.jarOf(ch.qos.logback.classic.LoggerContext.class),
-                LogbackPrecompilerTest.jarOf(ch.qos.logback.core.Context.class),
-                LogbackPrecompilerTest.jarOf(org.slf4j.ILoggerFactory.class));
+        List<Path> logback = ClassFixtures.realLogback();
 
         RunnerJarResult stripped = composed(temp.resolve("composed/stripped.jar"), resources, logback, true);
         RunnerJarResult kept = composed(temp.resolve("composed/kept.jar"), resources, logback, false);
@@ -311,14 +311,24 @@ class LocalVariableStripperTest {
         assertEquals(List.of("LineNumberTable"),
                 List.copyOf(debugTables(nestedClasses(stripped.output(), classic).get(loggerContext))));
 
-        List<String> generated = List.of(LogbackPrecompiler.CONFIGURATOR_ENTRY, LogbackPrecompiler.FALLBACK_ENTRY,
-                LogbackPrecompiler.SERVICE_ENTRY);
         Path run = temp.resolve("composed/run");
         List<URL> classPath = new ArrayList<>();
         classPath.add(Files.createDirectories(run.resolve("classes")).toUri().toURL());
+        String configuratorClass;
+        List<String> generated = new ArrayList<>();
         try (ZipFile archive = new ZipFile(stripped.output().toFile());
              ZipFile control = new ZipFile(kept.output().toFile())) {
             assertNotNull(archive.getEntry(IndexFormat.TRANSFORMS_ENTRY_NAME));
+            // The generated names are not Micronaut AOT's API: the service file names the configurator, and the
+            // class it falls back to Joran with is next to it.
+            configuratorClass = new String(entry(archive, IndexFormat.CLASSES_PREFIX
+                    + ClassFixtures.LOGBACK_CONFIGURATOR_SERVICE), StandardCharsets.UTF_8).trim();
+            String classes = IndexFormat.CLASSES_PREFIX
+                    + configuratorClass.substring(0, configuratorClass.lastIndexOf('.') + 1).replace('.', '/');
+            generated.add(ClassFixtures.LOGBACK_CONFIGURATOR_SERVICE);
+            archive.stream().map(ZipEntry::getName).filter(name -> name.startsWith(classes))
+                    .map(name -> name.substring(IndexFormat.CLASSES_PREFIX.length())).forEach(generated::add);
+            assertEquals(3, generated.size(), generated::toString);
             for (String name : generated) {
                 byte[] bytes = entry(archive, IndexFormat.CLASSES_PREFIX + name);
                 assertArrayEquals(entry(control, IndexFormat.CLASSES_PREFIX + name), bytes, name);
@@ -331,27 +341,27 @@ class LocalVariableStripperTest {
                 classPath.add(nested.toUri().toURL());
             }
         }
-        byte[] configurator = Files.readAllBytes(run.resolve("classes").resolve(LogbackPrecompiler.CONFIGURATOR_ENTRY));
-        byte[] fallback = Files.readAllBytes(run.resolve("classes").resolve(LogbackPrecompiler.FALLBACK_ENTRY));
+        String configuratorEntry = configuratorClass.replace('.', '/') + ".class";
+        byte[] configurator = Files.readAllBytes(run.resolve("classes").resolve(configuratorEntry));
         assertEquals(List.of(), List.copyOf(debugTables(configurator)), "generated without debug tables");
-        assertEquals(List.of("LineNumberTable"), List.copyOf(debugTables(fallback)),
-                "javac output, compiled with line numbers and without local-variable tables");
-        assertEquals(3, ClassFixtures.assertLineNumbersWithoutLocalVariables(LogbackPrecompiler.FALLBACK_ENTRY,
-                fallback), "the constructor, defaultLookup and location");
 
         // The generated classes and the stripped jars, as the archive nests them, with nothing else but the JDK.
         try (URLClassLoader loader = new URLClassLoader(classPath.toArray(URL[]::new),
                 ClassLoader.getPlatformClassLoader())) {
             ClassFile classFile = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(
                     ClassHierarchyResolver.ofResourceParsing(loader)));
-            assertEquals(List.of(), classFile.verify(configurator));
-            assertEquals(List.of(), classFile.verify(fallback));
+            for (String name : generated) {
+                if (name.endsWith(".class")) {
+                    assertEquals(List.of(), classFile.verify(Files.readAllBytes(run.resolve("classes").resolve(name))),
+                            name);
+                }
+            }
             Class<?> contextType = loader.loadClass("ch.qos.logback.classic.LoggerContext");
             Class<?> configuratorType = loader.loadClass("ch.qos.logback.classic.spi.Configurator");
             Object context = contextType.getConstructor().newInstance();
             Object instance = ServiceLoader.load(configuratorType, loader).iterator().next();
             assertSame(loader, instance.getClass().getClassLoader());
-            assertEquals(LogbackPrecompiler.CONFIGURATOR_CLASS, instance.getClass().getName());
+            assertEquals(configuratorClass, instance.getClass().getName());
             configuratorType.getMethod("setContext", loader.loadClass("ch.qos.logback.core.Context"))
                     .invoke(instance, context);
             Object status = configuratorType.getMethod("configure", contextType).invoke(instance, context);

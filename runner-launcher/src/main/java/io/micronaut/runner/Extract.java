@@ -81,7 +81,7 @@ import java.util.zip.ZipEntry;
  *       belongs to the runner format: it implements {@code io.micronaut.runner.Entry} and registers itself with
  *       {@code Launcher}, neither of which exists in the extracted layout. The manifest names the real
  *       application main class instead, so the stub would have no reader and could only fail to link. Every
- *       other class under {@code io/micronaut/runner/generated/}, such as a precompiled Logback configurator,
+ *       other class under {@code io/micronaut/runner/generated/}, such as the static service table's loader,
  *       is generated support that runs on any class loader, and stays: a service file of the application layer
  *       may name it, and a service file naming a missing class breaks the lookup.</li>
  *   <li><strong>the merged {@code META-INF/micronaut/} copy at the archive root</strong> - the packager
