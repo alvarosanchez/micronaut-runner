@@ -234,7 +234,8 @@ packaged, so that they are not linked at every start and a JDK AOT cache can hol
 <div class="col-first odd-row-color"><code><a href="#PRECOMPILE_LOGBACK" class="member-name-link">PRECOMPILE_LOGBACK</a></code></div>
 <div class="col-last odd-row-color">
 <div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
-packaged, so that the application does not parse XML and run Joran at every start.</div>
+packaged, with Micronaut AOT's <code>micronaut-aot-logback</code>, so that the application does not parse XML and
+run Joran at every start.</div>
 </div>
 <div class="col-first even-row-color"><code><a href="#STARTUP_CLASSES" class="member-name-link">STARTUP_CLASSES</a></code></div>
 <div class="col-last even-row-color">
@@ -429,10 +430,10 @@ the order they are declared.</div>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">PRECOMPILE_LOGBACK</span></div>
 <div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
-packaged, so that the application does not parse XML and run Joran at every start. On by default. The
-packager generates nothing, and logs why, whenever it cannot prove that the generated configurator reproduces
-Joran's result; <code>-Dmicronaut.runner.logback.precompiled=false</code> leaves <code>logback.xml</code> to Joran at
-run time.</div>
+packaged, with Micronaut AOT's <code>micronaut-aot-logback</code>, so that the application does not parse XML and
+run Joran at every start. On by default. The module generates nothing, and the build logs why, whenever it
+cannot prove that the generated configurator reproduces Joran's result; <code>false</code> does not call it, and
+<code>-Dmicronaut.logback.precompiled=false</code> leaves <code>logback.xml</code> to Joran at run time.</div>
 </div>
 </section>
 </li>

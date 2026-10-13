@@ -217,12 +217,10 @@ build Runner JARs with Runner&#8217;s own interim plugins, as
 <a href="https://github.com/alvarosanchez/micronaut-runner/blob/master/docs/interim-plugins.md">the interim plugins page</a> describes.</p>
 </li>
 <li>
-<p>Logback precompilation from Micronaut AOT
-(<a href="https://github.com/micronaut-projects/micronaut-aot/pull/517">micronaut-aot#517</a>), applied by the Micronaut plugins
+<p>The Micronaut plugins' option that turns on Logback precompilation for packagings other than a Runner JAR
 (<a href="https://github.com/micronaut-projects/micronaut-gradle-plugin/issues/1380">micronaut-gradle-plugin#1380</a>,
-<a href="https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1722">micronaut-maven-plugin#1722</a>). Meanwhile, a
-Runner JAR precompiles <code>logback.xml</code> with Runner&#8217;s own copy of the same engine, and its run-time switch is
-<code>-Dmicronaut.runner.logback.precompiled=false</code>.</p>
+<a href="https://github.com/micronaut-projects/micronaut-maven-plugin/issues/1722">micronaut-maven-plugin#1722</a>). A Runner JAR
+precompiles <code>logback.xml</code> without it.</p>
 </li>
 <li>
 <p>A JDK AOT cache trained by <code>./gradlew dockerBuild</code> and <code>mvn package -Dpackaging=docker</code>
@@ -826,7 +824,8 @@ example, when:</p>
 </ul>
 </div>
 <div class="paragraph">
-<p>The Micronaut AOT guide lists every rule.</p>
+<p><a href="https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#logbackPrecompiler">The Micronaut AOT guide</a> lists
+every rule.</p>
 </div>
 <div class="paragraph">
 <p>At run time, Joran takes over when you set <code>-Dlogback.configurationFile</code>, <code>-Dlogback.debug</code> or
@@ -2599,6 +2598,20 @@ message lists the options this version knows.</p>
 <p>Only a notice: Logback reads <code>logback.xml</code> at
 startup, as without precompilation. The reason says what kept it from being compiled
 (<a href="#precompiledLogback">Precompiled Logback Configuration</a>).</p>
+</dd>
+<dt class="hdlist1"><code>No Logback configuration was precompiled because the micronaut-aot-logback on the build&#8217;s class path does not match ...</code></dt>
+<dd>
+<p>Your build resolves another version of Micronaut AOT than the one this version of Runner was built with, so Logback
+reads <code>logback.xml</code> at startup. Apply the Micronaut plugins at one version, as Micronaut Launch generates them, and do
+not override the version of <code>io.micronaut.aot:micronaut-aot-logback</code>.</p>
+</dd>
+<dt class="hdlist1"><code>The packaged ... may enable Micronaut&#8217;s distributed configuration client</code></dt>
+<dd>
+<p>Logback was precompiled, so a
+<code>logger.config</code> that distributed configuration supplies is not applied. Set the location with <code>-Dlogger.config</code> or
+<code>LOGGER_CONFIG</code>, or package with <code>precompileLogback=false</code> and, if you turned on the Micronaut plugins' Logback
+precompilation for other packagings, with that off too (the warning in
+<a href="#precompiledLogback">Precompiled Logback Configuration</a>).</p>
 </dd>
 <dt class="hdlist1"><code>The startup profile looks stale; re-record it ...</code></dt>
 <dd>

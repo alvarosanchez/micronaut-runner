@@ -1695,7 +1695,8 @@ and read classes with positional reads into pooled buffers.</div>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#PRECOMPILE_LOGBACK" class="member-name-link">PRECOMPILE_LOGBACK</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
 <div class="block">Whether to compile the application's <code>logback.xml</code> into a Logback <code>Configurator</code> when it is
-packaged, so that the application does not parse XML and run Joran at every start.</div>
+packaged, with Micronaut AOT's <code>micronaut-aot-logback</code>, so that the application does not parse XML and
+run Joran at every start.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#PRELOAD_RECORD_SIZE" class="member-name-link">PRELOAD_RECORD_SIZE</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>

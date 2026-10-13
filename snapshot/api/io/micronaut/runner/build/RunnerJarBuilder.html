@@ -139,9 +139,8 @@ run. What the transforms did is logged on the calling thread in class-path order
 <code>MICRONAUT-INF/transforms.txt</code> right after the launcher classes; with every transform off there is no
 scan and no such entry.</p>
 
-<p>The Logback precompiler (<code>precompileLogback</code>) runs after the stages, because the staged dependencies
-decide whether it applies.
-The two do not meet: its front end loads Logback from the dependencies' own files, not from the staged copies,
+<p>Logback precompilation (<code>precompileLogback</code>) runs after the stages. It calls Micronaut AOT's
+<code>micronaut-aot-logback</code> with the application output and the dependencies' own files, not the staged copies,
 and the classes it generates join the application layer after the scan and after the application layer was
 transformed, so no transform rewrites them.</p>
 
