@@ -6,7 +6,8 @@ optimizer run: the Micronaut Gradle and Maven plugins apply it themselves, and a
 https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#classPathTransform[its class path transform], which
 Runner runs itself: it generates the classes of lambdas by default
 (<<desugaredLambdas,Lambdas Generated at Build Time>>), and strips the dependencies' local-variable tables when you
-turn it on (<<localVariableTables,Opt-in: Dependency Local-Variable Names>>).
+turn it on (<<localVariableTables,Opt-in: Dependency Local-Variable Names>>). A Runner JAR also gets micronaut-core's
+service index from Micronaut AOT (<<staticServices,Precomputed Service Lookups>>).
 
 Runner adds what its archive and its launcher make possible: the index, the class loader and the startup profile, and
 the steps it takes while it packages the application (<<whatChanges,What Changes for Your Application>>). It packages

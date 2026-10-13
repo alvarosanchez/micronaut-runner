@@ -53,9 +53,11 @@ The order of a dependency class's methods or JSON properties changed:: The archi
 `stripLocalVariables`, which rewrites dependency classes. Package without it.
 A service provider added after packaging is not found:: If an agent or tool adds it to the class path, start with
 `-Dmicronaut.runner.parent=system` (<<javaAgents,Java agents>>); otherwise, start with
-`-Dmicronaut.runner.static-services=false` (<<staticServices,Precomputed Service Lookups>>).
-`static-services.verify` reports a mismatch:: Start with `-Dmicronaut.runner.static-services=false`, package with
-`staticServices=false`, and please report it.
+`-Dmicronaut.service.index.enabled=false` (<<staticServices,Precomputed Service Lookups>>).
+`micronaut.service.index.validate` reports a mismatch:: Start with `-Dmicronaut.service.index.enabled=false`, package
+with `staticServices=false`, and please report it.
+The build warns that a dependency already carries a service index:: Micronaut uses that index, which was built for
+another class path. Start with `-Dmicronaut.service.index.enabled=false`, or package without the dependency's index.
 An agent or tool cannot see the application's classes, or the application cannot see the agent's:: Start with
 `-Dmicronaut.runner.parent=system` (<<javaAgents,Java agents>>).
 A library finds no class through the system class loader, or a provider listed in `java.security` is missing::

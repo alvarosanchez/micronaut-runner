@@ -137,7 +137,7 @@ time.
 |`true`
 |`options.put('staticServices', 'false')`
 |`micronaut.runner.staticServices`, or `<staticServices>` in `<runnerOptions>`
-|Precomputes Micronaut's service lookups (<<staticServices,Precomputed Service Lookups>>).
+|Generates micronaut-core's service index (<<staticServices,Precomputed Service Lookups>>).
 |===
 
 Write `true` and `false` in lower case.

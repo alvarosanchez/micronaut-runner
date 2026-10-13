@@ -8,7 +8,6 @@ Runner's version comes with them: you add no Runner dependency to your build or 
 Some features depend on the versions you use. The first two say in the build log when they did nothing:
 
 * Logback precompilation needs Logback from 1.5.37 up to, but not including, 1.6.
-* The precomputed service lookups need micronaut-core from 5.1.10 up to, but not including, 5.2, as in the Micronaut
-platform 5.1. With a later micronaut-core, they do nothing.
+* The precomputed service lookups need micronaut-core 5.3.0 or later. With an older micronaut-core, they do nothing.
 * The JDK AOT cache works on JDK 25 and later. On JDK 27 and later, creating a cache needs two extra flags
 (<<aotCreationFlags,JDK 27 and Later>>).

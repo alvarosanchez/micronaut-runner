@@ -16,9 +16,8 @@ your versions support it, and can be turned off. The build log says what each st
 |One extra frame per lambda call in stack traces.
 |`desugarLambdas`
 
-|<<staticServices,Precomputed service lookups>>
-|Only with micronaut-core 5.1.10 up to 5.2 (Micronaut platform 5.1). With micronaut-core 5.2 or later it does
-nothing, and the build log says so.
+|<<staticServices,Precomputed service lookups>>, from Micronaut AOT
+|On, with micronaut-core 5.3.0 or later
 |A service provider added after packaging is not seen.
 |`staticServices`
 |===

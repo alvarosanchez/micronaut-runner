@@ -44,7 +44,7 @@ the harness works, never for a claim.
 | `-Pbenchmarks.diagnostics=true` | `startupBenchmark` | off | Adds one `-Xlog:class+load` diagnostic launch per row, outside every timing distribution. |
 | `-Pbenchmarks.cpus=N` | `startupBenchmark` | none | Linux, needs `taskset`: every child JVM on `N` CPUs (see below). |
 | `-Pbenchmarks.pageCache=mode` | `startupBenchmark` | `uncontrolled` | `uncontrolled`, `evict-artifacts` or `drop-all` (see below). |
-| `-Pbenchmarks.micronautCore=V` | `startupBenchmark` | the sample's platform | Builds the sample with every `io.micronaut` module aligned to micronaut-core `V`. |
+| `-Pbenchmarks.micronautCore=V` | `startupBenchmark` | the version catalog's micronaut-core | Builds the sample with every `io.micronaut` module aligned to micronaut-core `V`. |
 | `-Pbenchmarks.sample=dir` | `startupBenchmark` | `benchmark-large` | Another sample under `test-suite/samples`. |
 | `-Pbenchmarks.workloads=a,b` | `packagingProfile` | `small,representative,wide` | Synthetic packaging shapes; `no-manifest` is the fourth. |
 | `-Pbenchmarks.packagingIterations=N` | `packagingProfile` | `3` | Independent packaging workers per scenario. |
@@ -105,9 +105,9 @@ The Runner rows call `RunnerJarBuilder` directly with the packaging library's de
 transforms included; a control row changes one option. The harness passes the builder a logger, so the run's log
 has every info and warning line the builder printed, prefixed `[startup-benchmark] <row>:`. That is where a run
 says which build steps ran, stood down (with the reason) or were off for each row: the `Runner options:` line,
-the strip and desugar counts, the precompiled Logback configurator, the static service table. The
-description of every Runner row also ends with `static services: N slots (core V)` when its JAR carries a static
-service table, and `dynamic service scan` when it does not.
+the strip and desugar counts, the precompiled Logback configurator, the service index. The description of every
+Runner row also ends with `service index (core V)` when its JAR carries micronaut-core's service index, and
+`dynamic service scan` when it does not.
 
 `runner-stored-preload` records a startup profile from `runner-stored` in every run, with the recorder that
 `recordStartupProfile` uses, and packages it. No other row preloads: preloading by convention needs a committed
@@ -133,6 +133,8 @@ In a row name, `maot` is Micronaut AOT and the `-aot` suffix is the JDK AOT cach
 - **Controls:** `runner-stored` − control and `runner-stored-aot` − its `-aot` twin, for each default the control turns
   off (`-joran`, `-dynamic-services`, `-lambdas`). `runner-extracted-aot` − `runner-extracted-lambdas-aot` runs on the
   JDK's own loader, which archives lambdas itself, so it checks that desugaring costs the extracted layout nothing.
+  `runner-extracted-aot` − `runner-extracted-dynamic-services-aot` measures the service index in the cached deployment
+  the guide recommends.
 - **Opt-in candidates:** `-preload`, `-positional` and `-stripdebug` (`stripLocalVariables=true`) against
   `runner-stored` (and their `-aot` twins against `runner-stored-aot`); `runner-stored` − `runner-stored-reflection`
   for the entry stub, whose interval still spans zero at 20 iterations, so run it with 40.
@@ -428,6 +430,6 @@ quiet machine:
 ```
 
 The second run measures the newest JDK through the init script of [Which JDK a run uses](#which-jdk-a-run-uses). The
-third is a cross-check on a newer micronaut-core, where the precomputed service lookups do nothing; no claim rests on
-it alone. The manual comparisons follow the same paired, interleaved method on the artifacts the harness builds. Update the guide's
+third is a cross-check on micronaut-core 5.2, which has no service index, so the precomputed service lookups do
+nothing; no claim rests on it alone. The manual comparisons follow the same paired, interleaved method on the artifacts the harness builds. Update the guide's
 wording only when a rounded claim changes, and update this table in the same pull request.

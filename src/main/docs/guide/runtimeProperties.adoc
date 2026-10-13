@@ -22,10 +22,10 @@ your application, and when preloading finished. Use it to tell launcher time fro
 |`false`
 |With `true`, check every entry's checksum as it is read, when you suspect a corrupted archive.
 
-|`micronaut.runner.static-services.verify`
+|`micronaut.service.index.validate`
 |`false`
-|With `true`, compare the precomputed service lookups with Micronaut's own scan
-(<<staticServices,Precomputed Service Lookups>>).
+|With `true`, compare the service index with a scan of the class path. It is micronaut-core's switch, and works in
+every packaging (<<staticServices,Precomputed Service Lookups>>).
 |===
 
 To change how the application starts:
@@ -47,16 +47,18 @@ wanted. Unset, the archive's `archiveReads` option decides.
 |`micronaut.runner.parent`
 |`platform`
 |With `system`, let an agent or tool on the real class path share types with the application
-(<<javaAgents,Java agents>>). It also turns off the precomputed service lookups.
+(<<javaAgents,Java agents>>). It also turns off the precomputed service lookups, unless
+`micronaut.service.index.enabled` is set.
 
 |`micronaut.logback.precompiled`
 |`true`
 |With `false`, configure Logback from `logback.xml` with Joran instead of the precompiled configuration. It is
 Micronaut AOT's switch, and works in every packaging (<<precompiledLogback,Precompiled Logback Configuration>>).
 
-|`micronaut.runner.static-services`
+|`micronaut.service.index.enabled`
 |`true`
-|With `false`, let Micronaut scan for its services instead of using the precomputed lookups.
+|With `false`, let Micronaut scan for its services instead of using the service index. It is micronaut-core's switch,
+and works in every packaging (<<staticServices,Precomputed Service Lookups>>).
 
 |`micronaut.runner.aot.training`
 |`false`
@@ -74,7 +76,7 @@ Several packaging options have a switch that overrides them for one start:
 
 |`archiveReads` (`MAPPED`, `POSITIONAL`) |`micronaut.runner.mmap` (`full`, `index`)
 |`precompileLogback` |`micronaut.logback.precompiled`
-|`staticServices` |`micronaut.runner.static-services`
+|`staticServices` |`micronaut.service.index.enabled`
 |`startupClasses`, or a committed startup profile |`micronaut.runner.preload`
 |===
 
