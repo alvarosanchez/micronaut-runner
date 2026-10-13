@@ -175,6 +175,50 @@ class LambdaDesugaringTest {
     }
 
     /**
+     * A generated class initializes every superinterface that declares a default method before it hands out an
+     * instance, so a site stays when such an interface's static initializer may reach it (#256). The engine applies
+     * the rule, and this pins it for Runner builds.
+     */
+    @Test
+    void aSiteWhoseInterfaceInitializerMayReachItKeepsItsSite() throws Exception {
+        Map<String, byte[]> compiled = compile("interface-init", 25, Map.of(
+                "init/Named.java", """
+                        package init;
+                        public interface Named {
+                            String PREFIX = System.getProperty("init.prefix", "named");
+                            String name();
+                            default String describe() {
+                                return PREFIX + " " + name();
+                            }
+                        }
+                        """,
+                "init/Uses.java", """
+                        package init;
+                        import java.util.function.Supplier;
+                        public class Uses {
+                            public static Named named() {
+                                return () -> "value";
+                            }
+                            public static Supplier<String> plain() {
+                                return () -> "plain";
+                            }
+                        }
+                        """));
+
+        LambdaFixtures.Outcome outcome = LambdaFixtures.desugar(temp.resolve("interface-init-out"),
+                List.of(LambdaFixtures.Layer.application(compiled)));
+
+        Map<String, byte[]> output = outcome.outputs().get(0);
+        assertEquals(1, LambdaFixtures.sites(output.get("init/Uses.class"), METAFACTORY),
+                "the site of Named, whose initializer calls a method, stays invokedynamic");
+        assertEquals(List.of("init/Named.class", "init/Uses$$Lambda$R0.class", "init/Uses.class"),
+                output.keySet().stream().sorted().toList(), "the other site of the host is rewritten");
+        ClassPathRewrite.Counts counts = outcome.counts().get(0);
+        assertEquals(1, counts.sites(), counts::toString);
+        assertEquals(Map.of("interfaceInit", 1), counts.left(), counts::toString);
+    }
+
+    /**
      * {@code RunnerClassLoader} asks its parent first only for the packages of the boot and the platform loaders,
      * so the packages of a module the application class loader defines, such as {@code jdk.compiler}'s, go to the
      * engine as foreign packages, next to the launcher's, and no other package of the JDK does.

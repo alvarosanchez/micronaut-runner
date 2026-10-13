@@ -31,7 +31,8 @@ h2 = "2.4.240"
 # The Logback whose real jars runner-build's tests and the benchmarks package as fixtures; the samples resolve the
 # same version from the Micronaut platform BOM. Which versions are precompiled is micronaut-aot-logback's decision.
 logback = "1.5.37"
-# runner-build calls micronaut-aot-logback to precompile logback.xml and micronaut-aot-bytecode for stripLocalVariables.
+# runner-build calls micronaut-aot-logback to precompile logback.xml and micronaut-aot-bytecode for desugarLambdas
+# and stripLocalVariables.
 micronaut-aot = "3.2.0-M1"
 
 # Gradle plugins placed on the buildSrc classpath and applied by id from convention plugins

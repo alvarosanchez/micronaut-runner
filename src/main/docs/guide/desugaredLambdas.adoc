@@ -1,8 +1,8 @@
 For each lambda and method reference, the JDK normally creates a class the first time the code runs, at every start.
-A Runner JAR gets those classes generated when the application is packaged instead, in your classes and in the
-dependencies, so that startup does not create them and a <<jdkAotCache,JDK AOT cache>> can store them like any other
-class. The step is https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#classPathTransformDesugar[Micronaut
-AOT's lambda desugaring], which the build runs itself: it needs no Micronaut AOT optimizer run.
+Runner has them generated when it packages the application instead, in your classes and in the dependencies, so that
+startup does not create them and a <<jdkAotCache,JDK AOT cache>> can store them like any other class. The step is
+https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#classPathTransformDesugar[Micronaut AOT's lambda
+desugaring], which the build runs itself: it needs no Micronaut AOT optimizer run.
 
 What you may notice:
 

@@ -825,9 +825,9 @@ public final class RunnerJarBuilder {
      * this build and stopped before this method returns. Micronaut AOT's class path transform runs first, when an
      * option asks for it, with at most {@link #parallelism} threads of its own. Every nested jar's entry name and
      * work file are then fixed in class-path order, so neither depends on which dependency is staged first, and
-     * the stages run on the pool, largest dependency first, or on the calling thread one after the other. Either way the stages are collected in class-path order on the calling
-     * thread, and joined once every one has finished: the calling thread is the only thread that emits a warning
-     * or touches the builder.</p>
+     * the stages run on the pool, largest dependency first, or on the calling thread one after the other. Either way
+     * the stages are collected in class-path order on the calling thread, and joined once every one has finished:
+     * the calling thread is the only thread that emits a warning or touches the builder.</p>
      *
      * <p>The startup class list's rank map is built here, once, on the calling thread, and reaches every stage
      * through its repack options: in STORED and HYBRID each nested jar holds its startup classes first. HYBRID
