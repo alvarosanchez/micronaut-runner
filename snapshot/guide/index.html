@@ -757,7 +757,8 @@ three: in Gradle, in <code>micronaut { runner { } }</code>; in Maven, in the <co
 </div>
 <div class="paragraph">
 <p>Maven also takes the property <code>micronaut.runner.&lt;option&gt;</code>, such as <code>-Dmicronaut.runner.desugarLambdas=false</code> on the
-command line. <code>PRESERVE</code> compression turns off only the class rewrites (<a href="#compression">Compression Modes</a>).</p>
+command line. <code>PRESERVE</code> compression turns off only the lambdas generated at build time: dropping local-variable names
+still applies when you turn it on (<a href="#compression">Compression Modes</a>).</p>
 </div>
 <div class="paragraph">
 <p>Other differences from a shaded JAR do not come from these steps:</p>
@@ -1528,7 +1529,10 @@ JVM rejects a cache, <code>-Xlog:class+path=info</code> shows how it compared th
 every packaging can use, so that a shaded JAR, a container image and a native image benefit from them as well as a
 Runner JAR. Its optimizer generates optimized application code when you build. Logback precompilation needs no
 optimizer run: the Micronaut Gradle and Maven plugins apply it themselves, and a Runner JAR gets it by default
-(<a href="#precompiledLogback">Precompiled Logback Configuration</a>).</p>
+(<a href="#precompiledLogback">Precompiled Logback Configuration</a>). Neither does
+<a href="https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#classPathTransformStrip">Micronaut AOT&#8217;s local-variable
+stripping</a>, which Runner runs on the dependencies when you turn it on
+(<a href="#localVariableTables">Opt-in: Dependency Local-Variable Names</a>).</p>
 </div>
 <div class="paragraph">
 <p>Runner adds what its archive and its launcher make possible: the index, the class loader and the startup profile, and
@@ -1854,10 +1858,10 @@ starts fastest. The archive is the largest on disk and the smallest once compres
 </dd>
 <dt class="hdlist1"><code>PRESERVE</code></dt>
 <dd>
-<p>Dependencies are copied byte for byte, signature files included. The archive is slightly larger than a
+<p>Dependencies are copied as they are, signature files included. The archive is slightly larger than a
 shaded JAR on disk, about the same size compressed, and larger compressed than <code>STORED</code>. It starts more slowly than
-<code>STORED</code>, though still faster than a shaded JAR. The class rewrites are off: lambdas are not
-<a href="#desugaredLambdas">generated at build time</a>, and <a href="#localVariableTables"><code>stripLocalVariables</code></a> does nothing. Logback
+<code>STORED</code>, though still faster than a shaded JAR. Lambdas are not <a href="#desugaredLambdas">generated at build time</a>. With
+<a href="#localVariableTables"><code>stripLocalVariables</code></a>, a dependency whose classes it rewrote is copied as rewritten. Logback
 precompilation and the precomputed service lookups still apply.</p>
 </dd>
 <dt class="hdlist1"><code>HYBRID</code></dt>
@@ -1910,9 +1914,10 @@ way. To try it on one start, use <code>-Dmicronaut.runner.mmap=index</code>
 
 <div class="paragraph">
 <p>The <code>stripLocalVariables</code> option, off by default, drops the tables that name local variables from the classes of
-your dependencies when Runner packages the application. Line numbers, source file names, reflective parameter names,
-generic signatures and annotations are kept. Your own classes, and the modules of your own build, keep everything.
-With <code>PRESERVE</code> compression, the option does nothing (<a href="#compression">Compression Modes</a>).</p>
+your dependencies when Runner packages the application. It works in every compression mode. Runner runs Micronaut
+AOT&#8217;s local-variable stripping itself, so you do not need Micronaut AOT&#8217;s optimizer. Line numbers, source file names,
+reflective parameter names, generic signatures and annotations are kept. Your own classes, and the modules of your own
+build, keep everything.</p>
 </div>
 <div class="paragraph">
 <p>The trade-off: the archive gets somewhat smaller, and a start without a <a href="#jdkAotCache">JDK AOT cache</a> slightly
@@ -1941,8 +1946,8 @@ relies on it can notice, such as a JSON mapper that orders a dependency&#8217;s 
 </div>
 <div class="paragraph">
 <p>Paranamer&#8217;s <code>BytecodeReadingParanamer</code>, AspectJ&#8217;s weaver and Spring&#8217;s <code>LocalVariableTableParameterNameDiscoverer</code>
-(before Spring 6.1) read these tables at run time. When one of them is on the class path, Runner keeps every table
-and warns in the build log.</p>
+(before Spring 6.1) read these tables at run time. When one of them is on the class path, every table is kept and the
+build log warns.</p>
 </div>
 <div class="paragraph">
 <p>To turn it on, add it to <code>options</code> in Gradle. In Maven, set the property <code>micronaut.runner.stripLocalVariables</code> to

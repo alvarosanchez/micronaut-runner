@@ -128,7 +128,7 @@ startup compressed.</div>
 </div>
 <div class="col-first odd-row-color"><code><a href="#PRESERVE" class="member-name-link">PRESERVE</a></code></div>
 <div class="col-last odd-row-color">
-<div class="block">Copy every dependency byte for byte, keeping its original compression.</div>
+<div class="block">Copy every dependency as it is, keeping its original compression.</div>
 </div>
 <div class="col-first even-row-color"><code><a href="#STORED" class="member-name-link">STORED</a></code></div>
 <div class="col-last even-row-color">
@@ -203,11 +203,13 @@ no intermediate array. The price is a larger artifact.</p></div>
 <h3>PRESERVE</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></span>&nbsp;<span class="element-name">PRESERVE</span></div>
-<div class="block">Copy every dependency byte for byte, keeping its original compression.
+<div class="block">Copy every dependency as it is, keeping its original compression.
 
 <p>The artifact stays as small as the dependencies made it and their bytes are untouched, which is
-what a build that has to reproduce a published jar exactly needs. Classes then have to be inflated
-when they are loaded.</p></div>
+what a build that has to reproduce a published jar exactly needs. The only exception is the opt-in
+<a href="RunnerJarOption.html#STRIP_LOCAL_VARIABLES"><code>RunnerJarOption.STRIP_LOCAL_VARIABLES</code></a>: a dependency whose classes it rewrites is copied as
+rewritten, keeping the compression of each entry. Classes then have to be inflated when they are
+loaded.</p></div>
 </div>
 </section>
 </li>

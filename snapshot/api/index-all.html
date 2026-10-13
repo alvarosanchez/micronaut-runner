@@ -730,8 +730,9 @@ manifest that the <code>jar</code> task's configuration cannot describe.</div>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.html#getCompression()" class="member-name-link">getCompression()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar</a></dt>
 <dd>
 <div class="block">How the entries of each dependency are stored: <code>STORED</code> re-packs them uncompressed so classes
-are defined straight from the memory-mapped archive, <code>PRESERVE</code> copies each dependency byte
-for byte, and <code>HYBRID</code> stores the startup classes uncompressed and keeps the others compressed.</div>
+are defined straight from the memory-mapped archive, <code>PRESERVE</code> copies each dependency with its
+original compression, and <code>HYBRID</code> stores the startup classes uncompressed and keeps the others
+compressed.</div>
 </dd>
 <dt><a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html#getCoordinates()" class="member-name-link">getCoordinates()</a> - Method in class io.micronaut.runner.gradle.<a href="io/micronaut/runner/gradle/MicronautRunnerJar.DependencyInput.html" title="class in io.micronaut.runner.gradle">MicronautRunnerJar.DependencyInput</a></dt>
 <dd>
@@ -1713,7 +1714,7 @@ run Joran at every start.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/Compression.html#PRESERVE" class="member-name-link">PRESERVE</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/Compression.html" title="enum class in io.micronaut.runner.build">Compression</a></dt>
 <dd>
-<div class="block">Copy every dependency byte for byte, keeping its original compression.</div>
+<div class="block">Copy every dependency as it is, keeping its original compression.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/JdkProbe.html#probe(java.nio.file.Path)" class="member-name-link">probe(Path)</a> - Static method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/JdkProbe.html" title="class in io.micronaut.runner.build">JdkProbe</a></dt>
 <dd>
@@ -1987,8 +1988,8 @@ such as one whose JARs' modification times were rewritten, into a failed launch 
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
-<div class="block">Whether to drop the local-variable tables of dependency classes when they are re-packed, which makes them
-smaller to read and define.</div>
+<div class="block">Whether to drop the local-variable tables of dependency classes, with Micronaut AOT's local-variable
+stripping, which makes them smaller to read and define.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/AotCacheGate.Coverage.html#summary()" class="member-name-link">summary()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/AotCacheGate.Coverage.html" title="class in io.micronaut.runner.build">AotCacheGate.Coverage</a></dt>
 <dd>
