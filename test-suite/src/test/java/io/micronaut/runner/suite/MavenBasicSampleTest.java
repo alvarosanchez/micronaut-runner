@@ -68,6 +68,10 @@ class MavenBasicSampleTest {
     /** The line the sample prints when it started, resolved its bean and read its resource. */
     private static final String EXPECTED_OUTPUT = "RUNNER OK: hello from RunnerClassLoader";
 
+    /** What micronaut-core logs once a validated index is in use; the class loader follows the first part. */
+    private static final String USING_INDEX = "Using the service index registered for class loader ";
+    private static final String VALIDATED = ", names validated against a scan)";
+
     /** The coordinates of the modules under test, purged from the local repository before each run. */
     private static final String RUNNER_GROUP_PATH = "io/micronaut/runner";
 
@@ -198,6 +202,8 @@ class MavenBasicSampleTest {
             int exit = validated.awaitExit(RUN_TIMEOUT);
             assertEquals(0, exit, () -> "the validated application exited with " + exit + validated.describe());
             assertTrue(validated.output().contains(EXPECTED_OUTPUT), validated::describe);
+            assertTrue(validated.output().contains(USING_INDEX + "io.micronaut.runner.RunnerClassLoader@")
+                    && validated.output().contains(VALIDATED), validated::describe);
         } finally {
             validated.close();
         }
