@@ -15,6 +15,7 @@
  */
 package io.micronaut.runner.build;
 
+import io.micronaut.aot.bytecode.ClassPathTransform;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -47,6 +48,7 @@ import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,17 +60,21 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.jar.Attributes.Name;
 import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The desugar step, run through the class transform pipeline over a model of fixture layers: what it rewrites
- * behaves as compiled, and what it must not touch keeps its bytes.
+ * behaves as compiled, also over the classes Micronaut AOT stripped first, and what it must not touch keeps its
+ * bytes.
  */
 class LambdaDesugarerTest {
 
@@ -95,7 +101,7 @@ class LambdaDesugarerTest {
                 layers.stream().map(LambdaFixtures.Layer::entries).toList()), LambdaFixtures.APPLICATION);
         assertEquals("static=s:a", expected.get(0), "the fixture runs as compiled");
 
-        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(layers, false);
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(layers);
         Map<String, byte[]> classes = LambdaFixtures.classPath(outcome.outputs());
         List<String> actual = LambdaFixtures.run(classes, LambdaFixtures.APPLICATION);
 
@@ -234,24 +240,45 @@ class LambdaDesugarerTest {
 
     @ParameterizedTest(name = "--release {0}")
     @ValueSource(ints = {8, 25})
-    void desugaredAndStrippedClassesBehaveAsCompiled(int release) throws Exception {
-        List<LambdaFixtures.Layer> layers = LambdaFixtures.scenario(temp.resolve("stripped-" + release), release);
+    void strippedThenDesugaredClassesBehaveAsCompiled(int release) throws Exception {
+        Path directory = temp.resolve("stripped-" + release);
+        List<LambdaFixtures.Layer> layers = LambdaFixtures.scenario(directory, release);
         List<String> expected = LambdaFixtures.run(LambdaFixtures.classPath(
                 layers.stream().map(LambdaFixtures.Layer::entries).toList()), LambdaFixtures.APPLICATION);
+        // As a build runs them: Micronaut AOT strips the dependencies against the whole class path, and the
+        // desugar step then reads the stripped copies.
+        List<Path> jars = new ArrayList<>();
+        for (int layer = 0; layer < layers.size(); layer++) {
+            jars.add(ClassFixtures.jar(directory.resolve("jars/layer-" + layer + ".jar"),
+                    layers.get(layer).entries()));
+        }
 
-        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(layers, true);
+        ClassPathTransform.Result stripped = ClassPathTransform.run(ClassPathTransform.Request.builder()
+                .classPath(jars)
+                .outputDirectory(directory.resolve("stripped"))
+                .stripLocalVariables(jars.subList(LIBRARY, jars.size()))
+                .build());
+        List<Path> copies = stripped.classPath();
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(List.of(layers.get(APPLICATION),
+                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/fix.jar", classes(copies.get(LIBRARY))),
+                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/other.jar", classes(copies.get(OTHER)))));
         List<String> actual = LambdaFixtures.run(LambdaFixtures.classPath(outcome.outputs()),
                 LambdaFixtures.APPLICATION);
 
-        assertEquals(withoutHidden(expected), withoutHidden(actual));
+        assertEquals(withoutHidden(expected), withoutHidden(actual), "the same results, line by line");
+        assertEquals(List.of(), stripped.warnings());
+        assertEquals(jars.get(APPLICATION), copies.get(APPLICATION), "the application is not stripped");
+        assertNotEquals(jars.get(LIBRARY), copies.get(LIBRARY), "the library is read from its copy");
+        ClassPathTransform.Result.Entry strip = stripped.entries().get(0);
+        assertEquals(List.of(), strip.notes());
+        assertTrue(strip.classesStripped() > 0, "stripped: " + strip);
         ClassTransformPipeline.JarReport report = outcome.reports().get(LIBRARY);
         assertEquals(List.of(), report.notes());
         assertTrue(report.counts().get(0).rewritten() > 0, "desugared: " + report.counts());
-        assertTrue(report.counts().get(1).rewritten() > 0, "stripped: " + report.counts());
-        assertTrue(report.counts().get(0).bytesSaved() < 0, "desugaring adds classes: " + report.counts());
         byte[] scenario = outcome.outputs().get(LIBRARY).get("fix/Scenario.class");
         assertTrue(code(scenario, "annotated").findAttribute(Attributes.localVariableTable()).isEmpty(),
-                "a desugared host is stripped in the same pass");
+                "a desugared host keeps its stripped code");
+        assertEquals(0, LambdaFixtures.sites(scenario, METAFACTORY), "and links no lambda at run time");
         // The application layer is user code: desugared, never stripped.
         byte[] application = outcome.outputs().get(APPLICATION).get("app/Main.class");
         assertTrue(code(application, "run").findAttribute(Attributes.localVariableTable()).isPresent());
@@ -263,7 +290,7 @@ class LambdaDesugarerTest {
         List<LambdaFixtures.Layer> layers = LambdaFixtures.scenario(temp.resolve("offsets"), 25);
         byte[] original = layers.get(LIBRARY).entries().get("fix/Scenario.class");
 
-        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(layers, false);
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(layers);
         byte[] rewritten = outcome.outputs().get(LIBRARY).get("fix/Scenario.class");
 
         CodeAttribute before = (CodeAttribute) code(original, "annotated");
@@ -280,8 +307,8 @@ class LambdaDesugarerTest {
     void transformingTheSameInputTwiceGivesIdenticalBytes() throws Exception {
         List<LambdaFixtures.Layer> layers = LambdaFixtures.scenario(temp.resolve("twice"), 25);
 
-        LambdaFixtures.Outcome first = LambdaFixtures.transform(layers, true);
-        LambdaFixtures.Outcome second = LambdaFixtures.transform(layers, true);
+        LambdaFixtures.Outcome first = LambdaFixtures.transform(layers);
+        LambdaFixtures.Outcome second = LambdaFixtures.transform(layers);
 
         assertEquals(first.reports(), second.reports());
         for (int layer = 0; layer < layers.size(); layer++) {
@@ -337,7 +364,7 @@ class LambdaDesugarerTest {
         assertTrue(LambdaFixtures.sites(entries.get("keep/Rec.class"), OBJECT_METHODS) > 0);
 
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
-                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/keep.jar", entries)), false);
+                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/keep.jar", entries)));
 
         assertUntouched(entries, outcome.outputs().get(0));
         assertEquals(Map.of(LambdaDesugarer.Reason.SUPER_CALL, 1, LambdaDesugarer.Reason.CALLER_SENSITIVE, 1),
@@ -392,7 +419,7 @@ class LambdaDesugarerTest {
         assertEquals("Closed.m", referenced(entries, "special.Closed"));
 
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
-                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/special.jar", entries)), false);
+                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/special.jar", entries)));
 
         Map<String, byte[]> output = outcome.outputs().get(0);
         assertArrayEquals(entries.get("special/Open.class"), output.get("special/Open.class"),
@@ -450,7 +477,7 @@ class LambdaDesugarerTest {
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(List.of(
                 LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/first.jar", earlier),
                 LambdaFixtures.Layer.multiRelease("MICRONAUT-INF/lib/versioned.jar", multiRelease),
-                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/second.jar", users)), false);
+                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/second.jar", users)));
 
         assertUntouched(users, outcome.outputs().get(2));
         assertEquals(Map.of(LambdaDesugarer.Reason.OWNER_ACCESS, 2,
@@ -482,7 +509,7 @@ class LambdaDesugarerTest {
 
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(List.of(
                 LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/first.jar", first),
-                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/second.jar", later)), false);
+                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/second.jar", later)));
 
         assertUntouched(later, outcome.outputs().get(1));
         assertEquals(Map.of(LambdaDesugarer.Reason.SHADOWED_OR_UNCERTAIN, 1),
@@ -521,7 +548,7 @@ class LambdaDesugarerTest {
                         """));
 
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
-                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/serial.jar", compiled)), false);
+                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/serial.jar", compiled)));
 
         Map<String, byte[]> output = outcome.outputs().get(0);
         assertArrayEquals(compiled.get("serial/NoUid.class"), output.get("serial/NoUid.class"));
@@ -561,7 +588,7 @@ class LambdaDesugarerTest {
 
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(List.of(
                 LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/first.jar", first),
-                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/second.jar", second)), false);
+                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/second.jar", second)));
 
         assertUntouched(second, outcome.outputs().get(1));
         assertEquals(Map.of(LambdaDesugarer.Reason.NAME_TAKEN, 2), outcome.reports().get(1).desugared().left(),
@@ -605,7 +632,7 @@ class LambdaDesugarerTest {
         entries.put("META-INF/versions/21/mr/Outer.class", compiled.get("mr/Outer.class"));
 
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
-                List.of(LambdaFixtures.Layer.multiRelease("MICRONAUT-INF/lib/mr.jar", entries)), false);
+                List.of(LambdaFixtures.Layer.multiRelease("MICRONAUT-INF/lib/mr.jar", entries)));
 
         Map<String, byte[]> output = outcome.outputs().get(0);
         for (String name : List.of("mr/Host.class", "mr/Outer.class", "mr/Outer$Inner.class",
@@ -638,8 +665,7 @@ class LambdaDesugarerTest {
         Path jar = ClassFixtures.jar(temp.resolve("signed/signed.jar"), manifest, entries);
         ClassPathModel model = LambdaFixtures.model(
                 List.of(LambdaFixtures.Layer.signed("MICRONAUT-INF/lib/signed.jar", compiled)));
-        ClassTransformPipeline pipeline = new ClassTransformPipeline(
-                List.of(new LambdaDesugarer(model), new LocalVariableStripper()), model);
+        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LambdaDesugarer(model)), model);
 
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         ZipRepacker.RepackResult result;
@@ -647,7 +673,7 @@ class LambdaDesugarerTest {
         try (ZipReader reader = ZipReader.open(jar)) {
             assertTrue(reader.hasSignatureFiles());
             ClassTransformPipeline.JarRun run = pipeline.start(new ClassTransformPipeline.Layer(
-                    "MICRONAUT-INF/lib/signed.jar", 0, false, reader.hasSignatureFiles(), false));
+                    "MICRONAUT-INF/lib/signed.jar", 0, false, reader.hasSignatureFiles()));
             result = ZipRepacker.repack(reader, bytes, run);
             report = run.report();
         }
@@ -666,7 +692,7 @@ class LambdaDesugarerTest {
 
     @Test
     void theStepNeedsAModelWithMemberTables() {
-        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "empty", false, false, name -> false,
+        ClassPathModel.LayerScan scan = ClassPathModel.scan(0, "empty", false, false,
                 new ClassPathModel.Interner());
         ClassPathModel withoutMembers = ClassPathModel.merge(List.of(scan), false);
 
@@ -686,8 +712,7 @@ class LambdaDesugarerTest {
                 .equals("fix/Scenario$Inner$$Lambda$R0") ? List.of("a synthetic verification error")
                 : real.apply(bytes);
 
-        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(layers, true, model, failing);
-        LambdaFixtures.Outcome stripOnly = stripOnly(layers, model);
+        LambdaFixtures.Outcome outcome = LambdaFixtures.transform(layers, model, failing);
 
         Map<String, byte[]> library = outcome.outputs().get(LIBRARY);
         ClassTransformPipeline.JarReport report = outcome.reports().get(LIBRARY);
@@ -703,8 +728,7 @@ class LambdaDesugarerTest {
         }
         for (String name : List.of("fix/Scenario.class", "fix/Scenario$Inner.class", "fix/Scenario$Nested.class",
                 "fix/Scenario$Shape.class")) {
-            assertArrayEquals(stripOnly.outputs().get(LIBRARY).get(name), library.get(name),
-                    name + " is the original through the later step");
+            assertArrayEquals(layers.get(LIBRARY).entries().get(name), library.get(name), name + " is the original");
             assertEquals(LambdaFixtures.sites(layers.get(LIBRARY).entries().get(name), METAFACTORY),
                     LambdaFixtures.sites(library.get(name), METAFACTORY), name + " keeps its call sites");
         }
@@ -737,7 +761,7 @@ class LambdaDesugarerTest {
         Map<String, byte[]> compiled = compile("interface-init", 25, INTERFACE_INIT_SOURCES);
 
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
-                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/init.jar", compiled)), false);
+                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/init.jar", compiled)));
 
         Map<String, byte[]> output = outcome.outputs().get(0);
         // regFirst: the interface's constant is the lambda, the same instance; namedFirst: the initializer that
@@ -898,7 +922,7 @@ class LambdaDesugarerTest {
                         """));
 
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
-                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/quiet.jar", compiled)), false);
+                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/quiet.jar", compiled)));
 
         Map<String, byte[]> output = outcome.outputs().get(0);
         ClassTransformPipeline.Desugared desugared = outcome.reports().get(0).desugared();
@@ -972,7 +996,7 @@ class LambdaDesugarerTest {
                         """));
 
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(
-                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/lock.jar", compiled)), false);
+                List.of(LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/lock.jar", compiled)));
 
         for (Map<String, byte[]> classes : List.of(compiled, outcome.outputs().get(0))) {
             assertFinishes(classes, "lock.Slow", "make");
@@ -1101,7 +1125,7 @@ class LambdaDesugarerTest {
 
         LambdaFixtures.Outcome outcome = LambdaFixtures.transform(List.of(
                 LambdaFixtures.Layer.multiRelease("MICRONAUT-INF/lib/versioned.jar", multiRelease),
-                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/others.jar", others)), false);
+                LambdaFixtures.Layer.dependency("MICRONAUT-INF/lib/others.jar", others)));
 
         ClassTransformPipeline.Desugared desugared = outcome.reports().get(1).desugared();
         assertEquals(Map.of(LambdaDesugarer.Reason.INTERFACE_INIT, 5), desugared.left(), "greeter and maker, whose"
@@ -1109,22 +1133,6 @@ class LambdaDesugarerTest {
                 + " launcher's loader may define; broken, whose initializer cannot be parsed");
         assertEquals(2, desugared.sites(), "steady and built");
         assertNotNull(outcome.outputs().get(1).get("use/Users$$Lambda$R0.class"));
-    }
-
-    private static LambdaFixtures.Outcome stripOnly(List<LambdaFixtures.Layer> layers, ClassPathModel model) {
-        ClassTransformPipeline pipeline = new ClassTransformPipeline(List.of(new LocalVariableStripper()), model);
-        List<Map<String, byte[]>> outputs = new ArrayList<>();
-        List<ClassTransformPipeline.JarReport> reports = new ArrayList<>();
-        for (int index = 0; index < layers.size(); index++) {
-            ClassTransformPipeline.JarRun run = pipeline.start(new ClassTransformPipeline.Layer("layer-" + index,
-                    index, index == APPLICATION, false, false));
-            Map<String, byte[]> output = new LinkedHashMap<>();
-            layers.get(index).entries().forEach((name, bytes) -> output.put(name,
-                    run.reads(bytes.length) ? run.process(name, bytes) : bytes));
-            outputs.add(output);
-            reports.add(run.report());
-        }
-        return new LambdaFixtures.Outcome(outputs, reports, pipeline);
     }
 
     /**
@@ -1262,6 +1270,21 @@ class LambdaDesugarerTest {
         Class<?> loaded = LambdaFixtures.loader(LambdaFixtures.classPath(List.of(entries))).loadClass(type);
         Object instance = loaded.getConstructor().newInstance();
         return ((Supplier<?>) loaded.getMethod("ref").invoke(instance)).get();
+    }
+
+    /**
+     * The classes of a jar, in entry order.
+     */
+    private static Map<String, byte[]> classes(Path jar) throws IOException {
+        Map<String, byte[]> classes = new LinkedHashMap<>();
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            for (ZipEntry entry : Collections.list(zip.entries())) {
+                if (entry.getName().endsWith(".class")) {
+                    classes.put(entry.getName(), zip.getInputStream(entry).readAllBytes());
+                }
+            }
+        }
+        return classes;
     }
 
     private static List<String> withoutHidden(List<String> lines) {

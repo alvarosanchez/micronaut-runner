@@ -39,6 +39,10 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassHierarchyResolver;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -56,6 +60,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.TreeMap;
@@ -92,6 +97,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -596,8 +602,7 @@ class RunnerJarBuilderTest {
         try (ZipWriter writer = ZipWriter.create(large, ZipWriter.DEFAULT_TIMESTAMP)) {
             writer.writeEntry("large/payload.bin", payload);
         }
-        // Compiled with -g, so the strip step, which the builds below turn on, rewrites its classes and the
-        // pipeline runs inside the stages.
+        // Compiled with -g, so stripping, which the builds below turn on, rewrites its classes.
         Path debug = ClassFixtures.jar(directory.resolve("debug-lib.jar"), ClassFixtures.classes(
                 ClassFixtures.compile(directory.resolve("debug-src"), directory.resolve("debug-classes"),
                         List.of("-g", "--release", "25"), Map.of(
@@ -683,13 +688,13 @@ class RunnerJarBuilderTest {
                 assertTrue(inspectHeader(parallel, "Nested compression").matches("\\d+ stored, [1-9]\\d* deflated"),
                         "HYBRID compressed the cold classes");
             }
+            for (TransformReport report : parallelResult.transforms()) {
+                assertTrue(report.rewritten() > 0, parallelResult.transforms()::toString);
+            }
             if (compression != Compression.PRESERVE) {
-                assertEquals(List.of(LambdaDesugarer.NAME, LocalVariableStripper.NAME),
+                assertEquals(List.of(RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName(), LambdaDesugarer.NAME),
                         parallelResult.transforms().stream().map(TransformReport::step).toList(),
                         "the steps in the order they run");
-                for (TransformReport report : parallelResult.transforms()) {
-                    assertTrue(report.rewritten() > 0, parallelResult.transforms()::toString);
-                }
                 try (RunnerJarArchive reader = RunnerJarArchive.open(parallel)) {
                     assertTrue(reader.index().findClass("com.example.caller.Caller$$Lambda$R0")
                             != IndexFormat.NO_INDEX, "the call site into the other dependency is desugared");
@@ -697,7 +702,9 @@ class RunnerJarBuilderTest {
                             != IndexFormat.NO_INDEX);
                 }
             } else {
-                assertEquals(List.of(), parallelResult.transforms());
+                assertEquals(List.of(RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName()),
+                        parallelResult.transforms().stream().map(TransformReport::step).toList(),
+                        "PRESERVE nests the stripped copies, and desugars nothing");
             }
             List<String> warnings = parallelResult.warnings();
             assertEquals(sequentialResult.warnings(), warnings, compression + ": the same warnings");
@@ -2965,6 +2972,93 @@ class RunnerJarBuilderTest {
         }
     }
 
+    /**
+     * Logback precompilation at its default and stripping turned on, on the real Logback jars. Micronaut AOT strips
+     * the dependencies before they are staged; Logback precompilation runs once they are, reads the dependencies as
+     * published and adds the classes it generates to the application layer, which is never stripped. So the generated
+     * classes are the ones a build without stripping carries, and they configure a Logback whose classes have been
+     * stripped.
+     */
+    @Test
+    void thePrecompiledLogbackClassesAreNotStrippedAndConfigureAStrippedLogback() throws Exception {
+        Path resources = logbackResources("stripped", Map.of("logback.xml", LOGBACK_XML));
+        Path stripped = output();
+        Path kept = output();
+
+        // Stripping on its own: LambdaDesugarerTest covers it together with desugaring.
+        LogbackBuild build = logbackBuild(logbackSpec(stripped, resources, realLogback()).desugarLambdas(false)
+                .stripLocalVariables(true));
+        LogbackBuild control = logbackBuild(logbackSpec(kept, resources, realLogback()).desugarLambdas(false));
+
+        assertTrue(build.result().logbackPrecompiled(), "stripping on");
+        assertTrue(control.result().logbackPrecompiled(), "stripping off");
+        assertEquals(List.of(), control.result().transforms());
+        assertEquals(1, build.result().transforms().size(), build.result().transforms()::toString);
+        TransformReport strip = build.result().transforms().get(0);
+        assertEquals(RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName(), strip.step());
+        assertTrue(strip.rewritten() > 0, strip::toString);
+        assertEquals(0, strip.fallbacks(), strip::toString);
+        String classic = ClassFixtures.realLogback().get(0).getFileName().toString();
+        String loggerContext = "ch/qos/logback/classic/LoggerContext.class";
+        assertTrue(hasLocalVariableTable(nestedEntry(kept, classic, loggerContext)),
+                "Logback is published with its local-variable tables");
+        assertFalse(hasLocalVariableTable(nestedEntry(stripped, classic, loggerContext)), "and nested without them");
+
+        String configurator = registeredConfigurator(stripped);
+        assertEquals(registeredConfigurator(kept), configurator);
+        // The generated names are not Micronaut AOT's API: the service file names the configurator, and the class it
+        // falls back to Joran with is next to it.
+        String classes = configurator.substring(0, configurator.lastIndexOf('.') + 1).replace('.', '/');
+        List<String> generated = new ArrayList<>(List.of(CONFIGURATOR_SERVICE));
+        applicationLayer(stripped).stream().filter(name -> name.startsWith(classes)).forEach(generated::add);
+        assertEquals(3, generated.size(), generated::toString);
+        Path run = Files.createDirectories(fixtures.resolve("logback-stripped-run/classes")).getParent();
+        List<URL> classPath = new ArrayList<>(List.of(run.resolve("classes").toUri().toURL()));
+        try (ZipFile archive = new ZipFile(stripped.toFile()); ZipFile baseline = new ZipFile(kept.toFile())) {
+            for (String name : generated) {
+                byte[] bytes = entry(archive, IndexFormat.CLASSES_PREFIX + name);
+                assertArrayEquals(entry(baseline, IndexFormat.CLASSES_PREFIX + name), bytes, name);
+                Files.createDirectories(run.resolve("classes").resolve(name).getParent());
+                Files.write(run.resolve("classes").resolve(name), bytes);
+            }
+            for (Path jar : ClassFixtures.realLogback()) {
+                Path nested = run.resolve(jar.getFileName().toString());
+                Files.write(nested, entry(archive, IndexFormat.LIB_PREFIX + jar.getFileName()));
+                classPath.add(nested.toUri().toURL());
+            }
+        }
+
+        // The generated classes and the stripped jars, as the archive nests them, with nothing else but the JDK.
+        try (URLClassLoader loader = new URLClassLoader(classPath.toArray(URL[]::new),
+                ClassLoader.getPlatformClassLoader())) {
+            ClassFile classFile = ClassFile.of(ClassFile.ClassHierarchyResolverOption.of(
+                    ClassHierarchyResolver.ofResourceParsing(loader)));
+            for (String name : generated) {
+                if (name.endsWith(".class")) {
+                    assertEquals(List.of(), classFile.verify(Files.readAllBytes(run.resolve("classes").resolve(name))),
+                            name);
+                }
+            }
+            Class<?> contextType = loader.loadClass("ch.qos.logback.classic.LoggerContext");
+            Class<?> configuratorType = loader.loadClass("ch.qos.logback.classic.spi.Configurator");
+            Object context = contextType.getConstructor().newInstance();
+            Object instance = ServiceLoader.load(configuratorType, loader).iterator().next();
+            assertSame(loader, instance.getClass().getClassLoader());
+            assertEquals(configurator, instance.getClass().getName());
+            configuratorType.getMethod("setContext", loader.loadClass("ch.qos.logback.core.Context"))
+                    .invoke(instance, context);
+            Object status = configuratorType.getMethod("configure", contextType).invoke(instance, context);
+            Object root = contextType.getMethod("getLogger", String.class).invoke(context, "ROOT");
+            try {
+                assertEquals("DO_NOT_INVOKE_NEXT_IF_ANY", status.toString());
+                assertEquals("WARN", String.valueOf(root.getClass().getMethod("getLevel").invoke(root)));
+                assertNotNull(root.getClass().getMethod("getAppender", String.class).invoke(root, "STDOUT"));
+            } finally {
+                contextType.getMethod("stop").invoke(context);
+            }
+        }
+    }
+
     @Test
     void theOptionOffDoesNotCallMicronautAot() throws IOException {
         Path resources = logbackResources("option-off", Map.of("logback.xml", LOGBACK_XML));
@@ -3449,6 +3543,78 @@ class RunnerJarBuilderTest {
         }
     }
 
+    @ParameterizedTest
+    @EnumSource(Compression.class)
+    void stripsEveryDependencyButAProjectModuleInEveryMode(Compression compression) throws Exception {
+        HybridFixture fixture = hybridFixture();
+        Path module = Files.copy(fixture.dependency(), fixtures.resolve("strip-" + compression + "-module.jar"),
+                StandardCopyOption.REPLACE_EXISTING);
+        Path debugged = ClassFixtures.compile(fixtures.resolve("strip-" + compression + "-src"),
+                fixtures.resolve("strip-" + compression + "-classes"), List.of("-g"), Map.of("hyapp/Debugged.java", """
+                        package hyapp;
+                        public class Debugged {
+                            public static int twice(int value) {
+                                int doubled = value * 2;
+                                return doubled;
+                            }
+                        }
+                        """));
+        Path output = output();
+        RecordingLogger logger = new RecordingLogger();
+
+        RunnerJarResult result = RunnerJarBuilder.build(fixture.spec(output, compression)
+                .applicationOutput(List.of(fixture.application(), debugged))
+                .dependencies(List.of(Dependency.of(fixture.dependency()), Dependency.of(module).projectModule(true)))
+                .startupClasses(startupClasses("hyapp.Main\nhy.Listed\n")).stripLocalVariables(true).build(), logger);
+
+        assertEquals(List.of(), logger.warnings);
+        assertFalse(hasLocalVariableTable(nestedEntry(output, "hy-lib.jar", "hy/Debug.class")), "stripped");
+        assertTrue(hasLocalVariableTable(nestedEntry(output, module.getFileName().toString(), "hy/Debug.class")),
+                "a project module keeps its tables");
+        try (ZipFile zip = new ZipFile(output.toFile())) {
+            assertTrue(hasLocalVariableTable(zip.getInputStream(zip.getEntry(IndexFormat.CLASSES_PREFIX
+                    + "hyapp/Debugged.class")).readAllBytes()), "the application layer keeps its tables");
+        }
+        TransformReport strip = result.transforms().get(0);
+        assertEquals(RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName(), strip.step());
+        assertEquals(2, strip.rewritten(), strip::toString);
+        assertEquals(5, strip.classes(), "the classes of hy-lib.jar only: " + strip);
+        assertTrue(logger.infos.contains("Stripped local-variable tables from 2 of 5 dependency classes in 1 jars ("
+                + strip.bytesSaved() + " bytes saved, 0 fallbacks)"), logger.infos::toString);
+        try (ZipFile zip = new ZipFile(output.toFile())) {
+            String transforms = new String(zip.getInputStream(zip.getEntry(IndexFormat.TRANSFORMS_ENTRY_NAME))
+                    .readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(transforms.contains("MICRONAUT-INF/lib/hy-lib.jar\tstripLocalVariables\t2\t3\t0\t"
+                    + strip.bytesSaved() + "\n"), transforms);
+            assertFalse(transforms.contains(module.getFileName() + "\tstripLocalVariables"), transforms);
+        }
+        if (compression == Compression.PRESERVE) {
+            assertArrayEquals(Files.readAllBytes(module), nestedJar(output, module.getFileName().toString()),
+                    "PRESERVE nests the project module byte for byte");
+        }
+    }
+
+    @Test
+    void stripsNothingAndWarnsWhenALibraryReadsTheTables() throws Exception {
+        HybridFixture fixture = hybridFixture();
+        Path reader = fixtures.resolve("paranamer.jar");
+        writeJar(reader, manifest(attributes -> { }), Map.of(
+                "com/thoughtworks/paranamer/BytecodeReadingParanamer.class", fixture.classes().get("hy/Plain.class")));
+        Path output = output();
+        RecordingLogger logger = new RecordingLogger();
+
+        RunnerJarResult result = RunnerJarBuilder.build(fixture.spec(output, Compression.STORED)
+                .dependencies(List.of(Dependency.of(fixture.dependency()), Dependency.of(reader)))
+                .stripLocalVariables(true).build(), logger);
+
+        assertEquals(1, logger.warnings.size(), logger.warnings::toString);
+        assertTrue(logger.warnings.get(0).contains("com/thoughtworks/paranamer/BytecodeReadingParanamer.class, which"
+                + " reads local-variable tables at run time"), logger.warnings.get(0));
+        assertTrue(hasLocalVariableTable(nestedEntry(output, "hy-lib.jar", "hy/Debug.class")), "nothing stripped");
+        assertTrue(result.transforms().stream().noneMatch(report -> report.step().equals(
+                RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName())), result.transforms()::toString);
+    }
+
     @Test
     void hybridStoresTheListedClassesAndCompressesTheOthers() throws Exception {
         HybridFixture fixture = hybridFixture();
@@ -3630,6 +3796,25 @@ class RunnerJarBuilderTest {
             }
         }
         return regions;
+    }
+
+    /** The bytes of a nested jar of an archive. */
+    private static byte[] nestedJar(Path archive, String jar) throws IOException {
+        try (ZipFile zip = new ZipFile(archive.toFile())) {
+            return zip.getInputStream(zip.getEntry(IndexFormat.LIB_PREFIX + jar)).readAllBytes();
+        }
+    }
+
+    /** The content of one entry of a nested jar of an archive. */
+    private static byte[] nestedEntry(Path archive, String jar, String entry) throws IOException {
+        try (ZipInputStream nested = new ZipInputStream(new java.io.ByteArrayInputStream(nestedJar(archive, jar)))) {
+            for (ZipEntry candidate = nested.getNextEntry(); candidate != null; candidate = nested.getNextEntry()) {
+                if (candidate.getName().equals(entry)) {
+                    return nested.readAllBytes();
+                }
+            }
+        }
+        throw new AssertionError(jar + " holds no " + entry);
     }
 
     private static boolean hasLocalVariableTable(byte[] bytes) {

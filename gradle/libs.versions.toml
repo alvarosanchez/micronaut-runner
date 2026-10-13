@@ -31,7 +31,7 @@ h2 = "2.4.240"
 # The Logback whose real jars runner-build's tests and the benchmarks package as fixtures; the samples resolve the
 # same version from the Micronaut platform BOM. Which versions are precompiled is micronaut-aot-logback's decision.
 logback = "1.5.37"
-# runner-build calls micronaut-aot-logback to precompile logback.xml.
+# runner-build calls micronaut-aot-logback to precompile logback.xml and micronaut-aot-bytecode for stripLocalVariables.
 micronaut-aot = "3.2.0-M1"
 
 # Gradle plugins placed on the buildSrc classpath and applied by id from convention plugins
@@ -57,6 +57,7 @@ maven-archiver = { module = "org.apache.maven:maven-archiver", version.ref = "ma
 bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 h2 = { module = "com.h2database:h2", version.ref = "h2" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+micronaut-aot-bytecode = { module = "io.micronaut.aot:micronaut-aot-bytecode", version.ref = "micronaut-aot" }
 micronaut-aot-logback = { module = "io.micronaut.aot:micronaut-aot-logback", version.ref = "micronaut-aot" }
 
 # Plugin marker coordinates for the buildSrc classpath
