@@ -523,9 +523,11 @@ class EndToEndTest {
                     }
                     JarURLConnection connection = (JarURLConnection) location.openConnection();
                     connection.setUseCaches(false);
-                    JarEntry entry = connection.getJarEntry();
-                    check("the application layer's code source names an entry of the archive",
-                            entry != null && entry.isDirectory(), String.valueOf(entry));
+                    JarFile jar = connection.getJarFile();
+                    check("the application layer's code source is the root of the layer's jar",
+                            connection.getEntryName() == null && connection.getJarEntry() == null
+                                    && jar.getJarEntry("com/example/Application.class") != null,
+                            connection.getEntryName() + " in " + jar.getName());
                     try (InputStream in = connection.getInputStream()) {
                         check("and the code source location can be opened",
                                 in.readAllBytes().length == 0, "?");
@@ -545,6 +547,20 @@ class EndToEndTest {
                                     && entry.getName().equals(connection.getEntryName()),
                             entry == null
                                     ? "null" : entry.getName() + " vs " + connection.getEntryName());
+                    // What Flyway does with the URL of its migration directory: list the connection's jar
+                    // for the names under the directory, as the class loader names them.
+                    TreeSet<String> listed = new TreeSet<>();
+                    Enumeration<JarEntry> entries = connection.getJarFile().entries();
+                    while (entries.hasMoreElements()) {
+                        String name = entries.nextElement().getName();
+                        if (name.startsWith("com/example/")) {
+                            listed.add(name);
+                        }
+                    }
+                    check("its jar lists the directory's entries by the names the class loader uses",
+                            listed.contains("com/example/app-resource.txt")
+                                    && listed.contains("com/example/Application.class"),
+                            listed.toString());
                 }
 
                 private static void checkMerged(String how, TreeSet<String> names) {
@@ -766,6 +782,7 @@ class EndToEndTest {
         for (String reached : new String[] {
             "PASS and the code source location can be opened",
             "PASS its connection describes the same entry it streams",
+            "PASS its jar lists the directory's entries by the names the class loader uses",
             "PASS a directory resolves without a trailing slash too",
             "PASS a merged service file keeps a dependency's content",
             "PASS versionedStream maps the logical resource to its selected physical entry",

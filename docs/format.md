@@ -15,7 +15,7 @@ offset.
 | `io/micronaut/runner/**.class` | The launcher. Only class files are copied from the launcher library; its manifest and Maven metadata are not. |
 | `MICRONAUT-INF/transforms.txt` | Present only when a build-time transform changed a class or recorded a fallback. Tab-separated lines: the first names the Runner version, then one line per nested JAR and transform with its counts (for `desugarLambdas`, a nest that fell back counts as one fallback), then one `lambdas` line per JAR, or for the application layer, with the lambda call sites rewritten and left, in total and by reason. It is not indexed, the launcher never reads it at run time, and `extract` ignores it; `inspect` prints it. |
 | `META-INF/micronaut/**` | The Micronaut bean metadata of the application and of every dependency, merged and de-duplicated, with explicit directory entries. See [Merged Micronaut metadata](#merged-micronaut-metadata). |
-| `MICRONAUT-INF/classes/` | An explicit directory entry for the application layer, so that the `CodeSource` location of every application class names something the archive really carries. |
+| `MICRONAUT-INF/classes/` | An explicit directory entry for the application layer, so that the `CodeSource` location of every application class names something the archive really carries when it is looked up in the outer archive itself. |
 | `MICRONAUT-INF/classes/**` | The application's own classes and resources, stored exploded. This is "jar 0"; an entry's logical name is its path with this prefix removed. Directories inside the layer are not stored; the index carries a synthetic record for each one instead. |
 | `MICRONAUT-INF/lib/<name>.jar` | The dependencies, in class path order, each a complete JAR. |
 
@@ -122,8 +122,16 @@ These facts are true and tested, but an application developer cannot act on them
   JARs, for resource order, duplicate resources, manifests, sealing and multi-release resolution.
 - **The launcher's own package.** Classes under `io.micronaut.runner` always come from the launcher: a class of the
   same name in the application or a dependency cannot replace them.
-- **`JarFile` of a nested JAR.** `isMultiRelease()` and `getVersion()` on a `JarURLConnection`'s `JarFile` report the
-  outer archive; multi-release resolution itself is per nested JAR and correct.
+- **`JarURLConnection` of the application layer.** A URL under `MICRONAUT-INF/classes/` is described as an entry of
+  the layer, the way a nested JAR's URL is: `getJarFileURL()` is `jar:file:/app.jar!/MICRONAUT-INF/classes`,
+  `getEntryName()` is the class path name, and `getJarFile()` lists the layer by class path names. Scanners that list
+  `getJarFile()` for the entries under a location, such as Flyway, depend on it. The URL text, and with it every code
+  source, is unchanged; the layer's root names no entry and opens as an empty stream. A `META-INF/micronaut/` file that
+  is both in the layer and in the merged directory is listed once, as in a fat JAR. `getManifest()` is the layer's own
+  manifest when the layer has one; the plugins build the layer from class directories, which have none, and it is
+  then the outer archive's manifest, which carries the application's attributes.
+- **`JarFile` of a nested JAR or of the application layer.** `isMultiRelease()` and `getVersion()` on a
+  `JarURLConnection`'s `JarFile` report the outer archive; multi-release resolution itself is per JAR and correct.
 - **Entry stub.** The packager generates a class that calls the application's `main` directly when the main class is
   a public, non-abstract class in a named package that declares its own `public static void main(String[])`.
   Otherwise the launcher enters `main` reflectively, and the build log says why. The difference is not measurable;

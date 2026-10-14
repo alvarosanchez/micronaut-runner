@@ -55,6 +55,8 @@ class NestedJarFileTest {
 
     private static final String DEPENDENCY = "MICRONAUT-INF/lib/dep.jar";
     private static final String TEXT_NAME = "a/data file.txt";
+    private static final String SERVICE_DIRECTORY = "META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/";
+    private static final String SERVICE = SERVICE_DIRECTORY + "com.example.$Controller$Definition";
     private static final long DOS_TIME = 0x00210000L;
     private static final long DOS_TIME_MILLIS = 315532800000L;
 
@@ -522,10 +524,138 @@ class NestedJarFileTest {
     }
 
     @Test
-    void refusesToViewSomethingThatIsNotANestedJar() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new NestedJarFile(archive, index, source, IndexFormat.APPLICATION_JAR_ID));
+    void refusesToViewAJarTheIndexDoesNotHave() {
+        assertThrows(IllegalArgumentException.class, () -> new NestedJarFile(archive, index, source, -1));
         assertThrows(IllegalArgumentException.class, () -> new NestedJarFile(archive, index, source, 9));
+    }
+
+    /**
+     * Jar {@code 0} is the application layer, which the archive stores exploded under
+     * {@value IndexFormat#CLASSES_PREFIX}: its view names the entries from the class path root, as a plain
+     * jar of the application's classes would.
+     */
+    @Test
+    void viewsTheApplicationLayerFromTheClassPathRoot() throws IOException {
+        NestedJarFile application = new NestedJarFile(archive, index, source, IndexFormat.APPLICATION_JAR_ID);
+        try {
+            assertEquals(archive.getPath() + "!/MICRONAUT-INF/classes", application.getName());
+            assertEquals(IndexFormat.APPLICATION_JAR_ID, application.jarId());
+            assertEquals(List.of("app.txt"), application.stream().map(JarEntry::getName).toList());
+            assertEquals(1, application.size());
+            JarEntry entry = application.getJarEntry("app.txt");
+            assertNotNull(entry);
+            assertArrayEquals(bytes("application"), application.getInputStream(entry).readAllBytes());
+            assertNull(application.getJarEntry(IndexFormat.CLASSES_PREFIX + "app.txt"),
+                    "the outer archive's name of the entry is not a name of the layer");
+            assertNull(application.getJarEntry("a/B.class"), "nor is an entry of a nested jar");
+            Manifest manifest = application.getManifest();
+            try (JarFile outer = new JarFile(archive)) {
+                assertEquals(outer.getManifest(), manifest,
+                        "a layer without a manifest of its own reports the outer archive's");
+            }
+            assertSame(manifest, application.getManifest());
+        } finally {
+            application.closeNested();
+        }
+    }
+
+    /**
+     * The application layer as the packager writes it: the merged service directory at the root of the
+     * archive, recorded first in jar {@code 0}, then the layer, which holds its own copy of a service file under
+     * the merged copy's name, and no manifest in the layer, because it is built from class directories. Like a
+     * fat jar, the view lists that name once, and reports the outer archive's manifest, which carries the
+     * application's attributes.
+     */
+    @Test
+    void viewsTheApplicationLayerAsThePackagerWritesIt() throws IOException {
+        byte[] properties = bytes("micronaut.application.name=app");
+        byte[] manifest = bytes("Manifest-Version: 1.0\r\n"
+                + "Main-Class: io.micronaut.runner.Launcher\r\n"
+                + "Implementation-Title: Application\r\n"
+                + "Implementation-Version: 1.2.3\r\n\r\n");
+        String[] names = {
+            IndexFormat.MICRONAUT_SERVICES_PREFIX, SERVICE_DIRECTORY, SERVICE,
+            "application.properties", SERVICE
+        };
+        TestArchiveBuilder outer = new TestArchiveBuilder();
+        outer.stored("META-INF/MANIFEST.MF", manifest);
+        byte[] draft = packagedApplicationIndex(names, new long[names.length], properties);
+        outer.reserve(IndexFormat.INDEX_ENTRY_NAME, draft.length);
+        long[] offsets = new long[names.length];
+        for (int i = 0; i < names.length; i++) {
+            // The merged copies at the root come first, then the layer under its prefix.
+            String stored = i < 3 ? names[i] : IndexFormat.CLASSES_PREFIX + names[i];
+            offsets[i] = outer.stored(stored, names[i].equals("application.properties") ? properties : DIRECTORY);
+        }
+        outer.replace(IndexFormat.INDEX_ENTRY_NAME, packagedApplicationIndex(names, offsets, properties));
+        File file = outer.writeTo(temporary.resolve("packaged-application.jar").toFile());
+
+        try (ArchiveSource packaged = ArchiveSource.open(file)) {
+            NestedJarFile application = new NestedJarFile(file, Index.open(packaged), packaged,
+                    IndexFormat.APPLICATION_JAR_ID);
+            try {
+                List<String> listed = List.of(IndexFormat.MICRONAUT_SERVICES_PREFIX, SERVICE_DIRECTORY, SERVICE,
+                        "application.properties");
+                assertEquals(listed, application.stream().map(JarEntry::getName).toList());
+                List<String> enumerated = new ArrayList<>();
+                for (Enumeration<JarEntry> entries = application.entries(); entries.hasMoreElements();) {
+                    enumerated.add(entries.nextElement().getName());
+                }
+                assertEquals(listed, enumerated);
+                assertEquals(listed.size(), application.size());
+                assertEquals(listed, application.versionedStream().map(JarEntry::getName).toList());
+                NestedJarEntry service = (NestedJarEntry) application.stream()
+                        .filter(entry -> entry.getName().equals(SERVICE)).findFirst().orElseThrow();
+                assertEquals(((NestedJarEntry) application.getEntry(SERVICE)).record(), service.record(),
+                        "the listed record is the one a lookup resolves to");
+
+                Manifest attributes = application.getManifest();
+                assertNotNull(attributes, "the layer has no manifest, the outer archive's stands in for it");
+                assertEquals("io.micronaut.runner.Launcher", attributes.getMainAttributes().getValue("Main-Class"));
+                assertEquals("1.2.3", attributes.getMainAttributes().getValue("Implementation-Version"));
+                assertNull(application.getEntry("META-INF/MANIFEST.MF"),
+                        "the outer manifest is not an entry of the layer");
+            } finally {
+                application.closeNested();
+            }
+        }
+    }
+
+    /**
+     * The application layer's view follows the layer's own multi-release flag, which the index header carries,
+     * and enumerates the physical entries, as a nested jar's view does.
+     */
+    @Test
+    void appliesTheApplicationLayersOwnMultiReleasePolicy() throws IOException {
+        byte[] base = bytes("base");
+        byte[] versioned = bytes("versioned");
+        TestArchiveBuilder outer = new TestArchiveBuilder();
+        byte[] draft = multiReleaseApplicationIndex(new long[2], base, versioned);
+        outer.reserve(IndexFormat.INDEX_ENTRY_NAME, draft.length);
+        long[] offsets = {
+            outer.stored(IndexFormat.CLASSES_PREFIX + "v.txt", base),
+            outer.stored(IndexFormat.CLASSES_PREFIX + "META-INF/versions/21/v.txt", versioned)
+        };
+        outer.replace(IndexFormat.INDEX_ENTRY_NAME, multiReleaseApplicationIndex(offsets, base, versioned));
+        File file = outer.writeTo(temporary.resolve("multi-release-application.jar").toFile());
+
+        try (ArchiveSource layered = ArchiveSource.open(file)) {
+            NestedJarFile application = new NestedJarFile(file, Index.open(layered), layered,
+                    IndexFormat.APPLICATION_JAR_ID);
+            try {
+                JarEntry entry = application.getJarEntry("v.txt");
+                assertEquals("v.txt", entry.getName());
+                assertEquals("META-INF/versions/21/v.txt", entry.getRealName());
+                try (InputStream in = application.getInputStream(entry)) {
+                    assertArrayEquals(versioned, in.readAllBytes());
+                }
+                assertEquals(List.of("v.txt", "META-INF/versions/21/v.txt"),
+                        application.stream().map(JarEntry::getName).toList());
+                assertEquals(List.of("v.txt=>META-INF/versions/21/v.txt=versioned"), versionedEntries(application));
+            } finally {
+                application.closeNested();
+            }
+        }
     }
 
     private byte[] buildIndex(long application, long[] inner, long base, long length, long header,
@@ -596,6 +726,25 @@ class NestedJarFileTest {
                 .data(base + inner[23], MALFORMED_VERSION.length, MALFORMED_VERSION.length)
                 .crc32(crc32(MALFORMED_VERSION));
         dependency.addEntry("META-INF/versions/21/").data(base + inner[24], 0, 0).crc32(0);
+        return builder.build();
+    }
+
+    private static byte[] packagedApplicationIndex(String[] names, long[] offsets, byte[] properties) {
+        TestIndexBuilder builder = new TestIndexBuilder();
+        TestIndexBuilder.Jar layer = builder.addJar(IndexFormat.CLASSES_PREFIX);
+        for (int i = 0; i < names.length; i++) {
+            byte[] content = names[i].equals("application.properties") ? properties : DIRECTORY;
+            layer.addEntry(names[i]).data(offsets[i], content.length, content.length).crc32(crc32(content));
+        }
+        return builder.build();
+    }
+
+    private static byte[] multiReleaseApplicationIndex(long[] offsets, byte[] base, byte[] versioned) {
+        TestIndexBuilder builder = new TestIndexBuilder().headerFlags(IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE);
+        TestIndexBuilder.Jar layer = builder.addJar(IndexFormat.CLASSES_PREFIX).multiRelease();
+        layer.addEntry("v.txt").data(offsets[0], base.length, base.length).crc32(crc32(base));
+        layer.addEntry("META-INF/versions/21/v.txt").data(offsets[1], versioned.length, versioned.length)
+                .crc32(crc32(versioned));
         return builder.build();
     }
 
