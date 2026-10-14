@@ -277,7 +277,7 @@ class HandlerTest {
                 names, "the layer's physical entries, named from the class path root");
         assertEquals(names.size(), jar.size());
         assertEquals("Application", connection.getMainAttributes().getValue("Implementation-Title"),
-                "the layer's own manifest, as a plain jar of the application would report");
+                "this fixture's layer carries a manifest of its own, and reports it as a plain jar would");
     }
 
     /**
@@ -470,7 +470,7 @@ class HandlerTest {
         assertEquals(connection.getEntryName(), jar.getJarEntry(connection.getEntryName()).getName());
         assertArrayEquals(APP_TEXT, read(url));
         assertEquals("Application", connection.getMainAttributes().getValue("Implementation-Title"),
-                "the application layer's own manifest");
+                "the manifest this layer carries");
         assertNull(connection.getCertificates());
     }
 

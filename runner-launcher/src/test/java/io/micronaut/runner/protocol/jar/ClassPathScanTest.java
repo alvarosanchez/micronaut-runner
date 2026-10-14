@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.zip.CRC32;
@@ -66,6 +67,10 @@ class ClassPathScanTest {
 
     private static final String DEPENDENCY = "MICRONAUT-INF/lib/migrations.jar";
     private static final byte[] DIRECTORY = new byte[0];
+    private static final String MANIFEST = "META-INF/MANIFEST.MF";
+    /** The application's own attributes, which its jar carries and the packager copies into the archive's. */
+    private static final String APPLICATION_ATTRIBUTES = "Implementation-Title: scan\r\n"
+            + "Implementation-Version: 1.2.3\r\n";
 
     @TempDir
     static Path temporary;
@@ -89,6 +94,10 @@ class ClassPathScanTest {
         byte[] dependencyBytes = nested.build();
 
         TestArchiveBuilder outer = new TestArchiveBuilder();
+        // The packager builds the layer from class directories, which carry no manifest, and writes the
+        // application's attributes into the archive's own manifest.
+        outer.stored(MANIFEST, bytes("Manifest-Version: 1.0\r\nMain-Class: io.micronaut.runner.Launcher\r\n"
+                + APPLICATION_ATTRIBUTES + "\r\n"));
         byte[] draft = index(application, new LinkedHashMap<>(), dependency, inner, 0, 0, 0);
         outer.reserve(IndexFormat.INDEX_ENTRY_NAME, draft.length);
         Map<String, Long> layer = new LinkedHashMap<>();
@@ -107,6 +116,8 @@ class ClassPathScanTest {
         archive = outer.writeTo(temporary.resolve("app.jar").toFile());
 
         TestArchiveBuilder plain = new TestArchiveBuilder();
+        plain.stored(MANIFEST, bytes("Manifest-Version: 1.0\r\nMain-Class: com.example.scan.First\r\n"
+                + APPLICATION_ATTRIBUTES + "\r\n"));
         for (Map.Entry<String, byte[]> entry : application.entrySet()) {
             plain.stored(entry.getKey(), entry.getValue());
         }
@@ -171,6 +182,21 @@ class ClassPathScanTest {
             assertEquals(List.of("com/example/scan/First.class", "com/example/scan/Second.class",
                     "com/example/scan/Third.class"), expected, "the oracle itself");
             assertEquals(expected, reflections(runner(), "com.example.scan"));
+        }
+    }
+
+    /**
+     * Code that reports its own version reads the main attributes of the manifest of the jar it was loaded
+     * from, through the connection of its class's URL or of its code source. The application's own jar, the
+     * oracle here, answers with its manifest, as a fat jar does with its own; the application layer, which has
+     * none, answers with the archive's, where the packager put the application's attributes.
+     */
+    @Test
+    void theApplicationsManifestDescribesItsClasses() throws IOException {
+        try (URLClassLoader oracle = oracle()) {
+            List<String> expected = implementation(oracle, "com/example/scan/First.class");
+            assertEquals(List.of("scan 1.2.3", "scan 1.2.3"), expected, "the oracle itself");
+            assertEquals(expected, implementation(runner(), "com/example/scan/First.class"));
         }
     }
 
@@ -275,6 +301,30 @@ class ClassPathScanTest {
                         found.add(path);
                     }
                 }
+            }
+        }
+        return found;
+    }
+
+    /**
+     * The {@code Implementation-Title} and {@code Implementation-Version} that the connection of a class's URL,
+     * and then of the root of the jar it is in, reports.
+     *
+     * @return one {@code title version} per URL
+     */
+    @SuppressWarnings("deprecation")
+    private static List<String> implementation(ClassLoader loader, String name) throws IOException {
+        URL url = loader.getResource(name);
+        String form = url.toExternalForm();
+        URL root = new URL(url, form.substring(0, form.lastIndexOf(name)));
+        List<String> found = new ArrayList<>();
+        for (URL each : List.of(url, root)) {
+            JarURLConnection connection = (JarURLConnection) each.openConnection();
+            connection.setUseCaches(false);
+            try (JarFile ignored = connection.getJarFile()) {
+                Attributes main = connection.getMainAttributes();
+                found.add(main == null ? "no manifest"
+                        : main.getValue("Implementation-Title") + " " + main.getValue("Implementation-Version"));
             }
         }
         return found;

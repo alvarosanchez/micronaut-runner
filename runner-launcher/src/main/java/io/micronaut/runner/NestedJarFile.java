@@ -74,7 +74,13 @@ import java.util.zip.ZipEntry;
  * loader for, as Flyway does, finds them; in the outer archive the same entries carry the prefix. The
  * application layer's own multi-release flag applies, and the merged
  * {@value IndexFormat#MICRONAUT_SERVICES_PREFIX} directory, which the index records as part of jar
- * {@code 0}, is listed with it, as it would be at the root of a fat jar.</p>
+ * {@code 0}, is listed with it, as it would be at the root of a fat jar. A file of that directory that the
+ * layer also holds is one record at the root and one under the prefix; a fat jar holds it once, so the
+ * view lists only the record {@link #getEntry(String)} resolves to.</p>
+ *
+ * <p>The packager builds the layer from class directories, which carry no manifest: the application's
+ * attributes are in the outer archive's manifest instead. So when the layer has no manifest of its own,
+ * {@link #getManifest()} reports the outer archive's, as a fat jar reports its own for every class in it.</p>
  *
  * <p>The class is package-private. {@link Handlers#nestedJarFile(int)} hands these views out typed as
  * {@link JarFile}, which is all that {@code io.micronaut.runner.protocol.jar} and applications see.</p>
@@ -106,7 +112,8 @@ final class NestedJarFile extends JarFile {
      * Opens a view of one jar of the index.
      *
      * <p>The outer file is opened through the super class only so that this object is a usable
-     * {@code JarFile}; none of its content is read through it.</p>
+     * {@code JarFile}; none of its content is read through it, except the outer manifest that stands in for
+     * the application layer's when the layer has none.</p>
      *
      * @param outerFile the outer runner archive
      * @param index     the index of that archive
@@ -298,7 +305,7 @@ final class NestedJarFile extends JarFile {
             if (physicalCount < 0) {
                 int count = 0;
                 for (int i = 0; i < entryCount; i++) {
-                    if (index.entryPhysical(firstEntry + i)) {
+                    if (listed(firstEntry + i)) {
                         count++;
                     }
                 }
@@ -340,11 +347,15 @@ final class NestedJarFile extends JarFile {
     }
 
     /**
-     * The manifest of the nested jar, parsed on first use and then kept.
+     * The manifest of the jar, parsed on first use and then kept.
      *
      * <p>The entry is looked up even when the index's has-manifest flag is clear: it costs one hash probe
      * once per jar, and a stale flag would otherwise strip a library of its {@code Implementation-Version}
      * and its package sealing without a trace.</p>
+     *
+     * <p>An application layer without a manifest of its own, which is how the packager builds it, reports
+     * the outer archive's, which carries the application's attributes. The super class has the outer archive
+     * open, so it reads that manifest.</p>
      *
      * @return the manifest, or {@code null} when the jar has none
      * @throws IOException if the manifest cannot be read or is malformed
@@ -361,6 +372,8 @@ final class NestedJarFile extends JarFile {
                     } finally {
                         in.close();
                     }
+                } else if (jarId == IndexFormat.APPLICATION_JAR_ID) {
+                    manifest = super.getManifest();
                 }
                 manifestRead = true;
             }
@@ -456,10 +469,27 @@ final class NestedJarFile extends JarFile {
         List<JarEntry> entries = new ArrayList<>(size());
         for (int i = 0; i < entryCount; i++) {
             int record = firstEntry + i;
-            if (index.entryPhysical(record)) {
+            if (listed(record)) {
                 entries.add(new NestedJarEntry(this, index, record));
             }
         }
         return entries;
+    }
+
+    /**
+     * Whether the enumeration lists a record: every physical record of a nested jar, duplicates included,
+     * as the original dependency's central directory has them, and of the application layer only the
+     * physical record its name resolves to. A {@value IndexFormat#MICRONAUT_SERVICES_PREFIX} file of the
+     * layer has the name of its merged copy at the root, which the packager records first.
+     *
+     * @param record a record of this jar
+     * @return {@code true} when the record is listed
+     */
+    private boolean listed(int record) {
+        if (!index.entryPhysical(record)) {
+            return false;
+        }
+        return jarId != IndexFormat.APPLICATION_JAR_ID
+                || index.resolveInJar(index.find(index.entryName(record)), Index.BASE_VERSION, jarId) == record;
     }
 }

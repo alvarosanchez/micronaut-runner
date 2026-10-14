@@ -279,10 +279,12 @@ public final class Handlers {
     }
 
     /**
-     * The URL of the jar itself, as {@link java.net.JarURLConnection#getJarFileURL()} reports it: the file
-     * URL of the outer archive for the application layer, and the {@code jar:} URL of the nested jar
-     * otherwise. Unlike {@code codeSourceUrlFor} it does not end with a separator, because it names a jar
-     * rather than the root inside it.
+     * The URL of the file a jar is read from: the file URL of the outer archive for the application layer,
+     * and the {@code jar:} URL of the nested jar otherwise, which is what
+     * {@link java.net.JarURLConnection#getJarFileURL()} reports for an entry of a nested jar. For an entry of
+     * the application layer the connection reports {@code jar:file:/app.jar!/MICRONAUT-INF/classes}, which it
+     * builds from this URL. Unlike {@code codeSourceUrlFor} it does not end with a separator, because it names
+     * a jar rather than the root inside it.
      *
      * @param jarId the jar, {@code 0} being the application layer
      * @return the URL, or {@code null} when no archive is registered or the jar does not exist

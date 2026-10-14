@@ -126,7 +126,10 @@ These facts are true and tested, but an application developer cannot act on them
   the layer, the way a nested JAR's URL is: `getJarFileURL()` is `jar:file:/app.jar!/MICRONAUT-INF/classes`,
   `getEntryName()` is the class path name, and `getJarFile()` lists the layer by class path names. Scanners that list
   `getJarFile()` for the entries under a location, such as Flyway, depend on it. The URL text, and with it every code
-  source, is unchanged; the layer's root names no entry and opens as an empty stream.
+  source, is unchanged; the layer's root names no entry and opens as an empty stream. A `META-INF/micronaut/` file that
+  is both in the layer and in the merged directory is listed once, as in a fat JAR. `getManifest()` is the layer's own
+  manifest when the layer has one; the plugins build the layer from class directories, which have none, and it is
+  then the outer archive's manifest, which carries the application's attributes.
 - **`JarFile` of a nested JAR or of the application layer.** `isMultiRelease()` and `getVersion()` on a
   `JarURLConnection`'s `JarFile` report the outer archive; multi-release resolution itself is per JAR and correct.
 - **Entry stub.** The packager generates a class that calls the application's `main` directly when the main class is

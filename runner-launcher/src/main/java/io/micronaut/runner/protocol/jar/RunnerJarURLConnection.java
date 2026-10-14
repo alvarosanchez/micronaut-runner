@@ -353,8 +353,10 @@ final class RunnerJarURLConnection extends JarURLConnection {
 
     /**
      * The manifest of the jar this connection reads from: the nested jar's own manifest for an entry of a
-     * nested jar, the application layer's own for an entry of the layer, and the outer archive's manifest
-     * otherwise.
+     * nested jar, and the outer archive's for an entry outside the jars of the index. For an entry of the
+     * application layer it is the layer's own when the layer has one, and otherwise the outer archive's, which
+     * carries the application's attributes: the packager builds the layer from class directories, which carry
+     * no manifest. A fat jar likewise reports its own manifest for every class in it.
      *
      * @return the manifest, or {@code null} when the jar has none
      * @throws IOException if the manifest cannot be read

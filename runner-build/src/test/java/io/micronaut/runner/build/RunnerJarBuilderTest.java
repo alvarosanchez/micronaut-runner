@@ -2528,7 +2528,8 @@ class RunnerJarBuilderTest {
         try (ZipReader archive = ZipReader.open(output)) {
             List<String> names = names(archive);
             assertTrue(names.contains(IndexFormat.CLASSES_PREFIX),
-                    "the layer's own root is a real directory entry, so its code source URL can be opened");
+                    "the layer's own root is a real directory entry, so the code source URL names something the outer"
+                            + " archive carries when that name is looked up in the archive itself");
             for (String name : names) {
                 assertFalse(name.startsWith(IndexFormat.CLASSES_PREFIX) && name.endsWith("/")
                                 && name.length() > IndexFormat.CLASSES_PREFIX.length(),
