@@ -695,7 +695,7 @@ your versions support it, and can be turned off. The build log says what each st
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>precompileLogback</code></p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#desugaredLambdas">Lambdas generated at build time</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#desugaredLambdas">Lambdas generated at build time</a>, from Micronaut AOT</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">On, except with <code>PRESERVE</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">One extra frame per lambda call in stack traces.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>desugarLambdas</code></p></td>
@@ -867,8 +867,10 @@ precompilation for other packagings, turn that off too.</p>
 
 <div class="paragraph">
 <p>For each lambda and method reference, the JDK normally creates a class the first time the code runs, at every start.
-Runner generates those classes when it packages the application instead, in your classes and in the dependencies, so
-that startup does not create them and a <a href="#jdkAotCache">JDK AOT cache</a> can store them like any other class.</p>
+Runner has them generated when it packages the application instead, in your classes and in the dependencies, so that
+startup does not create them and a <a href="#jdkAotCache">JDK AOT cache</a> can store them like any other class. The step is
+<a href="https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#classPathTransformDesugar">Micronaut AOT&#8217;s lambda
+desugaring</a>, which the build runs itself: it needs no Micronaut AOT optimizer run.</p>
 </div>
 <div class="paragraph">
 <p>What you may notice:</p>
@@ -877,7 +879,8 @@ that startup does not create them and a <a href="#jdkAotCache">JDK AOT cache</a>
 <ul>
 <li>
 <p>Each call of a lambda adds one frame to stack traces, <code>&lt;Host&gt;$$Lambda$R&lt;n&gt;.&lt;method&gt;</code>, between the caller
-and the lambda&#8217;s body. The generated class keeps <code>$$Lambda</code> in its name.</p>
+and the lambda&#8217;s body. The generated class keeps <code>$$Lambda</code> in its name, and the frame names the source file of
+the class that holds the lambda. Several lambdas of one class can show the same generated class in stack traces.</p>
 </li>
 <li>
 <p>The rewritten classes have new bytes, so software composition analysis tools may report them as modified.</p>
@@ -1530,9 +1533,10 @@ every packaging can use, so that a shaded JAR, a container image and a native im
 Runner JAR. Its optimizer generates optimized application code when you build. Logback precompilation needs no
 optimizer run: the Micronaut Gradle and Maven plugins apply it themselves, and a Runner JAR gets it by default
 (<a href="#precompiledLogback">Precompiled Logback Configuration</a>). Neither does
-<a href="https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#classPathTransformStrip">Micronaut AOT&#8217;s local-variable
-stripping</a>, which Runner runs on the dependencies when you turn it on
-(<a href="#localVariableTables">Opt-in: Dependency Local-Variable Names</a>).</p>
+<a href="https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#classPathTransform">its class path transform</a>, which
+Runner runs itself: it generates the classes of lambdas by default
+(<a href="#desugaredLambdas">Lambdas Generated at Build Time</a>), and strips the dependencies' local-variable tables when you
+turn it on (<a href="#localVariableTables">Opt-in: Dependency Local-Variable Names</a>).</p>
 </div>
 <div class="paragraph">
 <p>Runner adds what its archive and its launcher make possible: the index, the class loader and the startup profile, and
