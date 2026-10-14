@@ -1250,9 +1250,9 @@ layer, which is not a nested jar.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Handlers.html#jarFileUrlFor(int)" class="member-name-link">jarFileUrlFor(int)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
-<div class="block">The URL of the jar itself, as <a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/JarURLConnection.html#getJarFileURL()" title="class or interface in java.net" class="external-link"><code>JarURLConnection.getJarFileURL()</code></a> reports it: the file
-URL of the outer archive for the application layer, and the <code>jar:</code> URL of the nested jar
-otherwise.</div>
+<div class="block">The URL of the file a jar is read from: the file URL of the outer archive for the application layer,
+and the <code>jar:</code> URL of the nested jar otherwise, which is what
+<a href="https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/net/JarURLConnection.html#getJarFileURL()" title="class or interface in java.net" class="external-link"><code>JarURLConnection.getJarFileURL()</code></a> reports for an entry of a nested jar.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Index.html#jarFirstPackage(int)" class="member-name-link">jarFirstPackage(int)</a> - Method in class io.micronaut.runner.<a href="io/micronaut/runner/Index.html" title="class in io.micronaut.runner">Index</a></dt>
 <dd>
@@ -1525,7 +1525,9 @@ remains an intact nested jar.</div>
 </dd>
 <dt><a href="io/micronaut/runner/Handlers.html#nestedJarFile(int)" class="member-name-link">nestedJarFile(int)</a> - Static method in class io.micronaut.runner.<a href="io/micronaut/runner/Handlers.html" title="class in io.micronaut.runner">Handlers</a></dt>
 <dd>
-<div class="block">The shared view of one nested jar, a package-private <code>NestedJarFile</code> served from the index.</div>
+<div class="block">The shared view of one jar of the index, a package-private <code>NestedJarFile</code> served from the index:
+a nested jar, or for jar <code>0</code> the application layer, whose entries the view names from the class
+path root rather than under <a href="io/micronaut/runner/IndexFormat.html#CLASSES_PREFIX">"MICRONAUT-INF/classes/"</a>.</div>
 </dd>
 <dt><a href="io/micronaut/runner/IndexFormat.html#NO_INDEX" class="member-name-link">NO_INDEX</a> - Static variable in class io.micronaut.runner.<a href="io/micronaut/runner/IndexFormat.html" title="class in io.micronaut.runner">IndexFormat</a></dt>
 <dd>
