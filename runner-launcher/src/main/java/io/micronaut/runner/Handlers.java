@@ -127,9 +127,10 @@ public final class Handlers {
      */
     private static JarFile outerJarFile;
     /**
-     * The nested jar views, allocated on first use. Like the outer handle above, they are kept as
-     * {@link JarFile} and created through a static method, {@link NestedJarFile#open}, so that neither
-     * verifying this class nor registering an archive loads {@link NestedJarFile} before main.
+     * The jar views, indexed by jar with the application layer at {@code 0}, allocated on first use. Like the
+     * outer handle above, they are kept as {@link JarFile} and created through a static method,
+     * {@link NestedJarFile#open}, so that neither verifying this class nor registering an archive loads
+     * {@link NestedJarFile} before main.
      */
     private static JarFile[] nestedJarFiles;
 
@@ -387,25 +388,27 @@ public final class Handlers {
     }
 
     /**
-     * The shared view of one nested jar, a package-private {@code NestedJarFile} served from the index. Views
-     * are created once and cached, because they are immutable, because each one holds a handle on the outer
-     * file, and because a library that scans the classpath asks for the same jar over and over.
+     * The shared view of one jar of the index, a package-private {@code NestedJarFile} served from the index:
+     * a nested jar, or for jar {@code 0} the application layer, whose entries the view names from the class
+     * path root rather than under {@value IndexFormat#CLASSES_PREFIX}. Views are created once and cached,
+     * because they are immutable, because each one holds a handle on the outer file, and because a library
+     * that scans the classpath asks for the same jar over and over.
      *
      * <p>The cache is allocated on first use rather than at registration, so that a normal start does not
      * load {@code NestedJarFile} before {@code main}. Registration is checked under the class lock, so a
      * concurrent {@link #unregister()} yields the {@link IOException} rather than a
      * {@link NullPointerException}.</p>
      *
-     * @param jarId the nested jar
+     * @param jarId the jar, {@code 0} being the application layer
      * @return the view
-     * @throws IOException if no archive is registered, the archive has no such nested jar, or the outer
-     *                     archive cannot be opened
+     * @throws IOException if no archive is registered, the archive has no such jar, or the outer archive
+     *                     cannot be opened
      */
     public static JarFile nestedJarFile(int jarId) throws IOException {
         synchronized (LOCK) {
             Index index = archiveIndex;
-            if (archiveUrl == null || jarId <= IndexFormat.APPLICATION_JAR_ID || jarId >= index.jarCount()) {
-                throw new IOException("No nested jar " + jarId + " in the registered archive");
+            if (archiveUrl == null || jarId < IndexFormat.APPLICATION_JAR_ID || jarId >= index.jarCount()) {
+                throw new IOException("No jar " + jarId + " in the registered archive");
             }
             JarFile[] cache = nestedJarFiles;
             if (cache == null) {

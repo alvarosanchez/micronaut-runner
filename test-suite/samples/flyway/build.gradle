@@ -1,0 +1,41 @@
+plugins {
+    alias(libs.plugins.micronaut.application)
+    // Applied without a version: the version is pinned in settings.gradle.
+    id 'io.micronaut.runner.standalone'
+}
+
+version = '0.1'
+group = 'com.example'
+
+micronaut {
+    version = libs.versions.micronaut.platform.get()
+    runtime 'netty'
+    processing {
+        incremental true
+        annotations 'com.example.*'
+    }
+}
+
+dependencies {
+    annotationProcessor 'io.micronaut:micronaut-inject-java'
+    implementation 'io.micronaut:micronaut-http-server-netty'
+    // Micronaut's HTTP server requires a JSON body provider even for a plain text endpoint, because the
+    // default error response processor depends on one.
+    annotationProcessor 'io.micronaut.serde:micronaut-serde-processor'
+    implementation 'io.micronaut.serde:micronaut-serde-jackson'
+    implementation 'io.micronaut.flyway:micronaut-flyway'
+    implementation 'io.micronaut.sql:micronaut-jdbc-hikari'
+    runtimeOnly 'com.h2database:h2'
+    runtimeOnly 'ch.qos.logback:logback-classic'
+    // Ships a migration of its own, so the Runner JAR has one in a nested JAR as well as in the application layer.
+    runtimeOnly project(':migrations')
+}
+
+application {
+    mainClass = 'com.example.Application'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}

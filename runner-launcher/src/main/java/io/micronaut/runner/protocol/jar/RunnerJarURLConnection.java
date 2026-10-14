@@ -49,14 +49,31 @@ import java.util.jar.Manifest;
  *   <li>{@code getJarFile()} is the {@code NestedJarFile} view of that dependency</li>
  *   <li>{@code getJarEntry()} is that jar's entry {@code a/B.class}</li>
  * </ul>
- * <p>For an entry of the application layer, {@code jar:file:/app.jar!/MICRONAUT-INF/classes/a/B.class},
- * the answers are the ordinary ones over the outer archive: the jar URL is {@code file:/app.jar}, the
- * entry name is {@code MICRONAUT-INF/classes/a/B.class}, and the jar is the outer archive as an ordinary
- * {@link JarFile}. The entry itself comes from the index record the connection resolved rather than from
- * that {@link JarFile}, because the application layer's directories are recorded in the index and are not
- * entries of the outer archive: asking the archive for one would answer {@code null} for a URL whose
- * {@link #getEntryName()} is not null and whose {@link #getInputStream()} works, and the four answers
- * would stop describing the same thing.</p>
+ * <h2>The application layer is a jar of its own</h2>
+ * <p>An entry of the application layer, {@code jar:file:/app.jar!/MICRONAUT-INF/classes/db/migration/V1.sql},
+ * is described the same way, with the layer as the jar:</p>
+ * <ul>
+ *   <li>{@code getJarFileURL()} is {@code jar:file:/app.jar!/MICRONAUT-INF/classes}</li>
+ *   <li>{@code getEntryName()} is {@code db/migration/V1.sql}</li>
+ *   <li>{@code getJarFile()} is the {@code NestedJarFile} view of the layer, whose entries are named from the
+ *   class path root</li>
+ *   <li>{@code getJarEntry()} is that view's entry {@code db/migration/V1.sql}</li>
+ * </ul>
+ * <p>This is what a plain jar, a nested jar of this archive and Spring Boot's {@code BOOT-INF/classes} all
+ * answer, and scanners depend on it. Flyway asks the class loader for {@code db/migration}, takes the
+ * connection's {@code getJarFile()} and keeps the entries whose names start with {@code db/migration/}: over
+ * the outer archive, where those entries are named {@code MICRONAUT-INF/classes/db/migration/...}, it found
+ * none. Only the description changes: the URL text, and with it every code source and seal base, stays as it
+ * is. The application layer's root, {@code jar:file:/app.jar!/MICRONAUT-INF/classes/}, which is the code
+ * source of every application class, names no entry, as {@code jar:file:/plain.jar!/} does not, and its jar is
+ * the layer, which is what a scanner that walks a code source lists. And
+ * {@code jar:file:/app.jar!/MICRONAUT-INF/classes!/<name>}, the URL that {@code getJarFileURL()} and
+ * {@code getEntryName()} spell together, opens the same entry.</p>
+ *
+ * <p>What remains outside every jar of the index keeps the ordinary answers over the outer archive: the
+ * launcher classes, the manifest, the index, a nested jar addressed as stored bytes, and the merged
+ * {@code META-INF/micronaut/} directory at the root. For those the jar URL is {@code file:/app.jar}, the entry
+ * name is the outer name, and the jar is the outer archive as an ordinary {@link JarFile}.</p>
  *
  * <p>A URL that names a whole nested jar, whether it ends with {@value Handlers#SEPARATOR} or stops at the
  * jar, streams the bytes of that jar, so that code which wants to treat a dependency as an archive can.</p>
@@ -66,8 +83,8 @@ import java.util.jar.Manifest;
  * machinery and no temporary file, and so is a whole nested jar. Only the outer archive's own entries, the
  * launcher classes, the manifest and the index itself, are read through a real {@link JarFile} of the outer
  * archive: one close-protected, process-lifetime handle that every connection shares, opened on demand.
- * It is also the jar {@link #getJarFile()} reports for every URL outside a nested jar, and closing it is a
- * no-op under either cache setting, exactly as it is for a {@code NestedJarFile} view. Every call to
+ * It is also the jar {@link #getJarFile()} reports for every URL outside the jars of the index, and closing
+ * it is a no-op under either cache setting, exactly as it is for a {@code NestedJarFile} view. Every call to
  * {@link #getInputStream()} returns a fresh stream, because micronaut-core reads service files by
  * disabling caches and then asking for the stream.</p>
  *
@@ -84,8 +101,20 @@ final class RunnerJarURLConnection extends JarURLConnection {
     /** What the JDK reports when it cannot guess a content type. */
     private static final String UNKNOWN_CONTENT_TYPE = "content/unknown";
 
+    /**
+     * {@code MICRONAUT-INF/classes}: the jar part that names the application layer, in its jar URL and in the
+     * {@code ...!/MICRONAUT-INF/classes!/<name>} form of its entries. {@code NestedJarFile} derives its name
+     * the same way.
+     */
+    private static final String APPLICATION_JAR_NAME =
+            IndexFormat.CLASSES_PREFIX.substring(0, IndexFormat.CLASSES_PREFIX.length() - 1);
+
     private final Index index;
     private final ArchiveSource source;
+    /**
+     * Whether the URL names an entry of a jar of the index, a nested jar or the application layer, which is
+     * then described as a jar of its own. Otherwise it names an entry of the outer archive.
+     */
     private final boolean nested;
     private final int jarId;
     private final String name;
@@ -113,25 +142,38 @@ final class RunnerJarURLConnection extends JarURLConnection {
         String file = url.getFile();
         int first = file.indexOf(Handlers.SEPARATOR);
         int last = Handler.indexOfBangSlash(file) - 1;
-        String entry;
         if (last > first) {
+            String jar = Handlers.decode(file.substring(first + 2, last));
+            String entry = file.substring(last + 2);
             this.nested = true;
-            this.jarId = Handlers.jarIdForName(Handlers.decode(file.substring(first + 2, last)));
-            entry = file.substring(last + 2);
+            this.jarId = APPLICATION_JAR_NAME.equals(jar)
+                    ? IndexFormat.APPLICATION_JAR_ID : Handlers.jarIdForName(jar);
+            this.name = entry.isEmpty() ? null : Handlers.decode(entry);
         } else {
-            this.nested = false;
+            String entry = file.substring(first + 2);
+            String outer = entry.isEmpty() ? null : Handlers.decode(entry);
             this.jarId = IndexFormat.APPLICATION_JAR_ID;
-            entry = file.substring(first + 2);
+            if (outer != null && outer.startsWith(IndexFormat.CLASSES_PREFIX)) {
+                // An entry of the application layer, described as an entry of the layer rather than of
+                // the outer archive: its name is the logical one, and the layer's root names no entry.
+                this.nested = true;
+                this.name = outer.length() == IndexFormat.CLASSES_PREFIX.length()
+                        ? null : outer.substring(IndexFormat.CLASSES_PREFIX.length());
+            } else {
+                this.nested = false;
+                this.name = outer;
+            }
         }
-        this.name = entry.isEmpty() ? null : Handlers.decode(entry);
         boolean multiRelease = jarId != IndexFormat.NO_INDEX
-                && (nested ? index.jarMultiRelease(jarId) : index.applicationMultiRelease());
+                && (jarId == IndexFormat.APPLICATION_JAR_ID
+                        ? index.applicationMultiRelease() : index.jarMultiRelease(jarId));
         this.version = multiRelease ? Index.effectiveMultiReleaseVersion() : Index.BASE_VERSION;
     }
 
     /**
-     * The URL of the jar this connection reads from: the nested jar for a nested entry, and the outer
-     * archive's file URL for an entry of the application layer.
+     * The URL of the jar this connection reads from: {@code jar:file:/app.jar!/MICRONAUT-INF/lib/dep.jar}
+     * for an entry of a nested jar, {@code jar:file:/app.jar!/MICRONAUT-INF/classes} for an entry of the
+     * application layer, and the outer archive's file URL for an entry of the outer archive.
      *
      * @return the jar URL
      */
@@ -142,7 +184,7 @@ final class RunnerJarURLConnection extends JarURLConnection {
         }
         URL url = jarFileUrl;
         if (url == null) {
-            url = Handlers.jarFileUrlFor(jarId);
+            url = jarId == IndexFormat.APPLICATION_JAR_ID ? applicationJarFileUrl() : Handlers.jarFileUrlFor(jarId);
             if (url == null) {
                 url = super.getJarFileURL();
             }
@@ -152,10 +194,34 @@ final class RunnerJarURLConnection extends JarURLConnection {
     }
 
     /**
-     * The name of the entry inside the jar {@link #getJarFileURL()} names, which for a nested entry is the
-     * name relative to the nested jar rather than the one the super class would have parsed.
+     * The jar URL of the application layer, {@code jar:file:/app.jar!/MICRONAUT-INF/classes}, in the same
+     * style as a nested jar's. It is built with this connection's URL as the context, which lends it this
+     * package's handler, so the URL opens whether or not the handler property took effect.
      *
-     * @return the entry name, or {@code null} when the URL names a whole jar
+     * @return the URL, or {@code null} when no archive is registered
+     */
+    @SuppressWarnings("deprecation")
+    private URL applicationJarFileUrl() {
+        URL archive = Handlers.jarFileUrlFor(IndexFormat.APPLICATION_JAR_ID);
+        if (archive == null) {
+            return null;
+        }
+        String archiveSpec = archive.toExternalForm();
+        StringBuilder spec = new StringBuilder(archiveSpec.length() + APPLICATION_JAR_NAME.length() + 8);
+        spec.append("jar:").append(archiveSpec).append(Handlers.SEPARATOR).append(APPLICATION_JAR_NAME);
+        try {
+            return new URL(url, spec.toString());
+        } catch (MalformedURLException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The name of the entry inside the jar {@link #getJarFileURL()} names, which for an entry of a nested jar
+     * or of the application layer is the name relative to that jar rather than the one the super class would
+     * have parsed.
+     *
+     * @return the entry name, or {@code null} when the URL names a whole jar or the application layer's root
      */
     @Override
     public String getEntryName() {
@@ -209,9 +275,10 @@ final class RunnerJarURLConnection extends JarURLConnection {
 
     /**
      * The jar this connection reads from, whatever the cache setting: the shared {@code NestedJarFile} view
-     * of a nested jar, or the one shared handle on the outer archive. Closing either is a no-op.
+     * of a nested jar or of the application layer, or the one shared handle on the outer archive. Closing
+     * any of them is a no-op.
      *
-     * @return the {@code NestedJarFile} view of a nested entry, or the outer archive
+     * @return the {@code NestedJarFile} view of the jar the entry belongs to, or the outer archive
      * @throws IOException if the jar cannot be opened
      */
     @Override
@@ -228,19 +295,18 @@ final class RunnerJarURLConnection extends JarURLConnection {
     /**
      * The entry this connection reads.
      *
-     * <p>For a versioned entry of the application layer the outer archive holds the bytes under the
+     * <p>An entry of a nested jar or of the application layer is the {@code NestedJarFile} view's entry, so
+     * a directory is described too, from the record the index synthesised for it: the application layer is
+     * stored exploded and the outer archive carries no entry for a directory in it, and
+     * {@code conn.getJarEntry().isDirectory()} is the usual way to classify a class path URL.</p>
+     *
+     * <p>An entry of the merged service directory is described from the index record, which is where its
+     * size, checksum, compression method and timestamp are recorded and where {@link #getInputStream()}
+     * already reads from. For a versioned record the outer archive holds the bytes under the
      * {@code META-INF/versions/<n>/} name, so that is the entry reported, in the same spirit as
      * {@link JarEntry#getRealName()}.</p>
      *
-     * <p>An application layer entry is described from the index record, which is where its size, checksum,
-     * compression method and timestamp are recorded and where {@link #getInputStream()} already reads
-     * from. That is also the only way a directory of the application layer can be described at all: the
-     * layer is stored exploded and the outer archive carries no entry for every directory in it, so
-     * delegating to the outer {@link JarFile} would answer {@code null} for a URL that resolves
-     * perfectly well, and {@code conn.getJarEntry().isDirectory()} - the usual way to classify a class
-     * path URL - would fail with a {@link NullPointerException}.</p>
-     *
-     * @return the entry, or {@code null} when the URL names a whole jar
+     * @return the entry, or {@code null} when the URL names a whole jar or the application layer's root
      * @throws IOException if the jar cannot be opened
      */
     @Override
@@ -286,8 +352,9 @@ final class RunnerJarURLConnection extends JarURLConnection {
     }
 
     /**
-     * The manifest of the jar this connection reads from: the nested jar's own manifest for a nested
-     * entry, and the outer archive's manifest otherwise.
+     * The manifest of the jar this connection reads from: the nested jar's own manifest for an entry of a
+     * nested jar, the application layer's own for an entry of the layer, and the outer archive's manifest
+     * otherwise.
      *
      * @return the manifest, or {@code null} when the jar has none
      * @throws IOException if the manifest cannot be read
@@ -323,6 +390,11 @@ final class RunnerJarURLConnection extends JarURLConnection {
     /**
      * Opens the content of the entry, or of the whole nested jar when the URL names one.
      *
+     * <p>The application layer's root, the code source of every application class, opens as an empty
+     * stream. The layer is stored exploded, so there are no bytes of a jar to stream, but code that asks
+     * where it is running from opens its code source, and that succeeds for the directory code source of a
+     * {@code URLClassLoader}, as it does here.</p>
+     *
      * @return a fresh stream over the content
      * @throws IOException if the URL names no entry, or the content cannot be read
      */
@@ -333,7 +405,7 @@ final class RunnerJarURLConnection extends JarURLConnection {
             if (!nested) {
                 throw new IOException("no entry name specified: " + url);
             }
-            return openJar(jarId);
+            return jarId == IndexFormat.APPLICATION_JAR_ID ? InputStream.nullInputStream() : openJar(jarId);
         }
         if (record != IndexFormat.NO_INDEX) {
             return openRecord(record);
@@ -352,15 +424,18 @@ final class RunnerJarURLConnection extends JarURLConnection {
     /**
      * The number of bytes {@link #getInputStream()} delivers.
      *
-     * @return the uncompressed size of the entry, the length of the jar for a URL that names one, or
-     *         {@code -1} when it cannot be determined
+     * @return the uncompressed size of the entry, the length of the jar for a URL that names one, {@code 0}
+     *         for the application layer's root, or {@code -1} when it cannot be determined
      */
     @Override
     public long getContentLengthLong() {
         try {
             connect();
             if (name == null) {
-                return nested ? index.jarDataLength(jarId) : -1;
+                if (!nested) {
+                    return -1;
+                }
+                return jarId == IndexFormat.APPLICATION_JAR_ID ? 0 : index.jarDataLength(jarId);
             }
             if (record != IndexFormat.NO_INDEX) {
                 return index.entryUncompressedSize(record);
@@ -458,33 +533,28 @@ final class RunnerJarURLConnection extends JarURLConnection {
     }
 
     /**
-     * The record of the application layer that backs an outer entry name, or {@link IndexFormat#NO_INDEX}
-     * when the URL names an entry the index does not describe, such as a launcher class or the manifest
-     * of the outer archive.
+     * The record of jar {@code 0} that backs an outer entry name, or {@link IndexFormat#NO_INDEX} when the
+     * URL names an entry the index does not describe, such as a launcher class or the manifest of the outer
+     * archive.
      *
-     * <p>Two shapes map to jar {@code 0}. An entry under {@value IndexFormat#CLASSES_PREFIX} is the
-     * application layer proper, whose logical name is the rest of the name. An entry under
-     * {@value IndexFormat#MICRONAUT_SERVICES_PREFIX} is the merged service directory, which the packager
-     * writes at the root of the outer archive and indexes under its literal root name; serving it from
-     * the index here keeps service discovery from having to parse the outer central directory.</p>
+     * <p>An entry under {@value IndexFormat#MICRONAUT_SERVICES_PREFIX} is the merged service directory,
+     * which the packager writes at the root of the outer archive and indexes as part of jar {@code 0} under
+     * its literal root name; serving it from the index here keeps service discovery from having to parse
+     * the outer central directory. An entry under {@value IndexFormat#CLASSES_PREFIX} never gets here: it is
+     * an entry of the application layer, which the constructor routes to the layer.</p>
      *
      * @return the entry record
      */
     private int applicationRecord() {
-        String logical;
-        if (name.startsWith(IndexFormat.CLASSES_PREFIX)) {
-            logical = name.substring(IndexFormat.CLASSES_PREFIX.length());
-        } else if (name.startsWith(IndexFormat.MICRONAUT_SERVICES_PREFIX)) {
-            logical = name;
-        } else {
+        if (!name.startsWith(IndexFormat.MICRONAUT_SERVICES_PREFIX)) {
             return IndexFormat.NO_INDEX;
         }
-        return index.resolveInJar(index.find(logical), version, IndexFormat.APPLICATION_JAR_ID);
+        return index.resolveInJar(index.find(name), version, IndexFormat.APPLICATION_JAR_ID);
     }
 
     /**
-     * The name of the outer entry that physically holds the bytes of an application layer entry, which
-     * differs from the requested name only for a versioned entry.
+     * The name of the outer entry that physically holds the bytes of a jar {@code 0} record reached through
+     * the outer archive, which differs from the requested name only for a versioned record.
      *
      * @return the outer entry name
      */

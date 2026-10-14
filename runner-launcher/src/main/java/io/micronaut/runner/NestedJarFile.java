@@ -31,7 +31,8 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 
 /**
- * A {@link JarFile} view of one nested jar of a runner archive, served entirely from the index.
+ * A {@link JarFile} view of one nested jar of a runner archive, or of its application layer, served entirely
+ * from the index.
  *
  * <p>Libraries that scan the class path do it through {@code JarFile}: Flyway looks for migrations,
  * Liquibase for change logs, Micronaut for service metadata, and every one of them enumerates entries and
@@ -66,6 +67,15 @@ import java.util.zip.ZipEntry;
  * {@code some/package/} is a question about the jar's content and the answer "yes, that directory exists"
  * is the useful one.</p>
  *
+ * <h2>The application layer</h2>
+ * <p>The same class views the application layer, jar {@code 0}, which the archive stores exploded under
+ * {@value IndexFormat#CLASSES_PREFIX}. Its entries are named from the class path root, as in a plain jar of
+ * the application's classes, so a scanner that lists the entries under the location it asked the class
+ * loader for, as Flyway does, finds them; in the outer archive the same entries carry the prefix. The
+ * application layer's own multi-release flag applies, and the merged
+ * {@value IndexFormat#MICRONAUT_SERVICES_PREFIX} directory, which the index records as part of jar
+ * {@code 0}, is listed with it, as it would be at the root of a fat jar.</p>
+ *
  * <p>The class is package-private. {@link Handlers#nestedJarFile(int)} hands these views out typed as
  * {@link JarFile}, which is all that {@code io.micronaut.runner.protocol.jar} and applications see.</p>
  *
@@ -93,7 +103,7 @@ final class NestedJarFile extends JarFile {
     private int physicalCount = -1;
 
     /**
-     * Opens a view of one nested jar.
+     * Opens a view of one jar of the index.
      *
      * <p>The outer file is opened through the super class only so that this object is a usable
      * {@code JarFile}; none of its content is read through it.</p>
@@ -101,9 +111,9 @@ final class NestedJarFile extends JarFile {
      * @param outerFile the outer runner archive
      * @param index     the index of that archive
      * @param source    the reader of that archive
-     * @param jarId     the nested jar, which must not be the application layer
+     * @param jarId     a nested jar, or {@link IndexFormat#APPLICATION_JAR_ID} for the application layer
      * @throws IOException              if the outer archive cannot be opened
-     * @throws IllegalArgumentException if {@code jarId} is not a nested jar of the index
+     * @throws IllegalArgumentException if {@code jarId} is not a jar of the index
      */
     NestedJarFile(File outerFile, Index index, ArchiveSource source, int jarId) throws IOException {
         // The jar is checked inside the super call, so that a bad argument never leaks an open file.
@@ -113,17 +123,24 @@ final class NestedJarFile extends JarFile {
         this.jarId = jarId;
         this.firstEntry = index.jarFirstEntry(jarId);
         this.entryCount = index.jarEntryCount(jarId);
-        this.multiRelease = index.jarMultiRelease(jarId)
+        boolean application = jarId == IndexFormat.APPLICATION_JAR_ID;
+        this.multiRelease = (application ? index.applicationMultiRelease() : index.jarMultiRelease(jarId))
                 && !"false".equals(System.getProperty("jdk.util.jar.enableMultiRelease"));
         this.version = multiRelease
                 ? Index.effectiveMultiReleaseVersion() : Index.BASE_VERSION;
         StringBuilder jarName = new StringBuilder(64);
-        jarName.append(outerFile.getPath()).append(Handlers.SEPARATOR).append(index.jarName(jarId));
+        jarName.append(outerFile.getPath()).append(Handlers.SEPARATOR);
+        if (application) {
+            // MICRONAUT-INF/classes: the jar part of the layer's jar URL, without the prefix's trailing slash.
+            jarName.append(IndexFormat.CLASSES_PREFIX, 0, IndexFormat.CLASSES_PREFIX.length() - 1);
+        } else {
+            jarName.append(index.jarName(jarId));
+        }
         this.name = jarName.toString();
     }
 
     /**
-     * Opens a view of one nested jar for {@link Handlers}, which keeps the views in a {@link JarFile} array.
+     * Opens a view of one jar for {@link Handlers}, which keeps the views in a {@link JarFile} array.
      * The view is typed as its supertype so that verifying {@link Handlers} does not load this class: the
      * verifier does not resolve an {@code invokestatic} target, but it would load this class to check that
      * a {@code NestedJarFile} value is assignable to {@link JarFile}.
@@ -131,26 +148,26 @@ final class NestedJarFile extends JarFile {
      * @param outerFile the outer runner archive
      * @param index     the index of that archive
      * @param source    the reader of that archive
-     * @param jarId     the nested jar, which must not be the application layer
+     * @param jarId     a nested jar, or {@link IndexFormat#APPLICATION_JAR_ID} for the application layer
      * @return the view
      * @throws IOException              if the outer archive cannot be opened
-     * @throws IllegalArgumentException if {@code jarId} is not a nested jar of the index
+     * @throws IllegalArgumentException if {@code jarId} is not a jar of the index
      */
     static JarFile open(File outerFile, Index index, ArchiveSource source, int jarId) throws IOException {
         return new NestedJarFile(outerFile, index, source, jarId);
     }
 
     /**
-     * Checks that a jar exists and is a nested one, before the super constructor opens anything.
+     * Checks that a jar exists, before the super constructor opens anything.
      *
      * @param outerFile the outer runner archive
      * @param index     the index of that archive
-     * @param jarId     the nested jar
+     * @param jarId     the jar
      * @return the outer file, so that this can be called from the super constructor arguments
      */
     private static File checkJarId(File outerFile, Index index, int jarId) {
-        if (jarId <= IndexFormat.APPLICATION_JAR_ID || jarId >= index.jarCount()) {
-            throw new IllegalArgumentException("Jar " + jarId + " is not a nested jar of " + outerFile);
+        if (jarId < IndexFormat.APPLICATION_JAR_ID || jarId >= index.jarCount()) {
+            throw new IllegalArgumentException("Jar " + jarId + " is not a jar of " + outerFile);
         }
         return outerFile;
     }
@@ -167,9 +184,10 @@ final class NestedJarFile extends JarFile {
     /**
      * The name of this jar, in the form {@code <outer archive path>!/MICRONAUT-INF/lib/<dep>.jar}, which
      * is what the JDK's own nested-looking jar names have always looked like and what turns up in the
-     * error messages and logs of libraries that print {@code JarFile.getName()}.
+     * error messages and logs of libraries that print {@code JarFile.getName()}. The application layer's view
+     * is {@code <outer archive path>!/MICRONAUT-INF/classes}.
      *
-     * @return the name of the nested jar
+     * @return the name of the jar
      */
     @Override
     public String getName() {

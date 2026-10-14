@@ -522,10 +522,71 @@ class NestedJarFileTest {
     }
 
     @Test
-    void refusesToViewSomethingThatIsNotANestedJar() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new NestedJarFile(archive, index, source, IndexFormat.APPLICATION_JAR_ID));
+    void refusesToViewAJarTheIndexDoesNotHave() {
+        assertThrows(IllegalArgumentException.class, () -> new NestedJarFile(archive, index, source, -1));
         assertThrows(IllegalArgumentException.class, () -> new NestedJarFile(archive, index, source, 9));
+    }
+
+    /**
+     * Jar {@code 0} is the application layer, which the archive stores exploded under
+     * {@value IndexFormat#CLASSES_PREFIX}: its view names the entries from the class path root, as a plain
+     * jar of the application's classes would.
+     */
+    @Test
+    void viewsTheApplicationLayerFromTheClassPathRoot() throws IOException {
+        NestedJarFile application = new NestedJarFile(archive, index, source, IndexFormat.APPLICATION_JAR_ID);
+        try {
+            assertEquals(archive.getPath() + "!/MICRONAUT-INF/classes", application.getName());
+            assertEquals(IndexFormat.APPLICATION_JAR_ID, application.jarId());
+            assertEquals(List.of("app.txt"), application.stream().map(JarEntry::getName).toList());
+            assertEquals(1, application.size());
+            JarEntry entry = application.getJarEntry("app.txt");
+            assertNotNull(entry);
+            assertArrayEquals(bytes("application"), application.getInputStream(entry).readAllBytes());
+            assertNull(application.getJarEntry(IndexFormat.CLASSES_PREFIX + "app.txt"),
+                    "the outer archive's name of the entry is not a name of the layer");
+            assertNull(application.getJarEntry("a/B.class"), "nor is an entry of a nested jar");
+            assertNull(application.getManifest());
+        } finally {
+            application.closeNested();
+        }
+    }
+
+    /**
+     * The application layer's view follows the layer's own multi-release flag, which the index header carries,
+     * and enumerates the physical entries, as a nested jar's view does.
+     */
+    @Test
+    void appliesTheApplicationLayersOwnMultiReleasePolicy() throws IOException {
+        byte[] base = bytes("base");
+        byte[] versioned = bytes("versioned");
+        TestArchiveBuilder outer = new TestArchiveBuilder();
+        byte[] draft = multiReleaseApplicationIndex(new long[2], base, versioned);
+        outer.reserve(IndexFormat.INDEX_ENTRY_NAME, draft.length);
+        long[] offsets = {
+            outer.stored(IndexFormat.CLASSES_PREFIX + "v.txt", base),
+            outer.stored(IndexFormat.CLASSES_PREFIX + "META-INF/versions/21/v.txt", versioned)
+        };
+        outer.replace(IndexFormat.INDEX_ENTRY_NAME, multiReleaseApplicationIndex(offsets, base, versioned));
+        File file = outer.writeTo(temporary.resolve("multi-release-application.jar").toFile());
+
+        try (ArchiveSource layered = ArchiveSource.open(file)) {
+            NestedJarFile application = new NestedJarFile(file, Index.open(layered), layered,
+                    IndexFormat.APPLICATION_JAR_ID);
+            try {
+                JarEntry entry = application.getJarEntry("v.txt");
+                assertEquals("v.txt", entry.getName());
+                assertEquals("META-INF/versions/21/v.txt", entry.getRealName());
+                try (InputStream in = application.getInputStream(entry)) {
+                    assertArrayEquals(versioned, in.readAllBytes());
+                }
+                assertEquals(List.of("v.txt", "META-INF/versions/21/v.txt"),
+                        application.stream().map(JarEntry::getName).toList());
+                assertEquals(List.of("v.txt=>META-INF/versions/21/v.txt=versioned"), versionedEntries(application));
+            } finally {
+                application.closeNested();
+            }
+        }
     }
 
     private byte[] buildIndex(long application, long[] inner, long base, long length, long header,
@@ -596,6 +657,15 @@ class NestedJarFileTest {
                 .data(base + inner[23], MALFORMED_VERSION.length, MALFORMED_VERSION.length)
                 .crc32(crc32(MALFORMED_VERSION));
         dependency.addEntry("META-INF/versions/21/").data(base + inner[24], 0, 0).crc32(0);
+        return builder.build();
+    }
+
+    private static byte[] multiReleaseApplicationIndex(long[] offsets, byte[] base, byte[] versioned) {
+        TestIndexBuilder builder = new TestIndexBuilder().headerFlags(IndexFormat.HEADER_FLAG_APP_MULTI_RELEASE);
+        TestIndexBuilder.Jar layer = builder.addJar(IndexFormat.CLASSES_PREFIX).multiRelease();
+        layer.addEntry("v.txt").data(offsets[0], base.length, base.length).crc32(crc32(base));
+        layer.addEntry("META-INF/versions/21/v.txt").data(offsets[1], versioned.length, versioned.length)
+                .crc32(crc32(versioned));
         return builder.build();
     }
 

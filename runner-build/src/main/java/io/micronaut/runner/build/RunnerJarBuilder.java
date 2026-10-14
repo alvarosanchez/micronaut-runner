@@ -1286,9 +1286,9 @@ public final class RunnerJarBuilder {
     private void planApplicationEntries() {
         // A real directory entry for the application layer. Without it the code source URL stamped on
         // every application class, jar:file:/app.jar!/MICRONAUT-INF/classes/, names something the outer
-        // archive does not carry, and opening it - which is what code that asks where it is running from
-        // does - fails where the same call on a URLClassLoader's directory code source succeeds. It is
-        // deliberately not an index record: the index knows the layer as jar 0, not as an entry.
+        // archive does not carry, for code that looks that name up in the archive itself rather than through
+        // the launcher's connection, which describes the URL as the layer's root. It is deliberately not an
+        // index record: the index knows the layer as jar 0, not as an entry.
         plan.add(PlannedEntry.ofDirectory(IndexFormat.CLASSES_PREFIX));
         for (Map.Entry<String, ApplicationEntry> item : application.entrySet()) {
             String logicalName = item.getKey();

@@ -38,6 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -192,7 +193,7 @@ class HandlerTest {
                 "a URL rebuilt from its string form must come back to our handler");
         assertArrayEquals(AWKWARD_TEXT, read(reparsed));
         JarURLConnection connection = (JarURLConnection) reparsed.openConnection();
-        assertEquals(IndexFormat.CLASSES_PREFIX + AWKWARD, connection.getEntryName());
+        assertEquals(AWKWARD, connection.getEntryName());
     }
 
     @Test
@@ -200,47 +201,127 @@ class HandlerTest {
         URL url = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, BANG);
         assertTrue(url.toString().endsWith("bang%21/fake.txt"), url.toString());
         JarURLConnection connection = (JarURLConnection) URI.create(url.toString()).toURL().openConnection();
-        assertEquals(IndexFormat.CLASSES_PREFIX + BANG, connection.getEntryName());
+        assertEquals(BANG, connection.getEntryName());
         assertArrayEquals(BANG_TEXT, read(url));
     }
 
     @Test
-    void describesAnApplicationLayerDirectoryFromItsIndexRecord() throws IOException {
+    void describesAnApplicationLayerDirectoryAsAnEntryOfTheLayer() throws IOException {
         // The application layer is stored exploded, so the outer archive carries no entry for a directory
-        // inside it. Asking the outer JarFile for one answered null while getEntryName() was not null and
-        // getInputStream() worked: four accessors that no longer described the same entry, and a
-        // NullPointerException for the usual conn.getJarEntry().isDirectory() way of classifying a URL.
+        // inside it. The layer's view does, from the record the index synthesised, so that getEntryName(),
+        // getJarFile() and getJarEntry() describe the same entry and conn.getJarEntry().isDirectory(), the
+        // usual way of classifying a URL, works.
         URL url = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "weird/");
         JarURLConnection connection = (JarURLConnection) url.openConnection();
         connection.setUseCaches(false);
 
-        assertEquals(IndexFormat.CLASSES_PREFIX + "weird/", connection.getEntryName());
+        assertEquals("weird/", connection.getEntryName());
         JarEntry entry = connection.getJarEntry();
         assertNotNull(entry, "a URL that resolves has to describe an entry");
         assertEquals(connection.getEntryName(), entry.getName());
         assertTrue(entry.isDirectory());
         assertEquals(0, entry.getSize());
         try (JarFile jar = connection.getJarFile()) {
-            assertNull(jar.getEntry(connection.getEntryName()),
-                    "the outer archive really does not carry this entry, which is the whole point");
+            assertNotNull(jar.getEntry(connection.getEntryName()), "the layer's view describes the directory");
         }
+        assertNull(Handlers.outerJarFile().getEntry(IndexFormat.CLASSES_PREFIX + "weird/"),
+                "the outer archive really does not carry this entry");
         try (InputStream in = connection.getInputStream()) {
             assertEquals(0, in.readAllBytes().length);
         }
     }
 
     @Test
-    void describesAnApplicationLayerFileFromItsIndexRecord() throws IOException {
+    void describesAnApplicationLayerFileAsAnEntryOfTheLayer() throws IOException {
         JarURLConnection connection =
                 (JarURLConnection) LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")
                         .openConnection();
         connection.setUseCaches(false);
 
         JarEntry entry = connection.getJarEntry();
-        assertEquals(IndexFormat.CLASSES_PREFIX + "app.txt", entry.getName());
+        assertEquals("app.txt", entry.getName());
         assertEquals(APP_TEXT.length, entry.getSize());
         assertFalse(entry.isDirectory());
         assertEquals(DOS_TIME_MILLIS, entry.getTime());
+    }
+
+    /**
+     * The application layer's root, the code source of every application class, is the root of a jar: like
+     * {@code jar:file:/plain.jar!/} it names no entry, and its jar lists the layer from the class path root,
+     * which is what a Reflections-style scanner walks. It still opens, as an empty stream, the way the
+     * directory code source of a {@code URLClassLoader} does.
+     */
+    @Test
+    void describesTheApplicationLayerRootAsTheRootOfAJar() throws IOException {
+        JarURLConnection connection =
+                (JarURLConnection) LauncherTestAccess.codeSourceUrlFor(IndexFormat.APPLICATION_JAR_ID).openConnection();
+        connection.setUseCaches(false);
+
+        assertNull(connection.getEntryName());
+        assertNull(connection.getJarEntry());
+        assertEquals("jar:" + fileUrl() + "!/MICRONAUT-INF/classes", connection.getJarFileURL().toString());
+        assertEquals("x-java/jar", connection.getContentType());
+        assertEquals(0, connection.getContentLengthLong());
+        try (InputStream in = connection.getInputStream()) {
+            assertEquals(0, in.readAllBytes().length);
+        }
+
+        JarFile jar = connection.getJarFile();
+        assertSame(Handlers.nestedJarFile(IndexFormat.APPLICATION_JAR_ID), jar);
+        assertEquals(archive.getPath() + "!/MICRONAUT-INF/classes", jar.getName());
+        List<String> names = new ArrayList<>();
+        for (JarEntry entry : Collections.list(jar.entries())) {
+            names.add(entry.getName());
+        }
+        assertEquals(List.of("app.txt", AWKWARD, BANG, SERVICE, "META-INF/MANIFEST.MF", "corrupt-stored.txt"),
+                names, "the layer's physical entries, named from the class path root");
+        assertEquals(names.size(), jar.size());
+        assertEquals("Application", connection.getMainAttributes().getValue("Implementation-Title"),
+                "the layer's own manifest, as a plain jar of the application would report");
+    }
+
+    /**
+     * {@code getJarFileURL()}, {@code "!/"} and {@code getEntryName()} spell a URL that opens the same entry,
+     * as they do for a plain jar and for a nested jar of this archive.
+     */
+    @Test
+    void opensAnApplicationEntryThroughTheJarUrlItsConnectionReports() throws Exception {
+        for (String name : List.of("app.txt", AWKWARD, BANG)) {
+            JarURLConnection connection =
+                    (JarURLConnection) LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, name).openConnection();
+            URL jarUrl = connection.getJarFileURL();
+            String encoded = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, name).toString()
+                    .substring(("jar:" + fileUrl() + "!/" + IndexFormat.CLASSES_PREFIX).length());
+            URL spelled = URI.create(jarUrl + "!/" + encoded).toURL();
+
+            JarURLConnection reopened = (JarURLConnection) spelled.openConnection();
+            assertInstanceOf(RunnerJarURLConnection.class, reopened);
+            assertEquals(name, reopened.getEntryName());
+            assertEquals(jarUrl, reopened.getJarFileURL());
+            assertSame(connection.getJarFile(), reopened.getJarFile());
+            assertEquals(connection.getJarEntry().getName(), reopened.getJarEntry().getName());
+            assertArrayEquals(read(connection.getURL()), read(spelled));
+        }
+    }
+
+    /**
+     * What lies outside the jars of the index keeps the outer archive as its jar: the merged service directory
+     * at the root, the launcher's own entries, the manifest and a nested jar addressed as stored bytes. Its jar
+     * URL differs from the application layer's, so a scanner that caches a jar's entries by that URL keeps the
+     * two listings apart.
+     */
+    @Test
+    void keepsTheOuterArchiveForEntriesOutsideTheJarsOfTheIndex() throws IOException {
+        JarURLConnection application =
+                (JarURLConnection) LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt").openConnection();
+        for (String name : List.of(SERVICE, "outer.txt", "META-INF/MANIFEST.MF", DEPENDENCY)) {
+            JarURLConnection connection = (JarURLConnection) LauncherTestAccess.outerUrlFor(name).openConnection();
+            assertEquals(fileUrl(), connection.getJarFileURL().toString(), name);
+            assertEquals(name, connection.getEntryName());
+            assertSame(Handlers.outerJarFile(), connection.getJarFile(), name);
+            assertEquals(name, connection.getJarEntry().getName());
+            assertNotEquals(application.getJarFileURL(), connection.getJarFileURL(), name);
+        }
     }
 
     @Test
@@ -368,19 +449,29 @@ class HandlerTest {
         assertNull(connection.getCertificates());
     }
 
+    /**
+     * The application layer is described as a jar of its own, exactly as a nested jar is, so that a scanner
+     * that lists {@code getJarFile()} for the entries under the location it asked for finds them.
+     */
     @Test
     void agreesOnTheIdentityOfAnApplicationEntry() throws IOException {
         URL url = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt");
         JarURLConnection connection = (JarURLConnection) url.openConnection();
 
-        assertEquals(fileUrl(), connection.getJarFileURL().toString());
-        assertEquals(IndexFormat.CLASSES_PREFIX + "app.txt", connection.getEntryName());
+        StringBuilder jarUrl = new StringBuilder();
+        jarUrl.append("jar:").append(fileUrl()).append("!/MICRONAUT-INF/classes");
+        assertEquals(jarUrl.toString(), connection.getJarFileURL().toString());
+        assertEquals("app.txt", connection.getEntryName());
         JarFile jar = connection.getJarFile();
-        assertFalse(LauncherTestAccess.isNestedJarFile(jar));
-        assertEquals(archive.getPath(), jar.getName());
+        assertTrue(LauncherTestAccess.isNestedJarFile(jar), () -> jar.getClass().getName());
+        assertEquals(IndexFormat.APPLICATION_JAR_ID, LauncherTestAccess.jarId(jar));
+        assertEquals(archive.getPath() + "!/MICRONAUT-INF/classes", jar.getName());
         assertEquals(connection.getEntryName(), connection.getJarEntry().getName());
+        assertEquals(connection.getEntryName(), jar.getJarEntry(connection.getEntryName()).getName());
         assertArrayEquals(APP_TEXT, read(url));
-        assertEquals("io.micronaut.runner.Launcher", connection.getMainAttributes().getValue("Main-Class"));
+        assertEquals("Application", connection.getMainAttributes().getValue("Implementation-Title"),
+                "the application layer's own manifest");
+        assertNull(connection.getCertificates());
     }
 
     @Test
@@ -495,8 +586,7 @@ class HandlerTest {
 
     @Test
     void closingUncachedOuterJarDoesNotPoisonFreshConnection() throws IOException {
-        JarURLConnection first = (JarURLConnection) LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt")
-                .openConnection();
+        JarURLConnection first = (JarURLConnection) LauncherTestAccess.outerUrlFor("outer.txt").openConnection();
         first.setUseCaches(false);
         try (JarFile ignored = first.getJarFile()) {
             assertEquals(archive.getPath(), ignored.getName());
@@ -580,18 +670,21 @@ class HandlerTest {
     }
 
     /**
-     * The outer archive is one close-protected handle for every caller, so the scanner pattern of
-     * {@code setUseCaches(false)}, {@code getJarFile()} and {@code close()} neither opens a jar per call nor
-     * breaks a later read. The descriptor count is compared only where the platform reports it.
+     * The application layer and the outer archive are each one close-protected handle for every caller, so
+     * the scanner pattern of {@code setUseCaches(false)}, {@code getJarFile()} and {@code close()} neither
+     * opens a jar per call nor breaks a later read. The descriptor count is compared only where the platform
+     * reports it.
      */
     @Test
     void getJarFileIsOneCloseProtectedHandleWhateverTheCacheFlag() throws IOException {
         URL application = LauncherTestAccess.urlFor(IndexFormat.APPLICATION_JAR_ID, "app.txt");
         URL manifest = LauncherTestAccess.outerUrlFor("META-INF/MANIFEST.MF");
-        JarFile shared = Handlers.outerJarFile();
+        JarFile applicationJar = Handlers.nestedJarFile(IndexFormat.APPLICATION_JAR_ID);
+        JarFile outerJar = Handlers.outerJarFile();
         boolean previous = URLConnection.getDefaultUseCaches("jar");
         try {
             for (URL url : List.of(application, manifest)) {
+                JarFile shared = url == application ? applicationJar : outerJar;
                 for (boolean caches : List.of(true, false)) {
                     JarURLConnection connection = (JarURLConnection) url.openConnection();
                     connection.setUseCaches(caches);
@@ -613,10 +706,10 @@ class HandlerTest {
             scanned.setUseCaches(false);
             ((JarURLConnection) scanned).getJarFile().close();
 
-            URLConnection read = manifest.openConnection();
+            URLConnection read = (i % 2 == 0 ? application : manifest).openConnection();
             read.setUseCaches(false);
             try (InputStream in = read.getInputStream()) {
-                assertArrayEquals(OUTER_MANIFEST, in.readAllBytes(), "cycle " + i);
+                assertArrayEquals(i % 2 == 0 ? APP_TEXT : OUTER_MANIFEST, in.readAllBytes(), "cycle " + i);
             }
         }
         long after = openFileDescriptorCount();
@@ -632,10 +725,17 @@ class HandlerTest {
         assertEquals(1, LauncherTestAccess.jarId(jar));
         assertSame(jar, Handlers.nestedJarFile(1));
         assertNotNull(jar.getJarEntry("a/B.class"));
+        JarFile application = Handlers.nestedJarFile(IndexFormat.APPLICATION_JAR_ID);
+        assertEquals(IndexFormat.APPLICATION_JAR_ID, LauncherTestAccess.jarId(application));
+        assertSame(application, Handlers.nestedJarFile(IndexFormat.APPLICATION_JAR_ID));
+        assertNotNull(application.getJarEntry("app.txt"));
+        assertThrows(IOException.class, () -> Handlers.nestedJarFile(-1));
+        assertThrows(IOException.class, () -> Handlers.nestedJarFile(index.jarCount()));
 
         Handlers.unregister();
 
         assertThrows(IOException.class, () -> Handlers.nestedJarFile(1));
+        assertThrows(IOException.class, () -> Handlers.nestedJarFile(IndexFormat.APPLICATION_JAR_ID));
     }
 
     @Test

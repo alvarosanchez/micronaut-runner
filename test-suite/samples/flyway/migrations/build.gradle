@@ -1,0 +1,7 @@
+plugins {
+    id 'java-library'
+}
+
+// Resources only: a migration that a library contributes to the application's db/migration location.
+version = '0.1'
+group = 'com.example'
