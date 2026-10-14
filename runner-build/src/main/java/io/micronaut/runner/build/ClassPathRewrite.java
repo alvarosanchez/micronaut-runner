@@ -51,9 +51,7 @@ import java.util.TreeSet;
  * <p>{@code RunnerClassLoader} asks its parent first only for the packages of the boot and the platform loaders'
  * modules, so the packages of the boot-layer modules that the application class loader defines, such as
  * {@code jdk.compiler}'s, are not the JDK's to a runner jar: Runner names them as foreign packages too, read from the
- * JDK that runs the build. micronaut-aot 3.2.0-M1 still reads a package of the JDK from the JDK whatever the foreign
- * packages say, so until it honours them there, such a site is rewritten when the class path holds no class of its
- * package (#250).</p>
+ * JDK that runs the build.</p>
  */
 final class ClassPathRewrite {
 

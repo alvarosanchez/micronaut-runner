@@ -16,7 +16,6 @@
 package io.micronaut.runner.build;
 
 import io.micronaut.runner.IndexFormat;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -242,10 +241,8 @@ class LambdaDesugaringTest {
 
     /**
      * With the default platform parent, a site that names a class of {@code jdk.compiler} cannot link in a runner
-     * jar, and its capture fails where the generated class's would not, so it stays. micronaut-aot 3.2.0-M1 reads a
-     * package of the JDK from the JDK whatever the foreign packages say, and rewrites it.
+     * jar, and its capture fails where the generated class's would not, so it stays.
      */
-    @Disabled("Waits for micronaut-aot to keep the sites of a foreign package of the JDK (#250)")
     @Test
     void anOwnerInAPackageOfTheApplicationLoadersModulesKeepsItsSite() throws Exception {
         Map<String, byte[]> compiled = compile("compiler", 25, Map.of("app/Compiler.java", """

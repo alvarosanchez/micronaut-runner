@@ -84,6 +84,13 @@
             <releases><enabled>true</enabled></releases>
             <snapshots><enabled>false</enabled></snapshots>
         </pluginRepository>
+        <!-- The plugin's micronaut-aot 3.2.0-SNAPSHOT until the next micronaut-aot release (#263). -->
+        <pluginRepository>
+            <id>central-snapshots</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+            <releases><enabled>false</enabled></releases>
+            <snapshots><enabled>true</enabled></snapshots>
+        </pluginRepository>
     </pluginRepositories>
 
     <dependencyManagement>

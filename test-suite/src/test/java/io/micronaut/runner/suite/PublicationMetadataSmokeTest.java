@@ -88,6 +88,11 @@ class PublicationMetadataSmokeTest {
     /** The dependencies of runner-build from outside this build, at the version of the catalog. */
     private static final String AOT_BYTECODE = "io.micronaut.aot:micronaut-aot-bytecode";
     private static final String AOT_LOGBACK = "io.micronaut.aot:micronaut-aot-logback";
+    /**
+     * The catalog's micronaut-aot version, the one {@code -SNAPSHOT} the publications may name until the next
+     * micronaut-aot release (#263).
+     */
+    private static final String AOT_VERSION = System.getProperty("runner.smoke.aotVersion");
     private static final Map<String, String> CHECKSUMS = Map.of(
             "md5", "MD5",
             "sha1", "SHA-1",
@@ -103,6 +108,8 @@ class PublicationMetadataSmokeTest {
                 + ":test-suite:publicationSmokeTest");
         assertFalse(VERSION.endsWith("-SNAPSHOT"), () -> "runner.smoke.version must be release-shaped, not "
                 + VERSION + "; run with -PprojectVersion=1.0.0-PUBLICATION-SMOKE");
+        assertNotNull(AOT_VERSION, "runner.smoke.aotVersion is not set; run this test through "
+                + ":test-suite:publicationSmokeTest");
         repository = requiredPathProperty("runner.smoke.repo");
         assertTrue(Files.isDirectory(artifactDirectory(repository, GROUP, BOM)),
                 () -> "the main build published nothing at " + VERSION + " into " + repository);
@@ -395,7 +402,7 @@ class PublicationMetadataSmokeTest {
             for (Path file : files.filter(Files::isRegularFile).toList()) {
                 String name = file.getFileName().toString();
                 if (name.endsWith(".pom") || name.endsWith(".module") || name.equals("maven-metadata.xml")) {
-                    String text = Files.readString(file, StandardCharsets.UTF_8);
+                    String text = Files.readString(file, StandardCharsets.UTF_8).replace(AOT_VERSION, "");
                     if (text.contains("-DUMMY") || text.contains("-SNAPSHOT")) {
                         offenders.add(file);
                     }
