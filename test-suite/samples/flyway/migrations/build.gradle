@@ -5,3 +5,9 @@ plugins {
 // Resources only: a migration that a library contributes to the application's db/migration location.
 version = '0.1'
 group = 'com.example'
+
+// The application's target, so that a newer build JDK does not make this jar look incompatible with it.
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
