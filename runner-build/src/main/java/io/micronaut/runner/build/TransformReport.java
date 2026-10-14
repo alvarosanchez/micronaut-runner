@@ -26,7 +26,9 @@ import java.util.Objects;
  * {@link #unchanged()} and {@link #fallbacks()} add up to the number of classes it considered. A fallback is
  * a class the transform would have rewritten but did not, because the transform failed on it or its rewritten
  * bytes verified worse than the original; the class is then nested as the other transforms left it, and the
- * build log says why. A class a transform generates is not counted: it only lowers {@link #bytesSaved()}.</p>
+ * build log says why. A class a transform generates is not counted: it only lowers {@link #bytesSaved()}. For
+ * {@code desugarLambdas}, which Micronaut AOT's class path transform runs, the unit that falls back is a nest: a
+ * nest that fell back counts as one fallback, and its other classes as unchanged.</p>
  *
  * <p>Package-private, like the result accessor that returns it: the transforms are
  * {@link RunnerJarOption.Exposure#PASSTHROUGH PASSTHROUGH} options, and a report becomes public API only with the
@@ -102,7 +104,8 @@ final class TransformReport {
 
     /**
      * How many bytes smaller the classes the transform rewrote became, together, less the size of the classes
-     * it generated. It is negative when the classes grew, as they do when lambdas are desugared.
+     * it generated. It is negative when the classes grew, as they do when lambdas are desugared. A class that both
+     * {@code desugarLambdas} and {@code stripLocalVariables} rewrote counts toward {@code stripLocalVariables}.
      *
      * @return the bytes saved
      */

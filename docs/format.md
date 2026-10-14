@@ -13,7 +13,7 @@ offset.
 | `META-INF/MANIFEST.MF` | Written first. `Main-Class` is `io.micronaut.runner.Launcher`. `Micronaut-Runner-Format` carries the format version, `Micronaut-Runner-Start-Class` the application main class, for information only. |
 | `MICRONAUT-INF/index.bin` | Written second, so the launcher finds it after reading only a couple of central directory records. |
 | `io/micronaut/runner/**.class` | The launcher. Only class files are copied from the launcher library; its manifest and Maven metadata are not. |
-| `MICRONAUT-INF/transforms.txt` | Present only when a build-time transform changed a class or recorded a fallback. Tab-separated lines: the first names the Runner version, then one line per nested JAR and transform with its counts, then one `lambdas` line per JAR, or for the application layer, with the lambda call sites rewritten and left. It is not indexed, the launcher never reads it at run time, and `extract` ignores it; `inspect` prints it. |
+| `MICRONAUT-INF/transforms.txt` | Present only when a build-time transform changed a class or recorded a fallback. Tab-separated lines: the first names the Runner version, then one line per nested JAR and transform with its counts (for `desugarLambdas`, a nest that fell back counts as one fallback), then one `lambdas` line per JAR, or for the application layer, with the lambda call sites rewritten and left, in total and by reason. It is not indexed, the launcher never reads it at run time, and `extract` ignores it; `inspect` prints it. |
 | `META-INF/micronaut/**` | The Micronaut bean metadata of the application and of every dependency, merged and de-duplicated, with explicit directory entries. See [Merged Micronaut metadata](#merged-micronaut-metadata). |
 | `MICRONAUT-INF/classes/` | An explicit directory entry for the application layer, so that the `CodeSource` location of every application class names something the archive really carries. |
 | `MICRONAUT-INF/classes/**` | The application's own classes and resources, stored exploded. This is "jar 0"; an entry's logical name is its path with this prefix removed. Directories inside the layer are not stored; the index carries a synthetic record for each one instead. |
@@ -26,15 +26,18 @@ With `STORED` and `HYBRID` compression, each dependency is re-packed:
 - Its own entries are written `STORED` (`HYBRID`: only the startup classes and resources; see below).
 - Signature files (`META-INF/*.SF`, `*.DSA`, `*.RSA`, `*.EC`, `META-INF/SIG-*`) and `META-INF/INDEX.LIST` are dropped.
 - Manifests are never rewritten, so package metadata and sealing survive.
-- The build-time class transform runs: lambda desugaring, which adds a generated `$$Lambda$R<n>` class after each
-  host. Rewritten entries get new CRC-32 values. The application layer's lambdas are desugared the same way.
+- The build-time class transforms run. Lambda desugaring is Micronaut AOT's class path transform, which runs once
+  over the application layer and every dependency before they are re-packed: a dependency it rewrote is re-packed
+  from its copy, which holds each generated `$$Lambda$R<n>` class right after its host (the sites of one host that
+  share their functional interface, interface method and captured types can share one class). Rewritten entries get
+  new CRC-32 values. The application layer's lambdas are desugared by the same run.
 
 `PRESERVE` copies each dependency as it is, or its stripped copy (below), and desugars nothing.
 
-With `stripLocalVariables`, Micronaut AOT's local-variable stripping (`micronaut-aot-bytecode`) rewrites the classes of
-every dependency that is not a project module before it is staged, in every mode: a dependency with a stripped class
-is re-packed, or in `PRESERVE` copied, from its rewritten copy. That copy keeps every entry's order, times and
-compression method. A signed JAR, and a JAR that holds an entry name more than once, are not stripped.
+With `stripLocalVariables`, the same run of Micronaut AOT's class path transform (`micronaut-aot-bytecode`) also strips
+the classes of every dependency that is not a project module before it is staged, in every mode: a dependency with a
+stripped class is re-packed, or in `PRESERVE` copied, from its rewritten copy. That copy keeps every entry's order,
+times and compression method. A signed JAR, and a JAR that holds an entry name more than once, are not stripped.
 
 With a startup class list (`startupClasses`, which the recorded startup profile provides), re-packing also writes
 each nested JAR's startup classes first, in the order they were recorded, after `META-INF/` and the manifest. Nested

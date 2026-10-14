@@ -165,8 +165,9 @@ public enum RunnerJarOption {
     /**
      * Whether to replace lambda and method-reference call sites with classes generated when the application is
      * packaged, so that they are not linked at every start and a JDK AOT cache can hold them. On by default; it
-     * applies to {@link Compression#STORED} and {@link Compression#HYBRID}. A rewritten lambda's class is not
-     * hidden, has a stable name and adds one frame to stack traces.
+     * applies to {@link Compression#STORED} and {@link Compression#HYBRID}. Micronaut AOT's class path transform
+     * rewrites the sites. A rewritten lambda's class is not hidden, has a stable name and adds one frame to stack
+     * traces.
      */
     DESUGAR_LAMBDAS("desugarLambdas", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0");
 

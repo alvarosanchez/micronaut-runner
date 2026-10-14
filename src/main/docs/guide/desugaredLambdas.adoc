@@ -1,11 +1,14 @@
 For each lambda and method reference, the JDK normally creates a class the first time the code runs, at every start.
-Runner generates those classes when it packages the application instead, in your classes and in the dependencies, so
-that startup does not create them and a <<jdkAotCache,JDK AOT cache>> can store them like any other class.
+Runner has them generated when it packages the application instead, in your classes and in the dependencies, so that
+startup does not create them and a <<jdkAotCache,JDK AOT cache>> can store them like any other class. The step is
+https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#classPathTransformDesugar[Micronaut AOT's lambda
+desugaring], which the build runs itself: it needs no Micronaut AOT optimizer run.
 
 What you may notice:
 
 * Each call of a lambda adds one frame to stack traces, `pass:c[<Host>$$Lambda$R<n>.<method>]`, between the caller
-and the lambda's body. The generated class keeps `pass:c[$$Lambda]` in its name.
+and the lambda's body. The generated class keeps `pass:c[$$Lambda]` in its name, and the frame names the source file of
+the class that holds the lambda. Several lambdas of one class can show the same generated class in stack traces.
 * The rewritten classes have new bytes, so software composition analysis tools may report them as modified.
 * The archive is byte-for-byte reproducible only when it is built with the same JDK build.
 

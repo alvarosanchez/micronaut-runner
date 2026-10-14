@@ -657,8 +657,8 @@ class RunnerJarBuilderTest {
                 .map(Dependency::of)
                 .toList();
 
-        // A startup class list in every mode: STORED orders the listed classes first, HYBRID also deflates the
-        // others, afresh where a transform rewrote them, and PRESERVE ignores it.
+        // A startup class list in every mode: STORED orders the listed classes first, HYBRID also keeps the others
+        // deflated, and PRESERVE ignores it.
         Path list = startupClasses("com.example.caller.Caller\ncom.example.dep.Dep\ncom.example.debug.Debug\n");
 
         for (Compression compression : Compression.values()) {
@@ -692,7 +692,7 @@ class RunnerJarBuilderTest {
                 assertTrue(report.rewritten() > 0, parallelResult.transforms()::toString);
             }
             if (compression != Compression.PRESERVE) {
-                assertEquals(List.of(RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName(), LambdaDesugarer.NAME),
+                assertEquals(List.of(ClassPathRewrite.DESUGAR, ClassPathRewrite.STRIP),
                         parallelResult.transforms().stream().map(TransformReport::step).toList(),
                         "the steps in the order they run");
                 try (RunnerJarArchive reader = RunnerJarArchive.open(parallel)) {
@@ -2985,7 +2985,7 @@ class RunnerJarBuilderTest {
         Path stripped = output();
         Path kept = output();
 
-        // Stripping on its own: LambdaDesugarerTest covers it together with desugaring.
+        // Stripping on its own: LambdaDesugaringTest covers it together with desugaring.
         LogbackBuild build = logbackBuild(logbackSpec(stripped, resources, realLogback()).desugarLambdas(false)
                 .stripLocalVariables(true));
         LogbackBuild control = logbackBuild(logbackSpec(kept, resources, realLogback()).desugarLambdas(false));
@@ -3575,8 +3575,10 @@ class RunnerJarBuilderTest {
             assertTrue(hasLocalVariableTable(zip.getInputStream(zip.getEntry(IndexFormat.CLASSES_PREFIX
                     + "hyapp/Debugged.class")).readAllBytes()), "the application layer keeps its tables");
         }
-        TransformReport strip = result.transforms().get(0);
-        assertEquals(RunnerJarOption.STRIP_LOCAL_VARIABLES.optionName(), strip.step());
+        List<String> steps = result.transforms().stream().map(TransformReport::step).toList();
+        assertEquals(compression == Compression.PRESERVE ? List.of(ClassPathRewrite.STRIP)
+                : List.of(ClassPathRewrite.DESUGAR, ClassPathRewrite.STRIP), steps, "the steps in the order they run");
+        TransformReport strip = result.transforms().get(steps.size() - 1);
         assertEquals(2, strip.rewritten(), strip::toString);
         assertEquals(5, strip.classes(), "the classes of hy-lib.jar only: " + strip);
         assertTrue(logger.infos.contains("Stripped local-variable tables from 2 of 5 dependency classes in 1 jars ("

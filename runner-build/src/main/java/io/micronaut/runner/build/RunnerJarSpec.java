@@ -841,28 +841,31 @@ public final class RunnerJarSpec {
          * time, and a cache holds the class like any other. On the benchmark sample a start takes about a tenth less
          * time with this option than without it, with or without a JDK AOT cache.</p>
          *
-         * <p>What is rewritten, in dependency classes and in the application's own: a call site whose bootstrap
-         * is {@code LambdaMetafactory.metafactory}, when the generated class provably resolves what the site
-         * resolved. Its implementation must be a member the generated class can reach: one of the host's own
-         * nest, a non-private member of the host's package, or a public member of a public class, on the class
-         * path or in an exported package of the JDK. Everything else keeps its {@code invokedynamic}: a
-         * {@code super::method} reference or any other {@code invokespecial} reference that is not to a private
-         * method of the host, a caller-sensitive JDK method, a host or an owner that another jar
-         * shadows or that has a multi-release variant, every class of a signed jar and of
-         * {@code META-INF/versions/}, and every other bootstrap, such as string concatenation, records'
-         * {@code ObjectMethods} and serializable lambdas.</p>
+         * <p>The sites are rewritten by Micronaut AOT's class path transform, which runs over the application
+         * layer and every dependency at once. What is rewritten, in dependency classes and in the application's
+         * own: a call site whose bootstrap is {@code LambdaMetafactory.metafactory}, when the generated class
+         * provably resolves what the site resolved. Its implementation must be a member the generated class can
+         * reach: one of the host's own nest, a non-private member of the host's package, or a public member of a
+         * public class, on the class path or in an exported package of the JDK. Everything else keeps its
+         * {@code invokedynamic}: a {@code super::method} reference or any other {@code invokespecial} reference
+         * that is not to a private method of the host, a caller-sensitive JDK method, a host, an owner or a
+         * functional interface whose name two jars hold, that has a multi-release variant, or that is in the
+         * launcher's package {@code io.micronaut.runner}, a functional interface whose static initializer could
+         * reach the site first, every class of a signed jar and of {@code META-INF/versions/}, and every other
+         * bootstrap, such as string concatenation, records' {@code ObjectMethods} and serializable lambdas.</p>
          *
          * <p>What changes observably, for the rewritten lambdas:</p>
          * <ul>
          *     <li>{@code Class.isHidden()} is {@code false}, and the class has a stable name,
          *     {@code <Host>$$Lambda$R<n>}, that {@code Class.forName} finds;</li>
          *     <li>each call of the lambda adds one visible frame to stack traces and to {@code StackWalker},
-         *     where the hidden class's frame was hidden;</li>
-         *     <li>the jars and the application layer gain one {@code .class} resource per rewritten site, next
-         *     to its host, and a rewritten host and its nest host have new bytes and a new CRC-32;</li>
+         *     where the hidden class's frame was hidden; the frame names the host's source file;</li>
+         *     <li>the jars and the application layer gain {@code .class} resources next to the hosts, which the
+         *     sites of a host with the same functional interface, interface method and captured types can share,
+         *     and a rewritten host and its nest host have new bytes and a new CRC-32;</li>
          *     <li>a host below class-file version 55, which has no nestmates, gains one package-private static
-         *     synthetic method {@code $runner$lambda$<n>} per site whose implementation is private, visible to
-         *     {@code getDeclaredMethods()};</li>
+         *     synthetic method {@code $desugared$lambda$<n>} per site whose implementation is private, visible
+         *     to {@code getDeclaredMethods()};</li>
          *     <li>the archive is reproducible byte for byte only when it is built with the same JDK build.</li>
          * </ul>
          *
