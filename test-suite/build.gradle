@@ -71,6 +71,7 @@ tasks.register('publicationSmokeTest', Test) {
     jvmArgumentProviders.add(smoke)
     systemProperty 'runner.test.publicationSmokeDir',
             layout.buildDirectory.dir('publication-smoke').get().asFile.absolutePath
+    systemProperty 'runner.smoke.aotVersion', libs.versions.micronaut.aot.get()
 }
 
 gradle.taskGraph.whenReady { graph ->

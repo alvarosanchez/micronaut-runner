@@ -32,8 +32,8 @@ h2 = "2.4.240"
 # same version from the Micronaut platform BOM. Which versions are precompiled is micronaut-aot-logback's decision.
 logback = "1.5.37"
 # runner-build calls micronaut-aot-logback to precompile logback.xml and micronaut-aot-bytecode for desugarLambdas
-# and stripLocalVariables.
-micronaut-aot = "3.2.0-M1"
+# and stripLocalVariables. A snapshot from Central's snapshot repository until the next micronaut-aot release (#263).
+micronaut-aot = "3.2.0-SNAPSHOT"
 
 # Gradle plugins placed on the buildSrc classpath and applied by id from convention plugins
 gradle-plugin-publish = "2.2.1"

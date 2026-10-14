@@ -10,6 +10,14 @@ dependencyResolutionManagement {
                 includeGroup 'io.micronaut.aot'
             }
         }
+        // Their 3.2.0-SNAPSHOT until the next micronaut-aot release (#263).
+        maven {
+            url = uri('https://central.sonatype.com/repository/maven-snapshots/')
+            mavenContent {
+                snapshotsOnly()
+                includeGroup 'io.micronaut.aot'
+            }
+        }
     }
 }
 
