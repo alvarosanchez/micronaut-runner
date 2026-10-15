@@ -2,8 +2,9 @@ plugins {
     id "io.micronaut.build.internal.parent"
 }
 
-// micronaut-aot 3.2.0-SNAPSHOT, which runner-build depends on, until the next micronaut-aot release (#263): for the
-// projects that resolve runner-build and for the aggregated Javadoc of this one.
+// micronaut-aot 3.2.0-SNAPSHOT, which runner-build depends on, until the next micronaut-aot release, and the catalog's
+// micronaut-core 5.3.0-SNAPSHOT, which the service index needs, until micronaut-core 5.3.0 is released (#263): for the
+// projects that resolve runner-build or micronaut-core and for the aggregated Javadoc of this one.
 allprojects {
     repositories {
         maven {
@@ -11,6 +12,7 @@ allprojects {
             mavenContent {
                 snapshotsOnly()
                 includeGroup 'io.micronaut.aot'
+                includeGroup 'io.micronaut'
             }
         }
     }

@@ -26,7 +26,8 @@ tasks.register('verifyMetadata') {
         def version = providers.gradleProperty('runner.version').get()
         // The micronaut-aot modules' version is the catalog's, not Runner's.
         def (aot, runnerJars) = names.split { it.startsWith('micronaut-aot-') }
-        assert aot.collect { it.replaceFirst(/-\d.*/, '') } == ['micronaut-aot-bytecode', 'micronaut-aot-logback']
+        assert aot.collect { it.replaceFirst(/-\d.*/, '') } == ['micronaut-aot-bytecode', 'micronaut-aot-logback',
+                                                               'micronaut-aot-service-index']
         assert aot.every { it.endsWith('.jar') }
         assert runnerJars == [
                 "micronaut-runner-build-${version}.jar",

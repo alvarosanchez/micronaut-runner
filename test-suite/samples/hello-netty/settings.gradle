@@ -26,6 +26,15 @@ dependencyResolutionManagement {
     repositories {
         maven { url = uri(providers.gradleProperty('runner.repo').get()) }
         mavenCentral()
+        // The catalog's micronaut-core 5.3.0-SNAPSHOT, which this sample is aligned to, until micronaut-core 5.3.0 is
+        // released (#263).
+        maven {
+            url = uri('https://central.sonatype.com/repository/maven-snapshots/')
+            mavenContent {
+                snapshotsOnly()
+                includeGroup 'io.micronaut'
+            }
+        }
     }
     versionCatalogs {
         libs {

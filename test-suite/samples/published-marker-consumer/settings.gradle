@@ -4,7 +4,8 @@ pluginManagement {
             url = uri(providers.gradleProperty('runner.repo').get())
             metadataSources { mavenPom() }
         }
-        // runner-build's micronaut-aot-bytecode and micronaut-aot-logback, which Maven Central serves.
+        // runner-build's micronaut-aot-bytecode, micronaut-aot-logback and micronaut-aot-service-index, which Maven
+        // Central serves.
         mavenCentral {
             content {
                 includeGroup 'io.micronaut.aot'

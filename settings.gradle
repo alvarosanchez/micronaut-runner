@@ -11,6 +11,20 @@ plugins {
 
 rootProject.name = 'runner-parent'
 
+dependencyResolutionManagement {
+    repositories {
+        // The catalog's micronaut-core-bom 5.3.0-SNAPSHOT, which the mn catalog is imported from, until micronaut-core
+        // 5.3.0 is released (#263).
+        maven {
+            url = uri('https://central.sonatype.com/repository/maven-snapshots/')
+            mavenContent {
+                snapshotsOnly()
+                includeModule 'io.micronaut', 'micronaut-core-bom'
+            }
+        }
+    }
+}
+
 // Published modules. useStandardizedProjectNames renames them to :micronaut-runner-<dir>
 include 'runner-launcher'
 include 'runner-build'
