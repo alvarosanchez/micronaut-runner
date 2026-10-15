@@ -1,6 +1,8 @@
 At startup, Micronaut scans `META-INF/services/` and `META-INF/micronaut/` of every JAR to find its bean
 definitions, type converters and other services. A Runner JAR's class path is fixed when it is packaged, so the build
 generates micronaut-core's service index with Micronaut AOT, and Micronaut reads the index instead of scanning.
+https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#serviceIndex[The Micronaut AOT guide] describes the
+index and its switches.
 
 This needs micronaut-core 5.3.0 or later. With an older micronaut-core, nothing is generated, and the build log says
 so.

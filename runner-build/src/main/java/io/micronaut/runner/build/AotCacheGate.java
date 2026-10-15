@@ -50,8 +50,9 @@ import java.util.regex.Pattern;
  *     {@code TrainingDriver}, reaches readiness and serves the workload.</li>
  *     <li><b>Coverage.</b> From that launch's class-load log, up to the end of its workload: at least
  *     {@link AotCacheSettings#minCoverage()} of the classes come from the cache, and every {@code io.micronaut}
- *     class that does not is a lambda proxy, the class of a pattern {@code switch} over types, or one the
- *     recording named as skipped because it failed verification or is a JFR event class. With the settings'
+ *     class that does not is a hidden class the JDK spun at run time (a lambda proxy, the class of a pattern
+ *     {@code switch}, a record's equality specializer), or one the recording named as skipped because it failed
+ *     verification or is a JFR event class. With the settings'
  *     {@code enforceCoverage} off, the numbers are only reported.</li>
  * </ol>
  *
@@ -449,8 +450,8 @@ public final class AotCacheGate {
          * @param micronautLoaded       the {@code io.micronaut} classes it loaded
          * @param micronautFromCache    how many of them came from the cache
          * @param micronautNotFromCache the names of the others, in load order
-         * @param unexpected            those of them that are neither lambda proxies nor the classes of pattern
-         *                              {@code switch}es, and were not skipped by the recording
+         * @param unexpected            those of them that are not hidden classes and were not skipped by the
+         *                              recording
          * @param runtimeLambdas        the lambda proxy classes it spun instead of loading them from the cache
          */
         Coverage(int classesLoaded, int classesFromCache, int micronautLoaded, int micronautFromCache,

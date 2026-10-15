@@ -243,16 +243,6 @@ class MavenBasicSampleTest {
 
     /** Runs Maven against the sample on the build's own micronaut-core, capturing everything it prints. */
     private static int maven(Path projectDirectory, StringBuilder log, String... goals) throws Exception {
-        return mavenOn(Samples.MICRONAUT_VERSION, projectDirectory, log, goals);
-    }
-
-    /**
-     * Runs Maven against the sample, capturing everything it prints.
-     *
-     * @param micronautCore the micronaut-core the sample is built and run on, or {@code null} for its own
-     */
-    private static int mavenOn(String micronautCore, Path projectDirectory, StringBuilder log, String... goals)
-            throws Exception {
         Path localRepository = Samples.mavenLocalRepository();
         Files.createDirectories(localRepository);
         Samples.deleteRecursively(localRepository.resolve(RUNNER_GROUP_PATH));
@@ -263,8 +253,8 @@ class MavenBasicSampleTest {
         if (Samples.MICRONAUT_PLATFORM_VERSION != null) {
             properties.setProperty("micronaut.platform.version", Samples.MICRONAUT_PLATFORM_VERSION);
         }
-        if (micronautCore != null) {
-            properties.setProperty("micronaut.core.version", micronautCore);
+        if (Samples.MICRONAUT_VERSION != null) {
+            properties.setProperty("micronaut.core.version", Samples.MICRONAUT_VERSION);
         }
 
         InvocationRequest request = new DefaultInvocationRequest()

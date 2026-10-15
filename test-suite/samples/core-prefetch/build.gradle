@@ -28,9 +28,8 @@ dependencies {
 
 // What this sample is for: micronaut-core's own bean definition prefetch, which micronaut-core 5.3.0 is the first
 // to have. Every module of the micronaut-core repository, the annotation processor included, is aligned to it. It
-// is a snapshot until 5.3.0 is released, and only this sample uses it. #252 stays open until then: move to 5.3.0
-// here and drop the snapshot repository from settings.gradle.
-def micronautCore = '5.3.0-SNAPSHOT'
+// is the version catalog's micronaut-core, a snapshot until 5.3.0 is released (#263); #252 stays open until then.
+def micronautCore = libs.versions.micronaut.asProvider().get()
 configurations.configureEach {
     resolutionStrategy.eachDependency { details ->
         if (details.requested.group == 'io.micronaut') {
