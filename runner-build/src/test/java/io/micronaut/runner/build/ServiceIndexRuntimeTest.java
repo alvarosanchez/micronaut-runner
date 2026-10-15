@@ -372,6 +372,15 @@ class ServiceIndexRuntimeTest {
                             }
                             System.out.println(api + " " + typeName + " = " + answer.replace('\\n', '|'));
                         }
+                        // Logs the index's check, as an application context does when it starts.
+                        try {
+                            Class.forName("io.micronaut.core.io.service.ServiceIndex").getMethod("logCheck")
+                                    .invoke(null);
+                        } catch (NoSuchMethodException e) {
+                            // a micronaut-core before #13954 logs on the first lookup that uses the index
+                        } catch (ReflectiveOperationException e) {
+                            throw new IllegalStateException(e);
+                        }
                     }
 
                     private static String names(List<?> values) {

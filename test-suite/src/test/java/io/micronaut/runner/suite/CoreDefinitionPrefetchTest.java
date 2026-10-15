@@ -99,10 +99,10 @@ class CoreDefinitionPrefetchTest {
 
     /**
      * A reference Micronaut skips is skipped either way: the application starts, serves and has the same bean
-     * definitions, and it prints the same lines, all of them in its {@code logback.xml} layout. A line that the
-     * prefetch's own work logs first, such as the service index's, may name a pool thread; the startup line is
-     * still logged by main. No logger was created on a pool thread before logging was configured, which would have
-     * left a {@code SubstituteLogger} behind.
+     * definitions, and it prints the same lines, all of them in its {@code logback.xml} layout and logged by the
+     * thread that logs them without the prefetch, except that the service index's line may name a pool thread. No
+     * logger was created on a pool thread before logging was configured, which would have left a
+     * {@code SubstituteLogger} behind.
      */
     @Test
     void aStartWithThePrefetchServesTheSameApplication() throws IOException {
@@ -254,9 +254,13 @@ class CoreDefinitionPrefetchTest {
         return found;
     }
 
-    /** The lines, with the thread a layout line names masked. */
+    /**
+     * The lines, with the thread of the service index's line masked: the prefetch's pool thread can make the first
+     * lookup. Once micronaut-core logs that line when the context starts (micronaut-core#13954), main logs it.
+     */
     private static List<String> withoutThreads(List<String> lines) {
-        return lines.stream().map(line -> THREAD.matcher(line).replaceFirst("$1[thread]")).toList();
+        return lines.stream().map(line -> line.contains(".ServiceIndex - ")
+                ? THREAD.matcher(line).replaceFirst("$1[thread]") : line).toList();
     }
 
     /** The lines a start printed, without colours, and with times, durations, ports and counters masked. */
