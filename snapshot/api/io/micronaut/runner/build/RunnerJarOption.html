@@ -244,8 +244,8 @@ run Joran at every start.</div>
 </div>
 <div class="col-first odd-row-color"><code><a href="#STATIC_SERVICES" class="member-name-link">STATIC_SERVICES</a></code></div>
 <div class="col-last odd-row-color">
-<div class="block">Whether to generate the static service table, classes that answer Micronaut's service lookups from names
-computed at packaging time, so that the application does not scan its class path for them when it starts.</div>
+<div class="block">Whether to generate micronaut-core's service index, so that the application does not scan its class path for
+Micronaut's services when it starts.</div>
 </div>
 <div class="col-first even-row-color"><code><a href="#STRIP_LOCAL_VARIABLES" class="member-name-link">STRIP_LOCAL_VARIABLES</a></code></div>
 <div class="col-last even-row-color">
@@ -467,10 +467,10 @@ the build, with a warning, when a library that reads local-variable tables at ru
 <h3>STATIC_SERVICES</h3>
 <div class="horizontal-scroll">
 <div class="member-signature"><span class="modifiers">public static final</span>&nbsp;<span class="return-type"><a href="RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></span>&nbsp;<span class="element-name">STATIC_SERVICES</span></div>
-<div class="block">Whether to generate the static service table, classes that answer Micronaut's service lookups from names
-computed at packaging time, so that the application does not scan its class path for them when it starts.
-On by default. The packager generates one only for micronaut-core <code>[5.1.10, 5.2)</code>, and logs why
-otherwise; <code>-Dmicronaut.runner.static-services=false</code> turns it off at run time.</div>
+<div class="block">Whether to generate micronaut-core's service index, so that the application does not scan its class path for
+Micronaut's services when it starts. On by default. It needs micronaut-core 5.3.0 or later, and the build log
+says why no index was generated otherwise; <code>-Dmicronaut.service.index.enabled=false</code> turns it off at
+run time.</div>
 </div>
 </section>
 </li>

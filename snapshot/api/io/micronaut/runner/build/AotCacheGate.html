@@ -88,9 +88,10 @@ loadScripts(document, 'script');</script>
     <code>TrainingDriver</code>, reaches readiness and serves the workload.</li>
     <li><b>Coverage.</b> From that launch's class-load log, up to the end of its workload: at least
     <a href="AotCacheSettings.html#minCoverage()"><code>AotCacheSettings.minCoverage()</code></a> of the classes come from the cache, and every <code>io.micronaut</code>
-    class that does not is a lambda proxy or one the recording named as skipped because it failed
-    verification or is a JFR event class. With the settings' <code>enforceCoverage</code> off, the numbers are only
-    reported.</li>
+    class that does not is a hidden class the JDK spun at run time (a lambda proxy, the class of a pattern
+    <code>switch</code>, a record's equality specializer), or one the recording named as skipped because it failed
+    verification or is a JFR event class. With the settings'
+    <code>enforceCoverage</code> off, the numbers are only reported.</li>
 </ol>
 
 <p>Internal: <a href="#coverage(java.util.List,java.util.List)"><code>coverage(List, List)</code></a> is public only for Runner's own benchmarks, which count what a cached

@@ -321,7 +321,7 @@ Shadow and Shade (<a href="#quickStart">Quick Start</a>).</p>
 <p>The index is built when the archive is packaged, so nothing is scanned at startup. The launcher maps the archive
 into memory once and extracts nothing. By default, dependencies are stored uncompressed, so classes are defined
 straight from the archive. Packaging also does once what a shaded JAR repeats at every start: it generates the
-classes for lambdas, precomputes Micronaut&#8217;s service lookups on micronaut-core 5.1, and compiles <code>logback.xml</code>
+classes for lambdas, precomputes Micronaut&#8217;s service lookups on micronaut-core 5.3 and later, and compiles <code>logback.xml</code>
 (<a href="#whatChanges">What Changes for Your Application</a>). With the default settings, building a Runner JAR takes less time
 than building a Shadow JAR of the same application, build-time transforms included. The archive is larger on disk
 than a shaded JAR, but smaller compressed.</p>
@@ -400,8 +400,7 @@ Runner&#8217;s version comes with them: you add no Runner dependency to your bui
 <p>Logback precompilation needs Logback from 1.5.37 up to, but not including, 1.6.</p>
 </li>
 <li>
-<p>The precomputed service lookups need micronaut-core from 5.1.10 up to, but not including, 5.2, as in the Micronaut
-platform 5.1. With a later micronaut-core, they do nothing.</p>
+<p>The precomputed service lookups need micronaut-core 5.3.0 or later. With an older micronaut-core, they do nothing.</p>
 </li>
 <li>
 <p>The JDK AOT cache works on JDK 25 and later. On JDK 27 and later, creating a cache needs two extra flags
@@ -701,9 +700,8 @@ your versions support it, and can be turned off. The build log says what each st
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>desugarLambdas</code></p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#staticServices">Precomputed service lookups</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Only with micronaut-core 5.1.10 up to 5.2 (Micronaut platform 5.1). With micronaut-core 5.2 or later it does
-nothing, and the build log says so.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#staticServices">Precomputed service lookups</a>, from Micronaut AOT</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">On, with micronaut-core 5.3.0 or later</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">A service provider added after packaging is not seen.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>staticServices</code></p></td>
 </tr>
@@ -909,13 +907,14 @@ how many were left and why (<a href="#quickStartCheck">Checking the Archive</a>)
 
 <div class="paragraph">
 <p>At startup, Micronaut scans <code>META-INF/services/</code> and <code>META-INF/micronaut/</code> of every JAR to find its bean
-definitions, type converters and other services. A Runner JAR&#8217;s class path is fixed when it is packaged, so Runner
-precomputes the result of that scan, in generated classes under <code>io.micronaut.runner.generated</code>, and Micronaut reads
-them instead of scanning.</p>
+definitions, type converters and other services. A Runner JAR&#8217;s class path is fixed when it is packaged, so the build
+generates micronaut-core&#8217;s service index with Micronaut AOT, and Micronaut reads the index instead of scanning.
+<a href="https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#serviceIndex">The Micronaut AOT guide</a> describes the
+index and its switches.</p>
 </div>
 <div class="paragraph">
-<p>Runner does this for micronaut-core from 5.1.10 up to, but not including, 5.2, as in the Micronaut platform 5.1. With
-any other version, including micronaut-core 5.2 and later, it does nothing, and the build log says so.</p>
+<p>This needs micronaut-core 5.3.0 or later. With an older micronaut-core, nothing is generated, and the build log says
+so.</p>
 </div>
 <div class="paragraph">
 <p>What changes:</p>
@@ -924,8 +923,8 @@ any other version, including micronaut-core 5.2 and later, it does nothing, and 
 <ul>
 <li>
 <p>A service provider added after packaging is not seen. When an agent or tool adds JARs to the class path, start
-with <code>-Dmicronaut.runner.parent=system</code>, which also turns the precomputed lookups off (<a href="#javaAgents">Java agents</a>).
-To let Micronaut scan in any other case, start with <code>-Dmicronaut.runner.static-services=false</code>.</p>
+with <code>-Dmicronaut.runner.parent=system</code>, which also turns the index off (<a href="#javaAgents">Java agents</a>). To let
+Micronaut scan in any other case, start with <code>-Dmicronaut.service.index.enabled=false</code>.</p>
 </li>
 <li>
 <p><code>java.util.ServiceLoader</code> and <code>ClassLoader.getResources</code> are unchanged.</p>
@@ -933,9 +932,12 @@ To let Micronaut scan in any other case, start with <code>-Dmicronaut.runner.sta
 </ul>
 </div>
 <div class="paragraph">
-<p>To check the precomputed lookups against Micronaut&#8217;s own scan, start once with
-<code>-Dmicronaut.runner.static-services.verify=true</code>. A match prints a <code>static services verified</code> line to standard error.
-A mismatch stops the start with a message that names the differences.</p>
+<p>When Micronaut uses the index, it logs one <code>INFO</code> line that says so. To check the index against a scan of the class
+path, start once with <code>-Dmicronaut.service.index.validate=true</code>. A mismatch stops the start with a message that names
+the differences.</p>
+</div>
+<div class="paragraph">
+<p>The extracted layout keeps the index (<a href="#extract">Extracting to a Directory</a>).</p>
 </div>
 <div class="paragraph">
 <p>To turn it off, set the <code>staticServices</code> option to <code>false</code> (<a href="#whatChanges">What Changes for Your Application</a>).</p>
@@ -1536,7 +1538,8 @@ optimizer run: the Micronaut Gradle and Maven plugins apply it themselves, and a
 <a href="https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#classPathTransform">its class path transform</a>, which
 Runner runs itself: it generates the classes of lambdas by default
 (<a href="#desugaredLambdas">Lambdas Generated at Build Time</a>), and strips the dependencies' local-variable tables when you
-turn it on (<a href="#localVariableTables">Opt-in: Dependency Local-Variable Names</a>).</p>
+turn it on (<a href="#localVariableTables">Opt-in: Dependency Local-Variable Names</a>). A Runner JAR also gets micronaut-core&#8217;s
+service index from Micronaut AOT (<a href="#staticServices">Precomputed Service Lookups</a>).</p>
 </div>
 <div class="paragraph">
 <p>Runner adds what its archive and its launcher make possible: the index, the class loader and the startup profile, and
@@ -1825,7 +1828,7 @@ time.</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>options.put('staticServices', 'false')</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.staticServices</code>, or <code>&lt;staticServices&gt;</code> in <code>&lt;runnerOptions&gt;</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Precomputes Micronaut&#8217;s service lookups (<a href="#staticServices">Precomputed Service Lookups</a>).</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Generates micronaut-core&#8217;s service index (<a href="#staticServices">Precomputed Service Lookups</a>).</p></td>
 </tr>
 </tbody>
 </table>
@@ -2152,10 +2155,10 @@ your application, and when preloading finished. Use it to tell launcher time fro
 <td class="tableblock halign-left valign-top"><p class="tableblock">With <code>true</code>, check every entry&#8217;s checksum as it is read, when you suspect a corrupted archive.</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.static-services.verify</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.service.index.validate</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>false</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">With <code>true</code>, compare the precomputed service lookups with Micronaut&#8217;s own scan
-(<a href="#staticServices">Precomputed Service Lookups</a>).</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">With <code>true</code>, compare the service index with a scan of the class path. It is micronaut-core&#8217;s switch, and works in
+every packaging (<a href="#staticServices">Precomputed Service Lookups</a>).</p></td>
 </tr>
 </tbody>
 </table>
@@ -2192,7 +2195,8 @@ wanted. Unset, the archive&#8217;s <code>archiveReads</code> option decides.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.parent</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>platform</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">With <code>system</code>, let an agent or tool on the real class path share types with the application
-(<a href="#javaAgents">Java agents</a>). It also turns off the precomputed service lookups.</p></td>
+(<a href="#javaAgents">Java agents</a>). It also turns off the precomputed service lookups, unless
+<code>micronaut.service.index.enabled</code> is set.</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.logback.precompiled</code></p></td>
@@ -2201,9 +2205,10 @@ wanted. Unset, the archive&#8217;s <code>archiveReads</code> option decides.</p>
 Micronaut AOT&#8217;s switch, and works in every packaging (<a href="#precompiledLogback">Precompiled Logback Configuration</a>).</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.static-services</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.service.index.enabled</code></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>true</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">With <code>false</code>, let Micronaut scan for its services instead of using the precomputed lookups.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">With <code>false</code>, let Micronaut scan for its services instead of using the service index. It is micronaut-core&#8217;s switch,
+and works in every packaging (<a href="#staticServices">Precomputed Service Lookups</a>).</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.aot.training</code></p></td>
@@ -2241,7 +2246,7 @@ Micronaut AOT&#8217;s switch, and works in every packaging (<a href="#precompile
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>staticServices</code></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.runner.static-services</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>micronaut.service.index.enabled</code></p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><code>startupClasses</code>, or a committed startup profile</p></td>
@@ -2516,8 +2521,8 @@ class path needs nothing more.</p>
 <div class="paragraph">
 <p>Start with <code>-Dmicronaut.runner.parent=system</code> when your application must see the agent&#8217;s classes from the class
 path, or when the agent adds JARs to the class path at run time. The application&#8217;s class loader then delegates to the
-system class loader, and Runner turns off the <a href="#staticServices">precomputed service lookups</a>, so that Micronaut also
-finds services on the real class path.</p>
+system class loader, and Runner turns off the <a href="#staticServices">precomputed service lookups</a>, unless
+<code>micronaut.service.index.enabled</code> is set, so that Micronaut also finds services on the real class path.</p>
 </div>
 <div class="paragraph">
 <p>An agent attached to a running JVM, rather than started with <code>-javaagent</code>, sees the classes of a
@@ -2670,12 +2675,19 @@ packaged with <code>stripLocalVariables</code>, which drops dependency local-var
 <dd>
 <p>If an agent or tool adds it to the class path, start with
 <code>-Dmicronaut.runner.parent=system</code> (<a href="#javaAgents">Java agents</a>); otherwise, start with
-<code>-Dmicronaut.runner.static-services=false</code> (<a href="#staticServices">Precomputed Service Lookups</a>).</p>
+<code>-Dmicronaut.service.index.enabled=false</code> (<a href="#staticServices">Precomputed Service Lookups</a>).</p>
 </dd>
-<dt class="hdlist1"><code>static-services.verify</code> reports a mismatch</dt>
+<dt class="hdlist1"><code>micronaut.service.index.validate</code> reports a mismatch</dt>
 <dd>
-<p>Start with <code>-Dmicronaut.runner.static-services=false</code>, package with
-<code>staticServices=false</code>, and please report it.</p>
+<p>Start with <code>-Dmicronaut.service.index.enabled=false</code>, package
+with <code>staticServices=false</code>, and please report it. In an <a href="#extract">extracted layout</a>, it can also name bean
+definitions of a dependency JAR that stores no directory entries, which the extracted layout&#8217;s own scan cannot find
+and the index includes: keep the index on there.</p>
+</dd>
+<dt class="hdlist1">The build warns that a dependency already carries a service index</dt>
+<dd>
+<p>Micronaut uses that index, which was built for
+another class path. Start with <code>-Dmicronaut.service.index.enabled=false</code>, or package without the dependency&#8217;s index.</p>
 </dd>
 <dt class="hdlist1">An agent or tool cannot see the application&#8217;s classes, or the application cannot see the agent&#8217;s</dt>
 <dd>

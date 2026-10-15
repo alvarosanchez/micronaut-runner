@@ -1941,18 +1941,13 @@ written to a file that is meant to be committed and that the packager embeds for
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarOption.html#STATIC_SERVICES" class="member-name-link">STATIC_SERVICES</a> - Enum constant in enum class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarOption.html" title="enum class in io.micronaut.runner.build">RunnerJarOption</a></dt>
 <dd>
-<div class="block">Whether to generate the static service table, classes that answer Micronaut's service lookups from names
-computed at packaging time, so that the application does not scan its class path for them when it starts.</div>
+<div class="block">Whether to generate micronaut-core's service index, so that the application does not scan its class path for
+Micronaut's services when it starts.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/RunnerJarResult.html#staticServicesCoreVersion()" class="member-name-link">staticServicesCoreVersion()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
 <dd>
-<div class="block">The micronaut-core version the static service table was generated for, as that JAR's manifest states
-it.</div>
-</dd>
-<dt><a href="io/micronaut/runner/build/RunnerJarResult.html#staticServiceSlots()" class="member-name-link">staticServiceSlots()</a> - Method in class io.micronaut.runner.build.<a href="io/micronaut/runner/build/RunnerJarResult.html" title="class in io.micronaut.runner.build">RunnerJarResult</a></dt>
-<dd>
-<div class="block">The number of implementation names the static service table lists, which the <code>staticServices</code>
-option requests.</div>
+<div class="block">The micronaut-core version the service index was generated for, which the <code>staticServices</code> option
+requests, as that JAR's manifest states it, or <code>unknown</code> when it states none.</div>
 </dd>
 <dt><a href="io/micronaut/runner/build/training/TrainingSettings.html#stopPath()" class="member-name-link">stopPath()</a> - Method in class io.micronaut.runner.build.training.<a href="io/micronaut/runner/build/training/TrainingSettings.html" title="class in io.micronaut.runner.build.training">TrainingSettings</a></dt>
 <dd>

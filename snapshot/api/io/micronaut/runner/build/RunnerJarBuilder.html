@@ -140,6 +140,11 @@ off there is no such run and no such entry.</p>
 and the classes it generates join the application layer after the class path transform ran, so no transform
 rewrites them.</p>
 
+<p>micronaut-core's service index (<code>staticServices</code>) is generated last, once the merged
+<code>META-INF/micronaut</code> copy is planned and every step that adds a service file to the application layer has
+run, so that it lists them. Micronaut AOT's generator reads a small view jar of the application layer, written to
+the work directory and deleted after the call, and the staged nested jars.</p>
+
 <h2 id="application-jars-heading">Application jars</h2>
 <p>An application output that is a jar is opened once, on the calling thread, and stays open until the
 archive has been written. Its entries are streamed from it into the archive, each inflated and checked
