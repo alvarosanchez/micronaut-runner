@@ -85,10 +85,12 @@ public final class AotCacheGate {
     private static final String LAMBDA = "$$Lambda";
 
     /**
-     * What marks the hidden class a pattern {@code switch} over types spins when it is first linked, which the cache
-     * does not hold either; micronaut-core 5.3 links one while the context starts.
+     * What marks a hidden class in a class-load log. The JDK spins hidden classes when a call site is first linked:
+     * lambda proxies, the class of a pattern {@code switch} over types (micronaut-core 5.3 links one while the
+     * context starts) and, on JDK 27 and later, the equality specializer of a record. The cache holds none it did
+     * not archive.
      */
-    private static final String TYPE_SWITCH = "$$TypeSwitch";
+    private static final char HIDDEN = '/';
 
     /** What precedes the class name on a {@code -Xlog:class+load} line. */
     private static final String CLASS_LOAD_TAG = "[class,load] ";
@@ -252,7 +254,7 @@ public final class AotCacheGate {
                     micronautFromCache++;
                 } else {
                     notFromCache.add(name);
-                    if (!lambda && !name.contains(TYPE_SWITCH) && !allowed.contains(name)) {
+                    if (name.indexOf(HIDDEN) < 0 && !allowed.contains(name)) {
                         unexpected.add(name);
                     }
                 }
@@ -264,8 +266,7 @@ public final class AotCacheGate {
 
     /**
      * What check 3 finds wrong with a coverage: too few classes from the cache, and every {@code io.micronaut}
-     * class that is neither a lambda proxy nor the class of a pattern {@code switch}, and was not skipped by the
-     * recording.
+     * class that is not a hidden class and was not skipped by the recording.
      *
      * @param coverage    the coverage
      * @param minCoverage the minimum share of classes from the cache

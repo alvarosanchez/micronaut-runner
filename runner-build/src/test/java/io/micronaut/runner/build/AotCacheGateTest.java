@@ -92,6 +92,20 @@ class AotCacheGateTest {
     }
 
     @Test
+    void theEqualitySpecializerOfARecordIsAllowedLikeALambdaProxy() {
+        String specializer = "io.micronaut.web.router.builder.RouteCondition$AllOf$$EqualatorSpecializer"
+                + "/0x0000000028046c00";
+        List<String> log = new java.util.ArrayList<>(CLASS_LOAD);
+        log.add("[0.161s][info][class,load] " + specializer
+                + " source: io.micronaut.web.router.builder.RouteCondition$AllOf");
+
+        AotCacheGate.Coverage coverage = AotCacheGate.coverage(log, RECORD_LOG);
+
+        assertTrue(coverage.micronautNotFromCache().contains(specializer));
+        assertEquals(List.of(), coverage.unexpected(), "JDK 27 spins it at run time, and the cache cannot hold it");
+    }
+
+    @Test
     void theAllowlistReadsVerificationAndJfrSkipsAtEveryLevel() {
         assertEquals(Set.of("io.micronaut.http.netty.EpollEventLoopGroupFactory",
                 "io.micronaut.http.server.netty.HttpRequestEvent"), AotCacheGate.allowlist(RECORD_LOG));
