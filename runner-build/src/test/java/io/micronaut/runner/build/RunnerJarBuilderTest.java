@@ -55,10 +55,12 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.ServiceLoader;
 import java.util.Set;
@@ -4048,87 +4050,76 @@ class RunnerJarBuilderTest {
         }
     }
 
-    // ------------------------------------------------------------------------ static service table
+    // ------------------------------------------------------------------------ service index
 
-    private static final String GENERATED_SERVICES = "io/micronaut/runner/generated/services/";
+    private static final String INDEX_PACKAGE = "io/micronaut/aot/serviceindex/generated/";
+    private static final String INDEX_LOADER = "io.micronaut.aot.serviceindex.generated.ServiceIndexLoader";
     private static final String LOADER_REGISTRATION =
             "META-INF/services/io.micronaut.core.optim.StaticOptimizations$Loader";
-    private static final String STATIC_SERVICES_LOADER =
-            "io.micronaut.runner.generated.services.RunnerStaticServices";
+    private static final String SCAN = "; the application scans its class path for services at run time";
 
-    /** The fixture plus a micronaut-core the table serves: an application that gets a table. */
+    /** The fixture plus a micronaut-core with the service index: an application that gets an index. */
     private RunnerJarSpec.Builder specWithMicronautCore(Path output) {
-        return spec(output).dependencies(List.of(
-                Dependency.of(StaticServiceTableGeneratorTest.micronautCore51().get(0)),
-                Dependency.of(plainDependency, "com.example:dep-lib:2.0.1")));
+        List<Dependency> dependencies = new ArrayList<>();
+        for (Path jar : MicronautCoreJars.core()) {
+            dependencies.add(Dependency.of(jar));
+        }
+        dependencies.add(Dependency.of(plainDependency, "com.example:dep-lib:2.0.1"));
+        return spec(output).dependencies(dependencies);
     }
 
     @ParameterizedTest
-    @EnumSource(value = Compression.class, names = {"STORED", "PRESERVE"})
-    void generatesAStaticServiceTableForAnApplicationWithMicronautCore(Compression compression)
-            throws IOException {
+    @EnumSource(Compression.class)
+    void generatesAServiceIndexForAnApplicationWithMicronautCore(Compression compression) throws IOException {
         List<String> info = new ArrayList<>();
         Path output = output();
 
         RunnerJarResult result = RunnerJarBuilder.build(
                 specWithMicronautCore(output).compression(compression).build(), recording(info));
 
-        assertEquals(4, result.staticServiceSlots());
-        String version = result.staticServicesCoreVersion().orElseThrow();
-        assertEquals(List.of(), result.warnings());
-        List<String> generated = info.stream().filter(line -> line.contains("static Micronaut service table")).toList();
+        assertEquals(Optional.of(MicronautCoreJars.version()), result.staticServicesCoreVersion());
+        assertTrue(result.warnings().stream().noneMatch(line -> line.contains("service index")),
+                result.warnings()::toString);
+        List<String> generated = info.stream().filter(line -> line.contains("service index")).toList();
         assertEquals(1, generated.size(), info::toString);
-        assertTrue(generated.get(0).startsWith("Generated a static Micronaut service table: 3 types, 4 slots"
-                + " (none left to Micronaut's scan) for micronaut-core " + version + " in "), generated::toString);
-        assertTrue(generated.get(0).endsWith(" ms"), generated::toString);
+        assertTrue(generated.get(0).startsWith("Generated a service index of 2 META-INF/micronaut entries of 1 types"
+                + " and "), generated::toString);
+        assertTrue(generated.get(0).contains(", without a class path, in "), generated::toString);
 
         try (RunnerJarArchive reader = RunnerJarArchive.open(output); ZipReader archive = ZipReader.open(output)) {
             Index index = reader.index();
             List<String> application = logicalNames(index, 0);
-            assertTrue(application.contains(GENERATED_SERVICES + "RunnerStaticServices.class"), application::toString);
-            assertTrue(application.contains(GENERATED_SERVICES + "RunnerServiceTable.class"), application::toString);
-            assertNotEquals(IndexFormat.NO_INDEX, index.findClass(STATIC_SERVICES_LOADER),
-                    "the application layer defines the loader Micronaut's hook instantiates");
-            assertEquals(STATIC_SERVICES_LOADER + "\n", new String(archive.read(archive.entry(
+            assertTrue(application.contains(INDEX_PACKAGE + "ServiceIndexLoader.class"), application::toString);
+            assertNotEquals(IndexFormat.NO_INDEX, index.findClass(INDEX_LOADER),
+                    "the application layer defines the loader, so the index is served to RunnerClassLoader");
+            assertTrue(archive.entry(IndexFormat.CLASSES_PREFIX + INDEX_PACKAGE + "ServiceIndexLoader.class")
+                    .isPresent());
+            assertEquals(INDEX_LOADER + "\n", new String(archive.read(archive.entry(
                     IndexFormat.CLASSES_PREFIX + LOADER_REGISTRATION).orElseThrow()), StandardCharsets.UTF_8));
-
-            StaticServiceTableGeneratorTest.Table table = StaticServiceTableGeneratorTest.Table.of(archive.read(
-                    archive.entry(IndexFormat.CLASSES_PREFIX + GENERATED_SERVICES + "RunnerServiceTable.class")
-                            .orElseThrow()));
-            // The order is derived from what planMergedServices stored, not sorted a second time.
-            List<String> stored = new ArrayList<>();
             for (String name : names(archive)) {
-                if (name.startsWith(SERVICE_DIRECTORY) && !name.endsWith("/")) {
-                    stored.add(name.substring(SERVICE_DIRECTORY.length()));
-                }
+                assertFalse(name.contains("service-index-view"), "the view jar stays in the work directory");
             }
-            assertEquals(List.of("com.example.$Application$Definition", "com.example.dep.DepBean"), stored);
-            assertEquals(stored.reversed(), table.names("io.micronaut.inject.BeanDefinitionReference"));
-            assertEquals(List.of("com.example.dep.Dep"), table.names("com.example.Service"));
-            assertEquals(List.of(STATIC_SERVICES_LOADER),
-                    table.names("io.micronaut.core.optim.StaticOptimizations$Loader"));
         }
     }
 
     @Test
-    void generatesNoStaticServiceTableWhenTheOptionIsOff() throws IOException {
+    void generatesNoServiceIndexWhenTheOptionIsOff() throws IOException {
         List<String> info = new ArrayList<>();
         Path output = output();
 
         RunnerJarResult result = RunnerJarBuilder.build(
                 specWithMicronautCore(output).option("staticServices", "false").build(), recording(info));
 
-        assertEquals(0, result.staticServiceSlots());
-        assertEquals(java.util.Optional.empty(), result.staticServicesCoreVersion());
+        assertEquals(Optional.empty(), result.staticServicesCoreVersion());
         assertEquals("false", result.effectiveOptions().get("staticServices"));
-        assertNoStaticServiceTable(output);
-        assertTrue(info.contains("No static Micronaut service table was generated because it was not requested;"
-                + " Micronaut will scan for its services when the application starts"), info::toString);
+        assertNoServiceIndex(output);
+        assertTrue(info.contains("No service index was generated because the staticServices option is false" + SCAN),
+                info::toString);
     }
 
     @ParameterizedTest
     @EnumSource(Compression.class)
-    void generatesNoStaticServiceTableWithoutMicronautCore(Compression compression) throws IOException {
+    void generatesNoServiceIndexWithoutMicronautCore(Compression compression) throws IOException {
         List<String> info = new ArrayList<>();
         Path output = output();
 
@@ -4136,112 +4127,214 @@ class RunnerJarBuilderTest {
                 recording(info));
 
         assertTrue(spec(output).build().staticServices(), "the option is on, and the archive is what it was");
-        assertEquals(0, result.staticServiceSlots());
-        assertEquals(java.util.Optional.empty(), result.staticServicesCoreVersion());
-        assertNoStaticServiceTable(output);
-        assertTrue(info.contains("No static Micronaut service table was generated because the application has no"
-                + " micronaut-core; Micronaut will scan for its services when the application starts"),
-                info::toString);
+        assertEquals(Optional.empty(), result.staticServicesCoreVersion());
+        assertTrue(result.warnings().stream().noneMatch(line -> line.contains("service index")),
+                result.warnings()::toString);
+        assertNoServiceIndex(output);
+        assertTrue(info.contains("No service index was generated because there is no micronaut-core on the class path"
+                + SCAN), info::toString);
     }
 
     @Test
-    void putsItsRegistrationInFrontOfTheOneTheApplicationAlreadyHas() throws IOException {
+    void aModuleThatDoesNotMatchIsOneWarningAndNoIndex() throws IOException {
+        Path output = output();
+        ServiceIndexing.beforeCall = () -> {
+            throw new NoSuchMethodError("ServiceIndexGenerator.generate");
+        };
+        RunnerJarResult result;
+        try {
+            result = RunnerJarBuilder.build(specWithMicronautCore(output).build(), BuildLogger.noOp());
+        } finally {
+            ServiceIndexing.beforeCall = () -> { };
+        }
+
+        assertEquals(List.of("No service index was generated because the micronaut-aot-service-index on the build's"
+                + " class path does not match the one this packager was built against:"
+                + " java.lang.NoSuchMethodError: ServiceIndexGenerator.generate" + SCAN), result.warnings());
+        assertEquals(Optional.empty(), result.staticServicesCoreVersion());
+        assertNoServiceIndex(output);
+    }
+
+    @Test
+    void putsItsLoaderInFrontOfTheOnesTheApplicationAlreadyRegisters() throws IOException {
         Path resources = fixtures.resolve("app/own-loader");
-        write(resources.resolve(LOADER_REGISTRATION), "com.example.OwnLoader");
-        Path loaderClass = resources.resolve("com/example/OwnLoader.class");
-        Files.createDirectories(loaderClass.getParent());
-        Files.write(loaderClass, StaticServiceTableGeneratorTest.classFile("com.example.OwnLoader",
-                "java.lang.Object", "io.micronaut.core.optim.StaticOptimizations$Loader"));
+        write(resources.resolve(LOADER_REGISTRATION), "# Micronaut AOT's\ncom.example.OwnLoader\n");
         Path output = output();
 
         RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output)
                 .applicationOutput(List.of(applicationClasses, applicationResources, resources))
                 .build(), BuildLogger.noOp());
 
-        assertEquals(5, result.staticServiceSlots());
         assertEquals(List.of(), result.warnings());
         try (ZipReader archive = ZipReader.open(output)) {
-            assertEquals(STATIC_SERVICES_LOADER + "\ncom.example.OwnLoader\n", new String(archive.read(
+            assertEquals(INDEX_LOADER + "\n# Micronaut AOT's\ncom.example.OwnLoader\n", new String(archive.read(
                     archive.entry(IndexFormat.CLASSES_PREFIX + LOADER_REGISTRATION).orElseThrow()),
                     StandardCharsets.UTF_8));
         }
     }
 
     @Test
-    void warnsAndGeneratesNoStaticServiceTableWhenAGeneratedNameIsTaken() throws IOException {
-        Path resources = fixtures.resolve("app/taken");
-        byte[] own = "not a class".getBytes(StandardCharsets.UTF_8);
-        Path taken = resources.resolve(GENERATED_SERVICES + "RunnerStaticServices.class");
-        Files.createDirectories(taken.getParent());
-        Files.write(taken, own);
+    void replacesAnIndexTheApplicationOutputAlreadyHolds() throws IOException {
+        Path first = output();
+        RunnerJarBuilder.build(specWithMicronautCore(first).build(), BuildLogger.noOp());
+        Path resources = fixtures.resolve("app/earlier-index");
+        try (ZipReader archive = ZipReader.open(first)) {
+            for (String name : names(archive)) {
+                String logical = name.substring(name.startsWith(IndexFormat.CLASSES_PREFIX)
+                        ? IndexFormat.CLASSES_PREFIX.length() : 0);
+                if (name.startsWith(IndexFormat.CLASSES_PREFIX) && (logical.startsWith(INDEX_PACKAGE)
+                        || logical.equals(LOADER_REGISTRATION))) {
+                    Path file = resources.resolve(logical);
+                    Files.createDirectories(file.getParent());
+                    Files.write(file, archive.read(archive.entry(name).orElseThrow()));
+                }
+            }
+        }
+        Path stale = resources.resolve(INDEX_PACKAGE + "Stale.class");
+        Files.write(stale, new byte[] {1, 2, 3});
+        List<String> info = new ArrayList<>();
         Path output = output();
 
         RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output)
                 .applicationOutput(List.of(applicationClasses, applicationResources, resources))
-                .build(), BuildLogger.noOp());
+                .build(), recording(info));
 
-        assertEquals(0, result.staticServiceSlots());
-        assertEquals(List.of("No static Micronaut service table was generated because the application output"
-                + " already carries '" + GENERATED_SERVICES + "RunnerStaticServices.class'; Micronaut will scan for"
-                + " its services when the application starts"), result.warnings());
+        assertEquals(List.of(), result.warnings());
+        assertTrue(info.stream().anyMatch(line -> line.startsWith("Generated a service index of ")
+                && line.endsWith(" (it replaces an earlier index)")), info::toString);
         try (RunnerJarArchive reader = RunnerJarArchive.open(output); ZipReader archive = ZipReader.open(output)) {
-            assertEquals(List.of(GENERATED_SERVICES + "RunnerStaticServices.class"),
-                    logicalNames(reader.index(), 0).stream()
-                            .filter(name -> name.startsWith(GENERATED_SERVICES) && !name.endsWith("/")).toList());
-            assertArrayEquals(own, archive.read(archive.entry(IndexFormat.CLASSES_PREFIX + GENERATED_SERVICES
-                    + "RunnerStaticServices.class").orElseThrow()), "the application's own entry is untouched");
-            assertTrue(archive.entry(IndexFormat.CLASSES_PREFIX + LOADER_REGISTRATION).isEmpty());
+            List<String> application = logicalNames(reader.index(), 0);
+            assertFalse(application.contains(INDEX_PACKAGE + "Stale.class"), "an earlier generation's leftover goes");
+            assertTrue(application.contains(INDEX_PACKAGE + "ServiceIndexLoader.class"), application::toString);
+            assertEquals(INDEX_LOADER + "\n", new String(archive.read(archive.entry(
+                    IndexFormat.CLASSES_PREFIX + LOADER_REGISTRATION).orElseThrow()), StandardCharsets.UTF_8),
+                    "one index loader");
         }
     }
 
-    /**
-     * A dependency with a class file the ClassFile API cannot read, which the JVM would refuse to load as
-     * well: the archive is packaged as it is without a table, and the service type that names the class is
-     * left to Micronaut's scan.
-     */
-    @ParameterizedTest
-    @EnumSource(Compression.class)
-    void aClassFileThatCannotBeReadLeavesItsTypeToTheScanAndDoesNotFailTheBuild(Compression compression)
-            throws IOException {
+    @Test
+    void warnsAndGeneratesNoIndexWhenADependencyAlreadyHoldsOne() throws IOException {
+        Path first = output();
+        RunnerJarBuilder.build(specWithMicronautCore(first).build(), BuildLogger.noOp());
         Map<String, byte[]> entries = new LinkedHashMap<>();
-        entries.put("META-INF/services/com.example.Spi",
-                "com.example.broken.Provider\n".getBytes(StandardCharsets.UTF_8));
-        entries.put("com/example/broken/Provider.class", StaticServiceTableGeneratorTest.withSuperclassOutOfRange(
-                StaticServiceTableGeneratorTest.classFile("com.example.broken.Provider", "java.lang.Object")));
-        Path broken = fixtures.resolve("libs/broken-provider-" + compression + ".jar");
-        writeJar(broken, manifest(attributes -> { }), entries);
-        List<String> info = new ArrayList<>();
+        try (ZipReader archive = ZipReader.open(first)) {
+            for (String name : names(archive)) {
+                String logical = name.substring(name.startsWith(IndexFormat.CLASSES_PREFIX)
+                        ? IndexFormat.CLASSES_PREFIX.length() : 0);
+                if (name.startsWith(IndexFormat.CLASSES_PREFIX) && (logical.startsWith(INDEX_PACKAGE)
+                        || logical.equals(LOADER_REGISTRATION))) {
+                    entries.put(logical, archive.read(archive.entry(name).orElseThrow()));
+                }
+            }
+        }
+        Path indexed = fixtures.resolve("libs/indexed-fat-jar.jar");
+        writeJar(indexed, manifest(attributes -> { }), entries);
+        List<Dependency> dependencies = new ArrayList<>(specWithMicronautCore(first).build().dependencies());
+        dependencies.add(Dependency.of(indexed));
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output).dependencies(dependencies)
+                .build(), BuildLogger.noOp());
+
+        assertEquals(List.of("No service index was generated because the dependency " + indexed + " already carries"
+                + " one, and a JVM can register only one. micronaut-core uses that index, which was built for another"
+                + " class path, so it can miss services of this application; start the application with"
+                + " -Dmicronaut.service.index.enabled=false to scan for them instead"), result.warnings());
+        assertEquals(Optional.empty(), result.staticServicesCoreVersion());
+        assertNoServiceIndex(output);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Compression.class, names = {"STORED", "PRESERVE"})
+    void aMessageOfTheModuleNamesTheDependencyNotItsStagedCopy(Compression compression) throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put(INDEX_PACKAGE + "Other.class", new byte[] {1, 2, 3});
+        Path squatter = fixtures.resolve("libs/squatter-" + compression + ".jar");
+        writeJar(squatter, manifest(attributes -> { }), entries);
+        List<Dependency> dependencies = new ArrayList<>(specWithMicronautCore(output()).build().dependencies());
+        dependencies.add(Dependency.of(squatter));
         Path output = output();
 
         RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output).compression(compression)
-                .dependencies(List.of(Dependency.of(StaticServiceTableGeneratorTest.micronautCore51().get(0)),
-                        Dependency.of(plainDependency, "com.example:dep-lib:2.0.1"), Dependency.of(broken)))
-                .build(), recording(info));
+                .dependencies(dependencies).build(), BuildLogger.noOp());
 
-        assertEquals(4, result.staticServiceSlots(), "the other types are served as they are without the jar");
-        assertTrue(info.stream().anyMatch(line -> line.startsWith("Generated a static Micronaut service table: "
-                + "3 types, 4 slots (1 left to Micronaut's scan: com.example.Spi) for micronaut-core ")),
-                info::toString);
+        assertEquals(List.of("No service index was generated because the dependency " + squatter + " holds "
+                + INDEX_PACKAGE + "Other.class, in the package of the generated index" + SCAN), result.warnings());
+        assertNoServiceIndex(output);
     }
 
     @Test
-    void theStaticServiceTableIsReproducible() throws IOException {
+    void aDependencyNamedLikeTheStagedCopyOfAnotherIsNamedOnce() throws IOException {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put(INDEX_PACKAGE + "Other.class", new byte[] {1, 2, 3});
+        // Staged first, as lib-0.jar; lib-1.jar is the staged copy of micronaut-core, which follows it.
+        Path squatter = fixtures.resolve("libs/squatter-lib-1.jar");
+        writeJar(squatter, manifest(attributes -> { }), entries);
+        List<Dependency> dependencies = new ArrayList<>(List.of(Dependency.of(squatter)));
+        dependencies.addAll(specWithMicronautCore(output()).build().dependencies());
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output).compression(Compression.STORED)
+                .dependencies(dependencies).build(), BuildLogger.noOp());
+
+        assertEquals(List.of("No service index was generated because the dependency " + squatter + " holds "
+                + INDEX_PACKAGE + "Other.class, in the package of the generated index" + SCAN), result.warnings());
+    }
+
+    @Test
+    void anIndexForAMicronautCoreWhoseManifestStatesNoVersionReportsItAsUnknown() throws IOException {
+        Path core = MicronautCoreJars.jar("micronaut-core-");
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        try (ZipFile jar = new ZipFile(core.toFile())) {
+            for (ZipEntry entry : Collections.list(jar.entries())) {
+                if (!entry.getName().equals(JarFile.MANIFEST_NAME)) {
+                    try (InputStream in = jar.getInputStream(entry)) {
+                        entries.put(entry.getName(), in.readAllBytes());
+                    }
+                }
+            }
+        }
+        Path unversioned = fixtures.resolve("libs/micronaut-core-unversioned.jar");
+        writeJar(unversioned, manifest(attributes -> { }), entries);
+        List<Dependency> dependencies = new ArrayList<>();
+        for (Dependency dependency : specWithMicronautCore(output()).build().dependencies()) {
+            dependencies.add(dependency.path().equals(core) ? Dependency.of(unversioned) : dependency);
+        }
+        Path output = output();
+
+        RunnerJarResult result = RunnerJarBuilder.build(specWithMicronautCore(output).dependencies(dependencies)
+                .build(), BuildLogger.noOp());
+
+        try (ZipReader archive = ZipReader.open(output)) {
+            assertTrue(archive.entry(IndexFormat.CLASSES_PREFIX + INDEX_PACKAGE + "ServiceIndexLoader.class")
+                    .isPresent(), "the index is generated");
+        }
+        assertEquals(Optional.of("unknown"), result.staticServicesCoreVersion(),
+                "an index is reported even when micronaut-core's version is not known");
+    }
+
+    @Test
+    void theServiceIndexIsReproducible() throws IOException {
         Path first = output();
         Path second = output();
         RunnerJarBuilder.build(specWithMicronautCore(first).build(), BuildLogger.noOp());
         RunnerJarBuilder.build(specWithMicronautCore(second).build(), BuildLogger.noOp(), 1);
 
+        try (ZipReader archive = ZipReader.open(first)) {
+            assertTrue(archive.entry(IndexFormat.CLASSES_PREFIX + INDEX_PACKAGE + "ServiceIndexLoader.class")
+                    .isPresent());
+        }
         assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(second));
     }
 
-    private static void assertNoStaticServiceTable(Path output) throws IOException {
+    private static void assertNoServiceIndex(Path output) throws IOException {
         try (RunnerJarArchive reader = RunnerJarArchive.open(output); ZipReader archive = ZipReader.open(output)) {
             for (String name : logicalNames(reader.index(), 0)) {
-                assertFalse(name.startsWith(GENERATED_SERVICES), name);
-                assertNotEquals(LOADER_REGISTRATION, name, "no loader line without a table");
+                assertFalse(name.startsWith(INDEX_PACKAGE), name);
+                assertNotEquals(LOADER_REGISTRATION, name, "no loader line without an index");
             }
             for (String name : names(archive)) {
-                assertFalse(name.contains(GENERATED_SERVICES), name);
+                assertFalse(name.startsWith(IndexFormat.CLASSES_PREFIX + INDEX_PACKAGE), name);
             }
         }
     }

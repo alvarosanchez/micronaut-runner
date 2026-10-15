@@ -1,20 +1,23 @@
 At startup, Micronaut scans `META-INF/services/` and `META-INF/micronaut/` of every JAR to find its bean
-definitions, type converters and other services. A Runner JAR's class path is fixed when it is packaged, so Runner
-precomputes the result of that scan, in generated classes under `io.micronaut.runner.generated`, and Micronaut reads
-them instead of scanning.
+definitions, type converters and other services. A Runner JAR's class path is fixed when it is packaged, so the build
+generates micronaut-core's service index with Micronaut AOT, and Micronaut reads the index instead of scanning.
+https://micronaut-projects.github.io/micronaut-aot/3.2.x/guide/#serviceIndex[The Micronaut AOT guide] describes the
+index and its switches.
 
-Runner does this for micronaut-core from 5.1.10 up to, but not including, 5.2, as in the Micronaut platform 5.1. With
-any other version, including micronaut-core 5.2 and later, it does nothing, and the build log says so.
+This needs micronaut-core 5.3.0 or later. With an older micronaut-core, nothing is generated, and the build log says
+so.
 
 What changes:
 
 * A service provider added after packaging is not seen. When an agent or tool adds JARs to the class path, start
-with `-Dmicronaut.runner.parent=system`, which also turns the precomputed lookups off (<<javaAgents,Java agents>>).
-To let Micronaut scan in any other case, start with `-Dmicronaut.runner.static-services=false`.
+with `-Dmicronaut.runner.parent=system`, which also turns the index off (<<javaAgents,Java agents>>). To let
+Micronaut scan in any other case, start with `-Dmicronaut.service.index.enabled=false`.
 * `java.util.ServiceLoader` and `ClassLoader.getResources` are unchanged.
 
-To check the precomputed lookups against Micronaut's own scan, start once with
-`-Dmicronaut.runner.static-services.verify=true`. A match prints a `static services verified` line to standard error.
-A mismatch stops the start with a message that names the differences.
+When Micronaut uses the index, it logs one `INFO` line that says so. To check the index against a scan of the class
+path, start once with `-Dmicronaut.service.index.validate=true`. A mismatch stops the start with a message that names
+the differences.
+
+The extracted layout keeps the index (<<extract,Extracting to a Directory>>).
 
 To turn it off, set the `staticServices` option to `false` (<<whatChanges,What Changes for Your Application>>).

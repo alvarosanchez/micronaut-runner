@@ -83,6 +83,7 @@ class BenchmarkEntryModeTest {
             "runner-stored-stripdebug-aot",
             "runner-stored-dynamic-services",
             "runner-stored-dynamic-services-aot",
+            "runner-extracted-dynamic-services-aot",
             "runner-stored-lambdas",
             "runner-stored-lambdas-aot",
             "runner-extracted-lambdas-aot");
@@ -103,7 +104,8 @@ class BenchmarkEntryModeTest {
             assertEquals(expected, spec.entryMode(), name);
             assertEquals(name.endsWith("-aot"), spec.aotCache(), name);
             assertEquals(!CORE_ROWS.contains(name), spec.optIn(), name);
-            if (spec.aotCache() && !name.equals("runner-extracted-lambdas-aot")) {
+            if (spec.aotCache() && !name.equals("runner-extracted-lambdas-aot")
+                    && !name.equals("runner-extracted-dynamic-services-aot")) {
                 assertEquals(name.substring(0, name.length() - "-aot".length()), spec.source(), name);
             }
         }
@@ -113,6 +115,8 @@ class BenchmarkEntryModeTest {
         assertEquals("runner-stored", SampleBuild.spec("runner-stored-ordered").source());
         assertEquals("runner-stored", SampleBuild.spec("runner-stored-hybrid").source());
         assertEquals("runner-stored-lambdas", SampleBuild.spec("runner-extracted-lambdas-aot").source());
+        assertEquals("runner-stored-dynamic-services",
+                SampleBuild.spec("runner-extracted-dynamic-services-aot").source());
         assertNull(SampleBuild.spec("runner-stored").source());
     }
 
@@ -187,13 +191,11 @@ class BenchmarkEntryModeTest {
             jar.closeEntry();
         }
         Path artifacts = Files.createDirectories(output.resolve("artifacts"));
-        Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
-
         Variant maot = SampleBuild.optimizedRunnerJar(artifacts, SampleBuild.spec("runner-maot"), "fixture.MaotMain",
-                optimizedJitJar, List.of(core), QUIET);
+                optimizedJitJar, micronautCoreFixture(), QUIET);
 
-        // What every Runner row says about its static service table.
-        assertEquals("static services: 1 slots (core 5.1.15)", maot.buildNote());
+        // What every Runner row says about micronaut-core's service index.
+        assertEquals("service index (core " + micronautCoreVersion() + ")", maot.buildNote());
         assertEquals(artifacts.resolve("runner-maot.jar"), maot.artifact());
         assertEquals(EntryMode.STUB, maot.requestedEntryMode());
         assertEquals(EntryMode.STUB, maot.effectiveEntryMode());
@@ -302,18 +304,18 @@ class BenchmarkEntryModeTest {
                     public static void main(String[] args) { }
                 }
                 """);
-        Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
+        List<Path> core = micronautCoreFixture();
         Path list = Files.writeString(output.resolve("startup-classes.txt"),
                 "fixture.HybridMain\nio.micronaut.core.io.service.SoftServiceLoader\n");
         SampleBuild.RunnerJarOptions recorded = SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(list)
                 .withPreload(false);
 
         Variant ordered = runnerJar(output, "runner-stored-ordered", "fixture.HybridMain", List.of(classes),
-                List.of(core), Compression.STORED, EntryMode.STUB, recorded);
+                core, Compression.STORED, EntryMode.STUB, recorded);
         Variant hybrid = runnerJar(output, "runner-stored-hybrid", "fixture.HybridMain", List.of(classes),
-                List.of(core), Compression.HYBRID, EntryMode.STUB, recorded);
+                core, Compression.HYBRID, EntryMode.STUB, recorded);
         Variant preload = runnerJar(output, "runner-stored-preload", "fixture.HybridMain", List.of(classes),
-                List.of(core), Compression.STORED, EntryMode.STUB,
+                core, Compression.STORED, EntryMode.STUB,
                 SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(list));
 
         assertEquals(List.of("-Dmicronaut.runner.preload=false", "-jar"), ordered.command().subList(1, 3));
@@ -332,7 +334,7 @@ class BenchmarkEntryModeTest {
         // A list without a class of any dependency: HYBRID falls back to STORED, and the row is unavailable.
         Path applicationOnly = Files.writeString(output.resolve("application-only.txt"), "fixture.HybridMain\n");
         IOException fellBack = assertThrows(IOException.class, () -> runnerJar(output, "runner-stored-hybrid",
-                "fixture.HybridMain", List.of(classes), List.of(core), Compression.HYBRID, EntryMode.STUB,
+                "fixture.HybridMain", List.of(classes), core, Compression.HYBRID, EntryMode.STUB,
                 SampleBuild.RunnerJarOptions.DEFAULTS.withStartupClasses(applicationOnly).withPreload(false)));
         assertTrue(fellBack.getMessage().contains("holds no deflated nested entry"), fellBack.getMessage());
     }
@@ -363,49 +365,51 @@ class BenchmarkEntryModeTest {
     }
 
     @Test
-    void theStaticServiceTableIsComparedWithTheScanWithAndWithoutTheAotCache() {
+    void theServiceIndexIsComparedWithTheScanWithAndWithoutTheAotCacheAndExtracted() {
         List<String> pairs = SampleBuild.comparisons().stream()
                 .map(spec -> spec.candidate() + " - " + spec.baseline())
                 .toList();
         assertTrue(pairs.containsAll(List.of(
                 "runner-stored - runner-stored-dynamic-services",
-                "runner-stored-aot - runner-stored-dynamic-services-aot")), pairs.toString());
+                "runner-stored-aot - runner-stored-dynamic-services-aot",
+                "runner-extracted-aot - runner-extracted-dynamic-services-aot")), pairs.toString());
     }
 
     @Test
-    void everyRunnerRowSaysWhetherItsJarCarriesAStaticServiceTable(@TempDir Path output) throws Exception {
+    void everyRunnerRowSaysWhetherItsJarCarriesAServiceIndex(@TempDir Path output) throws Exception {
         Path classes = compile(output.resolve("services"), "fixture.ServicesMain", """
                 package fixture;
                 public final class ServicesMain {
                     public static void main(String[] args) { }
                 }
                 """);
-        Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
+        List<Path> core = micronautCoreFixture();
 
-        Variant table = runnerJar(output, "runner-stored", "fixture.ServicesMain",
-                List.of(classes), List.of(core), Compression.STORED, EntryMode.STUB);
+        Variant indexed = runnerJar(output, "runner-stored", "fixture.ServicesMain",
+                List.of(classes), core, Compression.STORED, EntryMode.STUB);
         Variant dynamic = runnerJar(output, "runner-stored-dynamic-services", "fixture.ServicesMain",
-                List.of(classes), List.of(core), Compression.STORED, EntryMode.STUB,
+                List.of(classes), core, Compression.STORED, EntryMode.STUB,
                 SampleBuild.RunnerJarOptions.DEFAULTS.withStaticServices(false));
         Variant noCore = runnerJar(output, "runner-preserve", "fixture.ServicesMain",
                 List.of(classes), List.of(), Compression.PRESERVE, EntryMode.STUB);
 
-        // The one slot is the table's own registration, which its closed world includes.
-        assertEquals("static services: 1 slots (core 5.1.15)", table.buildNote());
-        assertTrue(table.description().endsWith("; static services: 1 slots (core 5.1.15)"), table.description());
+        String note = "service index (core " + micronautCoreVersion() + ")";
+        assertEquals(note, indexed.buildNote());
+        assertTrue(indexed.description().endsWith("; " + note), indexed.description());
         assertEquals("dynamic service scan", dynamic.buildNote());
-        assertEquals("dynamic service scan", noCore.buildNote(), "a table that stood down shows in the report");
-        String tableEntry = IndexFormat.CLASSES_PREFIX + "io/micronaut/runner/generated/services/RunnerServiceTable.class";
-        try (JarFile jar = new JarFile(table.artifact().toFile())) {
-            assertTrue(jar.getEntry(tableEntry) != null);
+        assertEquals("dynamic service scan", noCore.buildNote(), "an index that stood down shows in the report");
+        String loaderEntry = IndexFormat.CLASSES_PREFIX
+                + "io/micronaut/aot/serviceindex/generated/ServiceIndexLoader.class";
+        try (JarFile jar = new JarFile(indexed.artifact().toFile())) {
+            assertTrue(jar.getEntry(loaderEntry) != null);
         }
         try (JarFile jar = new JarFile(dynamic.artifact().toFile())) {
-            assertNull(jar.getEntry(tableEntry));
+            assertNull(jar.getEntry(loaderEntry));
         }
 
-        Variant extracted = SampleBuild.extractedRunner(output, table, SampleBuild.spec("runner-extracted"));
-        assertEquals(table.buildNote(), extracted.buildNote(),
-                "the extracted layout carries the table of the jar it was extracted from");
+        Variant extracted = SampleBuild.extractedRunner(output, indexed, SampleBuild.spec("runner-extracted"));
+        assertEquals(indexed.buildNote(), extracted.buildNote(),
+                "the extracted layout carries the index of the jar it was extracted from");
     }
 
     @Test
@@ -416,11 +420,10 @@ class BenchmarkEntryModeTest {
                     public static void main(String[] args) { }
                 }
                 """);
-        Path core = micronautCoreLookalike(output.resolve("core"), "5.1.15");
         ByteArrayOutputStream console = new ByteArrayOutputStream();
 
         SampleBuild.runnerJar(output, SampleBuild.spec("runner-stored-dynamic-services"), "fixture.LoggedMain",
-                List.of(classes), List.of(core), Compression.STORED,
+                List.of(classes), micronautCoreFixture(), Compression.STORED,
                 SampleBuild.RunnerJarOptions.DEFAULTS.withStaticServices(false),
                 new PrintStream(console, true, StandardCharsets.UTF_8));
 
@@ -430,71 +433,6 @@ class BenchmarkEntryModeTest {
                 lines.toString());
         assertTrue(lines.stream().anyMatch(line -> line.contains("staticServices=false")),
                 "the effective options name the step the row turned off: " + lines);
-    }
-
-    /**
-     * A jar that looks like micronaut-core to the static service table generator: the hook classes with the
-     * members the table is compiled against, and a manifest that states a version.
-     */
-    private static Path micronautCoreLookalike(Path fixture, String version) throws IOException {
-        Path classes = compile(fixture, "io.micronaut.core.io.service.SoftServiceLoader", """
-                package io.micronaut.core.io.service;
-
-                import java.util.List;
-                import java.util.Map;
-                import java.util.function.Predicate;
-                import java.util.function.Supplier;
-                import java.util.stream.Stream;
-
-                public final class SoftServiceLoader {
-                    public interface StaticServiceLoader<S> {
-                        Stream<StaticDefinition<S>> findAll(Predicate<String> predicate);
-                        List<S> load(Predicate<S> predicate);
-                        List<S> load(Predicate<String> condition, Predicate<S> predicate);
-                    }
-
-                    public static final class StaticDefinition<S> {
-                        public static <S> StaticDefinition<S> of(String name, Class<S> value) {
-                            return null;
-                        }
-
-                        public static <S> StaticDefinition<S> of(String name, Supplier<S> value) {
-                            return null;
-                        }
-
-                        public S load() {
-                            return null;
-                        }
-                    }
-
-                    public static final class Optimizations {
-                        public Optimizations(Map<String, StaticServiceLoader<?>> serviceLoaders) {
-                        }
-                    }
-                }
-                """);
-        compile(fixture, "io.micronaut.core.optim.StaticOptimizations", """
-                package io.micronaut.core.optim;
-
-                public abstract class StaticOptimizations {
-                    public interface Loader<T> {
-                        T load();
-                    }
-                }
-                """);
-        Path jar = fixture.resolve("micronaut-core-" + version + ".jar");
-        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
-        manifest.getMainAttributes().putValue("Manifest-Version", "1.0");
-        manifest.getMainAttributes().putValue("Implementation-Version", version);
-        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar), manifest);
-             var files = Files.walk(classes)) {
-            for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {
-                out.putNextEntry(new java.util.zip.ZipEntry(classes.relativize(file).toString().replace('\\', '/')));
-                Files.copy(file, out);
-                out.closeEntry();
-            }
-        }
-        return jar;
     }
 
     @Test
@@ -784,6 +722,26 @@ class BenchmarkEntryModeTest {
         List<Path> jars = Arrays.stream(path.split(File.pathSeparator)).map(Path::of).toList();
         assertEquals(3, jars.size(), path);
         return jars;
+    }
+
+    /** The micronaut-inject and micronaut-core jars, with what they link against, which the build hands to this test. */
+    private static List<Path> micronautCoreFixture() {
+        String path = System.getProperty("runner.benchmark.micronautCoreFixture");
+        assertNotNull(path, "run this test through Gradle, which sets runner.benchmark.micronautCoreFixture to the"
+                + " micronaut-inject and micronaut-core jars of the fixture");
+        return Arrays.stream(path.split(File.pathSeparator)).map(Path::of).toList();
+    }
+
+    /** The version the manifest of the micronaut-core fixture states. */
+    private static String micronautCoreVersion() throws IOException {
+        for (Path jar : micronautCoreFixture()) {
+            if (jar.getFileName().toString().startsWith("micronaut-core-")) {
+                try (JarFile file = new JarFile(jar.toFile())) {
+                    return file.getManifest().getMainAttributes().getValue("Implementation-Version");
+                }
+            }
+        }
+        throw new AssertionError("no micronaut-core jar in " + micronautCoreFixture());
     }
 
     private static Path emptyJar(Path path) throws IOException {

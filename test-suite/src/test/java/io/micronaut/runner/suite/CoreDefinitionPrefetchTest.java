@@ -79,6 +79,8 @@ class CoreDefinitionPrefetchTest {
 
     private static final Pattern DIGITS = Pattern.compile("\\d+");
 
+    private static final Pattern THREAD = Pattern.compile("^(#:#:#\\.# )\\[[^\\]]+\\]");
+
     private static Path sample;
     private static Path archive;
 
@@ -97,9 +99,10 @@ class CoreDefinitionPrefetchTest {
 
     /**
      * A reference Micronaut skips is skipped either way: the application starts, serves and has the same bean
-     * definitions, and it prints the same lines, all of them logged in its {@code logback.xml} layout by the
-     * thread that logs them without the prefetch. No logger was created on a pool thread before logging was
-     * configured, which would have left a {@code SubstituteLogger} behind.
+     * definitions, and it prints the same lines, all of them in its {@code logback.xml} layout and logged by the
+     * thread that logs them without the prefetch, except that the service index's line may name a pool thread. No
+     * logger was created on a pool thread before logging was configured, which would have left a
+     * {@code SubstituteLogger} behind.
      */
     @Test
     void aStartWithThePrefetchServesTheSameApplication() throws IOException {
@@ -116,7 +119,8 @@ class CoreDefinitionPrefetchTest {
         assertFalse(with.loaded(SUBSTITUTE_LOGGER), "a logger was created before logging was configured");
         assertFalse(without.loaded(SUBSTITUTE_LOGGER), "a logger was created before logging was configured");
         assertEquals(List.of(), throwables(with.output()), with.output());
-        assertEquals(comparable(without.output()), comparable(with.output()), "the prefetch changed the output");
+        assertEquals(withoutThreads(comparable(without.output())), withoutThreads(comparable(with.output())),
+                "the prefetch changed the output");
         assertTrue(comparable(with.output()).stream().anyMatch(line -> line.contains("[main]")
                         && line.contains("io.micronaut.runtime.Micronaut - Startup completed")),
                 () -> "the startup line is not the one logback.xml lays out:\n" + with.output());
@@ -248,6 +252,15 @@ class CoreDefinitionPrefetchTest {
             }
         }
         return found;
+    }
+
+    /**
+     * The lines, with the thread of the service index's line masked: the prefetch's pool thread can make the first
+     * lookup. Once micronaut-core logs that line when the context starts (micronaut-core#13954), main logs it.
+     */
+    private static List<String> withoutThreads(List<String> lines) {
+        return lines.stream().map(line -> line.contains(".ServiceIndex - ")
+                ? THREAD.matcher(line).replaceFirst("$1[thread]") : line).toList();
     }
 
     /** The lines a start printed, without colours, and with times, durations, ports and counters masked. */

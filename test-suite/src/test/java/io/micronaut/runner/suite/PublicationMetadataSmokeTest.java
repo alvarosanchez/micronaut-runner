@@ -88,6 +88,7 @@ class PublicationMetadataSmokeTest {
     /** The dependencies of runner-build from outside this build, at the version of the catalog. */
     private static final String AOT_BYTECODE = "io.micronaut.aot:micronaut-aot-bytecode";
     private static final String AOT_LOGBACK = "io.micronaut.aot:micronaut-aot-logback";
+    private static final String AOT_SERVICE_INDEX = "io.micronaut.aot:micronaut-aot-service-index";
     /**
      * The catalog's micronaut-aot version, the one {@code -SNAPSHOT} the publications may name until the next
      * micronaut-aot release (#263).
@@ -153,11 +154,12 @@ class PublicationMetadataSmokeTest {
         // No public signature of runner-build names a launcher or Micronaut AOT type, so both are runtime
         // dependencies and stay off the compile class path of the build plugins.
         Document buildPom = parseXml(artifact(GROUP, BUILD, "pom"));
-        assertEquals(Set.of(GROUP + ":" + LAUNCHER, AOT_BYTECODE, AOT_LOGBACK), directDependencies(buildPom).stream()
-                .map(dependency -> dependency.substring(0, dependency.lastIndexOf(':')))
-                .collect(Collectors.toSet()), "runner-build's POM dependencies");
+        assertEquals(Set.of(GROUP + ":" + LAUNCHER, AOT_BYTECODE, AOT_LOGBACK, AOT_SERVICE_INDEX),
+                directDependencies(buildPom).stream()
+                        .map(dependency -> dependency.substring(0, dependency.lastIndexOf(':')))
+                        .collect(Collectors.toSet()), "runner-build's POM dependencies");
         assertDependencyScope(buildPom, LAUNCHER, "runtime");
-        for (String aot : List.of(AOT_BYTECODE, AOT_LOGBACK)) {
+        for (String aot : List.of(AOT_BYTECODE, AOT_LOGBACK, AOT_SERVICE_INDEX)) {
             assertDependencyScope(buildPom, aot.substring(aot.indexOf(':') + 1), "runtime");
         }
 
@@ -176,7 +178,7 @@ class PublicationMetadataSmokeTest {
         // maven-archiver, as maven-jar-plugin does.
         Map<String, Set<String>> moduleDependencies = Map.of(
                 LAUNCHER, Set.of(),
-                BUILD, Set.of(coordinate(LAUNCHER), AOT_BYTECODE, AOT_LOGBACK),
+                BUILD, Set.of(coordinate(LAUNCHER), AOT_BYTECODE, AOT_LOGBACK, AOT_SERVICE_INDEX),
                 GRADLE_PLUGIN, Set.of(coordinate(BUILD)),
                 MAVEN_PLUGIN, Set.of(coordinate(BUILD), "org.apache.maven:maven-archiver"));
         for (Map.Entry<String, Set<String>> entry : moduleDependencies.entrySet()) {

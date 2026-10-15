@@ -31,8 +31,9 @@ import java.util.List;
 
 /**
  * Writes the order in which the bean definitions were registered, when the end-to-end suite asks for it
- * with {@code -Drunner.test.bean-order=<file>}. The suite compares the file of a launch that reads the
- * static service table with the file of a launch that scans. Without the property this bean does nothing.
+ * with {@code -Drunner.test.bean-order=<file>}. The suite compares the file of a launch that reads
+ * micronaut-core's service index with the file of a launch that scans. Without the property this bean does
+ * nothing.
  */
 @Singleton
 public class BeanOrderRecorder implements ApplicationEventListener<StartupEvent> {

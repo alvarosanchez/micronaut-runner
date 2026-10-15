@@ -341,24 +341,21 @@ public final class RunnerJarSpec {
     }
 
     /**
-     * Whether the static service table was requested: generated classes that answer Micronaut's service
-     * lookups from names computed at packaging time, so that the application does not scan its class path for
-     * them when it starts.
+     * Whether micronaut-core's service index was requested: generated classes that give micronaut-core the names
+     * its service lookups would find on the class path, so that the application does not scan
+     * {@code META-INF/services} and {@code META-INF/micronaut} when it starts.
      *
-     * <p>A request does not guarantee a table. The packager generates one only for an application whose
-     * micronaut-core is in the range {@code [5.1.10, 5.2)} and has the hook the table plugs into. It generates
-     * none for a micronaut-core that carries its own service index, when another
-     * {@code StaticOptimizations$Loader} of the application already supplies service loaders, or when a
-     * generated class name is taken; it reports why, and Micronaut then scans as it does without a table.
-     * Within a table, a service type is left to the scan when the packager cannot prove the table equal to
-     * it, for example when a listed class or one of its supertypes is in no JAR of the application.</p>
+     * <p>A request does not guarantee an index. The packager calls Micronaut AOT's generator, which builds the index
+     * with the application's own micronaut-core, 5.3.0 or later. It generates none without such a micronaut-core,
+     * when a dependency already carries an index, or when it fails; the build log says why, and micronaut-core then
+     * scans as it does without an index.</p>
      *
-     * <p>The table describes the class path the application was packaged with. At run time it therefore
-     * ignores the class loader a lookup names, and does not see a provider added after packaging; it stands
-     * down when the application starts with {@code -Dmicronaut.runner.static-services=false} or with
-     * {@code -Dmicronaut.runner.parent=system}.</p>
+     * <p>The index describes the class path the application was packaged with, so it does not see a provider added
+     * after packaging. At run time, {@code -Dmicronaut.service.index.enabled=false} turns it off and
+     * {@code -Dmicronaut.service.index.validate=true} checks it against a scan. The launcher turns it off for
+     * {@code -Dmicronaut.runner.parent=system}, unless {@code micronaut.service.index.enabled} is set.</p>
      *
-     * @return whether a static service table was requested
+     * @return whether a service index was requested
      */
     boolean staticServices() {
         return staticServices;
@@ -810,18 +807,15 @@ public final class RunnerJarSpec {
         }
 
         /**
-         * Requests the static service table.
+         * Requests micronaut-core's service index.
          *
-         * <p>Setting this to {@code true} asks the packager to generate classes that answer Micronaut's
-         * service lookups from names it computes while packaging. It does so only when it can reproduce the
-         * order of Micronaut's own scan, which it does for micronaut-core {@code [5.1.10, 5.2)}; in every other
-         * case it reports why there is no table, and Micronaut scans. {@link RunnerJarSpec#staticServices()}
-         * lists those cases and what a table changes at run time. Setting this to {@code false} generates
-         * nothing.</p>
+         * <p>Setting this to {@code true} asks the packager to generate the index when the application can have
+         * one; {@link RunnerJarSpec#staticServices()} says when it can and what the index changes at run time.
+         * Setting this to {@code false} generates nothing.</p>
          *
          * <p>Defaults to {@code true}.</p>
          *
-         * @param value whether to generate the table when the application is eligible
+         * @param value whether to generate the index when the application can have one
          * @return this builder
          */
         Builder staticServices(boolean value) {

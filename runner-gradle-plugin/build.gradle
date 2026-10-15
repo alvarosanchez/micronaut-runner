@@ -30,8 +30,8 @@ dependencies {
 }
 
 // The fixtures of the functional tests resolve the plugin from the aggregated test repository alone, so the modules
-// from outside this build that it needs, micronaut-aot-bytecode and micronaut-aot-logback, are laid out there too, as a
-// Maven repository holds them.
+// from outside this build that it needs, micronaut-aot-bytecode, micronaut-aot-logback and micronaut-aot-service-index,
+// are laid out there too, as a Maven repository holds them.
 configurations {
     externalModulesUnderTest {
         canBeResolved = true
@@ -40,7 +40,8 @@ configurations {
     }
 }
 
-def externalModules = [libs.micronaut.aot.bytecode, libs.micronaut.aot.logback].collect { it.get() }
+def externalModules = [libs.micronaut.aot.bytecode, libs.micronaut.aot.logback, libs.micronaut.aot.service.index]
+        .collect { it.get() }
 
 dependencies {
     externalModules.each { module ->

@@ -155,10 +155,10 @@ public enum RunnerJarOption {
     STARTUP_CLASSES("startupClasses", Path.class, null, Exposure.TYPED, "1.0"),
 
     /**
-     * Whether to generate the static service table, classes that answer Micronaut's service lookups from names
-     * computed at packaging time, so that the application does not scan its class path for them when it starts.
-     * On by default. The packager generates one only for micronaut-core {@code [5.1.10, 5.2)}, and logs why
-     * otherwise; {@code -Dmicronaut.runner.static-services=false} turns it off at run time.
+     * Whether to generate micronaut-core's service index, so that the application does not scan its class path for
+     * Micronaut's services when it starts. On by default. It needs micronaut-core 5.3.0 or later, and the build log
+     * says why no index was generated otherwise; {@code -Dmicronaut.service.index.enabled=false} turns it off at
+     * run time.
      */
     STATIC_SERVICES("staticServices", Boolean.class, "true", Exposure.PASSTHROUGH, "1.0"),
 

@@ -47,6 +47,21 @@ dependencies {
     runtimeOnly 'ch.qos.logback:logback-classic'
 }
 
+// No Micronaut platform release has micronaut-core 5.3 yet, which the service index (staticServices) needs. So every
+// module of the micronaut-core repository, the annotation processor included, is aligned to the version catalog's
+// micronaut-core, or to the one -PbenchmarkMicronautCore=<version> names, which the startup benchmark passes to
+// measure the same application on another micronaut-core. Drop the default once a platform has micronaut-core 5.3.
+def micronautCore = providers.gradleProperty('benchmarkMicronautCore')
+        .getOrElse(libs.versions.micronaut.asProvider().get())
+configurations.configureEach {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == 'io.micronaut') {
+            details.useVersion(micronautCore)
+            details.because('the micronaut-core this sample is built on: ' + micronautCore)
+        }
+    }
+}
+
 application {
     mainClass = 'com.example.Application'
 }

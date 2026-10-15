@@ -72,8 +72,8 @@ class path needs nothing more.
 
 Start with `-Dmicronaut.runner.parent=system` when your application must see the agent's classes from the class
 path, or when the agent adds JARs to the class path at run time. The application's class loader then delegates to the
-system class loader, and Runner turns off the <<staticServices,precomputed service lookups>>, so that Micronaut also
-finds services on the real class path.
+system class loader, and Runner turns off the <<staticServices,precomputed service lookups>>, unless
+`micronaut.service.index.enabled` is set, so that Micronaut also finds services on the real class path.
 
 An agent attached to a running JVM, rather than started with `-javaagent`, sees the classes of a
 <<startupProfile,startup profile>> as already loaded.

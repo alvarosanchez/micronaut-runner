@@ -50,9 +50,10 @@ import java.util.regex.Pattern;
  *     {@code TrainingDriver}, reaches readiness and serves the workload.</li>
  *     <li><b>Coverage.</b> From that launch's class-load log, up to the end of its workload: at least
  *     {@link AotCacheSettings#minCoverage()} of the classes come from the cache, and every {@code io.micronaut}
- *     class that does not is a lambda proxy or one the recording named as skipped because it failed
- *     verification or is a JFR event class. With the settings' {@code enforceCoverage} off, the numbers are only
- *     reported.</li>
+ *     class that does not is a hidden class the JDK spun at run time (a lambda proxy, the class of a pattern
+ *     {@code switch}, a record's equality specializer), or one the recording named as skipped because it failed
+ *     verification or is a JFR event class. With the settings'
+ *     {@code enforceCoverage} off, the numbers are only reported.</li>
  * </ol>
  *
  * <p>Internal: {@link #coverage(List, List)} is public only for Runner's own benchmarks, which count what a cached
@@ -83,6 +84,14 @@ public final class AotCacheGate {
 
     /** What marks a hidden lambda proxy class. */
     private static final String LAMBDA = "$$Lambda";
+
+    /**
+     * What marks a hidden class in a class-load log. The JDK spins hidden classes when a call site is first linked:
+     * lambda proxies, the class of a pattern {@code switch} over types (micronaut-core 5.3 links one while the
+     * context starts) and, on JDK 27 and later, the equality specializer of a record. The cache holds none it did
+     * not archive.
+     */
+    private static final char HIDDEN = '/';
 
     /** What precedes the class name on a {@code -Xlog:class+load} line. */
     private static final String CLASS_LOAD_TAG = "[class,load] ";
@@ -246,7 +255,7 @@ public final class AotCacheGate {
                     micronautFromCache++;
                 } else {
                     notFromCache.add(name);
-                    if (!lambda && !allowed.contains(name)) {
+                    if (name.indexOf(HIDDEN) < 0 && !allowed.contains(name)) {
                         unexpected.add(name);
                     }
                 }
@@ -258,7 +267,7 @@ public final class AotCacheGate {
 
     /**
      * What check 3 finds wrong with a coverage: too few classes from the cache, and every {@code io.micronaut}
-     * class that neither is a lambda proxy nor was skipped by the recording.
+     * class that is not a hidden class and was not skipped by the recording.
      *
      * @param coverage    the coverage
      * @param minCoverage the minimum share of classes from the cache
@@ -441,7 +450,8 @@ public final class AotCacheGate {
          * @param micronautLoaded       the {@code io.micronaut} classes it loaded
          * @param micronautFromCache    how many of them came from the cache
          * @param micronautNotFromCache the names of the others, in load order
-         * @param unexpected            those of them that are neither lambda proxies nor skipped by the recording
+         * @param unexpected            those of them that are not hidden classes and were not skipped by the
+         *                              recording
          * @param runtimeLambdas        the lambda proxy classes it spun instead of loading them from the cache
          */
         Coverage(int classesLoaded, int classesFromCache, int micronautLoaded, int micronautFromCache,

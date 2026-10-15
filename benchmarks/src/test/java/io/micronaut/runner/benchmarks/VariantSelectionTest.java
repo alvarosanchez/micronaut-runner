@@ -83,7 +83,7 @@ class VariantSelectionTest {
                         "runner-stored-ordered", "runner-stored-hybrid", "runner-stored-positional", "runner-stored-positional-aot", "runner-stored-joran",
                         "runner-stored-joran-aot", "runner-stored-stripdebug", "runner-stored-stripdebug-aot",
                         "runner-stored-dynamic-services", "runner-stored-dynamic-services-aot",
-                        "runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot",
+                        "runner-extracted-dynamic-services-aot", "runner-stored-lambdas", "runner-stored-lambdas-aot", "runner-extracted-lambdas-aot",
                         "shadow-maot-aot", "runner-maot-aot"),
                 all.stream().filter(name -> !SampleBuild.variantNames().contains(name)).toList());
         assertEquals(all.indexOf("runner-stored-aot") + 1, all.indexOf("runner-stored-reflection"));
@@ -104,6 +104,21 @@ class VariantSelectionTest {
                 "aotCache:runner-stored-lambdas->runner-stored-lambdas-aot", 1,
                 "extracted:runner-stored-lambdas", 1,
                 "aotCache:runner-extracted-lambdas->runner-extracted-lambdas-aot", 1), steps.calls);
+    }
+
+    @Test
+    void theExtractedServiceIndexControlBuildsTheStoredControlAndItsLayoutOnce() {
+        FakeSteps steps = new FakeSteps();
+
+        List<Variant> variants = SampleBuild.variants(steps, List.of("runner-stored-dynamic-services-aot",
+                "runner-extracted-dynamic-services-aot"), log());
+
+        assertEquals(List.of("runner-stored-dynamic-services-aot", "runner-extracted-dynamic-services-aot"),
+                names(variants));
+        assertEquals(Map.of("runnerJar:runner-stored-dynamic-services", 1,
+                "aotCache:runner-stored-dynamic-services->runner-stored-dynamic-services-aot", 1,
+                "extracted:runner-stored-dynamic-services", 1,
+                "aotCache:runner-extracted-dynamic-services->runner-extracted-dynamic-services-aot", 1), steps.calls);
     }
 
     @Test
@@ -272,7 +287,8 @@ class VariantSelectionTest {
             expected.put(name, runnerSingleJar ? List.of("-Dmicronaut.runner.aot.training=true") : List.of());
         }
         assertEquals(expected, steps.trainingArguments);
-        assertEquals(List.of("shadow-aot", "runner-extracted-lambdas-aot", "runner-extracted-aot", "shadow-maot-aot"),
+        assertEquals(List.of("shadow-aot", "runner-extracted-dynamic-services-aot", "runner-extracted-lambdas-aot",
+                        "runner-extracted-aot", "shadow-maot-aot"),
                 expected.entrySet().stream().filter(entry -> entry.getValue().isEmpty()).map(Map.Entry::getKey)
                         .toList());
     }

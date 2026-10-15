@@ -4,7 +4,9 @@
             <pattern>%-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
-    <!-- Quiet: the end-to-end suite matches on one line of standard output. -->
+    <!-- Quiet: the end-to-end suite matches on a few lines of standard output, such as micronaut-core's line that
+         says which service index it uses. -->
+    <logger name="io.micronaut.core.io.service.ServiceIndex" level="INFO"/>
     <root level="WARN">
         <appender-ref ref="STDOUT"/>
     </root>

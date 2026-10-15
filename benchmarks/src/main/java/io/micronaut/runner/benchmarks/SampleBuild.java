@@ -122,6 +122,11 @@ final class SampleBuild implements SampleSteps {
             "The lambda control unpacked and run by the JDK's own loader", EntryMode.STANDARD_LOADER, false, OPT_IN,
             "runner-stored-lambdas");
 
+    /** The service index control's unpacked layout, which is trained but is not a row of its own. */
+    private static final VariantSpec EXTRACTED_DYNAMIC_SERVICES = new VariantSpec(
+            "runner-extracted-dynamic-services", "The service index control unpacked and run by the JDK's own loader",
+            EntryMode.STANDARD_LOADER, false, OPT_IN, "runner-stored-dynamic-services");
+
     private static final String GENERATED_ENTRY_STUB = "io.micronaut.runner.generated.AppEntry";
 
     /**
@@ -358,14 +363,20 @@ final class SampleBuild implements SampleSteps {
             cached("runner-stored-stripdebug-aot",
                     "The same local-variable-stripping Runner jar with a verified JDK AOT cache",
                     EntryMode.STUB, OPT_IN, "runner-stored-stripdebug"),
-            // Today's jar without the table: whatever else the builder defaults to, it has too.
+            // Today's jar without micronaut-core's service index: whatever else the builder defaults to, it has too.
+            // The third is the control's extracted layout, the cached deployment the guide recommends.
             row("runner-stored-dynamic-services", "Runner jar, nested dependencies re-packed uncompressed;"
                     + " staticServices false (control)", EntryMode.STUB, OPT_IN, null,
                     (steps, spec, source) -> steps.runnerJar(spec, Compression.STORED,
                             RunnerJarOptions.DEFAULTS.withStaticServices(false))),
             cached("runner-stored-dynamic-services-aot",
-                    "The same Runner jar without a static service table, with a verified JDK AOT cache",
+                    "The same Runner jar without a service index, with a verified JDK AOT cache",
                     EntryMode.STUB, OPT_IN, "runner-stored-dynamic-services"),
+            new VariantRows.Row<>(new VariantSpec("runner-extracted-dynamic-services-aot", "The service index"
+                    + " control unpacked and run by the JDK's own loader, with a verified JDK AOT cache",
+                    EntryMode.STANDARD_LOADER, true, OPT_IN, "runner-stored-dynamic-services"),
+                    (steps, spec, control) -> steps.aotCache(steps.extracted(control, EXTRACTED_DYNAMIC_SERVICES),
+                            spec)),
             // The default desugars lambdas; these controls keep every call site an invokedynamic, with everything
             // else at the defaults. The third is the control's extracted layout, which the JDK's own loader runs:
             // there the JDK archives lambdas itself, so that pair should be neutral.
@@ -492,9 +503,11 @@ final class SampleBuild implements SampleSteps {
                 new ComparisonSpec("runner-stored-stripdebug-aot", "runner-stored-aot",
                         "Local-variable tables stripped vs kept, the default, with the AOT cache"),
                 new ComparisonSpec("runner-stored", "runner-stored-dynamic-services",
-                        "Static service table vs Micronaut's scan"),
+                        "Service index vs Micronaut's scan"),
                 new ComparisonSpec("runner-stored-aot", "runner-stored-dynamic-services-aot",
-                        "Static service table + AOT cache vs Micronaut's scan + AOT cache"),
+                        "Service index + AOT cache vs Micronaut's scan + AOT cache"),
+                new ComparisonSpec("runner-extracted-aot", "runner-extracted-dynamic-services-aot",
+                        "Extracted layout + AOT cache: service index vs Micronaut's scan"),
                 new ComparisonSpec("runner-stored-preload", "runner-stored", "Startup class preload vs none"),
                 new ComparisonSpec("runner-stored-preload", "shadow", "Runner + startup class preload vs Shadow"),
                 new ComparisonSpec("runner-stored-preload-aot", "runner-stored-aot",
@@ -874,8 +887,8 @@ final class SampleBuild implements SampleSteps {
     /**
      * Builds a runner jar straight from the packaging library, as the plugins would, entered as the row asks.
      * The jar is checked against what the row claims: its entry mode, archive read mode, preload list and service
-     * table. Its build note says whether it carries a static service table and how many startup classes it
-     * preloads, so that a jar whose table silently stood down is not measured under the name of a row that has
+     * index. Its build note says whether it carries micronaut-core's service index and how many startup classes it
+     * preloads, so that a jar whose index silently stood down is not measured under the name of a row that has
      * one. Every line the packaging library logs goes to the harness log under the row's name, so a run's log
      * shows which build steps ran, stood down or were off for each row.
      *
@@ -919,9 +932,8 @@ final class SampleBuild implements SampleSteps {
         }
         RunnerJarSpec jarSpec = builder.build();
         RunnerJarResult result = RunnerJarBuilder.build(jarSpec, new HarnessLogger(log, spec.name()));
-        if (Boolean.FALSE.equals(options.staticServices()) && result.staticServiceSlots() != 0) {
-            throw new IOException("staticServices false was requested, but " + output + " carries a table of "
-                    + result.staticServiceSlots() + " slots");
+        if (Boolean.FALSE.equals(options.staticServices()) && result.staticServicesCoreVersion().isPresent()) {
+            throw new IOException("staticServices false was requested, but " + output + " carries a service index");
         }
         // Rebuilt in every run with the same bytes; the pin keeps the time a trained cache recorded.
         LaunchInputs.pin(output);
@@ -942,9 +954,8 @@ final class SampleBuild implements SampleSteps {
         command.add("-jar");
         command.add(output.toAbsolutePath().toString());
         DeploymentSize deploymentSize = DeploymentSize.measure(DeploymentSize.input("archive", output));
-        String buildNote = (result.staticServiceSlots() == 0 ? "dynamic service scan"
-                : "static services: " + result.staticServiceSlots() + " slots (core "
-                        + result.staticServicesCoreVersion().orElse("unknown") + ")")
+        String buildNote = result.staticServicesCoreVersion().map(core -> "service index (core " + core + ")")
+                .orElse("dynamic service scan")
                 + (options.startupClasses() == null ? ""
                         : preloadOff ? "; " + preloaded + " recorded startup classes first, not preloaded"
                         : "; " + preloaded + " recorded startup classes preloaded")
@@ -1022,7 +1033,7 @@ final class SampleBuild implements SampleSteps {
      * @param stripLocalVariables whether dependency classes lose their local-variable tables, or {@code null}
      *                            for the builder default
      * @param startupClasses      the recorded startup class list to embed, or {@code null} for none
-     * @param staticServices      whether to generate the static service table, or {@code null} for the builder
+     * @param staticServices      whether to generate micronaut-core's service index, or {@code null} for the builder
      *                            default
      * @param desugarLambdas      whether lambda call sites are replaced with generated classes, or {@code null}
      *                            for the builder default
@@ -1081,9 +1092,9 @@ final class SampleBuild implements SampleSteps {
         }
 
         /**
-         * These options with the static service table requested or not.
+         * These options with micronaut-core's service index requested or not.
          *
-         * @param value whether to generate the table
+         * @param value whether to generate the index
          * @return the new options
          */
         RunnerJarOptions withStaticServices(boolean value) {
