@@ -1548,10 +1548,20 @@ the output of Micronaut AOT&#8217;s optimizer, and never runs the optimizer itse
 </div>
 <div class="paragraph">
 <p>Micronaut 5.3 and later can also load the bean definitions on a background thread while logging starts, an
-experimental feature that you switch on with the JVM system property <code>micronaut.bean-definitions.prefetch=true</code>; it
-works in a Runner JAR, in the single JAR and the extracted layout alike, and the
-<a href="https://docs.micronaut.io/latest/api/io/micronaut/runtime/Micronaut.html"><code>Micronaut</code> class documentation</a> describes
-it.</p>
+experimental feature that the application switches on in its <code>main</code> method or in an <code>ApplicationContextConfigurer</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">Micronaut.build(args)
+        .mainClass(Application.class)
+        .beanDefinitionPrefetchEnabled(true)
+        .start();</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>It works in a Runner JAR, in the single JAR and the extracted layout alike, and the
+<a href="https://docs.micronaut.io/latest/api/io/micronaut/context/ApplicationContextBuilder.html"><code>ApplicationContextBuilder</code>
+documentation</a> describes it.</p>
 </div>
 <div class="sect1">
 <h2 id="_gradle">Gradle</h2>
