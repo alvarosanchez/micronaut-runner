@@ -431,7 +431,7 @@ class PackageMojoTest {
 
     /**
      * Runner's own bean definition prefetch was removed before 1.0. The property that set it is still read, so
-     * the build fails with the packaging library's message, which names micronaut-core's system property, as it
+     * the build fails with the packaging library's message, which names micronaut-core's builder switch, as it
      * does when the option is set through {@code <runnerOptions>}.
      */
     @Test
@@ -451,7 +451,7 @@ class PackageMojoTest {
     private static void assertRemovedDefinitionPrefetch(MojoFailureException failure) {
         assertTrue(failure.getMessage().startsWith("The Micronaut Runner option 'definitionPrefetch' was removed"),
                 failure::getMessage);
-        assertTrue(failure.getMessage().contains("micronaut.bean-definitions.prefetch=true"), failure::getMessage);
+        assertTrue(failure.getMessage().contains("beanDefinitionPrefetchEnabled(true)"), failure::getMessage);
     }
 
     // ------------------------------------------------------------- dependency files

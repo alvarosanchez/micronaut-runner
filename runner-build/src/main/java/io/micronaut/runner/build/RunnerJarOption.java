@@ -286,9 +286,10 @@ public enum RunnerJarOption {
     static IllegalArgumentException unknown(String optionName) {
         if (REMOVED_DEFINITION_PREFETCH.equals(optionName)) {
             return new IllegalArgumentException("The Micronaut Runner option '" + optionName + "' was removed: "
-                    + "Micronaut 5.3 and later prefetch the bean definitions themselves when the application is "
-                    + "started with the JVM system property micronaut.bean-definitions.prefetch=true. Remove the "
-                    + "option from the build, and see the Javadoc of io.micronaut.runtime.Micronaut");
+                    + "Micronaut 5.3 and later prefetch the bean definitions themselves when the application "
+                    + "switches it on with Micronaut.build(args).beanDefinitionPrefetchEnabled(true) or an "
+                    + "ApplicationContextConfigurer. Remove the option from the build, and see the Javadoc of "
+                    + "io.micronaut.context.ApplicationContextBuilder#beanDefinitionPrefetchEnabled");
         }
         String version = RunnerJarOption.class.getPackage().getImplementationVersion();
         return new IllegalArgumentException("Unknown Micronaut Runner option '" + optionName
