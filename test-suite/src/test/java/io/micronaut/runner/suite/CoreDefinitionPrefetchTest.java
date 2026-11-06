@@ -43,16 +43,17 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Holds micronaut-core's own bean definition prefetch, which a JVM started with
- * {@code -Dmicronaut.bean-definitions.prefetch=true} runs on micronaut-core 5.3 and later, to what a Runner JAR does
- * without it. Runner had a prefetch of its own, packaged with the {@code definitionPrefetch} option, until
+ * Holds micronaut-core's own bean definition prefetch, which an application switches on with
+ * {@code Micronaut.build(args).beanDefinitionPrefetchEnabled(true)} on micronaut-core 5.3 and later, to what a Runner
+ * JAR does without it. Runner had a prefetch of its own, packaged with the {@code definitionPrefetch} option, until
  * micronaut-core shipped this one.
  *
  * <p>The fixture, {@code samples/core-prefetch}, is hello-netty on micronaut-core 5.3 plus
- * {@code com.example.ClinitProbe}: a class registered as a bean definition reference whose static initialiser fails
+ * {@code com.example.ClinitProbe}, and its main switches the prefetch on when the {@code PREFETCH} environment
+ * variable is {@code true}. {@code ClinitProbe} is a class registered as a bean definition reference whose static initialiser fails
  * in the way the {@code PROBE_CLINIT} environment variable picks. Micronaut stops the application for two of those
  * ways and skips the reference for the third. The Runner JAR is packaged once with the default options and started
- * with the property and without it: both starts have to end the same way, and every start with the property has to
+ * with the prefetch and without it: both starts have to end the same way, and every start with the prefetch has to
  * initialise the class micronaut-core's prefetch initialises only once it has started, so that a prefetch that stood
  * down cannot pass for one that ran.</p>
  */
@@ -62,8 +63,9 @@ class CoreDefinitionPrefetchTest {
     private static final String TASK = ":micronautRunnerJar";
     private static final String ARCHIVE = "build/libs/core-prefetch-0.1-all.jar";
     private static final Duration STARTUP_TIMEOUT = Duration.ofMinutes(2);
-    private static final String PROPERTY = "-Dmicronaut.bean-definitions.prefetch=true";
-    /** The prefetch's class, which {@code Micronaut} initialises whenever the property is {@code true}. */
+    /** The environment variable that makes the sample switch the prefetch on. */
+    private static final Map<String, String> PREFETCH = Map.of("PREFETCH", "true");
+    /** The prefetch's class, which {@code Micronaut} initialises whenever the prefetch is switched on. */
     private static final String PREFETCH_CLASS = "io/micronaut/runtime/BeanDefinitionPrefetch";
     /**
      * Its first task, which it initialises only when it starts, so never when it stands down. Verifying the
@@ -78,8 +80,6 @@ class CoreDefinitionPrefetchTest {
     private static final Pattern ANSI = Pattern.compile("\u001B\\[[;\\d]*m");
 
     private static final Pattern DIGITS = Pattern.compile("\\d+");
-
-    private static final Pattern THREAD = Pattern.compile("^(#:#:#\\.# )\\[[^\\]]+\\]");
 
     private static Path sample;
     private static Path archive;
@@ -100,13 +100,12 @@ class CoreDefinitionPrefetchTest {
     /**
      * A reference Micronaut skips is skipped either way: the application starts, serves and has the same bean
      * definitions, and it prints the same lines, all of them in its {@code logback.xml} layout and logged by the
-     * thread that logs them without the prefetch, except that the service index's line may name a pool thread. No
-     * logger was created on a pool thread before logging was configured, which would have left a
+     * thread that logs them without the prefetch. No logger was created on a pool thread before logging was configured, which would have left a
      * {@code SubstituteLogger} behind.
      */
     @Test
     void aStartWithThePrefetchServesTheSameApplication() throws IOException {
-        Run with = run(archive, "single-on", Map.of(), prefetching(), true);
+        Run with = run(archive, "single-on", PREFETCH, prefetching(), true);
         Run without = run(archive, "single-off", Map.of(), List.of(), true);
 
         assertEquals("hello from RunnerClassLoader", with.hello(), with.output());
@@ -115,12 +114,11 @@ class CoreDefinitionPrefetchTest {
         assertFalse(with.definitions().contains("ClinitProbe"), with.definitions());
         assertEquals(without.definitions(), with.definitions(), "the prefetch changed the bean definitions");
         assertTrue(with.initialised(STARTED_CLASS), "the prefetch did not run:\n" + with.output());
-        assertFalse(without.initialised(PREFETCH_CLASS), "the prefetch was read without the property");
+        assertFalse(without.initialised(PREFETCH_CLASS), "the prefetch was read without being switched on");
         assertFalse(with.loaded(SUBSTITUTE_LOGGER), "a logger was created before logging was configured");
         assertFalse(without.loaded(SUBSTITUTE_LOGGER), "a logger was created before logging was configured");
         assertEquals(List.of(), throwables(with.output()), with.output());
-        assertEquals(withoutThreads(comparable(without.output())), withoutThreads(comparable(with.output())),
-                "the prefetch changed the output");
+        assertEquals(comparable(without.output()), comparable(with.output()), "the prefetch changed the output");
         assertTrue(comparable(with.output()).stream().anyMatch(line -> line.contains("[main]")
                         && line.contains("io.micronaut.runtime.Micronaut - Startup completed")),
                 () -> "the startup line is not the one logback.xml lays out:\n" + with.output());
@@ -134,7 +132,8 @@ class CoreDefinitionPrefetchTest {
     @ParameterizedTest
     @ValueSource(strings = {"runtime", "linkage"})
     void aFailingReferenceStopsTheApplicationTheSameWay(String mode) throws IOException {
-        Run with = run(archive, mode + "-on", Map.of("PROBE_CLINIT", mode), prefetching(), false);
+        Run with = run(archive, mode + "-on", Map.of("PROBE_CLINIT", mode, "PREFETCH", "true"), prefetching(),
+                false);
         Run without = run(archive, mode + "-off", Map.of("PROBE_CLINIT", mode), List.of(), false);
 
         assertNotEquals(0, without.exit(), without.output());
@@ -154,21 +153,21 @@ class CoreDefinitionPrefetchTest {
 
     /**
      * The check above tells a prefetch that ran from one that stood down: with two common pool threads,
-     * micronaut-core reads the property but starts nothing, and the application starts as it does without it.
+     * micronaut-core initialises the prefetch but starts nothing, and the application starts as it does without it.
      */
     @Test
     void aPrefetchThatStandsDownIsToldApart() throws IOException {
-        Run stoodDown = run(archive, "two-threads", Map.of(),
-                List.of(PROPERTY, "-Djava.util.concurrent.ForkJoinPool.common.parallelism=2"), true);
+        Run stoodDown = run(archive, "two-threads", PREFETCH,
+                List.of("-Djava.util.concurrent.ForkJoinPool.common.parallelism=2"), true);
 
-        assertTrue(stoodDown.initialised(PREFETCH_CLASS), "the property was not read");
+        assertTrue(stoodDown.initialised(PREFETCH_CLASS), "the prefetch was not switched on");
         assertFalse(stoodDown.initialised(STARTED_CLASS), "the prefetch started with two pool threads");
         assertEquals("hello from RunnerClassLoader", stoodDown.hello(), stoodDown.output());
     }
 
     /**
      * The extracted layout has no launcher and no entry stub, and the prefetch does not need them: started with
-     * the property, its application JAR runs the prefetch and serves the same application as the single JAR.
+     * the prefetch, its application JAR runs the prefetch and serves the same application as the single JAR.
      */
     @Test
     void theExtractedLayoutGetsThePrefetchToo(@TempDir Path work) throws Exception {
@@ -185,7 +184,7 @@ class CoreDefinitionPrefetchTest {
             applicationJar = jars.get(0);
         }
 
-        Run with = run(applicationJar, "extracted-on", Map.of(), prefetching(), true);
+        Run with = run(applicationJar, "extracted-on", PREFETCH, prefetching(), true);
         Run single = run(archive, "extracted-single", Map.of(), List.of(), true);
 
         assertTrue(with.initialised(STARTED_CLASS), "the prefetch did not run:\n" + with.output());
@@ -195,12 +194,12 @@ class CoreDefinitionPrefetchTest {
     }
 
     /**
-     * The options of a start with the prefetch. A machine with fewer than four processors has a common pool with
+     * The JVM options of a start with the prefetch. A machine with fewer than four processors has a common pool with
      * fewer than three threads, where the prefetch stands down; the pool is given three there, because these
      * tests are about what the prefetch does and not about when it pays off.
      */
     private static List<String> prefetching() {
-        List<String> options = new ArrayList<>(List.of(PROPERTY));
+        List<String> options = new ArrayList<>();
         if (Runtime.getRuntime().availableProcessors() < 4) {
             options.add("-Djava.util.concurrent.ForkJoinPool.common.parallelism=3");
         }
@@ -252,15 +251,6 @@ class CoreDefinitionPrefetchTest {
             }
         }
         return found;
-    }
-
-    /**
-     * The lines, with the thread of the service index's line masked: the prefetch's pool thread can make the first
-     * lookup. Once micronaut-core logs that line when the context starts (micronaut-core#13954), main logs it.
-     */
-    private static List<String> withoutThreads(List<String> lines) {
-        return lines.stream().map(line -> line.contains(".ServiceIndex - ")
-                ? THREAD.matcher(line).replaceFirst("$1[thread]") : line).toList();
     }
 
     /** The lines a start printed, without colours, and with times, durations, ports and counters masked. */
