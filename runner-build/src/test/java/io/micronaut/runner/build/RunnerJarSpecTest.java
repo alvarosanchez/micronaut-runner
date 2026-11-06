@@ -96,7 +96,7 @@ class RunnerJarSpecTest {
 
             assertTrue(failure.getMessage().startsWith("The Micronaut Runner option 'definitionPrefetch' was removed"),
                     failure::getMessage);
-            assertTrue(failure.getMessage().contains("micronaut.bean-definitions.prefetch=true"),
+            assertTrue(failure.getMessage().contains("beanDefinitionPrefetchEnabled(true)"),
                     failure::getMessage);
             assertFalse(failure.getMessage().contains(" knows: "), failure::getMessage);
         }

@@ -9,11 +9,15 @@ public final class Application {
     }
 
     /**
-     * Starts the server through {@code Micronaut.run}, which micronaut-core's bean definition prefetch serves.
+     * Starts the server, with micronaut-core's bean definition prefetch when the {@code PREFETCH} environment
+     * variable is {@code true}.
      *
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-        Micronaut.run(Application.class, args);
+        Micronaut.build(args)
+                .mainClass(Application.class)
+                .beanDefinitionPrefetchEnabled(Boolean.parseBoolean(System.getenv("PREFETCH")))
+                .start();
     }
 }
